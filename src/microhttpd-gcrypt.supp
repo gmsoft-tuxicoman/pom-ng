@@ -1,0 +1,17 @@
+{
+   libmicrohttpd-gcrypt
+   Memcheck:Leak
+   fun:malloc
+   obj:/usr/lib/libmicrohttpd.so.*
+   obj:/usr/lib/libgcrypt.so.*
+   ...
+}
+{
+   libgcrypt
+   Memcheck:Leak
+   fun:malloc
+   obj:/usr/lib/libgcrypt.so.*
+   ...
+   fun:gcry_control
+   ...
+}
