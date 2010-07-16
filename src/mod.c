@@ -23,19 +23,13 @@
 
 #include <sys/types.h>
 
-const char *mod_types[] = {
-	"ptype",
-	"input",
-};
-
-
 static struct mod_reg *mod_reg_head = NULL;
 static pthread_rwlock_t mod_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 struct mod_reg *mod_load(char *name) {
 
 	
-	pomlog("Opening module of %s", name);
+	pomlog("Opening module %s", name);
 
 	char filename[FILENAME_MAX];
 	memset(filename, 0, FILENAME_MAX);
@@ -56,7 +50,7 @@ struct mod_reg *mod_load(char *name) {
 	void *dl_handle = dlopen(filename, RTLD_FLAGS);
 
 	if (!dl_handle) {
-		pomlog(POMLOG_ERR "Unable to load module %s : %s", filename, dlerror());
+		pomlog(POMLOG_ERR "Unable to load module %s : %s", name, dlerror());
 		return NULL;
 	}
 
@@ -84,7 +78,7 @@ struct mod_reg *mod_load(char *name) {
 	}
 
 	if (reg_info->api_ver != MOD_API_VER) {
-		pomlog(POMLOG_ERR "API version of module %s does not match : expected %u got %u", MOD_API_VER, reg_info->api_ver);
+		pomlog(POMLOG_ERR "API version of module %s does not match : expected %u got %u", name, MOD_API_VER, reg_info->api_ver);
 		dlclose(dl_handle);
 		return NULL;
 	}
@@ -123,14 +117,46 @@ struct mod_reg *mod_load(char *name) {
 
 }
 
+void mod_refcount_inc(struct mod_reg *mod) {
+
+	if (!mod)
+		return;
+
+	mod_reg_lock(1);
+	mod->refcount++;
+	mod_reg_unlock();
+}
+
+void mod_refcount_dec(struct mod_reg *mod) {
+	if (!mod)
+		return;
+
+	mod_reg_lock(1);
+	mod->refcount--;
+	mod_reg_unlock();
+}
+
 
 int mod_unload(struct mod_reg *mod) {
 
 	if (!mod)
 		return POM_ERR;
 
-	mod_reg_lock(1);
+	// Try to unregister components registered by the module
+	if (mod->info->unregister_func) {
+		if (mod->info->unregister_func() != POM_OK) {
+			pomlog(POMLOG_ERR "Unable to unregister module %s", mod->name);
+			mod_reg_unlock();
+			return POM_ERR;
+		}
+	}
 
+	mod_reg_lock(1);
+	if (mod->refcount) {
+		pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
+		mod_reg_unlock();
+		return POM_ERR;
+	}
 	if (mod->prev)
 		mod->prev->next = mod->next;
 	else

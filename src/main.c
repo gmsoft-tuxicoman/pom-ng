@@ -36,6 +36,8 @@
 #include "mod.h" // TOREMOVE
 #include "pomlog.h"
 
+#include <pom-ng/ptype.h>
+
 static char* shutdown_reason = NULL;
 static pid_t input_process_pid = 0;
 static int running = 1;
@@ -201,7 +203,11 @@ int main(int argc, char *argv[]) {
 	
 	pomlog(PACKAGE_NAME " started !");
 
-	struct mod_reg *mod_ptye_uint32 = mod_load("ptype_uint32");
+	struct mod_reg *mod_ptype_uint32 = mod_load("ptype_uint32");
+	struct ptype *pt = ptype_alloc("uint32", NULL);
+
+	struct mod_reg *mod_input_pcap = mod_load("input_pcap");
+//	struct input *in = input_alloc("pcap");
 
 	while (running) {
 
@@ -212,12 +218,14 @@ int main(int argc, char *argv[]) {
 
 		sleep(3);
 	}
+	ptype_cleanup(pt);
 
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
 	free(shutdown_reason);
 	shutdown_reason = NULL;
 
-	mod_unload(mod_ptye_uint32);
+	mod_unload(mod_input_pcap);
+	mod_unload(mod_ptype_uint32);
 
 err:
 

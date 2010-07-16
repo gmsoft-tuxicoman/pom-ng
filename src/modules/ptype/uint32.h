@@ -18,8 +18,8 @@
  *
  */
 
-#ifndef __UINT32_H__
-#define __UINT32_H__
+#ifndef __PTYPE_UINT32_H__
+#define __PTYPE_UINT32_H__
 
 #include <pom-ng/ptype.h>
 
@@ -41,7 +41,10 @@
 /// x is the struct ptype, y the increment
 #define PTYPE_UINT32_INC(x, y) 		\
 	*((uint32_t*)(x)->value) += (y)	
-int ptype_uint32_register(struct mod_reg *mod);
+int ptype_uint32_mod_register(struct mod_reg *mod);
+int ptype_uint32_mod_unregister();
+
+
 int ptype_uint32_alloc(struct ptype *p);
 int ptype_uint32_cleanup(struct ptype *p);
 int ptype_uint32_parse(struct ptype *p, char *val);

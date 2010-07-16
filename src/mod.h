@@ -39,12 +39,15 @@ struct mod_reg *mod_load(char *name);
 int mod_unload(struct mod_reg *mod);
 struct mod_reg {
 	struct mod_reg_info *info;
+	int refcount;
 	char *name;
 	char *filename;
 	void *dl_handle;
 	struct mod_reg *next, *prev;
 
 };
+void mod_refcount_inc(struct mod_reg *mod);
+void mod_refcount_dec(struct mod_reg *mod);
 
 void mod_reg_lock(int write);
 void mod_reg_unlock();

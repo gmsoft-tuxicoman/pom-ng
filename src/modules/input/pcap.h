@@ -18,23 +18,11 @@
  *
  */
 
-#ifndef __POM_NG_MODULES_H__
-#define __POM_NG_MODULES_H__
+#ifndef __PTYPE_PCAP_H__
+#define __PTYPE_PCAP_H__
 
-// Will be used later once the API is stable
-#define MOD_API_VER 1
+int input_pcap_mod_register(struct mod_reg *mod);
+int input_pcap_mod_unregister();
 
-#include <pom-ng/base.h>
-
-// Full decl is private
-struct mod_reg;
-
-struct mod_reg_info {
-	
-	unsigned int api_ver;
-	int (*register_func) ();
-	int (*unregister_func) ();
-
-};
 
 #endif

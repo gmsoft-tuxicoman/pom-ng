@@ -22,6 +22,7 @@
 #include <pom-ng/ptype.h>
 
 #include "ptype.h"
+#include "mod.h"
 
 #include <pthread.h>
 #include <string.h>
@@ -34,7 +35,7 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 	pomlog("Registering ptype %s", reg_info->name);
 
 	if (reg_info->api_ver != PTYPE_API_VER) {
-		pomlog(POMLOG_ERR "API version of ptype %s does not match : expected %u got %u", PTYPE_API_VER, reg_info->api_ver);
+		pomlog(POMLOG_ERR "API version of ptype %s does not match : expected %u got %u", reg_info->name, PTYPE_API_VER, reg_info->api_ver);
 		return POM_ERR;
 	}
 
@@ -47,8 +48,19 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 
 	ptype_reg_lock(1);
 
+	struct ptype_reg *tmp;
+	for (tmp = ptype_reg_head; tmp && strcmp(tmp->info->name, reg_info->name); tmp = tmp->next);
+	if (tmp) {
+		pomlog(POMLOG_ERR "Ptype %s already registered", reg_info->name);
+		free(reg);
+		ptype_reg_unlock();
+		return POM_ERR;
+	}
+
 	reg->info = reg_info;
 	reg->module = mod;
+
+	mod_refcount_inc(mod);
 
 	reg->next = ptype_reg_head;
 	ptype_reg_head = reg;
@@ -57,6 +69,283 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 	ptype_reg_unlock();
 
 	return POM_OK;
+}
+
+struct ptype* ptype_alloc(const char* type, char* unit) {
+
+	ptype_reg_lock(1);
+
+	struct ptype_reg *reg;
+	for (reg = ptype_reg_head; reg && strcmp(reg->info->name, type); reg = reg->next);
+
+	if (!reg) {
+		ptype_reg_unlock();
+		pomlog(POMLOG_ERR "Ptype of type %s not found", type);
+		return NULL;
+	}
+	
+	struct ptype *ret = malloc(sizeof(struct ptype));
+	if (!ret) {
+		ptype_reg_unlock();
+		pomlog(POMLOG_ERR "Not enough memory to allocate ptype %s", type);
+		return NULL;
+	}
+
+	memset(ret, 0, sizeof(struct ptype));
+	ret->type = reg;
+	if (reg->info->alloc) {
+		if (reg->info->alloc(ret) != POM_OK) {
+			ptype_reg_unlock();
+			pomlog(POMLOG_ERR "Error while allocating ptype %s", type);
+			free(ret);
+			return NULL;
+		}
+	}
+
+	reg->refcount++;
+	ptype_reg_unlock();
+
+	if (unit)
+		ret->unit = strdup(unit);
+
+	return ret;
+}
+
+struct ptype* ptype_alloc_from(struct ptype *pt) {
+
+	struct ptype *ret = malloc(sizeof(struct ptype));
+	if (!ret) {
+		pomlog(POMLOG_ERR "Not enough memory to allocate a copy from another ptype");
+		return NULL;
+	}
+
+	memset(ret, 0, sizeof(struct ptype));
+	ret->type = pt->type;
+	if (pt->type->info->alloc) {
+		if (pt->type->info->alloc(ret) != POM_OK) {
+			pomlog(POMLOG_ERR "Ptype allocation failed while copying from another ptype");
+			return NULL;
+		}
+	}
+
+	if (pt->type->info->copy) {
+		if (pt->type->info->copy(ret, pt) != POM_OK) {
+			pomlog(POMLOG_ERR "Ptype copy failed while copying from another ptype");
+			return NULL;
+		}
+	}
+
+
+	if (pt->unit)
+		ret->unit = strdup(pt->unit);
+
+	ret->print_mode = pt->print_mode;
+
+	ptype_reg_lock(1);
+	pt->type->refcount++;
+	ptype_reg_unlock();
+
+	return ret;
+
+}
+
+int ptype_parse_val(struct ptype *pt, char *val) {
+
+	if (pt->type->info->parse_val)
+		return pt->type->info->parse_val(pt, val);
+	
+	return POM_ERR;
+}
+
+int ptype_print_val(struct ptype *pt, char *val, size_t size) {
+	
+	// This function is mandatory
+	return pt->type->info->print_val(pt, val, size);
+}
+
+char *ptype_print_val_alloc(struct ptype *pt) {
+
+	char *res = NULL;
+
+	int size, new_size = DEFAULT_PRINT_VAL_ALLOC_BUFF;
+	do {
+		size = new_size;
+		res = realloc(res, size + 1);
+		if (!res) {
+			pomlog(POMLOG_ERR "Error, not enough memory while trying to allocate the value buffer");
+			return "err";
+		}
+		new_size = ptype_print_val(pt, res, size);
+		new_size = (new_size < 1) ? new_size * 2 : new_size + 1;
+	} while (new_size > size);
+
+	return res;
+}
+
+int ptype_get_op(struct ptype *pt, char *op) {
+
+	int o = 0;
+
+	if (!strcmp(op, "eq") || !strcmp(op, "==") || !strcmp(op, "equals"))
+		o = PTYPE_OP_EQ;
+	else if (!strcmp(op, "gt") || !strcmp(op, ">")) 
+		o = PTYPE_OP_GT;
+	else if (!strcmp(op, "ge") || !strcmp(op, ">=")) 
+		o = PTYPE_OP_GE;
+	else if (!strcmp(op, "lt") || !strcmp(op, "<")) 
+		o = PTYPE_OP_LT;
+	else if (!strcmp(op, "le") || !strcmp(op, "<=")) 
+		o = PTYPE_OP_LE;
+	else if (!strcmp(op, "neq") || !strcmp(op, "!="))
+		o = PTYPE_OP_NEQ;
+
+	if (pt->type->info->ops & o)
+		return o;
+
+	pomlog(POMLOG_ERR "Invalid operation %s for ptype %s", op, pt->type->info->name);
+	return POM_ERR;
+}
+
+char *ptype_get_op_sign(int op) {
+	switch (op) {
+		case PTYPE_OP_EQ:
+			return "==";
+		case PTYPE_OP_GT:
+			return ">";
+		case PTYPE_OP_GE:
+			return ">=";
+		case PTYPE_OP_LT:
+			return "<";
+		case PTYPE_OP_LE:
+			return "<=";
+		case PTYPE_OP_NEQ:
+			return "!=";
+
+	}
+	return NULL;
+}
+
+char *ptype_get_op_name(int op) {
+	switch (op) {
+		case PTYPE_OP_EQ:
+			return "eq";
+		case PTYPE_OP_GT:
+			return "gt";
+		case PTYPE_OP_GE:
+			return "ge";
+		case PTYPE_OP_LT:
+			return "lt";
+		case PTYPE_OP_LE:
+			return "le";
+		case PTYPE_OP_NEQ:
+			return "neq";
+
+	}
+	return NULL;
+}
+
+int ptype_compare_val(int op, struct ptype *a, struct ptype *b) {
+	
+	if (a->type != b->type) {
+		pomlog(POMLOG_ERR "Cannot compare ptypes, type differs. What about you try not to compare pears with apples ...");
+		return 0; // false
+	}
+
+	if (!(a->type->info->ops & op)) {
+		pomlog(POMLOG_ERR "Invalid operation %s for ptype %s", ptype_get_op_sign(op), a->type->info->name);
+		return 0;
+	}
+
+	if (op == PTYPE_OP_NEQ)
+		return !(a->type->info->compare_val(PTYPE_OP_EQ, a->value, b->value));
+	return (a->type->info->compare_val(op, a->value, b->value));
+
+}
+
+int ptype_serialize(struct ptype *pt, char *val, size_t size) {
+
+	return pt->type->info->serialize(pt, val, size);
+}
+
+int ptype_unserialize(struct ptype *pt, char *val) {
+
+	return pt->type->info->unserialize(pt, val);
+}
+
+
+int ptype_copy(struct ptype *dst, struct ptype *src) {
+
+	if (dst->type != src->type) {
+		pomlog(POMLOG_ERR "Error, trying to copy ptypes of different type");
+		return POM_ERR;
+	}
+
+	return src->type->info->copy(dst, src);
+}
+
+int ptype_cleanup(struct ptype* pt) {
+
+	if (!pt)
+		return POM_ERR;
+
+	if (pt->type->info->cleanup)
+		pt->type->info->cleanup(pt);
+
+	if (pt->unit)
+		free(pt->unit);
+	
+	ptype_reg_lock(1);
+	pt->type->refcount--;
+	ptype_reg_unlock();
+
+	free(pt);
+
+	return POM_OK;
+}
+
+int ptype_unregister(char *name) {
+
+	ptype_reg_lock(1);
+	struct ptype_reg *reg;
+
+	for (reg = ptype_reg_head; reg && strcmp(reg->info->name, name); reg = reg->next);
+	if (!reg) {
+		pomlog(POMLOG_WARN "Ptype %s is not registered, cannot unregister it.", name);
+		ptype_reg_unlock();
+		return POM_OK; // Do not return an error so module unloading proceeds
+	}
+
+	if (reg->refcount) {
+		pomlog(POMLOG_WARN "Cannot unregister ptype %s as it's still in use", name);
+		ptype_reg_unlock();
+		return POM_ERR;
+	}
+
+	if (reg->prev)
+		reg->prev->next = reg->next;
+	else
+		ptype_reg_head = reg->next;
+	
+	if (reg->next)
+		reg->next->prev = reg->prev;
+
+	reg->next = NULL;
+	reg->prev = NULL;
+
+	mod_refcount_dec(reg->module);
+
+	ptype_reg_unlock();
+
+	return POM_OK;
+}
+
+unsigned int ptype_get_refcount(struct ptype_reg *reg) {
+
+	uint32_t refcount = 0;
+	ptype_reg_lock(0);
+	refcount = reg->refcount;
+	ptype_reg_unlock();
+	return refcount;
 }
 
 
@@ -79,7 +368,7 @@ void ptype_reg_lock(int write) {
 void ptype_reg_unlock() {
 
 	if (pthread_rwlock_unlock(&ptype_reg_rwlock)) {
-		pomlog(POMLOG_ERR "Error while unlokcing the ptype_reg lock");
+		pomlog(POMLOG_ERR "Error while unlocking the ptype_reg lock");
 		abort();
 	}
 

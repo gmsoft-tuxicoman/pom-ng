@@ -17,12 +17,16 @@
 
 include $(top_srcdir)/Makefile.common
 
-#LDFLAGS += -L../ -lpom-ng
-
+INPUT_SRC = input_pcap.la
 PTYPE_SRC = ptype_uint32.la
 
-lib_LTLIBRARIES = $(PTYPE_SRC)
+lib_LTLIBRARIES = $(INPUT_SRC) $(PTYPE_SRC)
+
+input_pcap_la_SOURCES = input/pcap.c input/pcap.h
+input_pcap_la_LDFLAGS = -module -avoid-version -lpcap
+input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+
 
 ptype_uint32_la_SOURCES = ptype/uint32.c ptype/uint32.h
 ptype_uint32_la_LDFLAGS = -module -avoid-version 
-ptype_uint32_la_LIBADD = $(top_srcdir)/src/libpom-ng.la
+ptype_uint32_la_LIBADD = $(top_builddir)/src/libpom-ng.la

@@ -23,9 +23,30 @@
 #ifndef __INPUT_H__
 #define __INPUT_H__
 
+#include <pom-ng/input.h>
+
 #define INPUT_NAME_MAX 16
+
+struct input_reg {
+
+	struct input_reg_info *info;
+	struct mod_reg *module;
+	uint32_t refcount;
+
+	struct input_reg *next, *prev;
+
+};
+
+struct input {
+	struct input_reg* type; ///< Type of the input
+};
 
 int input_current_process();
 int input_main(key_t ipc_key, uid_t main_uid, gid_t main_gid);
+
+int input_register(struct input_reg_info *reg_info, struct mod_reg *mod);
+
+void input_reg_lock(int write);
+void input_reg_unlock();
 
 #endif

@@ -32,19 +32,19 @@ struct mod_reg_info* ptype_uint32_reg_info() {
 
 	static struct mod_reg_info reg_info;
 	memset(&reg_info, 0, sizeof(struct mod_reg_info));
-	reg_info.type = MOD_TYPE_PTYPE;
 	reg_info.api_ver = MOD_API_VER;
-	reg_info.register_func = ptype_uint32_register;
+	reg_info.register_func = ptype_uint32_mod_register;
+	reg_info.unregister_func = ptype_uint32_mod_unregister;
 
 	return &reg_info;
-
 }
 
-int ptype_uint32_register(struct mod_reg *mod) {
+int ptype_uint32_mod_register(struct mod_reg *mod) {
 
 	static struct ptype_reg_info pt_u32;
 
 	pt_u32.name = "uint32";
+	pt_u32.api_ver = PTYPE_API_VER;
 
 	pt_u32.alloc = ptype_uint32_alloc;
 	pt_u32.cleanup = ptype_uint32_cleanup;
@@ -60,6 +60,11 @@ int ptype_uint32_register(struct mod_reg *mod) {
 
 	return ptype_register(&pt_u32, mod);
 
+}
+
+int ptype_uint32_mod_unregister() {
+
+	return ptype_unregister("uint32");
 }
 
 int ptype_uint32_alloc(struct ptype *p) {
