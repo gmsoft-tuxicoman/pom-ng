@@ -33,6 +33,8 @@
 #include "xmlrpcsrv.h"
 #include "httpd.h"
 
+#include "mod.h" // TOREMOVE
+#include "pomlog.h"
 
 static char* shutdown_reason = NULL;
 static pid_t input_process_pid = 0;
@@ -142,8 +144,9 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	if (!input_process_pid) // Child
+	if (!input_process_pid) { // Child
 		return input_main(input_ipc_key, uid, gid);
+	}
 
 	// Drop privileges if provided
 
@@ -197,7 +200,9 @@ int main(int argc, char *argv[]) {
 	// Main loop
 	
 	pomlog(PACKAGE_NAME " started !");
-	
+
+	struct mod_reg *mod_ptye_uint32 = mod_load("ptype_uint32");
+
 	while (running) {
 
 		if (input_ipc_process_reply(input_queue_id) != POM_OK) {
@@ -211,6 +216,9 @@ int main(int argc, char *argv[]) {
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
 	free(shutdown_reason);
 	shutdown_reason = NULL;
+
+	mod_unload(mod_ptye_uint32);
+
 err:
 
 	if (kill(input_process_pid, SIGINT) == -1) {

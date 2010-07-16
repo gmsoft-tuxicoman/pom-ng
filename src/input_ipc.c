@@ -102,6 +102,11 @@ int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg) {
 
 	msg->type = IPC_TYPE_INPUT_CMD; // Make sure the type is ok	
 	struct input_ipc_request *req = malloc(sizeof(struct input_ipc_request));
+	if (!req) {
+		pomlog(POMLOG_ERR "Not enough memory to allocate struct input_ipc_request");
+		return POM_ERR;
+	}
+
 	memset(req, 0, sizeof(struct input_ipc_request));
 	pthread_mutex_init(&req->mutex, NULL);
 	pthread_mutex_lock(&req->mutex);

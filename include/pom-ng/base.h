@@ -19,34 +19,19 @@
  */
 
 
-#ifndef __MOD_H__
-#define __MOD_H__
+#ifndef __POM_NG_BASE_H__
+#define __POM_NG_BASE_H__
 
-#include <pom-ng/mod.h>
-#include <dlfcn.h>
+// Default return values
+#define POM_OK 0
+#define POM_ERR -1
 
-#define MOD_LIBDIR_ENV_VAR "POM_LIBDIR"
+#include <pom-ng/pomlog.h>
 
-// Flags used when loading libraries
-#ifdef RTLD_GROUP
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL | RTLD_GROUP
-#else
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL
-#endif
+#define POM_STRERROR_BUFF_SIZE 128
 
+// Thread safe version of strerror()
+char *pom_strerror(int err);
 
-struct mod_reg *mod_load(char *name);
-int mod_unload(struct mod_reg *mod);
-struct mod_reg {
-	struct mod_reg_info *info;
-	char *name;
-	char *filename;
-	void *dl_handle;
-	struct mod_reg *next, *prev;
-
-};
-
-void mod_reg_lock(int write);
-void mod_reg_unlock();
 
 #endif

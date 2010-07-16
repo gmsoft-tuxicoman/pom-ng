@@ -22,9 +22,7 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
-// Default return values
-#define POM_OK 0
-#define POM_ERR -1
+#include <pom-ng/base.h>
 
 #include "../config.h"
 #include <sys/types.h>
@@ -45,8 +43,6 @@
 #endif
 
 #include "pomlog.h"
-
-#define POM_STRERROR_BUFF_SIZE 128
 
 // Some OS don't define this (taken from GNU C)
 #ifndef timercmp
@@ -76,8 +72,8 @@
 	}
 #endif
 
-// Thread safe version of strerror()
-char *pom_strerror(int err);
 
+/// Defines if we are running in the input process or the main process
+int pom_process_is_input();
 
 #endif

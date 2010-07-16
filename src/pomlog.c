@@ -37,12 +37,6 @@ static pthread_t pomlog_input_ipc_thread;
 
 static int pomlog_debug_level = 3; // Default to POMLOG_INFO
 
-struct pomlog_ipc_msg {
-	long type; // IPC_TYPE_LOG
-	char filename[POMLOG_FILENAME_SIZE];
-	char line[POMLOG_LINE_SIZE];
-};
-
 static void *pomlog_ipc_thread_func(void *params) {
 
 	int *queue_id = params;
@@ -55,14 +49,9 @@ static void *pomlog_ipc_thread_func(void *params) {
 			return NULL;
 		}
 
-		if (ipcmsg.line[0] < *POMLOG_INFO) {
-			char *format = "x%s";
-			format[0] = ipcmsg.line[0];
-			pomlog_internal(ipcmsg.filename, format, ipcmsg.line + 1);
-		} else {
-			char *format = "%s";
-			pomlog_internal(ipcmsg.filename, format, ipcmsg.line);
-		}
+		char format[] = "x<IPC> %s";
+		format[0] = ipcmsg.log_level;
+		pomlog_internal(ipcmsg.filename, format, ipcmsg.line);
 	
 
 	}
@@ -83,6 +72,8 @@ int pomlog_ipc_thread_init(int *ipc_queue) {
 }
 
 void pomlog_internal(char *file, const char *format, ...) {
+
+
 
 	int level = *POMLOG_INFO;
 	if (format[0] <= *POMLOG_DEBUG) {
@@ -107,10 +98,20 @@ void pomlog_internal(char *file, const char *format, ...) {
 			len = new_len;
 	}
 
-	struct pomlog_entry *entry;
-	if (len >= sizeof(entry->file)) {
-		len = sizeof(entry->file) - 1;
-		file[sizeof(entry->file)] = 0;
+	if (input_current_process()) {
+		// We are running in the input process, we must send the log via IPC
+		if (pomlog_ipc(level, file, buff) != POM_OK) {
+			printf("<IPC LOG ERR> : %s", buff);
+
+		}
+
+		return;
+
+	}
+
+	if (len >= POMLOG_FILENAME_SIZE) {
+		len = POMLOG_FILENAME_SIZE - 1;
+		file[POMLOG_FILENAME_SIZE] = 0;
 	}
 
 	int result = pthread_rwlock_wrlock(&pomlog_buffer_lock);
@@ -120,7 +121,17 @@ void pomlog_internal(char *file, const char *format, ...) {
 		return; // never reached
 	}
 
+
+	if (pomlog_debug_level >= level)
+		printf("%s: %s\n", file, buff);
+
+	struct pomlog_entry *entry;
 	entry = malloc(sizeof(struct pomlog_entry));
+	if (!entry) {
+		// don't use pomlog here !
+		printf("Not enough memory to allocate struct pomlog_entry, log entry dropped");
+		return;
+	}
 	memset(entry, 0, sizeof(struct pomlog_entry));
 
 	strncpy(entry->file, file, len);
@@ -129,9 +140,6 @@ void pomlog_internal(char *file, const char *format, ...) {
 	entry->level = level;
 	entry->id = pomlog_buffer_entry_id;
 	pomlog_buffer_entry_id++;
-
-	if (pomlog_debug_level >= level)
-		printf("%s: %s\n", entry->file, entry->data);
 
 	if (!pomlog_tail) {
 		pomlog_head = entry;
@@ -162,21 +170,18 @@ void pomlog_internal(char *file, const char *format, ...) {
 	}
 }
 
-int pomlog_ipc_internal(int queue_id, char *filename, const char *format, ...) {
+int pomlog_ipc(int log_level, char *filename, char *line) {
 
 	struct pomlog_ipc_msg ipcmsg;
 	memset(&ipcmsg, 0, sizeof(struct pomlog_ipc_msg));
 	ipcmsg.type = IPC_TYPE_LOG;
 
+	ipcmsg.log_level = log_level;
+	strncpy(ipcmsg.line, line, POMLOG_LINE_SIZE - 1);
 	strncpy(ipcmsg.filename, filename, POMLOG_FILENAME_SIZE - 1);
 
-	va_list arg_list;
 
-	va_start(arg_list, format);
-	vsnprintf(ipcmsg.line, POMLOG_LINE_SIZE - 1, format, arg_list);
-	va_end(arg_list);
-
-	if (ipc_send_msg(queue_id, &ipcmsg, sizeof(struct pomlog_ipc_msg)) == POM_ERR) {
+	if (ipc_send_msg(input_ipc_get_queue(), &ipcmsg, sizeof(struct pomlog_ipc_msg)) == POM_ERR) {
 		char *line = ipcmsg.line;
 		if (*line <= *POMLOG_DEBUG)
 			line++;
@@ -189,12 +194,14 @@ int pomlog_ipc_internal(int queue_id, char *filename, const char *format, ...) {
 }
 
 int pomlog_cleanup() {
-	
 
-	// Stop the IPC log thread
-	pomlog("Stopping input IPC log thread");
-	pthread_kill(pomlog_input_ipc_thread, SIGINT);
-	pthread_join(pomlog_input_ipc_thread, NULL);
+	if (!input_current_process()) {
+
+		// Stop the IPC log thread
+		pomlog("Stopping input IPC log thread");
+		pthread_kill(pomlog_input_ipc_thread, SIGINT);
+		pthread_join(pomlog_input_ipc_thread, NULL);
+	}
 
 	pomlog("Cleaning up logs ...");
 	while (pomlog_head) {

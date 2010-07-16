@@ -23,16 +23,16 @@
 #ifndef __POMLOG_H__
 #define __POMLOG_H__
 
-/// Prepend value to log string to indicate log level
-#define POMLOG_ERR	"\1"
-#define POMLOG_WARN	"\2"
-#define POMLOG_INFO	"\3"
-#define POMLOG_DEBUG	"\4"
+#include <pom-ng/pomlog.h>
 
-/// Size of the log buffer
-#define POMLOG_BUFFER_SIZE	500
-#define POMLOG_LINE_SIZE	2048
-#define POMLOG_FILENAME_SIZE	16
+/// IPC log message
+struct pomlog_ipc_msg {
+	long type; // IPC_TYPE_LOG
+	int log_level;
+	char filename[POMLOG_FILENAME_SIZE];
+	char line[POMLOG_LINE_SIZE];
+};
+
 /// Log entry
 
 struct pomlog_entry {
@@ -47,12 +47,12 @@ struct pomlog_entry {
 
 };
 
-#define pomlog(args ...) pomlog_internal(__FILE__, args)
-#define pomlog_ipc(queue, args, ...) pomlog_ipc_internal(__FILE__, args)
-
+int pomlog_ipc(int log_level, char *filename, char *line);
 int pomlog_ipc_thread_init(int *ipc_queue);
-void pomlog_internal(char *file, const char *format, ...);
-int pomlog_ipc_internal(int queue_id, char *filename, const char *format, ...);
 int pomlog_cleanup();
+
+// Declared in <pom-ng/pomlog.h>
+// void pomlog_internal(char *file, const char *format, ...);
+// int pomlog_ipc_internal(int queue_id, char *filename, const char *format, ...);
 
 #endif

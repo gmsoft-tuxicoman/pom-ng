@@ -19,34 +19,24 @@
  */
 
 
-#ifndef __MOD_H__
-#define __MOD_H__
 
-#include <pom-ng/mod.h>
-#include <dlfcn.h>
+#ifndef __POM_NG_POMLOG_H__
+#define __POM_NG_POMLOG_H__
 
-#define MOD_LIBDIR_ENV_VAR "POM_LIBDIR"
+/// Prepend value to log string to indicate log level
+#define POMLOG_ERR	"\1"
+#define POMLOG_WARN	"\2"
+#define POMLOG_INFO	"\3"
+#define POMLOG_DEBUG	"\4"
 
-// Flags used when loading libraries
-#ifdef RTLD_GROUP
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL | RTLD_GROUP
-#else
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL
-#endif
+/// Size of the log buffer
+#define POMLOG_BUFFER_SIZE	500
+#define POMLOG_LINE_SIZE	2048
+#define POMLOG_FILENAME_SIZE	16
+/// Log entry
 
+#define pomlog(args ...) pomlog_internal(__FILE__, args)
 
-struct mod_reg *mod_load(char *name);
-int mod_unload(struct mod_reg *mod);
-struct mod_reg {
-	struct mod_reg_info *info;
-	char *name;
-	char *filename;
-	void *dl_handle;
-	struct mod_reg *next, *prev;
-
-};
-
-void mod_reg_lock(int write);
-void mod_reg_unlock();
+void pomlog_internal(char *file, const char *format, ...);
 
 #endif

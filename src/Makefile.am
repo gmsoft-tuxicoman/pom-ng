@@ -24,12 +24,10 @@ INPUT_SRC = input.c input.h input_ipc.c input_ipc.h
 
 bin_PROGRAMS = pom-ng
 pom_ng_SOURCES = main.c main.h $(CORE_SRC) $(XMLRPC_SRC) $(INPUT_SRC)
-pom_ng_CFLAGS = @libxml2_CFLAGS@ -DLIBDIR='"@LIB_DIR@"' -DDATAROOT='"$(pkgdatadir)"'
+pom_ng_CFLAGS = @libxml2_CFLAGS@ -DPOM_LIBDIR='"@POM_MOD_LIBDIR@"' -DDATAROOT='"$(pkgdatadir)"'
 pom_ng_LDFLAGS = @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@
 pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@
 
-libpom_ng_la_SOURCES = common.c common.h
+libpom_ng_la_SOURCES = common.c common.h ptype.c ptype.h
 
 lib_LTLIBRARIES = libpom-ng.la
-
-SUBDIRS = modules

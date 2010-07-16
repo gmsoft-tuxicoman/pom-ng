@@ -44,8 +44,10 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 	struct httpd_conn_info *info = *con_cls;
 	if (!info) {
 		info = malloc(sizeof(struct httpd_conn_info));
-		if (!info)
+		if (!info) {
+			pomlog(POMLOG_ERR "Not enough memory to allocate struct httpd_conn_info");
 			return MHD_NO;
+		}
 
 		memset(info, 0, sizeof(struct httpd_conn_info));
 
@@ -108,6 +110,10 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		size_t buffsize = strlen(replystr) + 20;
 
 		char *buffer = malloc(buffsize);
+		if (!buffer) {
+			pomlog(POMLOG_ERR "Not enough memory to allocate a buffer of %u bytes", buffsize);
+			return MHD_NO;
+		}
 		memset(buffer, 0, buffsize);
 
 		snprintf(buffer, buffsize - 1, replystr, geteuid(), getegid());

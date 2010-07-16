@@ -17,4 +17,12 @@
 
 include $(top_srcdir)/Makefile.common
 
-SUBDIRS = ptype
+#LDFLAGS += -L../ -lpom-ng
+
+PTYPE_SRC = ptype_uint32.la
+
+lib_LTLIBRARIES = $(PTYPE_SRC)
+
+ptype_uint32_la_SOURCES = ptype/uint32.c ptype/uint32.h
+ptype_uint32_la_LDFLAGS = -module -avoid-version 
+ptype_uint32_la_LIBADD = $(top_srcdir)/src/libpom-ng.la

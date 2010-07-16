@@ -129,15 +129,15 @@ AC_SUBST(libxml2_LIBS)
 AC_CONFIG_FILES([Makefile
                  src/Makefile
 		 src/modules/Makefile
-		 src/modules/ptype/Makefile])
+		 include/Makefile])
 
 # Check for libmicrohttpd
 PKG_CHECK_MODULES(libmicrohttpd, [libmicrohttpd], [], [AC_MSG_ERROR([libmicrohttpd is required to build this program])])
 AC_SUBST(libmicrohttpd_LIBS)
 
 # update libdir
-MOD_LIBDIR="${libdir}/${PACKAGE_NAME}"
-AC_SUBST(MOD_LIBDIR)
+POM_MOD_LIBDIR="${libdir}/${PACKAGE_NAME}"
+AC_SUBST(POM_MOD_LIBDIR)
 
 # Check for PCAP
 AC_CHECK_HEADERS([pcap.h pcap-bpf.h], [pcap_headers=yes], [pcap_headers=no])
@@ -226,13 +226,13 @@ AC_SUBST(DATASTORE_OBJS)
 AC_OUTPUT
 
 echo ""
-echo "=============================================================="                                                              
-echo "               |         |                         |    o     "
-echo ",---.,---.,---.|__/ ,---.|---    ,---.   ,-.-.,---.|--- .,---."
-echo "|   |,---||    |  \ |---'|    ---|   |---| | |,---||    ||    "
-echo "|---'\`---^\`---'\`   \`\`---'\`---'   \`---'   \` ' '\`---^\`---'\`\`---'"
-echo "|"
-echo "=============================================================="
+echo "============================================="                                                              
+echo "| .-----.-----.--------.______.-----.-----. |"
+echo "| |  _  |  _  |        |______|     |  _  | |"
+echo "| |   __|_____|__|__|__|      |__|__|___  | |"
+echo "| |__|                              |_____| |"
+echo "============================================="
+echo ""
 echo " Configuration result :"
 echo " ----------------------"
 echo ""

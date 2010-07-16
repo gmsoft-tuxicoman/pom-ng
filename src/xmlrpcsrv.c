@@ -57,6 +57,11 @@ int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen) 
 
 	*reslen = xmlrpc_mem_block_size(output);
 	*response = malloc(*reslen);
+	if (!*response) {
+		pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes for response", *reslen);
+		xmlrpc_mem_block_free(output);
+		return POM_ERR;
+	}
 	memcpy(*response, xmlrpc_mem_block_contents(output), *reslen);
 
 	xmlrpc_mem_block_free(output);

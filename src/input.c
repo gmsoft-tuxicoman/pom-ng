@@ -33,6 +33,8 @@
 static key_t input_ipc_key;
 static int running = 1;
 
+static int input_is_current_process = 0;
+
 static void input_sighandler(int signal) {
 
 	running = 0;
@@ -40,11 +42,18 @@ static void input_sighandler(int signal) {
 	printf("Signal received.\n");
 }
 
+int input_current_process() {
+	return input_is_current_process;
+}
+
 int input_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 
-	pomlog("Input process started using uid/gid %u/%u and IPC key %u", geteuid(), getegid(), ipc_key);
-	input_ipc_key = ipc_key;
+	input_is_current_process = 1;
+	pomlog_cleanup(); // Cleanup log entry from previous process
 
+	pomlog("Input process started using uid/gid %u/%u and IPC key %u", geteuid(), getegid(), ipc_key);
+
+	input_ipc_key = ipc_key;
 
 	// Install signal handler
 	struct sigaction mysigaction;
@@ -94,7 +103,6 @@ int input_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 
 	pomlog("Input process terminated cleanly");
 
-	pomlog_cleanup();
 
 	return 0;
 }

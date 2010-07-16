@@ -18,4 +18,26 @@
  *
  */
 
+#ifndef __POM_NG_MODULES_H__
+#define __POM_NG_MODULES_H__
 
+#define MOD_TYPE_PTYPE 1
+#define MOD_TYPE_INPUT 2
+
+// Will be used later once the API is stable
+#define MOD_API_VER 0
+
+#include <pom-ng/base.h>
+
+// Full decl is private
+struct mod_reg;
+
+struct mod_reg_info {
+	
+	unsigned int type;
+	unsigned int api_ver;
+	int (*register_func) ();
+
+};
+
+#endif

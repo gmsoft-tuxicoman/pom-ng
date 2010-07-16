@@ -25,6 +25,7 @@
 
 #define INPUT_NAME_MAX 16
 
+int input_current_process();
 int input_main(key_t ipc_key, uid_t main_uid, gid_t main_gid);
 
 #endif
