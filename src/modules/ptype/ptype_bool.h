@@ -18,11 +18,20 @@
  *
  */
 
-#ifndef __PTYPE_PCAP_H__
-#define __PTYPE_PCAP_H__
+#ifndef __PTYPE_BOOL_H__
+#define __PTYPE_BOOL_H__
 
-int input_pcap_mod_register(struct mod_reg *mod);
-int input_pcap_mod_unregister();
+#include <pom-ng/ptype.h>
 
+int ptype_bool_mod_register(struct mod_reg *mod);
+int ptype_bool_mod_unregister();
+
+int ptype_bool_register(struct ptype_reg *r);
+int ptype_bool_alloc(struct ptype *p);
+int ptype_bool_cleanup(struct ptype *p);
+int ptype_bool_parse(struct ptype *p, char *val);
+int ptype_bool_print(struct ptype *pt, char *val, size_t size);
+int ptype_bool_compare(int op, void *val_a, void* val_b);
+int ptype_bool_copy(struct ptype *dst, struct ptype *src);
 
 #endif

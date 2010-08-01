@@ -22,14 +22,57 @@
 #include "mod.h"
 
 #include <sys/types.h>
+#include <dirent.h>
 
 static struct mod_reg *mod_reg_head = NULL;
 static pthread_rwlock_t mod_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
+int mod_load_all() {
+
+	char *path = getenv(MOD_LIBDIR_ENV_VAR);
+	if (!path)
+		path = POM_LIBDIR;
+
+	DIR *d;
+	d = opendir(path);
+
+	if (!d) {
+		pomlog(POMLOG_ERR "Could not open directory %s for browsing : %s", path, pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	struct dirent *dp;
+	while ((dp = readdir(d))) {
+		size_t len = strlen(dp->d_name);
+		if (len < strlen(POM_LIB_EXT) + 1)
+			continue;
+		if (!strcmp(dp->d_name + strlen(dp->d_name) - strlen(POM_LIB_EXT), POM_LIB_EXT)) {
+			char *name = strdup(dp->d_name);
+			*(name + strlen(dp->d_name) - strlen(POM_LIB_EXT)) = 0;
+			mod_load(name);
+			free(name);
+		}
+	}
+	closedir(d);
+
+	return POM_OK;
+
+}
+
 struct mod_reg *mod_load(char *name) {
 
 	
-	pomlog("Opening module %s", name);
+	pomlog(POMLOG_DEBUG "Opening module %s", name);
+
+	mod_reg_lock(0);
+	struct mod_reg *tmp;
+	for (tmp = mod_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
+	if (tmp) {
+		mod_reg_unlock();
+		pomlog(POMLOG_WARN "Module %s is already registered");
+		return NULL;
+	}
+	mod_reg_unlock();
 
 	char filename[FILENAME_MAX];
 	memset(filename, 0, FILENAME_MAX);
@@ -45,7 +88,7 @@ struct mod_reg *mod_load(char *name) {
 		strcat(filename, "/");
 
 	strcat(filename, name);
-	strcat(filename, ".so");
+	strcat(filename, POM_LIB_EXT);
 
 	void *dl_handle = dlopen(filename, RTLD_FLAGS);
 
@@ -105,13 +148,23 @@ struct mod_reg *mod_load(char *name) {
 
 	mod_reg_unlock();
 
-	pomlog("Module %s loaded, registering components ...", reg->name);
+	pomlog(POMLOG_DEBUG "Module %s loaded, registering components ...", reg->name);
 
 	if (reg->info->register_func(reg) != POM_OK) {
-		pomlog("Error while registering the components of module %s", reg->name);
+		pomlog(POMLOG_WARN "Error while registering the components of module %s", reg->name);
 		mod_unload(reg);
 		return NULL;
 	}
+
+	mod_reg_lock(0);
+	if (!reg->refcount) {
+		pomlog(POMLOG_DEBUG "Module %s did not register anything. Unloading it");
+		mod_reg_unlock();
+		mod_unload(reg);
+		return NULL;
+	}
+
+	mod_reg_unlock();
 
 	return reg;
 
@@ -122,25 +175,36 @@ void mod_refcount_inc(struct mod_reg *mod) {
 	if (!mod)
 		return;
 
-	mod_reg_lock(1);
+	int res = pthread_rwlock_wrlock(&mod_reg_rwlock);
+	if (res && res != EDEADLK) { // If we don't have the lock, lock it
+		pomlog(POMLOG_ERR "Failed to aquire the lock to increment the refcount");
+		abort();
+	}
 	mod->refcount++;
-	mod_reg_unlock();
+	if (res != EDEADLK)
+		mod_reg_unlock();
 }
 
 void mod_refcount_dec(struct mod_reg *mod) {
 	if (!mod)
 		return;
 
-	mod_reg_lock(1);
+	int res = pthread_rwlock_wrlock(&mod_reg_rwlock);
+	if (res && res != EDEADLK) { // If we don't have the lock, lock it
+		pomlog(POMLOG_ERR "Failed to aquire the lock to decrement the refcount");
+		abort();
+	}
 	mod->refcount--;
-	mod_reg_unlock();
+	if (res != EDEADLK)
+		mod_reg_unlock();
 }
-
 
 int mod_unload(struct mod_reg *mod) {
 
 	if (!mod)
 		return POM_ERR;
+
+	mod_reg_lock(1);
 
 	// Try to unregister components registered by the module
 	if (mod->info->unregister_func) {
@@ -151,7 +215,6 @@ int mod_unload(struct mod_reg *mod) {
 		}
 	}
 
-	mod_reg_lock(1);
 	if (mod->refcount) {
 		pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
 		mod_reg_unlock();
@@ -173,13 +236,55 @@ int mod_unload(struct mod_reg *mod) {
 	if (dlclose(mod->dl_handle))
 		pomlog(POMLOG_WARN "Error while closing module %s", mod->name);
 
-	pomlog("Module %s unloaded", mod->name);
+	pomlog(POMLOG_DEBUG "Module %s unloaded", mod->name);
 
 	free(mod->filename);
 	free(mod->name);
 
 	free(mod);
 
+
+	return POM_OK;
+}
+
+int mod_unload_all() {
+
+	mod_reg_lock(1);
+
+	struct mod_reg *mod;
+	while (mod_reg_head) {
+		mod = mod_reg_head;
+		mod_reg_head = mod->next;
+		if (mod->info->unregister_func) {
+			if (mod->info->unregister_func() != POM_OK) {
+				pomlog(POMLOG_ERR "Unable to unregister module %s", mod->name);
+				mod = mod->next;
+				continue;
+			}
+		}
+
+		if (mod->refcount) {
+			pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
+			mod_reg_unlock();
+			mod = mod->next;
+			continue;
+		}
+
+		mod->next = NULL;
+		mod->prev = NULL;
+
+		if (dlclose(mod->dl_handle))
+			pomlog(POMLOG_WARN "Error while closing module %s", mod->name);
+
+		pomlog(POMLOG_DEBUG "Module %s unloaded", mod->name);
+
+		free(mod->filename);
+		free(mod->name);
+
+		free(mod);
+	}
+
+	mod_reg_unlock();
 
 	return POM_OK;
 }

@@ -50,6 +50,7 @@ struct pomlog_entry {
 int pomlog_ipc(int log_level, char *filename, char *line);
 int pomlog_ipc_thread_init(int *ipc_queue);
 int pomlog_cleanup();
+int pomlog_set_debug_level(unsigned int debug_level);
 
 // Declared in <pom-ng/pomlog.h>
 // void pomlog_internal(char *file, const char *format, ...);

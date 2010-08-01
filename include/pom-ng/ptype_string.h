@@ -18,44 +18,29 @@
  *
  */
 
+#ifndef __POM_NG_PTYPE_STRING_H__
+#define __PON_NG_PTYPE_STRING_H__
 
-#ifndef __MOD_H__
-#define __MOD_H__
+#include <pom-ng/ptype.h>
 
-#include <pom-ng/mod.h>
-#include <dlfcn.h>
+/// x is the struct ptype
+#define PTYPE_STRING_GETVAL(x) \
+	(char*) x->value
 
-#define MOD_LIBDIR_ENV_VAR "POM_LIBDIR"
+/// x is the struct ptype, y the string
+#define PTYPE_STRING_SETVAL(x, y) {		\
+	if ((x)->value)				\
+		free((x)->value);		\
+	char *str = malloc(strlen((y)) + 1);	\
+	strcpy(str, (y));			\
+	(x)->value = str;			\
+}
 
-// Flags used when loading libraries
-#ifdef RTLD_GROUP
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL | RTLD_GROUP
-#else
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL
-#endif
-
-#define POM_LIB_EXT ".so"
-
-struct mod_reg {
-	struct mod_reg_info *info;
-	int refcount;
-	char *name;
-	char *filename;
-	void *dl_handle;
-	struct mod_reg *next, *prev;
-
-};
-
-int mod_load_all();
-struct mod_reg *mod_load(char *name);
-
-int mod_unload(struct mod_reg *mod);
-int mod_unload_all();
-
-void mod_refcount_inc(struct mod_reg *mod);
-void mod_refcount_dec(struct mod_reg *mod);
-
-void mod_reg_lock(int write);
-void mod_reg_unlock();
+/// x is the struct ptype, y the string pointer
+#define PTYPE_STRING_SETVAL_P(x, y) {		\
+	if ((x)->value)				\
+		free((x)->value);		\
+	(x)->value = y;			\
+}
 
 #endif

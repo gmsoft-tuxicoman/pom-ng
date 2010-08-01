@@ -32,7 +32,7 @@ static struct ptype_reg *ptype_reg_head = NULL;
 
 int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 
-	pomlog("Registering ptype %s", reg_info->name);
+	pomlog(POMLOG_DEBUG "Registering ptype %s", reg_info->name);
 
 	if (reg_info->api_ver != PTYPE_API_VER) {
 		pomlog(POMLOG_ERR "API version of ptype %s does not match : expected %u got %u", reg_info->name, PTYPE_API_VER, reg_info->api_ver);
@@ -71,7 +71,12 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 	return POM_OK;
 }
 
-struct ptype* ptype_alloc(const char* type, char* unit) {
+struct ptype *ptype_alloc(const char* type) {
+
+	return ptype_alloc_unit(type, NULL);
+}
+
+struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 
 	ptype_reg_lock(1);
 
@@ -334,6 +339,8 @@ int ptype_unregister(char *name) {
 
 	mod_refcount_dec(reg->module);
 
+	free(reg);
+
 	ptype_reg_unlock();
 
 	return POM_OK;
@@ -341,7 +348,7 @@ int ptype_unregister(char *name) {
 
 unsigned int ptype_get_refcount(struct ptype_reg *reg) {
 
-	uint32_t refcount = 0;
+	unsigned int refcount = 0;
 	ptype_reg_lock(0);
 	refcount = reg->refcount;
 	ptype_reg_unlock();

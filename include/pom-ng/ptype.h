@@ -156,7 +156,10 @@ struct ptype_reg;
 int ptype_register(struct ptype_reg_info *reg, struct mod_reg *mod);
 
 /// Allocate a new struct ptype.
-struct ptype* ptype_alloc(const char* type, char* unit);
+struct ptype* ptype_alloc(const char* type);
+
+/// Allocate a new struct ptype and specify the unit
+struct ptype* ptype_alloc_unit(const char* type, char* unit);
 
 /// Allocate a clone of a given ptype.
 struct ptype* ptype_alloc_from(struct ptype *pt);

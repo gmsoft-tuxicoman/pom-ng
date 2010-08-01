@@ -19,43 +19,25 @@
  */
 
 
-#ifndef __MOD_H__
-#define __MOD_H__
+#ifndef __POM_NG_PARAM_H__
+#define __POM_NG_PARAM_H__
 
-#include <pom-ng/mod.h>
-#include <dlfcn.h>
+#include <pom-ng/ptype.h>
 
-#define MOD_LIBDIR_ENV_VAR "POM_LIBDIR"
-
-// Flags used when loading libraries
-#ifdef RTLD_GROUP
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL | RTLD_GROUP
-#else
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL
-#endif
-
-#define POM_LIB_EXT ".so"
-
-struct mod_reg {
-	struct mod_reg_info *info;
-	int refcount;
+struct param_entry {
 	char *name;
-	char *filename;
-	void *dl_handle;
-	struct mod_reg *next, *prev;
-
+	struct ptype *value;
+	char *default_value;
+	char *description;
 };
 
-int mod_load_all();
-struct mod_reg *mod_load(char *name);
+struct param_list {
+	struct param_entry *entry;
+	struct param_list *next, *prev;
+};
 
-int mod_unload(struct mod_reg *mod);
-int mod_unload_all();
-
-void mod_refcount_inc(struct mod_reg *mod);
-void mod_refcount_dec(struct mod_reg *mod);
-
-void mod_reg_lock(int write);
-void mod_reg_unlock();
+int param_list_add_entry(struct param_list **list_head, char *name, struct ptype *value, char *default_value, char *description);
+int param_list_add_entry2(struct param_list **list_head, struct param_entry *entry);
+int param_list_cleanup(struct param_list **list_head);
 
 #endif

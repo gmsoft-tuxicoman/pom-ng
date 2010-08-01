@@ -16,4 +16,9 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 
-nobase_include_HEADERS = pom-ng/base.h pom-ng/mod.h pom-ng/pomlog.h pom-ng/ptype.h
+
+BASE_HDRS = pom-ng/base.h pom-ng/mod.h pom-ng/param.h pom-ng/pomlog.h
+INPUT_HDRS = pom-ng/input.h
+PTYPE_HDRS = pom-ng/ptype.h pom-ng/ptype_bool.h pom-ng/ptype_string.h pom-ng/ptype_uint32.h
+
+nobase_include_HEADERS = $(BASE_HDRS) $(INPUT_HDRS) $(PTYPE_HDRS)

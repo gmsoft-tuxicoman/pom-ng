@@ -25,7 +25,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "uint32.h"
+#include "ptype_uint32.h"
+#include <pom-ng/ptype_uint32.h>
 
 
 struct mod_reg_info* ptype_uint32_reg_info() {
@@ -42,6 +43,7 @@ struct mod_reg_info* ptype_uint32_reg_info() {
 int ptype_uint32_mod_register(struct mod_reg *mod) {
 
 	static struct ptype_reg_info pt_u32;
+	memset(&pt_u32, 0, sizeof(struct ptype_reg_info));
 
 	pt_u32.name = "uint32";
 	pt_u32.api_ver = PTYPE_API_VER;

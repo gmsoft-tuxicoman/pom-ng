@@ -28,22 +28,42 @@
 
 #define INPUT_IPC_LOG_FILE_NAME_SIZE 16
 #define INPUT_IPC_LOG_MSG_SIZE 64
+#define INPUT_IPC_MOD_FILE_NAME_SIZE 64
 
 #define INPUT_IPC_MAX_READ_TYPE 0xff
 
 enum input_ipc_msg_type {
 
 	// Commands to the input
-
-	input_ipc_cmd_type_add = 1,
+	input_ipc_cmd_type_mod_load = 1,
+	input_ipc_cmd_type_mod_unload,
+	input_ipc_cmd_type_add,
+	input_ipc_cmd_type_remove,
+	input_ipc_cmd_type_start,
+	input_ipc_cmd_type_stop,
 };
 
 union input_ipc_cmd_msg {
 
+	struct mod_load {
+		char name[INPUT_IPC_MOD_FILE_NAME_SIZE + 1];
+	} mod_load;
+
 	struct add {
-		int type;
 		char name[INPUT_NAME_MAX + 1];
 	} add;
+
+	struct start {
+		unsigned int id;
+	} start;
+
+	struct stop {
+		unsigned int id;
+	} stop;
+	
+	struct remove {
+		unsigned int id;
+	} remove;
 
 };
 
@@ -54,10 +74,17 @@ struct input_ipc_raw_cmd {
 	union input_ipc_cmd_msg data;
 };
 
+union input_ipc_cmd_reply_msg {
+	struct add_reply {
+		unsigned int id;
+	} add;
+};
+
 struct input_ipc_raw_cmd_reply {
 	long type; // IPC_TYPE_INPUT_CMD_REPLY
 	int id;
 	int status;
+	union input_ipc_cmd_reply_msg data;
 };
 
 
@@ -65,6 +92,7 @@ struct input_ipc_request {
 
 	int id;
 	pthread_mutex_t mutex;
+	pthread_cond_t cond;
 	struct input_ipc_raw_cmd_reply reply;
 
 	struct input_ipc_request *next;
@@ -89,7 +117,11 @@ void input_ipc_req_mutex_lock();
 void input_ipc_req_mutex_unlock();
 
 
-int input_ipc_cmd_add(int input_type, char *name);
+int input_ipc_cmd_mod_load(char *mod_name);
+int input_ipc_cmd_add(char *name);
+int input_ipc_cmd_remove(unsigned int input_id);
+int input_ipc_cmd_start(unsigned int input_id);
+int input_ipc_cmd_stop(unsigned int input_id);
 
 
 #endif

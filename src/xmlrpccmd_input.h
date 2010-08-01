@@ -24,7 +24,11 @@
 
 
 int xmlrpccmd_input_register_all();
+xmlrpc_value *xmlrpccmd_input_mod_load(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_input_add(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_input_remove(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_input_start(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_input_stop(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
 
 #endif

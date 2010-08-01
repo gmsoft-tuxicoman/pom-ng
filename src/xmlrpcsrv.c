@@ -23,6 +23,8 @@
 #include "xmlrpcsrv.h"
 #include "xmlrpccmd.h"
 
+#include <libxml/parser.h>
+
 
 static xmlrpc_registry *xmlrpcsrv_registry = NULL;
 
@@ -60,11 +62,13 @@ int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen) 
 	if (!*response) {
 		pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes for response", *reslen);
 		xmlrpc_mem_block_free(output);
+		xmlrpc_env_clean(&env);
 		return POM_ERR;
 	}
 	memcpy(*response, xmlrpc_mem_block_contents(output), *reslen);
 
 	xmlrpc_mem_block_free(output);
+	xmlrpc_env_clean(&env);
 
 	return POM_OK;
 }
@@ -75,6 +79,10 @@ int xmlrpcsrv_cleanup() {
 		xmlrpc_registry_free(xmlrpcsrv_registry);
 		xmlrpcsrv_registry = NULL;
 	}
+
+	// Cleanup libxml2 stuff
+	xmlCleanupCharEncodingHandlers();
+	xmlCleanupParser();
 
 	return POM_OK;
 }

@@ -32,10 +32,10 @@ static struct pomlog_entry *pomlog_head = NULL, *pomlog_tail = NULL;
 static unsigned int pomlog_buffer_size = 0;
 static pthread_rwlock_t pomlog_buffer_lock = PTHREAD_RWLOCK_INITIALIZER;
 static uint32_t pomlog_buffer_entry_id = 0;
-static pthread_t pomlog_input_ipc_thread;
+static pthread_t pomlog_input_ipc_thread = 0;
 
 
-static int pomlog_debug_level = 3; // Default to POMLOG_INFO
+static unsigned int pomlog_debug_level = 3; // Default to POMLOG_INFO
 
 static void *pomlog_ipc_thread_func(void *params) {
 
@@ -45,7 +45,8 @@ static void *pomlog_ipc_thread_func(void *params) {
 
 	while (1) {
 		if (ipc_read_msg(*queue_id, IPC_TYPE_LOG, &ipcmsg, sizeof(struct pomlog_ipc_msg))) {
-			pomlog(POMLOG_ERR "Error while reading logs from input process");
+			if (errno != EINTR)
+				pomlog(POMLOG_ERR "Error while reading logs from input process");
 			return NULL;
 		}
 
@@ -100,11 +101,8 @@ void pomlog_internal(char *file, const char *format, ...) {
 
 	if (input_current_process()) {
 		// We are running in the input process, we must send the log via IPC
-		if (pomlog_ipc(level, file, buff) != POM_OK) {
+		if (pomlog_ipc(level, file, buff) != POM_OK)
 			printf("<IPC LOG ERR> : %s", buff);
-
-		}
-
 		return;
 
 	}
@@ -114,16 +112,13 @@ void pomlog_internal(char *file, const char *format, ...) {
 		file[POMLOG_FILENAME_SIZE] = 0;
 	}
 
-	int result = pthread_rwlock_wrlock(&pomlog_buffer_lock);
-	if (result) {
-		printf("Error while locking the log lock. Aborting.\r");
-		abort();
-		return; // never reached
-	}
 
+	char filename[POMLOG_FILENAME_SIZE];
+	memset(filename, 0, POMLOG_FILENAME_SIZE);
+	strncpy(filename, file, len);
 
 	if (pomlog_debug_level >= level)
-		printf("%s: %s\n", file, buff);
+		printf("%s: %s\n", filename, buff);
 
 	struct pomlog_entry *entry;
 	entry = malloc(sizeof(struct pomlog_entry));
@@ -134,12 +129,20 @@ void pomlog_internal(char *file, const char *format, ...) {
 	}
 	memset(entry, 0, sizeof(struct pomlog_entry));
 
-	strncpy(entry->file, file, len);
+	strcpy(entry->file, filename);
 	entry->data = strdup(buff);
 
 	entry->level = level;
 	entry->id = pomlog_buffer_entry_id;
 	pomlog_buffer_entry_id++;
+
+
+	int result = pthread_rwlock_wrlock(&pomlog_buffer_lock);
+	if (result) {
+		printf("Error while locking the log lock. Aborting.\r");
+		abort();
+		return; // never reached
+	}
 
 	if (!pomlog_tail) {
 		pomlog_head = entry;
@@ -166,7 +169,6 @@ void pomlog_internal(char *file, const char *format, ...) {
 	if (pthread_rwlock_unlock(&pomlog_buffer_lock)) {
 		printf("Error while unlocking the log lock. Aborting.\r");
 		abort();
-		return; // never reached
 	}
 }
 
@@ -195,15 +197,15 @@ int pomlog_ipc(int log_level, char *filename, char *line) {
 
 int pomlog_cleanup() {
 
-	if (!input_current_process()) {
+	if (!input_current_process() && pomlog_input_ipc_thread) {
 
 		// Stop the IPC log thread
 		pomlog("Stopping input IPC log thread");
-		pthread_kill(pomlog_input_ipc_thread, SIGINT);
+
+		pthread_cancel(pomlog_input_ipc_thread);
 		pthread_join(pomlog_input_ipc_thread, NULL);
 	}
 
-	pomlog("Cleaning up logs ...");
 	while (pomlog_head) {
 		struct pomlog_entry *tmp = pomlog_head;
 		pomlog_head = pomlog_head->next;
@@ -213,6 +215,16 @@ int pomlog_cleanup() {
 	}
 	
 	pomlog_tail = NULL;
+
+	return POM_OK;
+}
+
+int pomlog_set_debug_level(unsigned int debug_level) {
+
+	if (debug_level > *POMLOG_DEBUG)
+		debug_level = *POMLOG_DEBUG;
+
+	pomlog_debug_level = debug_level;
 
 	return POM_OK;
 }

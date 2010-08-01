@@ -58,6 +58,17 @@ void signal_handler(int signal) {
 	}
 }
 
+void print_usage() {
+	printf(	"Usage : " PACKAGE_NAME " [options]\n"
+		"\n"
+		"Options :\n"
+		" -d, --debug=LEVEL	specify the debug level <0-4> (default 3)\n"
+		" -h, --help		print this usage\n"
+		" -u, --user=USER	drop privilege to this user\n"
+		"\n"
+		);
+}
+
 
 int main(int argc, char *argv[]) {
 
@@ -72,10 +83,12 @@ int main(int argc, char *argv[]) {
 
 		static struct option long_options[] = {
 			{ "user", 1, 0, 'u' },
+			{ "debug", 1, 0, 'd' },
+			{ "help", 0, 0, 'h' },
 		};
 
 		
-		char *args = "u:";
+		char *args = "u:d:h";
 
 		c = getopt_long(argc, argv, args, long_options, NULL);
 
@@ -108,6 +121,21 @@ int main(int argc, char *argv[]) {
 
 				break;
 			}
+			case 'd': {
+				unsigned int debug_level = 0;
+				if (sscanf(optarg, "%u", &debug_level) == 1) {
+					pomlog_set_debug_level(debug_level);
+				} else {
+					printf("Invalid debug level \"%s\"\n", optarg);
+					print_usage();
+					return -1;
+				}
+				break;
+			}
+			case 'h':
+			default:
+				print_usage();
+				return 1;
 		}
 
 
@@ -203,11 +231,11 @@ int main(int argc, char *argv[]) {
 	
 	pomlog(PACKAGE_NAME " started !");
 
-	struct mod_reg *mod_ptype_uint32 = mod_load("ptype_uint32");
-	struct ptype *pt = ptype_alloc("uint32", NULL);
-
-	struct mod_reg *mod_input_pcap = mod_load("input_pcap");
-//	struct input *in = input_alloc("pcap");
+	// Load all the available modules
+	if (mod_load_all() != POM_OK) { 
+		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
+		goto err;
+	}
 
 	while (running) {
 
@@ -218,14 +246,11 @@ int main(int argc, char *argv[]) {
 
 		sleep(3);
 	}
-	ptype_cleanup(pt);
 
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
 	free(shutdown_reason);
 	shutdown_reason = NULL;
 
-	mod_unload(mod_input_pcap);
-	mod_unload(mod_ptype_uint32);
 
 err:
 
@@ -236,24 +261,27 @@ err:
 		waitpid(input_process_pid, NULL, 0);
 	}
 
-	// Delete the IPC queue
-	if (msgctl(input_ipc_queue, IPC_RMID, 0)) {
-		pomlog(POMLOG_WARN "Unable to remove the IPC msg queue while terminating");
-	}
-
 
 	// Cleanup components
 
 	input_ipc_cleanup();
 
 	httpd_cleanup();
+
 err_httpd:
 	xmlrpcsrv_cleanup();
 err_xmlrpcsrv:
 
+	mod_unload_all();
 	pomlog_cleanup();
 
-	printf(POMLOG_INFO PACKAGE_NAME " shutted down\n");
+	// Delete the IPC queue
+	if (msgctl(input_ipc_queue, IPC_RMID, 0)) {
+		printf("Unable to remove the IPC msg queue while terminating\n");
+	}
+
+
+	printf(PACKAGE_NAME " shutted down\n");
 	return res;
 }
 

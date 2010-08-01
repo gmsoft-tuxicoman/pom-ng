@@ -18,34 +18,20 @@
  *
  */
 
-#include <pom-ng/input.h>
+#ifndef __POM_NG_PTYPE_BOOL_H__
+#define __POM_NG_PTYPE_BOOL_H__
 
-#include "pcap.h"
-#include <string.h>
+#include <pom-ng/ptype.h>
 
-struct mod_reg_info* input_pcap_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
-	reg_info.api_ver = MOD_API_VER;
-	reg_info.register_func = input_pcap_mod_register;
-	reg_info.unregister_func = input_pcap_mod_unregister;
+/// x the struct ptype
+#define PTYPE_BOOL_GETVAL(x) 		\
+	(int) *((int*)(x)->value)
 
-	return &reg_info;
+/// x the struct ptype, y is the value
+#define PTYPE_BOOL_SETVAL(x, y) {	\
+	int *v = (x)->value;		\
+	*v = (y);			\
 }
 
 
-int input_pcap_mod_register(struct mod_reg *mod) {
-
-	static struct input_reg_info in_pcap_file;
-	in_pcap_file.name = "pcap_file";
-	in_pcap_file.api_ver = INPUT_API_VER;
-
-	input_register(&in_pcap_file, mod);
-	return POM_OK;
-
-}
-
-int input_pcap_mod_unregister() {
-
-	return input_unregister("pcap_file");
-}
+#endif

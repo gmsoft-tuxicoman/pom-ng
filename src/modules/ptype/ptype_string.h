@@ -18,44 +18,19 @@
  *
  */
 
+#ifndef __PTYPE_STRING_H__
+#define __PTYPE_STRING_H__
 
-#ifndef __MOD_H__
-#define __MOD_H__
+#include <pom-ng/ptype.h>
 
-#include <pom-ng/mod.h>
-#include <dlfcn.h>
+int ptype_string_mod_register(struct mod_reg *r);
+int ptype_string_mod_unregister();
 
-#define MOD_LIBDIR_ENV_VAR "POM_LIBDIR"
 
-// Flags used when loading libraries
-#ifdef RTLD_GROUP
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL | RTLD_GROUP
-#else
-#define RTLD_FLAGS RTLD_NOW | RTLD_LOCAL
-#endif
-
-#define POM_LIB_EXT ".so"
-
-struct mod_reg {
-	struct mod_reg_info *info;
-	int refcount;
-	char *name;
-	char *filename;
-	void *dl_handle;
-	struct mod_reg *next, *prev;
-
-};
-
-int mod_load_all();
-struct mod_reg *mod_load(char *name);
-
-int mod_unload(struct mod_reg *mod);
-int mod_unload_all();
-
-void mod_refcount_inc(struct mod_reg *mod);
-void mod_refcount_dec(struct mod_reg *mod);
-
-void mod_reg_lock(int write);
-void mod_reg_unlock();
+int ptype_string_cleanup(struct ptype *p);
+int ptype_string_parse(struct ptype *p, char *val);
+int ptype_string_print(struct ptype *pt, char *val, size_t size);
+int ptype_string_compare(int op, void *val_a, void *val_b);
+int ptype_string_copy(struct ptype *dst, struct ptype *src);
 
 #endif
