@@ -27,6 +27,13 @@
 
 #define INPUT_NAME_MAX 16
 
+#define INPUT_PARAM_NAME_MAX 16
+#define INPUT_PARAM_VALUE_MAX 255
+#define INPUT_PARAM_DEFVAL_MAX 16
+#define INPUT_PARAM_DESCRIPTION_MAX 16
+#define INPUT_PARAM_TYPE_MAX 8
+#define INPUT_PARAM_COUNT_MAX 8
+
 #define INPUT_SHM_BUFF_SIZE 2 * 1024 * 1024
 
 struct input_reg {
@@ -53,30 +60,35 @@ struct input_packet {
 	// unsigned char buff[];
 };
 
-struct input_buff {
-	struct input_packet *head;
-	struct input_packet *tail;
+struct input_param {
+	char *name;
+	struct ptype *value;
+	char *default_value;
+	char *description;
+	unsigned int flags;
 
-	// void *buff;
+	struct input_param *next;
 };
 
-int input_current_process();
-int input_main(key_t ipc_key, uid_t main_uid, gid_t main_gid);
+struct input_buff {
+	struct input_packet *head;
+	struct input_packet *read_cur;
+	struct input_packet *tail;
+
+	void *buff_start;
+	void *buff_end;
+};
 
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod);
 struct input* input_alloc(const char* type, int input_ipc_key);
 int input_open(struct input *i);
 int input_cleanup(struct input *i);
-int input_list_cleanup();
 
 void *input_process_thread(void *param);
 
 
 void input_reg_lock(int write);
 void input_reg_unlock();
-
-void input_list_lock(int write);
-void input_list_unlock();
 
 void input_instance_lock(struct input *i, int write);
 void input_instance_unlock(struct input *i);

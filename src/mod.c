@@ -48,6 +48,10 @@ int mod_load_all() {
 			continue;
 		if (!strcmp(dp->d_name + strlen(dp->d_name) - strlen(POM_LIB_EXT), POM_LIB_EXT)) {
 			char *name = strdup(dp->d_name);
+			if (!name) {
+				pomlog(POMLOG_ERR "Not enough memory to strdup(%s)", dp->d_name);
+				return POM_ERR;
+			}
 			*(name + strlen(dp->d_name) - strlen(POM_LIB_EXT)) = 0;
 			mod_load(name);
 			free(name);
@@ -134,12 +138,25 @@ struct mod_reg *mod_load(char *name) {
 
 	memset(reg, 0, sizeof(struct mod_reg));
 
-	mod_reg_lock(1);
 
 	reg->dl_handle = dl_handle;
 	reg->filename = strdup(filename);
 	reg->name = strdup(name);
 	reg->info = reg_info;
+
+	if (!reg->filename || !reg->name) {
+		if (reg->filename)
+			free(reg->filename);
+		if (reg->name)
+			free(reg->name);
+		free(reg);
+		
+		pomlog(POMLOG_ERR "Not enough memory to allocate name and filename of struct mod_reg");
+
+		return NULL;
+	}
+
+	mod_reg_lock(1);
 
 	reg->next = mod_reg_head;
 	mod_reg_head = reg;

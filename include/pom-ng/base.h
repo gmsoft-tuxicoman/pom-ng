@@ -27,11 +27,18 @@
 #define POM_ERR -1
 
 #include <pom-ng/pomlog.h>
+#include <unistd.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 
 // Thread safe version of strerror()
 char *pom_strerror(int err);
+
+// Out of memory handler
+
+void pom_oom_internal(size_t size, char *file, unsigned int line);
+#define pom_oom(x) pom_oom_internal(x, __FILE__, __LINE__)
+
 
 
 #endif

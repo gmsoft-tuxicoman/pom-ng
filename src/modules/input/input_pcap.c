@@ -90,8 +90,8 @@ static int input_pcap_interface_alloc(struct input *i) {
 	if (!dev)
 		dev = "none";
 
-	param_list_add_entry(&i->param, "interface", priv->interface, dev, "Interface to capture packets from");
-	param_list_add_entry(&i->param, "promisc", priv->promisc, "no", "Promiscious mode");
+	input_register_param(i, "interface", priv->interface, dev, "Interface to capture packets from", 0);
+	input_register_param(i, "promisc", priv->promisc, "no", "Promiscious mode", 0);
 
 	i->priv = priv;
 
@@ -180,7 +180,7 @@ static int input_pcap_file_alloc(struct input *i) {
 	if (!priv->file)
 		return POM_ERR;
 
-	param_list_add_entry(&i->param, "filename", priv->file, "dump.cap", "File in PCAP format");
+	input_register_param(i, "filename", priv->file, "dump.cap", "File in PCAP format", 0);
 
 	i->priv = priv;
 

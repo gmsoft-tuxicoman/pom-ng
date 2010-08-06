@@ -17,7 +17,7 @@
 
 
 
-BASE_HDRS = pom-ng/base.h pom-ng/mod.h pom-ng/param.h pom-ng/pomlog.h
+BASE_HDRS = pom-ng/base.h pom-ng/mod.h pom-ng/pomlog.h
 INPUT_HDRS = pom-ng/input.h
 PTYPE_HDRS = pom-ng/ptype.h pom-ng/ptype_bool.h pom-ng/ptype_string.h pom-ng/ptype_uint32.h
 

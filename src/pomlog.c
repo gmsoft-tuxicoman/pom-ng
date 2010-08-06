@@ -23,6 +23,7 @@
 #include "common.h"
 #include "ipc.h"
 #include "input_ipc.h"
+#include "input_server.h"
 
 #include "signal.h"
 
@@ -99,10 +100,9 @@ void pomlog_internal(char *file, const char *format, ...) {
 			len = new_len;
 	}
 
-	if (input_current_process()) {
+	if (input_server_is_current_process()) {
 		// We are running in the input process, we must send the log via IPC
-		if (pomlog_ipc(level, file, buff) != POM_OK)
-			printf("<IPC LOG ERR> : %s", buff);
+		pomlog_ipc(level, file, buff);
 		return;
 
 	}
@@ -124,13 +124,19 @@ void pomlog_internal(char *file, const char *format, ...) {
 	entry = malloc(sizeof(struct pomlog_entry));
 	if (!entry) {
 		// don't use pomlog here !
-		printf("Not enough memory to allocate struct pomlog_entry, log entry dropped");
+		pom_oom(sizeof(struct pomlog_entry));
 		return;
 	}
 	memset(entry, 0, sizeof(struct pomlog_entry));
 
 	strcpy(entry->file, filename);
 	entry->data = strdup(buff);
+
+	if (!entry->data) {
+		pom_oom(strlen(buff));
+		free(entry);
+		return;
+	}
 
 	entry->level = level;
 	entry->id = pomlog_buffer_entry_id;
@@ -187,7 +193,7 @@ int pomlog_ipc(int log_level, char *filename, char *line) {
 		char *line = ipcmsg.line;
 		if (*line <= *POMLOG_DEBUG)
 			line++;
-		pomlog(POMLOG_ERR "Error while sending log via IPC. msg : \"%s\"", line);
+		printf("%s: <IPC LOG ERR : %s> : %s\n", filename, pom_strerror(errno), line);
 		return POM_ERR;
 	}
 
@@ -197,7 +203,7 @@ int pomlog_ipc(int log_level, char *filename, char *line) {
 
 int pomlog_cleanup() {
 
-	if (!input_current_process() && pomlog_input_ipc_thread) {
+	if (!input_server_is_current_process() && pomlog_input_ipc_thread) {
 
 		// Stop the IPC log thread
 		pomlog("Stopping input IPC log thread");

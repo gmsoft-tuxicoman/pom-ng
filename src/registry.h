@@ -20,19 +20,41 @@
 
 
 
-#include "common.h"
+#ifndef __REGISTRY_H__
+#define __REGISTRY_H__
 
-char *pom_strerror(int err) {
-
-	static __thread char buff[POM_STRERROR_BUFF_SIZE];
-	memset(buff, 0, POM_STRERROR_BUFF_SIZE);
-	strerror_r(errno, buff, POM_STRERROR_BUFF_SIZE - 1);
-
-	return buff;
-}
+#define REGISTRY_ROOT "root"
 
 
-void pom_oom_internal(size_t size, char *file, unsigned int line) {
-	pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes at %s:%u", size, file, line);
-}
+#define REGISTRY_FLAG_CLEANUP_VAL	1
 
+struct registry_param {
+	char *name;
+	char *default_value;
+	struct ptype *value;
+	char *description;
+	unsigned int flags;
+
+	struct registry_param *next, *prev;
+	struct registry_node *parent;
+};
+
+struct registry_node {
+	char *name;
+
+	struct registry_node *branches;
+
+	struct registry_param *params;
+
+	struct registry_node *next, *prev;
+	struct registry_node *parent;
+};
+
+int registry_init();
+struct registry_node* registry_find_branch(char *path);
+struct registry_param* registry_find_param(char *path);
+int registry_add_branch(char *node, char *branch);
+int registry_add_param(char* branch, char *param, char *default_value, struct ptype *value, char *description, int flags);
+int registry_cleanup();
+
+#endif

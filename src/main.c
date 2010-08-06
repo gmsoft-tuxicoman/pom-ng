@@ -28,12 +28,13 @@
 #include <sys/wait.h>
 
 #include "main.h"
-#include "input.h"
+#include "input_server.h"
+#include "input_client.h"
 #include "input_ipc.h"
 #include "xmlrpcsrv.h"
 #include "httpd.h"
-
-#include "mod.h" // TOREMOVE
+#include "registry.h"
+#include "mod.h"
 #include "pomlog.h"
 
 #include <pom-ng/ptype.h>
@@ -175,7 +176,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (!input_process_pid) { // Child
-		return input_main(input_ipc_key, uid, gid);
+		return input_server_main(input_ipc_key, uid, gid);
 	}
 
 	// Drop privileges if provided
@@ -206,6 +207,27 @@ int main(int argc, char *argv[]) {
 	
 	int res = 0;
 
+	// Wait for the IPC queue to be created
+	int input_queue_id = input_ipc_get_queue(input_ipc_key);
+	if (input_queue_id == -1)
+		goto err_early;
+
+	// Init the input IPC log thread
+	if (pomlog_ipc_thread_init(&input_queue_id) != POM_OK)
+		goto err_early;
+
+	if (registry_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the registry");
+		res = -1;
+		goto err_early;
+	}
+
+	if (input_client_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the input_client module");
+		res = -1;
+		goto err_early;
+	}
+
 	if (xmlrpcsrv_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting XML-RPC server");
 		res = -1;
@@ -217,15 +239,6 @@ int main(int argc, char *argv[]) {
 		res = -1;
 		goto err_httpd;
 	}
-
-	// Wait for the IPC queue to be created
-	int input_queue_id = input_ipc_get_queue(input_ipc_key);
-	if (input_queue_id == -1)
-		goto err;
-
-	// Init the input IPC log thread
-	if (pomlog_ipc_thread_init(&input_queue_id) != POM_OK)
-		goto err;
 
 	// Main loop
 	
@@ -271,7 +284,8 @@ err:
 err_httpd:
 	xmlrpcsrv_cleanup();
 err_xmlrpcsrv:
-
+	registry_cleanup();
+err_early:
 	mod_unload_all();
 	pomlog_cleanup();
 

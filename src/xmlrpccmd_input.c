@@ -23,7 +23,7 @@
 #include "xmlrpccmd_input.h"
 #include "httpd.h"
 
-#include "input_ipc.h"
+#include "input_client.h"
 
 #define XMLRPCCMD_INPUT_NUM 5
 static struct xmlrpcsrv_command xmlrpccmd_input_commands[XMLRPCCMD_INPUT_NUM] = {
@@ -87,7 +87,7 @@ xmlrpc_value *xmlrpccmd_input_mod_load(xmlrpc_env * const envP, xmlrpc_value * c
 	if (envP->fault_occurred)
 		return NULL;
 
-	if (input_ipc_cmd_mod_load(name) != POM_OK) {
+	if (input_client_cmd_mod_load(name) != POM_OK) {
 		xmlrpc_faultf(envP, "Unable to load module %s", name);
 		free(name);
 		return NULL;
@@ -107,7 +107,7 @@ xmlrpc_value *xmlrpccmd_input_add(xmlrpc_env * const envP, xmlrpc_value * const 
 	if (envP->fault_occurred)
 		return NULL;
 
-	int id = input_ipc_cmd_add(name);
+	int id = input_client_cmd_add(name);
 	if (id == POM_ERR) {
 		xmlrpc_faultf(envP, "Unable to add input %s", name);
 		free(name);
@@ -125,7 +125,7 @@ xmlrpc_value *xmlrpccmd_input_remove(xmlrpc_env * const envP, xmlrpc_value * con
 
 	if (envP->fault_occurred)
 		return NULL;
-	if (input_ipc_cmd_remove(id) == POM_ERR) {
+	if (input_client_cmd_remove(id) == POM_ERR) {
 		xmlrpc_faultf(envP, "Unable to remove input with id %u", id);
 		return NULL;
 	}
@@ -141,7 +141,7 @@ xmlrpc_value *xmlrpccmd_input_start(xmlrpc_env * const envP, xmlrpc_value * cons
 	if (envP->fault_occurred)
 		return NULL;
 
-	if (input_ipc_cmd_start(input_id)  == POM_ERR) {
+	if (input_client_cmd_start(input_id)  == POM_ERR) {
 		xmlrpc_faultf(envP, "Unable to start input with id %u", input_id);
 		return NULL;
 	}
@@ -156,7 +156,7 @@ xmlrpc_value *xmlrpccmd_input_stop(xmlrpc_env * const envP, xmlrpc_value * const
 	if (envP->fault_occurred)
 		return NULL;
 
-	if (input_ipc_cmd_stop(input_id)  == POM_ERR) {
+	if (input_client_cmd_stop(input_id)  == POM_ERR) {
 		xmlrpc_faultf(envP, "Unable to stop input with id %u", input_id);
 		return NULL;
 	}

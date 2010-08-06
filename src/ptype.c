@@ -41,7 +41,7 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 
 	struct ptype_reg *reg = malloc(sizeof(struct ptype_reg));
 	if (!reg) {
-		pomlog(POMLOG_ERR "Not enough memory to allocate struct ptype_reg");
+		pom_oom(sizeof(struct ptype_reg));
 		return POM_ERR;
 	}
 	memset(reg, 0, sizeof(struct ptype_reg));
@@ -92,7 +92,7 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 	struct ptype *ret = malloc(sizeof(struct ptype));
 	if (!ret) {
 		ptype_reg_unlock();
-		pomlog(POMLOG_ERR "Not enough memory to allocate ptype %s", type);
+		pom_oom(sizeof(struct ptype));
 		return NULL;
 	}
 
@@ -110,8 +110,11 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 	reg->refcount++;
 	ptype_reg_unlock();
 
-	if (unit)
+	if (unit) {
 		ret->unit = strdup(unit);
+		if (!ret->unit)
+			pom_oom(strlen(unit));
+	}
 
 	return ret;
 }
@@ -120,7 +123,7 @@ struct ptype* ptype_alloc_from(struct ptype *pt) {
 
 	struct ptype *ret = malloc(sizeof(struct ptype));
 	if (!ret) {
-		pomlog(POMLOG_ERR "Not enough memory to allocate a copy from another ptype");
+		pom_oom(sizeof(struct ptype));
 		return NULL;
 	}
 
@@ -141,8 +144,11 @@ struct ptype* ptype_alloc_from(struct ptype *pt) {
 	}
 
 
-	if (pt->unit)
+	if (pt->unit) {
 		ret->unit = strdup(pt->unit);
+		if (!ret->unit)
+			pom_oom(strlen(pt->unit));
+	}
 
 	ret->print_mode = pt->print_mode;
 
@@ -379,4 +385,9 @@ void ptype_reg_unlock() {
 		abort();
 	}
 
+}
+
+char *ptype_get_name(struct ptype *p) {
+
+	return p->type->info->name;
 }

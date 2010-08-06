@@ -24,18 +24,20 @@
 
 #include <pom-ng/base.h>
 #include <pom-ng/mod.h>
-#include <pom-ng/param.h>
+#include <pom-ng/ptype.h>
 #include <pthread.h>
+#include <sys/time.h>
 
 // Current input API version
 #define INPUT_API_VER	1
 
 struct input_buff;
+struct input_param;
 
 struct input {
 	struct input_reg* type; ///< Type of the input
 	int running;
-	struct param_list *param;
+	struct input_param *params;
 	void *priv;
 
 	int shm_key;
@@ -127,5 +129,8 @@ int input_unregister(char *name);
 
 // Add a packet in the input kernel ring buffer
 int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts);
+
+// Called by an input module to register a parameter
+int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags);
 
 #endif

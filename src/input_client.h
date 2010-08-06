@@ -20,19 +20,17 @@
 
 
 
-#include "common.h"
+#ifndef __INPUT_CLIENT_H__
+#define __INPUT_CLIENT_H__
 
-char *pom_strerror(int err) {
+#define INPUT_CLIENT_REGISTRY "input"
 
-	static __thread char buff[POM_STRERROR_BUFF_SIZE];
-	memset(buff, 0, POM_STRERROR_BUFF_SIZE);
-	strerror_r(errno, buff, POM_STRERROR_BUFF_SIZE - 1);
+int input_client_init();
 
-	return buff;
-}
+int input_client_cmd_mod_load(char *mod_name);
+int input_client_cmd_add(char *name);
+int input_client_cmd_remove(unsigned int input_id);
+int input_client_cmd_start(unsigned int input_id);
+int input_client_cmd_stop(unsigned int input_id);
 
-
-void pom_oom_internal(size_t size, char *file, unsigned int line) {
-	pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes at %s:%u", size, file, line);
-}
-
+#endif

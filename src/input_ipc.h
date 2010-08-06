@@ -38,6 +38,7 @@ enum input_ipc_msg_type {
 	input_ipc_cmd_type_mod_load = 1,
 	input_ipc_cmd_type_mod_unload,
 	input_ipc_cmd_type_add,
+	input_ipc_cmd_type_get_param,
 	input_ipc_cmd_type_remove,
 	input_ipc_cmd_type_start,
 	input_ipc_cmd_type_stop,
@@ -52,6 +53,17 @@ union input_ipc_cmd_msg {
 	struct add {
 		char name[INPUT_NAME_MAX + 1];
 	} add;
+
+	struct get_param {
+		int input_id;
+		int param_id;
+	} get_param;
+
+	struct set_param {
+		int input_id;
+		int param_id;
+		char value[INPUT_PARAM_VALUE_MAX + 1];
+	} set_param;
 
 	struct start {
 		unsigned int id;
@@ -78,6 +90,14 @@ union input_ipc_cmd_reply_msg {
 	struct add_reply {
 		unsigned int id;
 	} add;
+	struct get_param_reply {
+		char name[INPUT_PARAM_NAME_MAX];
+		char defval[INPUT_PARAM_DEFVAL_MAX];
+		char description[INPUT_PARAM_DESCRIPTION_MAX];
+		char type[INPUT_PARAM_TYPE_MAX];
+		int flags;
+		int last;
+	} get_param;
 };
 
 struct input_ipc_raw_cmd_reply {
@@ -91,6 +111,7 @@ struct input_ipc_raw_cmd_reply {
 struct input_ipc_request {
 
 	int id;
+	int replied;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
 	struct input_ipc_raw_cmd_reply reply;
@@ -116,12 +137,6 @@ int input_ipc_process_reply(int queue_id);
 void input_ipc_req_mutex_lock();
 void input_ipc_req_mutex_unlock();
 
-
-int input_ipc_cmd_mod_load(char *mod_name);
-int input_ipc_cmd_add(char *name);
-int input_ipc_cmd_remove(unsigned int input_id);
-int input_ipc_cmd_start(unsigned int input_id);
-int input_ipc_cmd_stop(unsigned int input_id);
 
 
 #endif

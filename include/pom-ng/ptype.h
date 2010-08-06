@@ -202,4 +202,7 @@ int ptype_cleanup(struct ptype* pt);
 
 /// Unregister a ptype
 int ptype_unregister(char *name);
+
+/// Get the ptype name
+char *ptype_get_name(struct ptype *p);
 #endif

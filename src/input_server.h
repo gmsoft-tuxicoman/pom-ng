@@ -20,19 +20,22 @@
 
 
 
-#include "common.h"
+#ifndef __INPUT_SERVER_H__
+#define __INPUT_SERVER_H__
 
-char *pom_strerror(int err) {
+#include "input_ipc.h"
 
-	static __thread char buff[POM_STRERROR_BUFF_SIZE];
-	memset(buff, 0, POM_STRERROR_BUFF_SIZE);
-	strerror_r(errno, buff, POM_STRERROR_BUFF_SIZE - 1);
+int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid);
+int input_server_is_current_process();
 
-	return buff;
-}
+int input_server_cmd_mod_load(struct input_ipc_raw_cmd *cmd);
+int input_server_cmd_add(struct input_ipc_raw_cmd *cmd);
+int input_server_cmd_get_param(struct input_ipc_raw_cmd *cmd);
+int input_server_cmd_remove(struct input_ipc_raw_cmd *cmd);
+int input_server_cmd_start(struct input_ipc_raw_cmd *cmd);
+int input_server_cmd_stop(struct input_ipc_raw_cmd *cmd);
 
+void input_server_list_lock(int write);
+void input_server_list_unlock();
 
-void pom_oom_internal(size_t size, char *file, unsigned int line) {
-	pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes at %s:%u", size, file, line);
-}
-
+#endif

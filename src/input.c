@@ -30,206 +30,16 @@
 #include "input.h"
 #include "ipc.h"
 #include "input_ipc.h"
+#include "input_server.h"
 #include "mod.h"
-
-static key_t input_ipc_key;
-static int running = 1;
-
-static int input_is_current_process = 0;
+#include <ptype.h>
 
 static pthread_rwlock_t input_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static struct input_reg *input_reg_head = NULL;
 
-static pthread_rwlock_t input_list_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-static struct input_list *input_list_head = NULL;
-static unsigned int input_list_cur_id = 0;
-
-static void input_sighandler(int signal) {
-
-	running = 0;
-
-	printf("Signal %u received.\n", signal);
-}
-
-int input_current_process() {
-	return input_is_current_process;
-}
-
-int input_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
-
-	input_is_current_process = 1;
-	pomlog_cleanup(); // Cleanup log entry from previous process
-
-	pomlog("Input process started using uid/gid %u/%u and IPC key %u", geteuid(), getegid(), ipc_key);
-
-	input_ipc_key = ipc_key;
-
-	// Install signal handler
-	struct sigaction mysigaction;
-	sigemptyset(&mysigaction.sa_mask);
-	mysigaction.sa_flags = 0;
-	mysigaction.sa_handler = input_sighandler;
-	sigaction(SIGINT, &mysigaction, NULL);
-	sigaction(SIGTERM, &mysigaction, NULL);
-
-
-	// Check if IPC queue already exists
-	int qid = input_ipc_open_queue(ipc_key);
-	if (qid == -1) {
-		pomlog(POMLOG_ERR "Unable to create message queue");
-		return -1;
-	}
-
-	// Load relevant modules
-	mod_load_all();
-
-	// Main input process loop
-	while (running) {
-
-		struct input_ipc_raw_cmd cmd;
-
-		if (ipc_read_msg(qid, IPC_TYPE_INPUT_CMD, &cmd, sizeof(struct input_ipc_raw_cmd)) != POM_OK) {
-			if (errno == EINTR)
-				continue;
-			pomlog(POMLOG_ERR "Error while reading from the IPC queue for input commands");
-			break;
-		}
-
-		if (cmd.type != IPC_TYPE_INPUT_CMD) {
-			pomlog("Command type invalid : %u!", cmd.type);
-			break;
-		}
-
-		struct input_ipc_raw_cmd_reply cmd_reply;
-		memset(&cmd_reply, 0, sizeof(struct input_ipc_raw_cmd_reply));
-		cmd_reply.type = IPC_TYPE_INPUT_CMD_REPLY;
-		cmd_reply.id = cmd.id;
-		cmd_reply.status = POM_ERR;
-
-		switch (cmd.subtype) {
-			case input_ipc_cmd_type_mod_load:
-				if (mod_load(cmd.data.mod_load.name))
-					cmd_reply.status = POM_OK;
-				break;
-
-			case input_ipc_cmd_type_add: {
-				struct input_list *l = malloc(sizeof(struct input_list));
-				if (!l) {
-					pomlog(POMLOG_ERR "Not enough memory to allocate struct input_list");
-					break;
-				}
-				memset(l, 0, sizeof(struct input_list));
-				l->i = input_alloc(cmd.data.add.name, input_ipc_key);
-				if (!l->i) {
-					pomlog("Error while allocating input %s", cmd.data.add.name);
-					break;
-				}
-
-				input_list_lock(1);
-				l->next = input_list_head;
-				if (l->next)
-					l->next->prev = l;
-				input_list_head = l;
-				input_list_cur_id++;
-				if (input_list_cur_id == POM_ERR)
-					input_list_cur_id++;
-				l->id = input_list_cur_id;
-				input_list_unlock();
-
-				cmd_reply.data.add.id = l->id;
-				cmd_reply.status = POM_OK;
-
-				break;
-			}
-
-			case input_ipc_cmd_type_remove: {
-				input_list_lock(1);
-				struct input_list *l;
-				for (l = input_list_head; l && l->id != cmd.data.remove.id; l = l->next);
-				if (!l) {
-					pomlog(POMLOG_ERR "Input with id %u not found", cmd.data.remove.id);
-					input_list_unlock();
-					break;
-				}
-				pomlog("Cleaning up input %u", l->id);
-				if (input_cleanup(l->i) != POM_OK) {
-					pomlog(POMLOG_ERR "Error while cleaning up input %u", l->id);
-					input_list_unlock();
-					break;
-				}
-
-				if (l->prev) {
-					l->prev->next = l->next;
-				} else {
-					input_list_head = l->next;
-					if (input_list_head)
-						input_list_head->prev = NULL;
-				}
-				if (l->next)
-					l->next->prev = l->prev;
-
-				free(l);
-
-				input_list_unlock();
-
-				cmd_reply.status = POM_OK;
-				break;
-			}
-
-			case input_ipc_cmd_type_start: {
-				input_list_lock(1);
-				struct input_list *l;
-				for (l = input_list_head; l && l->id != cmd.data.start.id; l = l->next);
-				if (!l) {
-					pomlog(POMLOG_ERR "List with id %u not found", cmd.data.start.id);
-					input_list_unlock();
-					break;
-				}
-				cmd_reply.status = input_open(l->i);
-				input_list_unlock();
-				break;
-			}
-
-			case input_ipc_cmd_type_stop: {
-				input_list_lock(1);
-				struct input_list *l;
-				for (l = input_list_head; l && l->id != cmd.data.stop.id; l = l->next);
-				if (!l) {
-					pomlog(POMLOG_ERR "List with id %u not found", cmd.data.stop.id);
-					input_list_unlock();
-					break;
-				}
-				cmd_reply.status = input_close(l->i);
-				input_list_unlock();
-				break;
-			}
-
-			default:
-				break;
-		}
-
-		pomlog(POMLOG_DEBUG "Sending reply with status %d", cmd_reply.status);
-		if (ipc_send_msg(qid, &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply)) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while sending reply for input command");
-			break;
-		}
-
-	}
-
-	input_list_cleanup();
-
-	mod_unload_all();
-
-	pomlog("Input process terminated cleanly");
-
-
-	return 0;
-}
-
-
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
-	if (!input_current_process()) {
+	if (!input_server_is_current_process()) {
 		pomlog(POMLOG_DEBUG "Not loading input in another process than the input process");
 		return POM_ERR;
 	}
@@ -308,17 +118,7 @@ struct input* input_alloc(const char* type, int input_ipc_key) {
 			continue;
 		}
 
-		// Get the exact allocated size
-		struct shmid_ds info;
-		if (shmctl(shm_id, IPC_STAT, &info) == -1) {
-			shmctl(shm_id, IPC_RMID, 0);
-			shm_id = -1;
-			continue;
-		}
-
-		shm_buff_size = info.shm_segsz;
-
-		pomlog("Requested %u bytes, got %u", INPUT_SHM_BUFF_SIZE, shm_buff_size);
+		// we should round up the size to a multiple of PAGE_SIZE // sysconf(_SC_PAGESIZE);
 
 		// Attach the memory segment in our address space
 		shm_buff = shmat(shm_id, NULL, 0);
@@ -345,6 +145,15 @@ struct input* input_alloc(const char* type, int input_ipc_key) {
 	ret->shm_id = shm_id;
 	ret->shm_buff = shm_buff;
 	ret->shm_buff_size = shm_buff_size;
+
+	// Setup the buffer
+	struct input_buff *buff = ret->shm_buff;
+	memset(buff, 0, sizeof(struct input_buff));
+
+	buff->buff_start = (void*)buff + sizeof(struct input_buff);
+	buff->buff_end = (void*)buff + ret->shm_buff_size;
+
+
 	if (pthread_rwlock_init(&ret->op_lock, NULL)) {
 		pomlog(POMLOG_ERR "Error while initializing the input op lock");
 		free(ret);
@@ -377,6 +186,63 @@ err:
 
 	return NULL;
 }
+
+int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags) {
+
+	// Create the input_param structure
+
+	struct input_param *p = malloc(sizeof(struct input_param));
+	if (!p) {
+		pom_oom(sizeof(struct input_param));
+		return POM_ERR;
+	}
+	memset(p, 0, sizeof(struct input_param));
+
+	p->name = strdup(name);
+	if (!p->name) {
+		pom_oom(strlen(name));
+		goto err_name;
+	}
+
+	p->default_value = strdup(default_value);
+	if (!p->default_value) {
+		pom_oom(strlen(default_value));
+		goto err_defval;
+	}
+
+	p->description = strdup(description);
+	if (!p->description) {
+		pom_oom(strlen(description));
+		goto err_description;
+	}
+
+	p->value = value;
+
+	if (ptype_parse_val(p->value, default_value) != POM_OK) {
+		pomlog(POMLOG_ERR "Unable to parse default value \"%s\" for input parameter %s", default_value, name);
+		goto err;
+	}
+
+	p->flags = flags;
+
+
+	p->next = i->params;
+	i->params = p;
+
+	return POM_OK;
+
+err:
+	free(p->description);
+err_description:
+	free(p->default_value);
+err_defval:
+	free(p->name);
+err_name:
+	free(p);
+
+	return POM_ERR;
+}
+
 
 int input_open(struct input *i) {
 
@@ -417,9 +283,6 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 
 	struct input_buff *buff = i->shm_buff;
 
-	void *start = (void*)i->shm_buff + sizeof(struct input_buff);
-	void *end = (void*)i->shm_buff + i->shm_buff_size;
-
 	// Find some space where to store the packet in the shared mem
 	
 	struct input_packet *pkt = NULL;
@@ -429,15 +292,15 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	// Check for that size right after tail
 
 	if (!buff->tail) { // buffer is empty
-		pkt = start;
+		pkt = buff->buff_start;
 	} else {
 		// Something is in the buffer, see if it fits 
 		void *next = (void*)buff->tail + sizeof(struct input_packet) + buff->tail->len;
 
 		// Check if packet fits after last one
-		if (next + buff_pkt_len >= end) {
+		if (next + buff_pkt_len >= buff->buff_end) {
 			// Ok packet won't fit, let's see if we can put it at the begining
-			next = start;
+			next = buff->buff_start;
 			while (buff->head && ((void*)buff->head <= next + buff_pkt_len)) {
 				// Ok it doesn't fit at the begining, let's drop a packet then ...
 				buff->head = buff->head->next;
@@ -529,33 +392,21 @@ int input_cleanup(struct input *i) {
 	i->type->refcount--;
 	input_reg_unlock();
 
-	param_list_cleanup(&i->param);
 	input_instance_unlock(i);
 	pthread_rwlock_destroy(&i->op_lock);
-	free(i);
 
-	return POM_OK;
-}
+	while (i->params) {
+		struct input_param *p = i->params;
+		free(p->name);
+		ptype_cleanup(p->value);
+		free(p->default_value);
+		free(p->description);
 
-int input_list_cleanup() {
-
-	input_list_lock(1);
-
-	struct input_list *l;
-	while (input_list_head) {
-		l = input_list_head;
-		input_list_head = l->next;
-
-		pomlog("Cleaning up input %u (%s)", l->id, l->i->type->info->name);
-		if (l->i->running)
-			input_close(l->i);
-		param_list_cleanup(&l->i->param);
-		input_cleanup(l->i);
-		free(l);
+		i->params = p->next;
+		free(p);
 	}
 
-
-	input_list_unlock();
+	free(i);
 
 	return POM_OK;
 }
@@ -642,34 +493,7 @@ void input_reg_unlock() {
 		pomlog(POMLOG_ERR "Error while unlocking the input_reg lock");
 		abort();
 	}
-
 }
-
-void input_list_lock(int write) {
-	
-	int res = 0;
-	
-	if (write)
-		res = pthread_rwlock_wrlock(&input_list_rwlock);
-	else
-		res = pthread_rwlock_rdlock(&input_list_rwlock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while locking the input_list locki : %s", pom_strerror(errno));
-		abort();
-	}
-
-}
-
-void input_list_unlock() {
-
-	if (pthread_rwlock_unlock(&input_list_rwlock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the input_list lock : %s", pom_strerror(errno));
-		abort();
-	}
-
-}
-
 
 void input_instance_lock(struct input *i, int write) {
 	

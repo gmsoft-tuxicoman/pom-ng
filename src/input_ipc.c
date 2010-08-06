@@ -167,6 +167,7 @@ int input_ipc_process_reply(int queue_id) {
 
 		memcpy(&req->reply, &msg, sizeof(struct input_ipc_raw_cmd_reply));
 
+		req->replied = 1;
 		input_ipc_req_mutex_unlock();
 
 		pomlog(POMLOG_ERR "Processing request %u", req->id);
@@ -192,6 +193,12 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
 	if (!req) {
 		pomlog(POMLOG_ERR "IPC request %u not found in the queue !");
+		input_ipc_req_mutex_unlock();
+		return POM_OK;
+	}
+
+	if (req->replied) {
+		*msg = &req->reply;
 		input_ipc_req_mutex_unlock();
 		return POM_OK;
 	}
@@ -286,124 +293,3 @@ void input_ipc_req_mutex_unlock() {
 	}
 }
 
-int input_ipc_cmd_mod_load(char *mod_name) {
-	
-	struct input_ipc_raw_cmd msg;
-	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_mod_load;
-	strncpy(msg.data.mod_load.name, mod_name, INPUT_IPC_MOD_FILE_NAME_SIZE);
-
-	uint32_t id = input_ipc_send_request(input_ipc_queue, &msg);
-	if (id == POM_ERR)
-		return POM_ERR;
-	
-	struct input_ipc_raw_cmd_reply *reply;
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
-
-	int status = reply->status;
-	
-	input_ipc_destroy_request(id);
-	return status;
-
-}
-
-int input_ipc_cmd_add(char *name) {
-	
-	struct input_ipc_raw_cmd msg;
-	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_add;
-	strncpy(msg.data.add.name, name, INPUT_NAME_MAX);
-
-	uint32_t id = input_ipc_send_request(input_ipc_queue, &msg);
-
-	if (id == POM_ERR)
-		return POM_ERR;
-
-	struct input_ipc_raw_cmd_reply *reply;
-
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
-
-	int status = reply->status;
-	int input_id = reply->data.add.id;
-	
-	input_ipc_destroy_request(id);
-
-	if (status == POM_ERR || input_id == POM_ERR)
-		return POM_ERR;
-
-	return input_id;
-}
-
-int input_ipc_cmd_remove(unsigned int input_id) {
-	
-	struct input_ipc_raw_cmd msg;
-	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_remove;
-	msg.data.remove.id = input_id;
-
-	uint32_t id = input_ipc_send_request(input_ipc_queue, &msg);
-
-	if (id == POM_ERR)
-		return POM_ERR;
-
-	struct input_ipc_raw_cmd_reply *reply;
-
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
-
-	int status = reply->status;
-
-	input_ipc_destroy_request(id);
-
-	return status;
-}
-
-int input_ipc_cmd_start(unsigned int input_id) {
-	
-	struct input_ipc_raw_cmd msg;
-	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_start;
-	msg.data.start.id = input_id;
-
-	uint32_t id = input_ipc_send_request(input_ipc_queue, &msg);
-
-	if (id == POM_ERR)
-		return POM_ERR;
-
-	struct input_ipc_raw_cmd_reply *reply;
-
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
-
-	int status = reply->status;
-	
-	input_ipc_destroy_request(id);
-
-	return status;
-}
-
-int input_ipc_cmd_stop(unsigned int input_id) {
-	
-	struct input_ipc_raw_cmd msg;
-	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_stop;
-	msg.data.stop.id = input_id;
-
-	uint32_t id = input_ipc_send_request(input_ipc_queue, &msg);
-
-	if (id == POM_ERR)
-		return POM_ERR;
-
-	struct input_ipc_raw_cmd_reply *reply;
-
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
-
-	int status = reply->status;
-	
-	input_ipc_destroy_request(id);
-
-	return status;
-}

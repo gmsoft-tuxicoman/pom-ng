@@ -19,20 +19,14 @@
  */
 
 
-
-#include "common.h"
-
-char *pom_strerror(int err) {
-
-	static __thread char buff[POM_STRERROR_BUFF_SIZE];
-	memset(buff, 0, POM_STRERROR_BUFF_SIZE);
-	strerror_r(errno, buff, POM_STRERROR_BUFF_SIZE - 1);
-
-	return buff;
-}
+#ifndef __XMLRPCCMD_REGISTRY_H__
+#define __XMLRPCCMD_REGISTRY_H__
 
 
-void pom_oom_internal(size_t size, char *file, unsigned int line) {
-	pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes at %s:%u", size, file, line);
-}
+int xmlrpccmd_registry_register_all();
+xmlrpc_value *xmlrpccmd_registry_get_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_registry_set_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+
+
+#endif
 
