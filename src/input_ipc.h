@@ -89,6 +89,8 @@ struct input_ipc_raw_cmd {
 union input_ipc_cmd_reply_msg {
 	struct add_reply {
 		unsigned int id;
+		int shm_key;
+		size_t shm_buff_size;
 	} add;
 	struct get_param_reply {
 		char name[INPUT_PARAM_NAME_MAX];

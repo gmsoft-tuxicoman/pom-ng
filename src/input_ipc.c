@@ -208,11 +208,17 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 	// Deadlock and wait for the reply to be processed by the main process
 	pomlog("Waiting for reply %u", req_id);
 	if (pthread_mutex_lock(&req->mutex)) {
-		pomlog(POMLOG_ERR "Error while locking the reply mutex");
+		pomlog(POMLOG_ERR "Error while locking the reply mutex : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
-	pthread_cond_wait(&req->cond, &req->mutex);
-	pthread_mutex_unlock(&req->mutex);
+	if (pthread_cond_wait(&req->cond, &req->mutex)) {
+		pomlog(POMLOG_ERR "Error while waiting for request condition : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+	if (pthread_mutex_unlock(&req->mutex)) {
+		pomlog(POMLOG_ERR "Error while unlocking the request mutex : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
 
 	*msg = &req->reply;
 

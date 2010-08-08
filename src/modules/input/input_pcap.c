@@ -156,6 +156,7 @@ static int input_pcap_interface_cleanup(struct input *i) {
 	if (priv->p)
 		pcap_close(priv->p);
 	ptype_cleanup(priv->interface);
+	ptype_cleanup(priv->promisc);
 	free(priv);
 
 	return POM_OK;

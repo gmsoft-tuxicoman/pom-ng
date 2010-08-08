@@ -20,22 +20,16 @@
 
 
 
-#ifndef __INPUT_SERVER_H__
-#define __INPUT_SERVER_H__
+#ifndef __CORE_H__
+#define __CORE_H__
 
-#include "input_ipc.h"
+struct packet {
+	struct timeval *ts;
+	size_t len;
+	size_t bufflen;
+	unsigned char *buff;
+};
 
-int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid);
-int input_server_is_current_process();
-
-int input_server_cmd_mod_load(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid);
-int input_server_cmd_get_param(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_remove(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_start(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_stop(struct input_ipc_raw_cmd *cmd);
-
-void input_server_list_lock(int write);
-void input_server_list_unlock();
+void *core_process_thread(void *input);
 
 #endif

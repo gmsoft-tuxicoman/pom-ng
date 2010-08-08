@@ -53,7 +53,7 @@ int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
 	struct input_reg *reg = malloc(sizeof(struct input_reg));
 	if(!reg) {
-		pomlog(POMLOG_ERR "Not enough memory to allocate struct input_reg");
+		pom_oom(sizeof(struct input_reg));
 		return POM_ERR;
 	}
 
@@ -86,7 +86,7 @@ int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
 }
 
-struct input* input_alloc(const char* type, int input_ipc_key) {
+struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t gid) {
 
 	input_reg_lock(1);
 
@@ -105,11 +105,11 @@ struct input* input_alloc(const char* type, int input_ipc_key) {
 	// Try to allocate IPC shared memory
 	void *shm_buff = NULL;
 	int shm_id = -1;
-	size_t shm_buff_size = 0;
+	size_t shm_buff_size = INPUT_SHM_BUFF_SIZE;
 	while (!shm_buff) {
 		// Create the new id
 		input_ipc_key++;
-		shm_id = shmget(input_ipc_key, INPUT_SHM_BUFF_SIZE, IPC_CREAT | IPC_EXCL);
+		shm_id = shmget(input_ipc_key, shm_buff_size, IPC_CREAT | IPC_EXCL);
 		if (shm_id == -1) {
 			if (errno == ENOMEM) {
 				pomlog(POMLOG_ERR "Not enough memory to allocate IPC shared memory of %u bytes", INPUT_SHM_BUFF_SIZE);
@@ -123,23 +123,39 @@ struct input* input_alloc(const char* type, int input_ipc_key) {
 		// Attach the memory segment in our address space
 		shm_buff = shmat(shm_id, NULL, 0);
 		if (shm_buff == (void*)-1) {
+			pomlog(POMLOG_ERR "Error while attaching the IPC shared memory segment : %s", pom_strerror(errno));
 			shmctl(shm_id, IPC_RMID, 0);
-			if (errno == ENOMEM) {
-				pomlog(POMLOG_ERR "Not enough memory to attach the IPC shared memory");
-				goto err;
-			}
-			shm_buff = NULL;
-			shm_id = -1;
+			goto err;
+		}
+
+		struct shmid_ds data;
+		if (shmctl(shm_id, IPC_STAT, &data)) {
+			pomlog(POMLOG_ERR "Error while getting shared memory data : %s", pom_strerror(errno));
+			goto err;
+		}
+
+		data.shm_perm.uid = uid;
+		data.shm_perm.gid = gid;
+		data.shm_perm.mode = 0600;
+
+		if (shmctl(shm_id, IPC_SET, &data)) {
+			pomlog(POMLOG_ERR "Error while setting the correct permissions on the IPC shared memory : %s", pom_strerror(errno));
+			goto err;
 		}
 
 	}
 	
 	struct input *ret = malloc(sizeof(struct input));
 	if (!ret) {
-		pomlog(POMLOG_ERR "Not enough memory to allocate input %s", type);
+		pom_oom(sizeof(struct input));
 		goto err;
 	}
 	memset(ret, 0, sizeof(struct input));
+
+	if (pthread_rwlock_init(&ret->op_lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing the input op lock");
+		goto err_ret;
+	}
 
 	ret->shm_key = input_ipc_key;
 	ret->shm_id = shm_id;
@@ -150,29 +166,81 @@ struct input* input_alloc(const char* type, int input_ipc_key) {
 	struct input_buff *buff = ret->shm_buff;
 	memset(buff, 0, sizeof(struct input_buff));
 
-	buff->buff_start = (void*)buff + sizeof(struct input_buff);
-	buff->buff_end = (void*)buff + ret->shm_buff_size;
+	buff->buff_start_offset = sizeof(struct input_buff);
+	buff->buff_end_offset = ret->shm_buff_size;
 
+	// Setup the buffer lock
+	pthread_mutexattr_t attr;
+	pthread_condattr_t condattr;
 
-	if (pthread_rwlock_init(&ret->op_lock, NULL)) {
-		pomlog(POMLOG_ERR "Error while initializing the input op lock");
-		free(ret);
-		goto err;
+	if (pthread_mutexattr_init(&attr)) {
+		pomlog(POMLOG_ERR "Error while initializing the mutex attributes");
+		goto err_oplock;
+	}
+
+	if (pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED)) {
+		pomlog(POMLOG_ERR "Error while setting the pshared attribute");
+		goto err_mutexattr;
+	}
+
+	if (pthread_mutex_init(&buff->lock, &attr)) {
+		pomlog(POMLOG_ERR "Error while initializing the mutex on the shared memory");
+		goto err_mutexattr;
+	}
+
+	if (pthread_condattr_init(&condattr)) {
+		pomlog(POMLOG_ERR "Error while initializing the mutex condition attributes");
+		goto err_mutex;
+	}
+
+	if (pthread_condattr_setpshared(&condattr, PTHREAD_PROCESS_SHARED)) {
+		pomlog(POMLOG_ERR "Error while setting the pshared condition attribute");
+		goto err_condattr;
+	}
+
+	if (pthread_cond_init(&buff->underrun_cond, &condattr)) {
+		pomlog(POMLOG_ERR "Error while initializing the underrun condition");
+		goto err_condattr;
+	}
+
+	if (pthread_cond_init(&buff->overrun_cond, &condattr)) {
+		pomlog(POMLOG_ERR "Error while initializing the overrun condition");
+		goto err_underrun_cond;
+	}
+
+	if (pthread_condattr_destroy(&condattr)) {
+		pomlog(POMLOG_WARN "Error while destroying the mutex cond attributes");
+	}
+
+	if (pthread_mutexattr_destroy(&attr)) {
+		pomlog(POMLOG_WARN "Error while destroying the mutex attributes");
 	}
 
 	ret->type = reg;
 	if (reg->info->alloc) {
 		if (reg->info->alloc(ret) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while allocating input %s", type);
-			pthread_rwlock_destroy(&ret->op_lock);
-			free(ret);
-			goto err;
+			pthread_cond_destroy(&buff->underrun_cond);
+			pthread_cond_destroy(&buff->underrun_cond);
+			goto err_mutex;
 		}
 	}
 	
 
 	return ret;
 
+err_underrun_cond:
+	pthread_cond_destroy(&buff->underrun_cond);
+err_condattr:
+	pthread_condattr_destroy(&condattr);
+err_mutex:
+	pthread_mutex_destroy(&buff->lock);
+err_mutexattr:
+	pthread_mutexattr_destroy(&attr);
+err_oplock:
+	pthread_rwlock_destroy(&ret->op_lock);
+err_ret:
+	free(ret);
 err:
 
 	if (shm_buff)
@@ -288,46 +356,87 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	struct input_packet *pkt = NULL;
 
 	size_t buff_pkt_len = sizeof(struct input_packet) + pkt_size;
+	void *buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
+	void *buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
+	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct input_packet *buff_tail = (struct input_packet *)(buff->inpkt_tail_offset ? (void*)buff + buff->inpkt_tail_offset : NULL);
 
 	// Check for that size right after tail
 
-	if (!buff->tail) { // buffer is empty
-		pkt = buff->buff_start;
+	if (pthread_mutex_lock(&buff->lock)) {
+		pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	if (!buff_tail) { // buffer is empty
+		pkt = buff_start;
 	} else {
 		// Something is in the buffer, see if it fits 
-		void *next = (void*)buff->tail + sizeof(struct input_packet) + buff->tail->len;
+		void *next = buff_tail + sizeof(struct input_packet) + buff_tail->len;
 
-		// Check if packet fits after last one
-		if (next + buff_pkt_len >= buff->buff_end) {
-			// Ok packet won't fit, let's see if we can put it at the begining
-			next = buff->buff_start;
-			while (buff->head && ((void*)buff->head <= next + buff_pkt_len)) {
-				// Ok it doesn't fit at the begining, let's drop a packet then ...
-				buff->head = buff->head->next;
+
+		if (buff_tail >= buff_head) {
+			// Check if packet fits after last one
+			if (next + buff_pkt_len > buff_end) {
+				// Ok packet won't fit, let's see if we can put it at the begining
+				next = buff_start;
+				if ((void *) buff_head < next + buff_pkt_len) {
+					// Ok it doesn't fit at the begining, let's drop the packet then ...
+					pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
+					return POM_OK;
+				}
 			}
-		}
-
-		if (buff->tail < buff->head || next < (void*)buff->head) {
-			while (buff->head && (next + buff_pkt_len >= (void*)buff->head)) {
-				// Buffer is full, next packet will overwrite the packet that needs to be read, drop it then
-				buff->head = buff->head->next;
+		} else {
+			if ((void*)buff_head < next + buff_pkt_len) {
+				// Ok it doesn't fit at the begining, let's drop the packet then ...
+				pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
+				return POM_OK;
 			}
-
 		}
 
 		pkt = next;
 	}
+	if (pthread_mutex_unlock(&buff->lock)) {
+		pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	// The copy of the packet is done unlocked
 	memset(pkt, 0, sizeof(struct input_packet));	
 	memcpy(&pkt->ts, ts, sizeof(struct timeval));
 	pkt->len = pkt_size;
-	memcpy((void*)pkt + sizeof(struct input_packet), pkt_data, pkt_size);
+	void *pkt_buff = (unsigned char *)pkt + sizeof(struct input_packet);
+	memcpy(pkt_buff, pkt_data, pkt_size);
+	pkt->buff_offset = pkt_buff - (void*)buff;
 
-	if (!buff->head) {
-		buff->head = pkt;
-		buff->tail = pkt;
+	if (pthread_mutex_lock(&buff->lock)) {
+		pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	// Refecth the variables after relocking
+	buff_head = (struct input_packet*)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
+	buff_tail = (struct input_packet*)(buff->inpkt_tail_offset ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	if (!buff_head) {
+		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
+		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
+		if (pthread_mutex_unlock(&buff->lock)) {
+			pomlog(POMLOG_ERR "Error while unlocking the input buffer : %s", pom_strerror(errno));
+			return POM_ERR;
+		}
+		if (pthread_cond_signal(&buff->underrun_cond)) {
+			pomlog(POMLOG_ERR "Count not signal the underrun condition");
+			return POM_ERR;
+		}
+		return POM_OK;
 	} else {
-		buff->tail->next = pkt;
-		buff->tail = pkt;
+		buff_tail->inpkt_next_offset = (void*)pkt - (void*)buff;
+		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
+	}
+
+	if (pthread_mutex_unlock(&buff->lock)) {
+		pomlog(POMLOG_ERR "Error while unlocking the input buffer : %s", pom_strerror(errno));
+		return POM_ERR;
 	}
 
 	return POM_OK;
@@ -398,7 +507,6 @@ int input_cleanup(struct input *i) {
 	while (i->params) {
 		struct input_param *p = i->params;
 		free(p->name);
-		ptype_cleanup(p->value);
 		free(p->default_value);
 		free(p->description);
 

@@ -37,7 +37,7 @@
 static key_t input_ipc_key;
 static int input_server_running = 1;
 static unsigned int input_server_list_cur_id = 0;
-int input_server_current_process = 0;
+static int input_server_current_process = 0;
 
 static pthread_rwlock_t input_server_list_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static struct input_list *input_server_list_head = NULL;
@@ -51,6 +51,7 @@ static void input_server_sighandler(int signal) {
 int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 
 	input_server_current_process = 1;
+
 	pomlog_cleanup(); // Cleanup log entry from previous process
 
 	pomlog("Input process started using uid/gid %u/%u and IPC key %u", geteuid(), getegid(), ipc_key);
@@ -108,7 +109,7 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 				break;
 
 			case input_ipc_cmd_type_add: 
-				res = input_server_cmd_add(&cmd);
+				res = input_server_cmd_add(&cmd, main_uid, main_gid);
 				break;
 
 			case input_ipc_cmd_type_get_param:
@@ -177,7 +178,7 @@ int input_server_cmd_mod_load(struct input_ipc_raw_cmd *cmd) {
 
 }
 
-int input_server_cmd_add(struct input_ipc_raw_cmd *cmd) {
+int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid) {
 
 	struct input_ipc_raw_cmd_reply cmd_reply;
 	memset(&cmd_reply, 0, sizeof(struct input_ipc_raw_cmd_reply));
@@ -191,7 +192,7 @@ int input_server_cmd_add(struct input_ipc_raw_cmd *cmd) {
 		goto err;
 	}
 	memset(l, 0, sizeof(struct input_list));
-	l->i = input_alloc(cmd->data.add.name, input_ipc_key);
+	l->i = input_alloc(cmd->data.add.name, input_ipc_key, uid, gid);
 	if (!l->i) {
 		pomlog("Error while allocating input %s", cmd->data.add.name);
 		free(l);
@@ -212,6 +213,8 @@ int input_server_cmd_add(struct input_ipc_raw_cmd *cmd) {
 	input_server_list_unlock();
 
 	cmd_reply.data.add.id = l->id;
+	cmd_reply.data.add.shm_key = l->i->shm_key;
+	cmd_reply.data.add.shm_buff_size = l->i->shm_buff_size;
 	cmd_reply.status = POM_OK;
 
 err:

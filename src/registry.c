@@ -220,6 +220,8 @@ int registry_remove_branch(struct registry_node *b) {
 		
 		if (p->flags & REGISTRY_FLAG_CLEANUP_VAL)
 			ptype_cleanup(p->value);
+
+		free(p);
 	}
 
 
@@ -233,7 +235,8 @@ int registry_remove_branch(struct registry_node *b) {
 		if (b->parent)
 			b->parent->branches = b->next;
 	}
-
+	
+	free(b->name);
 	free(b);
 
 	return POM_OK;

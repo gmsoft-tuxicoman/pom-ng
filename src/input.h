@@ -56,8 +56,8 @@ struct input_list {
 struct input_packet {
 	struct timeval ts;
 	size_t len;
-	struct input_packet *next;
-	// unsigned char buff[];
+	unsigned int inpkt_next_offset;
+	unsigned int buff_offset;
 };
 
 struct input_param {
@@ -71,16 +71,18 @@ struct input_param {
 };
 
 struct input_buff {
-	struct input_packet *head;
-	struct input_packet *read_cur;
-	struct input_packet *tail;
+	unsigned int inpkt_head_offset;
+	unsigned int inpkt_tail_offset;
 
-	void *buff_start;
-	void *buff_end;
+	pthread_mutex_t lock;
+	pthread_cond_t underrun_cond, overrun_cond;
+
+	unsigned int buff_start_offset;
+	unsigned int buff_end_offset;
 };
 
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod);
-struct input* input_alloc(const char* type, int input_ipc_key);
+struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t gid);
 int input_open(struct input *i);
 int input_cleanup(struct input *i);
 

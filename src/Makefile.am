@@ -19,7 +19,7 @@
 include $(top_srcdir)/Makefile.common
 
 XMLRPC_SRC = xmlrpcsrv.c xmlrpcsrv.h xmlrpccmd.c xmlrpccmd.h xmlrpccmd_input.c xmlrpccmd_input.h xmlrpccmd_registry.c xmlrpccmd_registry.h
-CORE_SRC = ipc.c ipc.h httpd.c httpd.h pomlog.c pomlog.h mod.c mod.h registry.c registry.h
+CORE_SRC = ipc.c ipc.h httpd.c httpd.h pomlog.c pomlog.h mod.c mod.h registry.c registry.h core.c core.h
 INPUT_SRC = input_ipc.c input_ipc.h input_client.c input_client.h input_server.c input_server.h
 
 bin_PROGRAMS = pom-ng

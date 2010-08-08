@@ -225,19 +225,19 @@ int main(int argc, char *argv[]) {
 	if (input_client_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the input_client module");
 		res = -1;
-		goto err_early;
+		goto err_registry;
 	}
 
 	if (xmlrpcsrv_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting XML-RPC server");
 		res = -1;
-		goto err_xmlrpcsrv;
+		goto err_registry;
 	}
 
 	if (httpd_init(8080) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting HTTP server");
 		res = -1;
-		goto err_httpd;
+		goto err_xmlrpcsrv;
 	}
 
 	// Main loop
@@ -277,13 +277,13 @@ err:
 
 	// Cleanup components
 
+	input_client_cleanup();
 	input_ipc_cleanup();
 
 	httpd_cleanup();
-
-err_httpd:
-	xmlrpcsrv_cleanup();
 err_xmlrpcsrv:
+	xmlrpcsrv_cleanup();
+err_registry:
 	registry_cleanup();
 err_early:
 	mod_unload_all();

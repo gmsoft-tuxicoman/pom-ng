@@ -20,22 +20,25 @@
 
 
 
-#ifndef __INPUT_SERVER_H__
-#define __INPUT_SERVER_H__
+#include "common.h"
+#include "core.h"
+#include "input.h"
+#include "input_client.h"
 
-#include "input_ipc.h"
 
-int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid);
-int input_server_is_current_process();
+void *core_process_thread(void *input) {
 
-int input_server_cmd_mod_load(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid);
-int input_server_cmd_get_param(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_remove(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_start(struct input_ipc_raw_cmd *cmd);
-int input_server_cmd_stop(struct input_ipc_raw_cmd *cmd);
+	struct input_client_entry *i = input;
 
-void input_server_list_lock(int write);
-void input_server_list_unlock();
+	pomlog(POMLOG_INFO "New thread created for input %u", i->id);
 
-#endif
+	while (1) {
+		if (input_client_get_packet(i) == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while reading packet");
+			return NULL;
+		}
+		pomlog(POMLOG_DEBUG "Got packet with size %u", i->pkt->len);
+	}
+
+	return NULL;
+}
