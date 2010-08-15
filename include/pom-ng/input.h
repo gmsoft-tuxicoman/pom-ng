@@ -49,11 +49,16 @@ struct input {
 	pthread_rwlock_t op_lock;
 };
 
+struct input_caps {
+
+	char *datalink;
+	unsigned int align_offset;
+};
 
 struct input_reg_info {
 
-	char *name;
 	unsigned int api_ver;
+	char *name;
 
 	/// Pointer to the allocate function of the input
 	/**
@@ -104,7 +109,7 @@ struct input_reg_info {
 	 * @param ic The struct input_caps that needs to be filled
 	 * @return POM_OK on success and POM_ERR on failure.
 	 **/
-//	int (*getcaps) (struct input *i, struct input_caps *ic);
+	int (*get_caps) (struct input *i, struct input_caps *ic);
 
 	/// Pointer to interrupt that should be called when interrupting the current read
 	/**

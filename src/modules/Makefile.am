@@ -18,19 +18,35 @@
 include $(top_srcdir)/Makefile.common
 
 INPUT_SRC = @INPUT_OBJS@
-PTYPE_SRC = ptype_bool.la ptype_uint32.la ptype_string.la
+PROTO_SRC = proto_ethernet.la proto_ipv4.la
+PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint32.la ptype_string.la
 
-lib_LTLIBRARIES = $(INPUT_SRC) $(PTYPE_SRC)
+lib_LTLIBRARIES = $(INPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 EXTRA_LTLIBRARIES = input_pcap.la
 
 input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
 input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
 input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
+proto_ethernet_la_SOURCES = proto/proto_ethernet.c proto/proto_ethernet.h
+proto_ethernet_la_LDFLAGS = -module -avoid-version
+proto_ethernet_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+proto_ipv4_la_SOURCES = proto/proto_ipv4.c proto/proto_ipv4.h
+proto_ipv4_la_LDFLAGS = -module -avoid-version
+proto_ipv4_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 ptype_bool_la_SOURCES = ptype/ptype_bool.c ptype/ptype_bool.h
 ptype_bool_la_LDFLAGS = -module -avoid-version 
 ptype_bool_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_mac_la_SOURCES = ptype/ptype_mac.c ptype/ptype_mac.h
+ptype_mac_la_LDFLAGS = -module -avoid-version 
+ptype_mac_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_ipv4_la_SOURCES = ptype/ptype_ipv4.c ptype/ptype_ipv4.h
+ptype_ipv4_la_LDFLAGS = -module -avoid-version 
+ptype_ipv4_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_uint8_la_SOURCES = ptype/ptype_uint8.c ptype/ptype_uint8.h
+ptype_uint8_la_LDFLAGS = -module -avoid-version 
+ptype_uint8_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_uint32_la_SOURCES = ptype/ptype_uint32.c ptype/ptype_uint32.h
 ptype_uint32_la_LDFLAGS = -module -avoid-version 
 ptype_uint32_la_LIBADD = $(top_builddir)/src/libpom-ng.la

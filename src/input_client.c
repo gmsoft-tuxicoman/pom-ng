@@ -26,13 +26,30 @@
 #include "registry.h"
 #include "input_client.h"
 #include "core.h"
+#include "packet.h"
 
 #include <sys/shm.h>
 
+#include <pom-ng/ptype_string.h>
+
 static struct input_client_entry *input_client_head;
+static unsigned int input_client_owner_id;
 
 int input_client_init() {
-	
+
+	const int packet_input_info_max = 1;
+	struct packet_info_reg infos[packet_input_info_max + 1];
+	memset(infos, 0, sizeof(struct packet_info_reg) * (packet_input_info_max + 1));
+	infos[0].name = "type";
+	infos[0].value_template = ptype_alloc("string");
+	if (!infos[0].value_template) {
+		pomlog(POMLOG_ERR "Error while allocating ptype string");
+		return POM_ERR;
+	}
+
+	input_client_owner_id = packet_register_info_owner("input", infos);
+	if (input_client_owner_id == POM_ERR)
+		return POM_ERR;
 	return registry_add_branch("root", "input");
 }
 
@@ -41,30 +58,63 @@ int input_client_cleanup() {
 	while (input_client_head) {
 		struct input_client_entry *i = input_client_head;
 		input_client_head = i->next;
-	
-		if (pthread_cancel(i->thread)) {
-			pomlog(POMLOG_ERR "Error while canceling the input processing thread : %s ", pom_strerror(errno));
-			return POM_ERR;
-		}
-	
-		void *res = NULL;
-		if (pthread_join(i->thread, &res)) {
-			pomlog(POMLOG_ERR "Error while joining input processing thread : %S", pom_strerror(errno));
-			return POM_ERR;
-		}
 
-		if (i->pkt) {
-			if (i->pkt->buff)
-				free(i->pkt->buff);
-			free(i->pkt);
-		}
+		if (i->thread)
+			core_destroy_thread(i->thread);
+
+		if (i->shm_buff && shmdt(i->shm_buff))
+			pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+
+		if (i->datalink_dep)
+			proto_remove_dependency(i->datalink_dep);
+		free(i->type);
+
+		if (i->next)
+			i->next->prev = i->prev;
+		if (i->prev)
+			i->prev->next = i->next;
+		else
+			input_client_head = i->next;
 		free(i);
+
 	}
 
 	return POM_OK;
 }
 
-int input_client_get_packet(struct input_client_entry *input) {
+int input_client_wait_for_empty_buff(struct input_client_entry *input) {
+
+	struct input_buff *buff = input->shm_buff;
+
+	int empty = 0;
+	do {
+
+		if (pthread_mutex_lock(&buff->lock)) {
+			pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
+			return POM_ERR;
+		}
+
+		if (!buff->inpkt_head_offset)
+			empty = 1;
+
+		if (pthread_mutex_unlock(&buff->lock)) {
+			pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
+			return POM_ERR;
+		}
+
+		sleep(1);
+
+	} while (!empty);
+
+	if (pthread_cond_broadcast(&buff->underrun_cond)) {
+		pomlog(POMLOG_ERR "Could not signal the underrun condition");
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+int input_client_get_packet(struct input_client_entry *input, struct packet *p) {
 	
 	struct input_buff *buff = input->shm_buff;
 
@@ -79,24 +129,30 @@ int input_client_get_packet(struct input_client_entry *input) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
 			return POM_ERR;
 		}
+
+		if (!buff->inpkt_head_offset) {
+			// EOF
+			p->len = 0;
+			return POM_OK;
+		}
 	}
 
 	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
 	unsigned char *inpkt_buff = (unsigned char *)buff + buff_head->buff_offset;
 
 
-	if (input->pkt->bufflen < buff_head->len) {
-		input->pkt->buff = realloc(input->pkt->buff, buff_head->len);
-		if (!input->pkt->buff) {
+	if (p->bufflen < buff_head->len) {
+		p->buff = realloc(p->buff, buff_head->len);
+		if (!p->buff) {
 			pom_oom(buff_head->len);
 			return POM_ERR;
 		}
-		input->pkt->bufflen = buff_head->len;
+		p->bufflen = buff_head->len;
 	}
 
-	memcpy(&input->pkt->ts, &buff_head->ts, sizeof(struct timeval));
-	input->pkt->len = buff_head->len;
-	memcpy(input->pkt->buff, inpkt_buff, buff_head->len);
+	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
+	p->len = buff_head->len;
+	memcpy(p->buff, inpkt_buff, buff_head->len);
 
 	buff->inpkt_head_offset = buff_head->inpkt_next_offset;
 	if (!buff->inpkt_head_offset)
@@ -106,6 +162,12 @@ int input_client_get_packet(struct input_client_entry *input) {
 		pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
+
+	struct packet_info_list *info = packet_add_infos(p, input_client_owner_id);
+	if (!info)
+		return POM_ERR;
+
+	PTYPE_STRING_SETVAL(info->values[0].value, input->type);
 
 
 	return POM_OK;
@@ -185,13 +247,13 @@ int input_client_cmd_add(char *name) {
 
 	memset(entry, 0, sizeof(struct input_client_entry));
 
-	entry->pkt = malloc(sizeof(struct packet));
-	if (!entry->pkt) {
+	entry->type = strdup(name);
+	if (!entry->type) {
 		pom_oom(sizeof(struct packet));
 		goto err;
 	}
-	memset(entry->pkt, 0, sizeof(struct packet));
 
+	entry->id = input_id;
 	entry->shm_id = shm_id;
 	entry->shm_buff = buff;
 
@@ -255,18 +317,13 @@ int input_client_cmd_add(char *name) {
 
 	} while (!last);
 
-	if (pthread_create(&entry->thread, NULL, core_process_thread, (void *)entry)) {
-		pomlog(POMLOG_ERR "Error while creating a new thread for processing the packets : %s", pom_strerror(errno));
-		goto err;
-	}
-	
 	return input_id;
 
 err:
 
 	if (entry) {
-		if (entry->pkt)
-			free(entry->pkt);
+		if (entry->type)
+			free(entry->type);
 		free(entry);
 	}
 
@@ -285,23 +342,52 @@ err:
 
 int input_client_cmd_remove(unsigned int input_id) {
 	
+	struct input_client_entry *i;
+	for (i = input_client_head; i && i->id != input_id; i = i->next);
+	if (!i) {
+		pomlog(POMLOG_ERR "Input with id %u does not exists", input_id);
+		return POM_ERR;
+	}
+
+	if (i->thread) {
+		pomlog(POMLOG_WARN "Cannot remove input %u as it's running");
+		return POM_ERR;
+	}
+
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_remove;
 	msg.data.remove.id = input_id;
 
+	int status = POM_ERR;
 	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
 
 	if (id == POM_ERR)
-		return POM_ERR;
+		goto err;
 
 	struct input_ipc_raw_cmd_reply *reply;
 
 	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
+		goto err;
 
-	int status = reply->status;
+	if (i->shm_buff && shmdt(i->shm_buff))
+		pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
 
+	if (i->datalink_dep)
+		proto_remove_dependency(i->datalink_dep);
+	free(i->type);
+
+	if (i->next)
+		i->next->prev = i->prev;
+	if (i->prev)
+		i->prev->next = i->next;
+	else
+		input_client_head = i->next;
+	free(i);
+
+	status = reply->status;
+
+err:
 	input_ipc_destroy_request(id);
 
 	return status;
@@ -309,6 +395,14 @@ int input_client_cmd_remove(unsigned int input_id) {
 
 int input_client_cmd_start(unsigned int input_id) {
 	
+	
+	struct input_client_entry *i;
+	for (i = input_client_head; i && i->id != input_id; i = i->next);
+	if (!i) {
+		pomlog(POMLOG_ERR "Input with id %u does not exists", input_id);
+		return POM_ERR;
+	}
+
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_start;
@@ -325,14 +419,31 @@ int input_client_cmd_start(unsigned int input_id) {
 		return POM_ERR;
 
 	int status = reply->status;
+
+	i->datalink_dep = proto_add_dependency(reply->data.start_reply.datalink);
+	if (!i->datalink_dep) {
+		input_ipc_destroy_request(id);
+		return POM_ERR;
+	}
 	
 	input_ipc_destroy_request(id);
+
+	i->thread = core_spawn_thread(i);
+	if (!i->thread)
+		return POM_ERR;
 
 	return status;
 }
 
 int input_client_cmd_stop(unsigned int input_id) {
 	
+	struct input_client_entry *i;
+	for (i = input_client_head; i && i->id != input_id; i = i->next);
+	if (!i) {
+		pomlog(POMLOG_ERR "Input with id %u does not exists", input_id);
+		return POM_ERR;
+	}
+
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_stop;
@@ -351,6 +462,13 @@ int input_client_cmd_stop(unsigned int input_id) {
 	int status = reply->status;
 	
 	input_ipc_destroy_request(id);
+
+	if (core_destroy_thread(i->thread))
+		return POM_ERR;
+	i->thread = NULL;
+
+	proto_remove_dependency(i->datalink_dep);
+	i->datalink_dep = NULL;
 
 	return status;
 }

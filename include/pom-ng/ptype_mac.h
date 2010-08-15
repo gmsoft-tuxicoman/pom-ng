@@ -18,24 +18,21 @@
  *
  */
 
+#ifndef __POM_NG_PTYPE_MAC_H__
+#define __POM_NG_PTYPE_MAC_H__
+
+#include <pom-ng/ptype.h>
 
 
-#ifndef __CORE_H__
-#define __CORE_H__
+// x is the struct ptype, y the mac
+#define PTYPE_MAC_SETADDR(x, y) { \
+	struct ptype_mac_val *v = (x)->value;\
+	memcpy(v->addr, y, 6); \
+}
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
+struct ptype_mac_val {
+	char addr[6];
+	char mask[6];
 };
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
 
 #endif

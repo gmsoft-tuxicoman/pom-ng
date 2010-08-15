@@ -26,6 +26,8 @@
 
 #include "input.h"
 
+#define INPUT_IPC_DATALINK_MAX 64
+
 #define INPUT_IPC_LOG_FILE_NAME_SIZE 16
 #define INPUT_IPC_LOG_MSG_SIZE 64
 #define INPUT_IPC_MOD_FILE_NAME_SIZE 64
@@ -92,6 +94,11 @@ union input_ipc_cmd_reply_msg {
 		int shm_key;
 		size_t shm_buff_size;
 	} add;
+
+	struct start_reply {
+		char datalink[INPUT_IPC_DATALINK_MAX + 1];
+	} start_reply;
+
 	struct get_param_reply {
 		char name[INPUT_PARAM_NAME_MAX];
 		char defval[INPUT_PARAM_DEFVAL_MAX];

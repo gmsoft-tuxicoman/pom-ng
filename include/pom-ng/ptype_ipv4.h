@@ -18,24 +18,32 @@
  *
  */
 
+#ifndef __POM_NG_PTYPE_IPV4_H__
+#define __POM_NG_PTYPE_IPV4_H__
+
+#include <pom-ng/ptype.h>
 
 
-#ifndef __CORE_H__
-#define __CORE_H__
+#define __USE_BSD 1 // We use BSD favor of the ip header
+#include <netinet/in_systm.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
 
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
+struct ptype_ipv4_val {
+	struct in_addr addr;
+	unsigned char mask;
 };
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+
+/// x is the struct ptype
+#define PTYPE_IPV4_GETADDR(x) \
+	((struct ptype_ipv4_val*) x)->addr
+
+/// x is the struct ptype, y the ipv4
+#define PTYPE_IPV4_SETADDR(x, y) { \
+	struct ptype_ipv4_val *v = (x)->value; \
+	memcpy(&v->addr, &y, sizeof(struct in_addr)); \
+}
 
 #endif

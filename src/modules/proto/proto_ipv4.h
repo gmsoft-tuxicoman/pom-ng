@@ -18,24 +18,16 @@
  *
  */
 
+#ifndef __PROTO_IPV4_H__
+#define __PROTO_IPV4_H__
 
+#include <stdint.h>
 
-#ifndef __CORE_H__
-#define __CORE_H__
-
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+struct mod_reg_info* proto_ipv4_reg_info();
+static int proto_ipv4_init();
+static int proto_ipv4_mod_register(struct mod_reg *mod);
+static size_t proto_ipv4_process(struct packet *p,struct proto_process_state *s);
+static int proto_ipv4_cleanup();
+static int proto_ipv4_mod_unregister();
 
 #endif

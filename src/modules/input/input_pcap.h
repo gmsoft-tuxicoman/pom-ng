@@ -43,12 +43,14 @@ static int input_pcap_mod_unregister();
 static int input_pcap_interface_alloc(struct input *i);
 static int input_pcap_interface_open(struct input *i);
 static int input_pcap_interface_read(struct input *i);
+static int input_pcap_interface_get_caps(struct input *i, struct input_caps *ic);
 static int input_pcap_interface_close(struct input *i);
 static int input_pcap_interface_cleanup(struct input *i);
 
 static int input_pcap_file_alloc(struct input *i);
 static int input_pcap_file_open(struct input *i);
 static int input_pcap_file_read(struct input *i);
+static int input_pcap_file_get_caps(struct input *i, struct input_caps *ic);
 static int input_pcap_file_close(struct input *i);
 static int input_pcap_file_cleanup(struct input *i);
 

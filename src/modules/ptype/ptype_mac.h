@@ -18,24 +18,22 @@
  *
  */
 
+#ifndef __PTYPE_MAC_H__
+#define __PTYPE_MAC_H__
+
+#include <pom-ng/ptype.h>
+#include <pom-ng/ptype_mac.h>
+
+int ptype_mac_mod_register(struct mod_reg *mod);
+int ptype_mac_mod_unregister();
+
+int ptype_mac_alloc(struct ptype *p);
+int ptype_mac_cleanup(struct ptype *p);
+int ptype_mac_parse(struct ptype *p, char *val);
+int ptype_mac_print(struct ptype *pt, char *val, size_t size);
+int ptype_mac_compare(int op, void *val_a, void *val_b);
+int ptype_mac_copy(struct ptype *dst, struct ptype *src);
 
 
-#ifndef __CORE_H__
-#define __CORE_H__
-
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
 
 #endif

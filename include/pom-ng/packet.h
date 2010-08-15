@@ -19,23 +19,42 @@
  */
 
 
+#ifndef __POM_NG_PACKET_H__
+#define __POM_NG_PACKET_H__
 
-#ifndef __CORE_H__
-#define __CORE_H__
+#define PACKET_INFO_MAX 8
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
+/// This flag means that the packet_info value is not auto allocated
+#define PACKET_INFO_FLAG_OPTIONAL	0x1
 
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
+struct packet {
+	struct timeval *ts;
+	size_t len;
+	size_t bufflen;
+	unsigned char *buff;
+	struct packet_info_list *info_head, *info_tail;
 };
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+struct packet_info_reg {
+	char *name;
+	struct ptype *value_template;
+	unsigned int flags;
+};
+
+struct packet_info_val {
+	struct packet_info_reg *reg;
+	struct ptype *value;
+};
+
+struct packet_info_list {
+	unsigned int owner;
+	struct packet_info_val *values;
+	struct packet_info_list *next, *prev;
+};
+
+
+int packet_register_info_owner(char *owner, struct packet_info_reg *info);
+struct packet_info_list *packet_add_infos(struct packet *p, unsigned int owner);
+
 
 #endif

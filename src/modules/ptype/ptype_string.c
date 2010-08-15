@@ -76,6 +76,10 @@ int ptype_string_cleanup(struct ptype *p) {
 int ptype_string_parse(struct ptype *p, char *val) {
 
 	char *str = realloc(p->value, strlen(val) + 1);
+	if (!str) {
+		pom_oom(strlen(val) + 1);
+		return POM_ERR;
+	}
 	strcpy(str, val);
 	p->value = str;
 
@@ -112,6 +116,10 @@ int ptype_string_copy(struct ptype *dst, struct ptype *src) {
 	}
 
 	dst->value = realloc(dst->value, strlen(src->value) + 1);
+	if (!dst->value) {
+		pom_oom(strlen(src->value) + 1);
+		return POM_ERR;
+	}
 	strcpy(dst->value, src->value);
 
 	return POM_OK;

@@ -18,24 +18,25 @@
  *
  */
 
+#ifndef __PROTO_ETHERNET_H__
+#define __PROTO_ETHERNET_H__
+
+#include <stdint.h>
+#define ETH_ALEN 6
+
+struct ether_header
+{
+	uint8_t  ether_dhost[ETH_ALEN];
+	uint8_t  ether_shost[ETH_ALEN];
+	uint16_t ether_type;
+} __attribute__ ((__packed__));
 
 
-#ifndef __CORE_H__
-#define __CORE_H__
-
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+struct mod_reg_info* proto_ethernet_reg_info();
+static int proto_ethernet_init();
+static int proto_ethernet_mod_register(struct mod_reg *mod);
+static size_t proto_ethernet_process(struct packet *p,struct proto_process_state *s);
+static int proto_ethernet_cleanup();
+static int proto_ethernet_mod_unregister();
 
 #endif

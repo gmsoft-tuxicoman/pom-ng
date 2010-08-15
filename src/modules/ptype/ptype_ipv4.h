@@ -18,24 +18,21 @@
  *
  */
 
+#ifndef __PTYPE_IPV4_H__
+#define __PTYPE_IPV4_H__
 
+#include <pom-ng/ptype.h>
+#include <pom-ng/ptype_ipv4.h>
 
-#ifndef __CORE_H__
-#define __CORE_H__
+int ptype_ipv4_mod_register(struct mod_reg *mod);
+int ptype_ipv4_mod_unregister();
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+int ptype_ipv4_register(struct ptype_reg *r);
+int ptype_ipv4_alloc(struct ptype *p);
+int ptype_ipv4_cleanup(struct ptype *p);
+int ptype_ipv4_parse(struct ptype *p, char *val);
+int ptype_ipv4_print(struct ptype *pt, char *val, size_t size);
+int ptype_ipv4_compare(int op, void *val_a, void* val_b);
+int ptype_ipv4_copy(struct ptype *dst, struct ptype *src);
 
 #endif

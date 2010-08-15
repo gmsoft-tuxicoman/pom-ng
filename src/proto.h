@@ -19,23 +19,22 @@
  */
 
 
-
-#ifndef __CORE_H__
-#define __CORE_H__
+#ifndef __PROTO_H__
+#define __PROTO_H__
 
 #include <pom-ng/proto.h>
-#include <pthread.h>
 
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
+struct proto_reg {
+
+	struct proto_reg_info *info;
+	struct proto_dependency *dep; // Corresponding dependency
+
+	void *priv;
+
+	struct proto_reg *next, *prev;
+
 };
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+int proto_cleanup();
 
 #endif

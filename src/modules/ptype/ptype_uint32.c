@@ -72,6 +72,10 @@ int ptype_uint32_mod_unregister() {
 int ptype_uint32_alloc(struct ptype *p) {
 
 	p->value = malloc(sizeof(uint32_t));
+	if (!p->value) {
+		pom_oom(sizeof(uint32_t));
+		return POM_ERR;
+	}
 	uint32_t *v = p->value;
 	*v = 0;
 

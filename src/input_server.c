@@ -328,6 +328,17 @@ int input_server_cmd_start(struct input_ipc_raw_cmd *cmd) {
 	}
 	cmd_reply.status = input_open(l->i);
 
+	struct input_caps ic;
+	memset(&ic, 0, sizeof(struct input_caps));
+	if (input_get_caps(l->i, &ic) == POM_ERR) {
+		pomlog(POMLOG_ERR "Unable to get the input caps");
+		input_close(l->i);
+		cmd_reply.status = POM_ERR;
+		goto err;
+	}
+
+	strncpy(cmd_reply.data.start_reply.datalink, ic.datalink, INPUT_IPC_DATALINK_MAX);
+
 err:
 	input_server_list_unlock();
 	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));

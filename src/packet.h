@@ -20,22 +20,18 @@
 
 
 
-#ifndef __CORE_H__
-#define __CORE_H__
+#ifndef __PACKET_H__
+#define __PACKET_H__
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
+#include <pom-ng/packet.h>
 
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
+struct packet_info_owner {
+	char *name;
+	unsigned int owner;
+	struct packet_info_reg info[PACKET_INFO_MAX + 1];
 };
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+int packet_drop_infos(struct packet *p);
+int packet_info_cleanup();
 
 #endif

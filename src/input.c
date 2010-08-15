@@ -383,19 +383,20 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 				if ((void *) buff_head < next + buff_pkt_len) {
 					// Ok it doesn't fit at the begining, let's drop the packet then ...
 					pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
-					return POM_OK;
+					goto end;
 				}
 			}
 		} else {
 			if ((void*)buff_head < next + buff_pkt_len) {
 				// Ok it doesn't fit at the begining, let's drop the packet then ...
 				pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
-				return POM_OK;
+				goto end;
 			}
 		}
 
 		pkt = next;
 	}
+
 	if (pthread_mutex_unlock(&buff->lock)) {
 		pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
 		return POM_ERR;
@@ -425,7 +426,7 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 			return POM_ERR;
 		}
 		if (pthread_cond_signal(&buff->underrun_cond)) {
-			pomlog(POMLOG_ERR "Count not signal the underrun condition");
+			pomlog(POMLOG_ERR "Could not signal the underrun condition");
 			return POM_ERR;
 		}
 		return POM_OK;
@@ -434,12 +435,22 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
 	}
 
+end:
 	if (pthread_mutex_unlock(&buff->lock)) {
 		pomlog(POMLOG_ERR "Error while unlocking the input buffer : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
 
 	return POM_OK;
+}
+
+int input_get_caps(struct input *i, struct input_caps *ic) {
+
+	if (!i || !i->type->info->get_caps)
+		return POM_ERR;
+	
+	return i->type->info->get_caps(i, ic);
+
 }
 
 

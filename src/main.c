@@ -36,6 +36,8 @@
 #include "registry.h"
 #include "mod.h"
 #include "pomlog.h"
+#include "proto.h"
+#include "packet.h"
 
 #include <pom-ng/ptype.h>
 
@@ -222,6 +224,12 @@ int main(int argc, char *argv[]) {
 		goto err_early;
 	}
 
+	// Load all the available modules
+	if (mod_load_all() != POM_OK) { 
+		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
+		goto err;
+	}
+
 	if (input_client_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the input_client module");
 		res = -1;
@@ -244,11 +252,6 @@ int main(int argc, char *argv[]) {
 	
 	pomlog(PACKAGE_NAME " started !");
 
-	// Load all the available modules
-	if (mod_load_all() != POM_OK) { 
-		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
-		goto err;
-	}
 
 	while (running) {
 
@@ -280,12 +283,15 @@ err:
 	input_client_cleanup();
 	input_ipc_cleanup();
 
+
 	httpd_cleanup();
 err_xmlrpcsrv:
 	xmlrpcsrv_cleanup();
 err_registry:
 	registry_cleanup();
 err_early:
+	packet_info_cleanup();
+	proto_cleanup();
 	mod_unload_all();
 	pomlog_cleanup();
 

@@ -73,6 +73,10 @@ int ptype_bool_mod_unregister() {
 int ptype_bool_alloc(struct ptype *p) {
 
 	p->value = malloc(sizeof(int));
+	if (!p->value) {
+		pom_oom(sizeof(int));
+		return POM_ERR;
+	}
 	int *v = p->value;
 	*v = 0;
 

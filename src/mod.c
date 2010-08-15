@@ -41,12 +41,38 @@ int mod_load_all() {
 		return POM_ERR;
 	}
 
-	struct dirent *dp;
-	while ((dp = readdir(d))) {
+	int ptype_pass = 1;
+	struct dirent tmp, *dp;
+	while (1) {
+		if (readdir_r(d, &tmp, &dp) < 0) {
+			pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
+			closedir(d);
+			return POM_ERR;
+		}
+		if (!dp) { // EOF
+			if (ptype_pass) {
+				// Reopen and load non ptype modules
+				closedir(d);
+				d = opendir(path);
+				ptype_pass = 0;
+				continue;
+			}
+			break;
+		}
+
+
 		size_t len = strlen(dp->d_name);
 		if (len < strlen(POM_LIB_EXT) + 1)
 			continue;
 		if (!strcmp(dp->d_name + strlen(dp->d_name) - strlen(POM_LIB_EXT), POM_LIB_EXT)) {
+
+			int is_ptype = 0;
+			if (!strncmp(dp->d_name, "ptype", strlen("ptype")))
+				is_ptype = 1;
+
+			if (ptype_pass ^ is_ptype)
+				continue;
+
 			char *name = strdup(dp->d_name);
 			if (!name) {
 				pomlog(POMLOG_ERR "Not enough memory to strdup(%s)", dp->d_name);

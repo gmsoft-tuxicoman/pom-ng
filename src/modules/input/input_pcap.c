@@ -45,6 +45,7 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_interface.alloc = input_pcap_interface_alloc;
 	in_pcap_interface.open = input_pcap_interface_open;
 	in_pcap_interface.read = input_pcap_interface_read;
+	in_pcap_interface.get_caps = input_pcap_interface_get_caps;
 	in_pcap_interface.close = input_pcap_interface_close;
 	in_pcap_interface.cleanup = input_pcap_interface_cleanup;
 	input_register(&in_pcap_interface, mod);
@@ -57,6 +58,7 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_file.alloc = input_pcap_file_alloc;
 	in_pcap_file.open = input_pcap_file_open;
 	in_pcap_file.read = input_pcap_file_read;
+	in_pcap_file.get_caps = input_pcap_file_get_caps;
 	in_pcap_file.close = input_pcap_file_close;
 	in_pcap_file.cleanup = input_pcap_file_cleanup;
 
@@ -137,6 +139,36 @@ static int input_pcap_interface_read(struct input *i) {
 
 	return input_add_processed_packet(i, phdr->caplen, data, &phdr->ts);
 }
+
+static int input_pcap_interface_get_caps(struct input *i, struct input_caps *ic) {
+
+	struct input_pcap_interface_priv *p = i->priv;
+
+	if (!p->p)
+		return POM_ERR;
+
+	switch (pcap_datalink(p->p)) {
+		case DLT_EN10MB:
+			ic->datalink = "ethernet";
+			// Ethernet is 14 bytes long
+			ic->align_offset = 2;
+			break;
+
+		case DLT_DOCSIS:
+			ic->datalink = "docsis";
+			break;
+
+		case DLT_LINUX_SLL:
+			ic->datalink = "linux_cooked";
+			break;
+		default:
+			ic->datalink = "undefined";
+	}
+
+	return POM_OK;
+
+}
+
 static int input_pcap_interface_close(struct input *i) {
 
 	struct input_pcap_interface_priv *p = i->priv;
@@ -226,6 +258,34 @@ static int input_pcap_file_read(struct input *i) {
 		return POM_ERR;
 
 	return input_add_processed_packet(i, phdr->caplen, data, &phdr->ts);
+}
+
+static int input_pcap_file_get_caps(struct input *i, struct input_caps *ic) {
+
+	struct input_pcap_file_priv *p = i->priv;
+
+	if (!p->p)
+		return POM_ERR;
+
+	switch (pcap_datalink(p->p)) {
+		case DLT_EN10MB:
+			ic->datalink = "ethernet";
+			// Ethernet is 14 bytes long
+			ic->align_offset = 2;
+			break;
+
+		case DLT_DOCSIS:
+			ic->datalink = "docsis";
+			break;
+
+		case DLT_LINUX_SLL:
+			ic->datalink = "linux_cooked";
+			break;
+		default:
+			ic->datalink = "undefined";
+	}
+
+	return POM_OK;
 }
 
 static int input_pcap_file_close(struct input *i) {
