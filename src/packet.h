@@ -25,12 +25,6 @@
 
 #include <pom-ng/packet.h>
 
-struct packet_info_owner {
-	char *name;
-	unsigned int owner;
-	struct packet_info_reg info[PACKET_INFO_MAX + 1];
-};
-
 int packet_drop_infos(struct packet *p);
 int packet_info_cleanup();
 

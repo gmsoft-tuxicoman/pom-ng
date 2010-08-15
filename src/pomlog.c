@@ -92,6 +92,10 @@ void pomlog_internal(char *file, const char *format, ...) {
 	va_end(arg_list);
 
 
+	char *tmp = strrchr(file, '/');
+	if (tmp)
+		file = tmp + 1;
+
 	char *dot = strchr(file, '.');
 	unsigned int len = strlen(file);
 	if (dot) {
@@ -186,7 +190,14 @@ int pomlog_ipc(int log_level, char *filename, char *line) {
 
 	ipcmsg.log_level = log_level;
 	strncpy(ipcmsg.line, line, POMLOG_LINE_SIZE - 1);
-	strncpy(ipcmsg.filename, filename, POMLOG_FILENAME_SIZE - 1);
+
+	char *fname = strrchr(filename, '/');
+	if (fname)
+		fname++;
+	else
+		fname = filename;
+	
+	strncpy(ipcmsg.filename, fname, POMLOG_FILENAME_SIZE - 1);
 
 
 	if (ipc_send_msg(input_ipc_get_queue(), &ipcmsg, sizeof(struct pomlog_ipc_msg)) == POM_ERR) {

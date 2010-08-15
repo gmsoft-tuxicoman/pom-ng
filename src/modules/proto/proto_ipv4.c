@@ -29,7 +29,7 @@
 #include <arpa/inet.h>
 
 
-static unsigned int proto_ipv4_owner_id = -1;
+static struct packet_info_owner *proto_ipv4_packet_info_owner = NULL;
 static struct proto_dependency *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp = NULL, *proto_ipv6 = NULL, *proto_gre = NULL;
 
 struct mod_reg_info* proto_ipv4_reg_info() {
@@ -75,9 +75,14 @@ static int proto_ipv4_init() {
 	infos[3].name = "ttl";
 	infos[3].value_template = ptype_alloc("uint8");
 
-	proto_ipv4_owner_id = packet_register_info_owner("ipv4", infos);
-	if (proto_ipv4_owner_id == POM_ERR)
-		goto err;
+	proto_ipv4_packet_info_owner = packet_register_info_owner("ipv4", infos);
+	if (!proto_ipv4_packet_info_owner) {
+		ptype_cleanup(infos[0].value_template);
+		ptype_cleanup(infos[1].value_template);
+		ptype_cleanup(infos[2].value_template);
+		ptype_cleanup(infos[3].value_template);
+		return POM_ERR;
+	}
 
 	proto_icmp = proto_add_dependency("icmp");
 	proto_tcp = proto_add_dependency("tcp");
@@ -85,23 +90,12 @@ static int proto_ipv4_init() {
 	proto_ipv6 = proto_add_dependency("ipv6");
 	proto_gre = proto_add_dependency("gre");
 
-	if (!proto_icmp || !proto_tcp || !proto_udp || !proto_ipv6 || !proto_gre)
-		goto err;
-
-	return POM_OK;
-
-err:
-	if (proto_ipv4_owner_id == -1) {
-		int i;
-		for (i = 0; i < proto_ipv4_info_max && infos[i].name; i++)
-			if (infos[i].value_template)
-				ptype_cleanup(infos[i].value_template);
+	if (!proto_icmp || !proto_tcp || !proto_udp || !proto_ipv6 || !proto_gre) {
+		proto_ipv4_cleanup();
+		return POM_ERR;
 	}
 
-	proto_ipv4_cleanup();
-
-	return POM_ERR;
-
+	return POM_OK;
 }
 
 static size_t proto_ipv4_process(struct packet *p, struct proto_process_state *s) {
@@ -121,7 +115,7 @@ static size_t proto_ipv4_process(struct packet *p, struct proto_process_state *s
 		return POM_ERR;
 
 
-	struct packet_info_list *infos = packet_add_infos(p, proto_ipv4_owner_id);
+	struct packet_info_list *infos = packet_add_infos(p, proto_ipv4_packet_info_owner);
 
 	PTYPE_IPV4_SETADDR(infos->values[0].value, hdr->ip_src);
 	PTYPE_IPV4_SETADDR(infos->values[1].value, hdr->ip_dst);
@@ -160,18 +154,17 @@ static size_t proto_ipv4_process(struct packet *p, struct proto_process_state *s
 
 static int proto_ipv4_cleanup() {
 
-	if (proto_icmp)
-		proto_remove_dependency(proto_icmp);
-	if (proto_udp)
-		proto_remove_dependency(proto_udp);
-	if (proto_tcp)
-		proto_remove_dependency(proto_tcp);
-	if (proto_ipv6)
-		proto_remove_dependency(proto_ipv6);
-	if (proto_gre)
-		proto_remove_dependency(proto_gre);
+	int res = POM_OK;
 
-	return POM_OK;
+	res += packet_unregister_info_owner(proto_ipv4_packet_info_owner);
+
+	res += proto_remove_dependency(proto_icmp);
+	res += proto_remove_dependency(proto_udp);
+	res += proto_remove_dependency(proto_tcp);
+	res += proto_remove_dependency(proto_ipv6);
+	res += proto_remove_dependency(proto_gre);
+
+	return res;
 }
 
 static int proto_ipv4_mod_unregister() {

@@ -33,7 +33,7 @@
 #include <pom-ng/ptype_string.h>
 
 static struct input_client_entry *input_client_head;
-static unsigned int input_client_owner_id;
+static struct packet_info_owner *input_client_packet_info_owner;
 
 int input_client_init() {
 
@@ -47,8 +47,8 @@ int input_client_init() {
 		return POM_ERR;
 	}
 
-	input_client_owner_id = packet_register_info_owner("input", infos);
-	if (input_client_owner_id == POM_ERR)
+	input_client_packet_info_owner = packet_register_info_owner("input", infos);
+	if (!input_client_packet_info_owner)
 		return POM_ERR;
 	return registry_add_branch("root", "input");
 }
@@ -163,7 +163,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 		return POM_ERR;
 	}
 
-	struct packet_info_list *info = packet_add_infos(p, input_client_owner_id);
+	struct packet_info_list *info = packet_add_infos(p, input_client_packet_info_owner);
 	if (!info)
 		return POM_ERR;
 

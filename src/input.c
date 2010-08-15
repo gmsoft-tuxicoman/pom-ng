@@ -466,14 +466,6 @@ int input_close(struct input *i) {
 		return POM_ERR;
 	}
 
-	if (i->type->info->close) {
-		int res = i->type->info->close(i);
-		if (res == POM_ERR) {
-			input_instance_unlock(i);
-			return POM_ERR;
-		}
-	}
-
 	i->running = 0;
 	input_instance_unlock(i);
 
@@ -481,6 +473,14 @@ int input_close(struct input *i) {
 		// Try to join the thread only if it's not ourself
 		if (pthread_join(i->thread, NULL))
 			pomlog(POMLOG_ERR "Error while waiting for the input thread to finish : %s", pom_strerror(errno));
+	}
+
+	if (i->type->info->close) {
+		int res = i->type->info->close(i);
+		if (res == POM_ERR) {
+			input_instance_unlock(i);
+			return POM_ERR;
+		}
 	}
 
 

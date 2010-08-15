@@ -76,7 +76,6 @@ void *core_process_thread(void *thread) {
 			return NULL;
 		}
 
-		pomlog(POMLOG_DEBUG "Got packet with size %u and protocol %s", t->pkt->len, t->input->datalink_dep->proto->info->name);
 		if (core_process_packet(t->pkt, t->input->datalink_dep->proto) == POM_ERR) {
 			packet_drop_infos(t->pkt);
 			return NULL;
@@ -85,14 +84,14 @@ void *core_process_thread(void *thread) {
 		// Dump the packet info
 		struct packet_info_list *info = t->pkt->info_head;
 		while (info) {
-			printf("[");
+			printf("%s{", info->owner->name);
 			int i;
 			for (i = 0; i < PACKET_INFO_MAX && info->values[i].value; i++) {
 				char buff[256];
 				ptype_print_val(info->values[i].value, buff, sizeof(buff) - 1);
 				printf("%s : %s; ", info->values[i].reg->name, buff);
 			}
-			printf("] ");
+			printf("} ");
 
 			info = info->next;
 

@@ -290,8 +290,8 @@ err_xmlrpcsrv:
 err_registry:
 	registry_cleanup();
 err_early:
-	packet_info_cleanup();
 	proto_cleanup();
+	packet_info_cleanup();
 	mod_unload_all();
 	pomlog_cleanup();
 

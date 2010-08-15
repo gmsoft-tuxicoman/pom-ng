@@ -27,59 +27,93 @@
 #include <pom-ng/ptype.h>
 
 static struct packet_info_owner *packet_info_owner_list = NULL;
-static unsigned int packet_info_owner_count = 0;
-int packet_register_info_owner(char *owner, struct packet_info_reg *info) {
+pthread_mutex_t packet_info_owner_list_lock = PTHREAD_MUTEX_INITIALIZER;
+
+struct packet_info_owner *packet_register_info_owner(char *owner, struct packet_info_reg *info) {
 
 	int i;
 	for (i = 0; i < PACKET_INFO_MAX && info[i].name; i++) {
-		if (!(info[i].flags & PACKET_INFO_FLAG_OPTIONAL) && !info[i].value_template) {
-			pomlog(POMLOG_ERR "Non optional value template not provided");
-			return POM_ERR;
+		if (!info[i].value_template) {
+			pomlog(POMLOG_ERR "Info value template not provided for new owner");
+			return NULL;
 		}
 	}
 
-	packet_info_owner_list = realloc(packet_info_owner_list, sizeof(struct packet_info_owner) * (packet_info_owner_count + 1));
-	if (!packet_info_owner_list) {
-		pom_oom(sizeof(struct packet_info_owner) * (packet_info_owner_count + 1));
-		packet_info_owner_count = 0;
-		halt("Packet info owner table was lost");
-		return POM_ERR;
+	struct packet_info_owner *o = malloc(sizeof(struct packet_info_owner));
+	if (!o) {
+		pom_oom(sizeof(struct packet_info_owner));
+		return NULL;
+	}
+	memset(o, 0, sizeof(struct packet_info_owner));
+	if (pthread_mutex_init(&o->lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing packet_info_owner lock : %s", pom_strerror(errno));
+		free(o);
+		return NULL;
 	}
 
-	struct packet_info_owner *o = &packet_info_owner_list[packet_info_owner_count];
-	memset(o, 0, sizeof(struct packet_info_owner));
-	packet_info_owner_count++;
 	o->name = owner;
 	memcpy(&o->info, info, sizeof(struct packet_info_reg) * (PACKET_INFO_MAX + 1));
 
-	return packet_info_owner_count - 1;
+	pom_mutex_lock(&packet_info_owner_list_lock);
+	o->next = packet_info_owner_list;
+	if (o->next)
+		o->next->prev = o;
+	packet_info_owner_list = o;
+	pom_mutex_unlock(&packet_info_owner_list_lock);
+
+	return o;
 }
 
-int packet_unregister_info_owner(unsigned int owner) {
+int packet_unregister_info_owner(struct packet_info_owner *owner) {
 
+	if (!owner)
+		return POM_ERR;
 
-	return POM_ERR;
-}
-
-struct packet_info_list *packet_add_infos(struct packet *p, unsigned int owner) {
-
-
-	if (owner >= packet_info_owner_count || !packet_info_owner_list[owner].name) {
-		pomlog(POMLOG_ERR "Cannot add owner, invalid owner id %u", owner);
-		return NULL;
+	pom_mutex_lock(&owner->lock);
+	
+	if (owner->refcount) {
+		pomlog(POMLOG_ERR "Cannot unregister packet info owner %s as it's still being used", owner->name);
+		pom_mutex_unlock(&owner->lock);
+		return POM_ERR;
+	}
+	int i;
+	for (i = 0; i < PACKET_INFO_MAX && owner->info[i].name; i++) {
+		if (owner->info[i].value_template)
+			ptype_cleanup(owner->info[i].value_template);
 	}
 
+	pom_mutex_lock(&packet_info_owner_list_lock);
+	pom_mutex_unlock(&owner->lock);
+
+	if (owner->next)
+		owner->next->prev = owner->prev;
+	if (owner->prev)
+		owner->prev->next = owner->next;
+	else
+		packet_info_owner_list = owner->next;
+	pom_mutex_unlock(&packet_info_owner_list_lock);
+
+	pthread_mutex_destroy(&owner->lock);
+	free(owner);
+
+	return POM_OK;
+}
+
+struct packet_info_list *packet_add_infos(struct packet *p, struct packet_info_owner *owner) {
+
+	pom_mutex_lock(&owner->lock);
+
 	unsigned int info_count;
-	for (info_count = 0; packet_info_owner_list[owner].info[info_count].name; info_count++);
+	for (info_count = 0; owner->info[info_count].name; info_count++);
 	if (!info_count) {
 		pomlog(POMLOG_ERR "Cannot add infos, owner has no info");
-		return NULL;
+		goto err;
 	}
 
 	struct packet_info_list *infos = malloc(sizeof(struct packet_info_list));
 	if (!infos) {
 		pom_oom(sizeof(struct packet_info_list));
-		return NULL;
+		goto err;
 	}
 	memset(infos, 0, sizeof(struct packet_info_list));
 
@@ -87,21 +121,19 @@ struct packet_info_list *packet_add_infos(struct packet *p, unsigned int owner) 
 	if (!infos->values) {
 		pom_oom(sizeof(struct packet_info_val) * (info_count + 1));
 		free(infos);
-		return NULL;
+		goto err;
 	}
 	memset(infos->values, 0, sizeof(struct packet_info_val) * (info_count + 1));
 
 	int i;
 	for (i = 0; i < info_count; i++) {
-		infos->values[i].reg = &packet_info_owner_list[owner].info[i];
-		if (!(infos->values[i].reg->flags & PACKET_INFO_FLAG_OPTIONAL)) {
-			infos->values[i].value = ptype_alloc_from(infos->values[i].reg->value_template);
-			if (!infos->values[i].value) {
-				pom_oom(sizeof(struct ptype));
-				free(infos->values);
-				free(infos);
-				return NULL;
-			}
+		infos->values[i].reg = &owner->info[i];
+		infos->values[i].value = ptype_alloc_from(infos->values[i].reg->value_template);
+		if (!infos->values[i].value) {
+			pom_oom(sizeof(struct ptype));
+			free(infos->values);
+			free(infos);
+			goto err;
 		}
 	}
 
@@ -113,15 +145,29 @@ struct packet_info_list *packet_add_infos(struct packet *p, unsigned int owner) 
 	else
 		p->info_head = infos;
 	p->info_tail = infos;
+	
+	owner->refcount++;
+	pom_mutex_unlock(&owner->lock);
 
 	return infos;
+
+err:
+	pom_mutex_unlock(&owner->lock);
+	return NULL;
+
 }
 
 int packet_drop_infos(struct packet *p) {
 
+	if (!p)
+		return POM_ERR;
+
 	while (p->info_head) {
 		struct packet_info_list *infos = p->info_head;
 		p->info_head = infos->next;
+
+		pom_mutex_lock(&infos->owner->lock);
+
 
 		int i;
 		for (i = 0; i < PACKET_INFO_MAX; i++) {
@@ -131,8 +177,14 @@ int packet_drop_infos(struct packet *p) {
 
 		}
 		free(infos->values);
-		free(infos);
 
+		if (!infos->owner->refcount)
+			pomlog(POMLOG_WARN "Warning, cannot decrement packet_info_owner refcount as it's already 0");
+
+		infos->owner->refcount--;
+		pom_mutex_unlock(&infos->owner->lock);
+
+		free(infos);
 	}
 	p->info_tail = NULL;
 
@@ -141,23 +193,21 @@ int packet_drop_infos(struct packet *p) {
 
 int packet_info_cleanup() {
 
-	int j;
-	for (j = 0; j < packet_info_owner_count; j++) {
-		struct packet_info_owner *o = &packet_info_owner_list[j];
+	pom_mutex_lock(&packet_info_owner_list_lock);
+
+	while (packet_info_owner_list) {
+		struct packet_info_owner *o = packet_info_owner_list;
+		packet_info_owner_list = o->next;
 		int i;
 		for (i = 0; i < PACKET_INFO_MAX && o->info[i].name; i++) {
 			if (o->info[i].value_template)
 				ptype_cleanup(o->info[i].value_template);
 		}
 
-
+		free(o);
 	}
 
-	if (packet_info_owner_count) {
-		free(packet_info_owner_list);
-		packet_info_owner_list = NULL;
-		packet_info_owner_count = 0;
-	}
+	pom_mutex_unlock(&packet_info_owner_list_lock);
 
 	return POM_OK;
 }

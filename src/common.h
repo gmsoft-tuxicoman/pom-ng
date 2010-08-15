@@ -73,7 +73,4 @@
 #endif
 
 
-/// Defines if we are running in the input process or the main process
-int pom_process_is_input();
-
 #endif

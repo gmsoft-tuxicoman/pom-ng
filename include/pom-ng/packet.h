@@ -24,8 +24,7 @@
 
 #define PACKET_INFO_MAX 8
 
-/// This flag means that the packet_info value is not auto allocated
-#define PACKET_INFO_FLAG_OPTIONAL	0x1
+#include <pthread.h>
 
 struct packet {
 	struct timeval *ts;
@@ -38,7 +37,6 @@ struct packet {
 struct packet_info_reg {
 	char *name;
 	struct ptype *value_template;
-	unsigned int flags;
 };
 
 struct packet_info_val {
@@ -46,15 +44,25 @@ struct packet_info_val {
 	struct ptype *value;
 };
 
+struct packet_info_owner {
+	char *name;
+	unsigned int refcount;
+	pthread_mutex_t lock;
+	struct packet_info_reg info[PACKET_INFO_MAX + 1];
+
+	struct packet_info_owner *prev, *next;
+};
+
 struct packet_info_list {
-	unsigned int owner;
+	struct packet_info_owner *owner;
 	struct packet_info_val *values;
 	struct packet_info_list *next, *prev;
 };
 
 
-int packet_register_info_owner(char *owner, struct packet_info_reg *info);
-struct packet_info_list *packet_add_infos(struct packet *p, unsigned int owner);
+struct packet_info_owner *packet_register_info_owner(char *owner, struct packet_info_reg *info);
+int packet_unregister_info_owner(struct packet_info_owner *owner);
+struct packet_info_list *packet_add_infos(struct packet *p, struct packet_info_owner *owner);
 
 
 #endif

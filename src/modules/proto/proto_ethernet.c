@@ -29,7 +29,7 @@
 #include <arpa/inet.h>
 
 
-static unsigned int proto_ethernet_owner_id = -1;
+static struct packet_info_owner *proto_ethernet_packet_info_owner = NULL;
 static struct proto_dependency *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_arp = NULL, *proto_vlan = NULL, *proto_pppoe = NULL;
 
 struct mod_reg_info* proto_ethernet_reg_info() {
@@ -71,9 +71,12 @@ static int proto_ethernet_init() {
 	infos[1].name = "dst";
 	infos[1].value_template = ptype_alloc("mac");
 
-	proto_ethernet_owner_id = packet_register_info_owner("ethernet", infos);
-	if (proto_ethernet_owner_id == POM_ERR)
+	proto_ethernet_packet_info_owner = packet_register_info_owner("ethernet", infos);
+	if (!proto_ethernet_packet_info_owner) {
+		ptype_cleanup(infos[0].value_template);
+		ptype_cleanup(infos[1].value_template);
 		return POM_ERR;
+	}
 
 	proto_ipv4 = proto_add_dependency("ipv4");
 	proto_ipv6 = proto_add_dependency("ipv6");
@@ -81,10 +84,13 @@ static int proto_ethernet_init() {
 	proto_vlan = proto_add_dependency("vlan");
 	proto_pppoe = proto_add_dependency("pppoe");
 
-	if (!proto_ipv4 || !proto_ipv6 || !proto_arp || !proto_vlan || !proto_pppoe)
+	if (!proto_ipv4 || !proto_ipv6 || !proto_arp || !proto_vlan || !proto_pppoe) {
+		proto_ethernet_cleanup();
 		return POM_ERR;
+	}
 
 	return POM_OK;
+
 }
 
 static size_t proto_ethernet_process(struct packet *p, struct proto_process_state *s) {
@@ -93,7 +99,7 @@ static size_t proto_ethernet_process(struct packet *p, struct proto_process_stat
 	if (sizeof(struct ether_header) > s->plen)
 		return POM_ERR;
 
-	struct packet_info_list *infos = packet_add_infos(p, proto_ethernet_owner_id);
+	struct packet_info_list *infos = packet_add_infos(p, proto_ethernet_packet_info_owner);
 
 	struct ether_header *ehdr = s->pload;
 
@@ -133,13 +139,17 @@ static size_t proto_ethernet_process(struct packet *p, struct proto_process_stat
 
 static int proto_ethernet_cleanup() {
 
-	proto_remove_dependency(proto_ipv4);
-	proto_remove_dependency(proto_ipv6);
-	proto_remove_dependency(proto_arp);
-	proto_remove_dependency(proto_vlan);
-	proto_remove_dependency(proto_pppoe);
+	int res = POM_OK;
 
-	return POM_OK;
+	res += packet_unregister_info_owner(proto_ethernet_packet_info_owner);
+
+	res += proto_remove_dependency(proto_ipv4);
+	res += proto_remove_dependency(proto_ipv6);
+	res += proto_remove_dependency(proto_arp);
+	res += proto_remove_dependency(proto_vlan);
+	res += proto_remove_dependency(proto_pppoe);
+
+	return res;
 }
 
 static int proto_ethernet_mod_unregister() {
