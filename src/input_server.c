@@ -45,7 +45,7 @@ static struct input_list *input_server_list_head = NULL;
 static void input_server_sighandler(int signal) {
 
 	input_server_running = 0;
-	printf("Signal %u received.\n", signal);
+	printf("Input process received signal %u. Shutting down ...\n", signal);
 }
 
 int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {

@@ -50,11 +50,12 @@ void signal_handler(int signal) {
 	switch (signal) {
 		case SIGCHLD:
 			if (running)
-				halt("Input process died :-(");
+				halt("Input process died :-(\n");
 			break;
 		case SIGINT:
 		case SIGTERM:
 		default:
+			printf("Main process received signal %u, shutting down ...\n", signal);
 			halt("Received signal");
 			break;
 
@@ -259,8 +260,6 @@ int main(int argc, char *argv[]) {
 			pomlog("Error while processing input reply. Aborting");
 			break;
 		}
-
-		sleep(3);
 	}
 
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
@@ -270,19 +269,17 @@ int main(int argc, char *argv[]) {
 
 err:
 
+	// Cleanup components
+
+	input_client_cleanup();
+	input_ipc_cleanup();
+
 	if (kill(input_process_pid, SIGINT) == -1) {
 		pomlog(POMLOG_ERR "Error while sending SIGINT to input process");
 	} else {
 		pomlog("Waiting for input process to terminate ...");
 		waitpid(input_process_pid, NULL, 0);
 	}
-
-
-	// Cleanup components
-
-	input_client_cleanup();
-	input_ipc_cleanup();
-
 
 	httpd_cleanup();
 err_xmlrpcsrv:

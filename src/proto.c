@@ -120,25 +120,10 @@ int proto_unregister(char *name) {
 	return POM_OK;
 }
 
-void proto_dependency_lock() {
-
-	if (pthread_mutex_lock(&proto_dependency_list_lock)) {
-		pomlog(POMLOG_ERR "Error while locking the dependency list lock : %s", pom_strerror(errno));
-		abort();
-	}
-}
-
-void proto_dependency_unlock() {
-	if (pthread_mutex_unlock(&proto_dependency_list_lock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the dependency list lock : %s", pom_strerror(errno));
-		abort();
-	}
-}
-
 struct proto_dependency *proto_add_dependency(char *name) {
 
 
-	proto_dependency_lock();
+	pom_mutex_lock(&proto_dependency_list_lock);
 
 	struct proto_dependency *dep = proto_dependency_head;
 
@@ -146,14 +131,14 @@ struct proto_dependency *proto_add_dependency(char *name) {
 	if (!dep) {
 		dep = malloc(sizeof(struct proto_dependency));
 		if (!dep) {
-			proto_dependency_unlock();
+			pom_mutex_unlock(&proto_dependency_list_lock);
 			pom_oom(sizeof(struct proto_dependency));
 			return NULL;
 		}
 		memset(dep, 0, sizeof(struct proto_dependency));
 		dep->name = strdup(name);
 		if (!dep->name) {
-			proto_dependency_unlock();
+			pom_mutex_unlock(&proto_dependency_list_lock);
 			pom_oom(strlen(name));
 			free(dep);
 			return NULL;
@@ -165,7 +150,7 @@ struct proto_dependency *proto_add_dependency(char *name) {
 		for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
 		if (proto) {
 			if (proto->dep) {
-				proto_dependency_unlock();
+				pom_mutex_unlock(&proto_dependency_list_lock);
 				pomlog(POMLOG_ERR "Internal error, the proto should have a dependency already");
 				free(dep->name);
 				free(dep);
@@ -181,7 +166,7 @@ struct proto_dependency *proto_add_dependency(char *name) {
 		proto_dependency_head = dep;
 	}
 	dep->refcount++;
-	proto_dependency_unlock();
+	pom_mutex_unlock(&proto_dependency_list_lock);
 	
 	return dep;
 }
@@ -191,7 +176,7 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 	if (!dep)
 		return POM_ERR;
 
-	proto_dependency_lock();
+	pom_mutex_lock(&proto_dependency_list_lock);
 
 	if (!dep->refcount)
 		pomlog(POMLOG_WARN "Warning, depcount already at 0 for dependency %s", dep->name);
@@ -213,7 +198,7 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 		free(dep);
 	}
 
-	proto_dependency_unlock();
+	pom_mutex_unlock(&proto_dependency_list_lock);
 
 	return POM_OK;
 }
@@ -231,7 +216,7 @@ int proto_cleanup() {
 		free(proto);
 	}
 
-	proto_dependency_lock();
+	pom_mutex_lock(&proto_dependency_list_lock);
 
 	struct proto_dependency *dep = proto_dependency_head;
 	while (dep) {
@@ -254,7 +239,7 @@ int proto_cleanup() {
 		free(tmp);
 	}
 
-	proto_dependency_unlock();
+	pom_mutex_unlock(&proto_dependency_list_lock);
 
 	return POM_OK;
 }

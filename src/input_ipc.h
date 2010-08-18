@@ -143,10 +143,5 @@ int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg);
 int input_ipc_process_reply(int queue_id);
 
 
-void input_ipc_req_mutex_lock();
-void input_ipc_req_mutex_unlock();
-
-
-
 #endif
 

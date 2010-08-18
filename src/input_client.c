@@ -62,8 +62,13 @@ int input_client_cleanup() {
 		if (i->thread)
 			core_destroy_thread(i->thread);
 
-		if (i->shm_buff && shmdt(i->shm_buff))
-			pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+		if (i->shm_buff) {
+			pom_mutex_lock(&i->shm_buff->lock);
+			i->shm_buff->attached = 0;
+			pom_mutex_unlock(&i->shm_buff->lock);
+			if (shmdt(i->shm_buff))
+				pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+		}
 
 		if (i->datalink_dep)
 			proto_remove_dependency(i->datalink_dep);
@@ -89,20 +94,14 @@ int input_client_wait_for_empty_buff(struct input_client_entry *input) {
 	int empty = 0;
 	do {
 
-		if (pthread_mutex_lock(&buff->lock)) {
-			pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
-			return POM_ERR;
-		}
+		pom_mutex_lock(&buff->lock);
 
 		if (!buff->inpkt_head_offset)
 			empty = 1;
 
-		if (pthread_mutex_unlock(&buff->lock)) {
-			pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
-			return POM_ERR;
-		}
+		pom_mutex_unlock(&buff->lock);
 
-		sleep(1);
+		usleep(100000);
 
 	} while (!empty);
 
@@ -118,21 +117,20 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	
 	struct input_buff *buff = input->shm_buff;
 
-	if (pthread_mutex_lock(&buff->lock)) {
-		pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_lock(&buff->lock);
 
 	while (!buff->inpkt_head_offset) {
 		// Wait for a packet
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
+			pom_mutex_unlock(&buff->lock);
 			return POM_ERR;
 		}
 
 		if (!buff->inpkt_head_offset) {
 			// EOF
 			p->len = 0;
+			pom_mutex_unlock(&buff->lock);
 			return POM_OK;
 		}
 	}
@@ -145,6 +143,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 		p->buff = realloc(p->buff, buff_head->len);
 		if (!p->buff) {
 			pom_oom(buff_head->len);
+			pom_mutex_unlock(&buff->lock);
 			return POM_ERR;
 		}
 		p->bufflen = buff_head->len;
@@ -158,10 +157,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	if (!buff->inpkt_head_offset)
 		buff->inpkt_tail_offset = 0;
 
-	if (pthread_mutex_unlock(&buff->lock)) {
-		pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_unlock(&buff->lock);
 
 	struct packet_info_list *info = packet_add_infos(p, input_client_packet_info_owner);
 	if (!info)
@@ -231,13 +227,17 @@ int input_client_cmd_add(char *name) {
 	}
 
 	// Try to attach the shared memory
-	void *buff = NULL;
+	struct input_buff *buff = NULL;
 	buff = shmat(shm_id, NULL, 0);
 	if (buff == (void*)-1) {
 		pomlog(POMLOG_ERR "Error while attaching the IPC shared memory segment : %s", pom_strerror(errno));
 		abort();
 		goto err;
 	}
+
+	pom_mutex_lock(&buff->lock);
+	buff->attached = 1;
+	pom_mutex_unlock(&buff->lock);
 
 	struct input_client_entry *entry = malloc(sizeof(struct input_client_entry));
 	if (!entry) {
@@ -327,8 +327,12 @@ err:
 		free(entry);
 	}
 
-	if (buff) 
+	if (buff) {
+		pom_mutex_lock(&buff->lock);
+		buff->attached = 0;
+		pom_mutex_unlock(&buff->lock);
 		shmdt(buff);
+	}
 	
 	// Remove the input on the other side
 	input_client_cmd_remove(input_id);
@@ -370,8 +374,13 @@ int input_client_cmd_remove(unsigned int input_id) {
 	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
 		goto err;
 
-	if (i->shm_buff && shmdt(i->shm_buff))
-		pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+	if (i->shm_buff) {
+		pom_mutex_lock(&i->shm_buff->lock);
+		i->shm_buff->attached = 0;
+		pom_mutex_unlock(&i->shm_buff->lock);
+		if (shmdt(i->shm_buff))
+			pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+	}
 
 	if (i->datalink_dep)
 		proto_remove_dependency(i->datalink_dep);

@@ -363,10 +363,7 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 
 	// Check for that size right after tail
 
-	if (pthread_mutex_lock(&buff->lock)) {
-		pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_lock(&buff->lock);
 
 	if (!buff_tail) { // buffer is empty
 		pkt = buff_start;
@@ -397,10 +394,7 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 		pkt = next;
 	}
 
-	if (pthread_mutex_unlock(&buff->lock)) {
-		pomlog(POMLOG_ERR "Error while trying to unlock the input buffer : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_unlock(&buff->lock);
 
 	// The copy of the packet is done unlocked
 	memset(pkt, 0, sizeof(struct input_packet));	
@@ -410,10 +404,7 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	memcpy(pkt_buff, pkt_data, pkt_size);
 	pkt->buff_offset = pkt_buff - (void*)buff;
 
-	if (pthread_mutex_lock(&buff->lock)) {
-		pomlog(POMLOG_ERR "Error while trying to lock the input buffer : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_lock(&buff->lock);
 
 	// Refecth the variables after relocking
 	buff_head = (struct input_packet*)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
@@ -421,10 +412,8 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	if (!buff_head) {
 		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
-		if (pthread_mutex_unlock(&buff->lock)) {
-			pomlog(POMLOG_ERR "Error while unlocking the input buffer : %s", pom_strerror(errno));
-			return POM_ERR;
-		}
+		pom_mutex_unlock(&buff->lock);
+
 		if (pthread_cond_signal(&buff->underrun_cond)) {
 			pomlog(POMLOG_ERR "Could not signal the underrun condition");
 			return POM_ERR;
@@ -436,10 +425,7 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	}
 
 end:
-	if (pthread_mutex_unlock(&buff->lock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the input buffer : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_unlock(&buff->lock);
 
 	return POM_OK;
 }
@@ -502,8 +488,19 @@ int input_cleanup(struct input *i) {
 		i->type->info->cleanup(i);
 
 	// Free shm stuff
-	if (i->shm_buff && shmdt(i->shm_buff))
-		pomlog(POMLOG_WARN "Error while detaching shared memory : %s", pom_strerror(errno));
+	if (i->shm_buff) {
+		int attached = 1;
+		while (attached) {
+			pomlog(POMLOG_DEBUG "Waiting for the other process to detach the buffer ...");
+			pom_mutex_lock(&i->shm_buff->lock);
+			attached = i->shm_buff->attached;
+			pom_mutex_unlock(&i->shm_buff->lock);
+			sleep(1);
+		}
+
+		if (shmdt(i->shm_buff))
+			pomlog(POMLOG_WARN "Error while detaching shared memory : %s", pom_strerror(errno));
+	}
 	
 	if (i->shm_id != -1 && shmctl(i->shm_id, IPC_RMID, 0) == -1)
 		pomlog(POMLOG_WARN "Error while removing the IPC id %u : %s", i->shm_id, pom_strerror(errno));

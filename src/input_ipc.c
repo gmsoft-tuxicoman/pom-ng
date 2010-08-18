@@ -111,7 +111,7 @@ int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg) {
 	pthread_mutex_init(&req->mutex, NULL);
 	pthread_cond_init(&req->cond, NULL);
 
-	input_ipc_req_mutex_lock();
+	pom_mutex_lock(&input_ipc_req_mutex);
 
 	req->id = input_ipc_req_cur_id;
 	msg->id = input_ipc_req_cur_id;
@@ -122,7 +122,7 @@ int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg) {
 	if (ipc_send_msg(queue_id, msg, sizeof(struct input_ipc_raw_cmd)) != POM_OK) {
 		pomlog(POMLOG_ERR "Failed to send IPC message");
 		free(req);
-		input_ipc_req_mutex_unlock();
+		pom_mutex_unlock(&input_ipc_req_mutex);
 		return POM_ERR;
 	}
 
@@ -134,7 +134,7 @@ int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg) {
 		req->next->prev = req;
 	input_ipc_reqs = req;
 
-	input_ipc_req_mutex_unlock();
+	pom_mutex_unlock(&input_ipc_req_mutex);
 
 	pomlog("Sent input IPC request %u", req->id);
 
@@ -149,7 +149,7 @@ int input_ipc_process_reply(int queue_id) {
 
 		// Find that request in the request backlog
 		
-		input_ipc_req_mutex_lock();
+		pom_mutex_lock(&input_ipc_req_mutex);
 
 		struct input_ipc_request *req = input_ipc_reqs;
 
@@ -161,14 +161,14 @@ int input_ipc_process_reply(int queue_id) {
 
 		if (!req) {
 			pomlog(POMLOG_ERR "IPC request %u not found in the queue !", msg.id);
-			input_ipc_req_mutex_unlock();
+			pom_mutex_unlock(&input_ipc_req_mutex);
 			return POM_OK;
 		}
 
 		memcpy(&req->reply, &msg, sizeof(struct input_ipc_raw_cmd_reply));
 
 		req->replied = 1;
-		input_ipc_req_mutex_unlock();
+		pom_mutex_unlock(&input_ipc_req_mutex);
 
 		pomlog(POMLOG_ERR "Processing request %u", req->id);
 	
@@ -182,7 +182,7 @@ int input_ipc_process_reply(int queue_id) {
 
 int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
-	input_ipc_req_mutex_lock();
+	pom_mutex_lock(&input_ipc_req_mutex);
 
 	struct input_ipc_request *req = input_ipc_reqs;
 
@@ -193,32 +193,28 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
 	if (!req) {
 		pomlog(POMLOG_ERR "IPC request %u not found in the queue !");
-		input_ipc_req_mutex_unlock();
+		pom_mutex_unlock(&input_ipc_req_mutex);
 		return POM_OK;
 	}
 
 	if (req->replied) {
 		*msg = &req->reply;
-		input_ipc_req_mutex_unlock();
+		pom_mutex_unlock(&input_ipc_req_mutex);
 		return POM_OK;
 	}
 
-	input_ipc_req_mutex_unlock();
+	pom_mutex_unlock(&input_ipc_req_mutex);
 
-	// Deadlock and wait for the reply to be processed by the main process
+	// Wait for the reply to be processed by the main process
 	pomlog("Waiting for reply %u", req_id);
-	if (pthread_mutex_lock(&req->mutex)) {
-		pomlog(POMLOG_ERR "Error while locking the reply mutex : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pom_mutex_lock(&req->mutex);
+
 	if (pthread_cond_wait(&req->cond, &req->mutex)) {
 		pomlog(POMLOG_ERR "Error while waiting for request condition : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
-	if (pthread_mutex_unlock(&req->mutex)) {
-		pomlog(POMLOG_ERR "Error while unlocking the request mutex : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+
+	pom_mutex_unlock(&req->mutex);
 
 	*msg = &req->reply;
 
@@ -227,7 +223,7 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
 int input_ipc_destroy_request(int req_id) {
 
-	input_ipc_req_mutex_lock();
+	pom_mutex_lock(&input_ipc_req_mutex);
 
 	struct input_ipc_request *req = input_ipc_reqs;
 
@@ -238,7 +234,7 @@ int input_ipc_destroy_request(int req_id) {
 
 	if (!req) {
 		pomlog(POMLOG_ERR "IPC request %u not found in the queue !");
-		input_ipc_req_mutex_unlock();
+		pom_mutex_unlock(&input_ipc_req_mutex);
 		return POM_OK;
 	}
 
@@ -250,7 +246,7 @@ int input_ipc_destroy_request(int req_id) {
 	if (req->next)
 		req->next->prev = req->prev;
 
-	input_ipc_req_mutex_unlock();
+	pom_mutex_unlock(&input_ipc_req_mutex);
 
 	pthread_mutex_destroy(&req->mutex);
 	pthread_cond_destroy(&req->cond);
@@ -280,22 +276,4 @@ int input_ipc_cleanup() {
 	return POM_OK;
 }
 
-void input_ipc_req_mutex_lock() {
-
-	if (pthread_mutex_lock(&input_ipc_req_mutex)) {
-		pomlog(POMLOG_ERR "Error while locking the input requests mutex");
-		abort();
-		return;
-	}
-}
-
-
-void input_ipc_req_mutex_unlock() {
-
-	if (pthread_mutex_unlock(&input_ipc_req_mutex)) {
-		pomlog(POMLOG_ERR "Error while unlocking the input requests mutex");
-		abort();
-		return;
-	}
-}
 

@@ -73,6 +73,7 @@ struct input_param {
 struct input_buff {
 	unsigned int inpkt_head_offset;
 	unsigned int inpkt_tail_offset;
+	unsigned int attached;
 
 	pthread_mutex_t lock;
 	pthread_cond_t underrun_cond, overrun_cond;
