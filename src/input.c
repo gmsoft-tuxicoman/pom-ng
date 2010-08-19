@@ -124,6 +124,7 @@ struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t 
 		shm_buff = shmat(shm_id, NULL, 0);
 		if (shm_buff == (void*)-1) {
 			pomlog(POMLOG_ERR "Error while attaching the IPC shared memory segment : %s", pom_strerror(errno));
+			shm_buff = NULL;
 			shmctl(shm_id, IPC_RMID, 0);
 			goto err;
 		}
@@ -249,7 +250,7 @@ err:
 		shmctl(shm_id, IPC_RMID, 0);
 
 	input_reg_lock(1);
-	reg->refcount++;
+	reg->refcount--;
 	input_reg_unlock();
 
 	return NULL;
@@ -490,11 +491,13 @@ int input_cleanup(struct input *i) {
 	// Free shm stuff
 	if (i->shm_buff) {
 		int attached = 1;
-		while (attached) {
+		while (1) {
 			pomlog(POMLOG_DEBUG "Waiting for the other process to detach the buffer ...");
 			pom_mutex_lock(&i->shm_buff->lock);
 			attached = i->shm_buff->attached;
 			pom_mutex_unlock(&i->shm_buff->lock);
+			if (!attached)
+				break;
 			sleep(1);
 		}
 

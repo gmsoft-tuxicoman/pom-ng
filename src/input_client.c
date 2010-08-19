@@ -219,19 +219,21 @@ int input_client_cmd_add(char *name) {
 	if (status == POM_ERR || input_id == POM_ERR)
 		return POM_ERR;
 
+	struct input_client_entry *entry = NULL;
+	struct input_buff *buff = NULL;
+
 	// Get the shm_id
 	int shm_id = shmget(shm_key, shm_buff_size, 0);
 	if (shm_id == -1) {
 		pomlog(POMLOG_ERR "Cannot get SHM id : %s", pom_strerror(errno));
-		return POM_ERR;
+		goto err;
 	}
 
 	// Try to attach the shared memory
-	struct input_buff *buff = NULL;
 	buff = shmat(shm_id, NULL, 0);
 	if (buff == (void*)-1) {
 		pomlog(POMLOG_ERR "Error while attaching the IPC shared memory segment : %s", pom_strerror(errno));
-		abort();
+		buff = NULL;
 		goto err;
 	}
 
@@ -239,7 +241,7 @@ int input_client_cmd_add(char *name) {
 	buff->attached = 1;
 	pom_mutex_unlock(&buff->lock);
 
-	struct input_client_entry *entry = malloc(sizeof(struct input_client_entry));
+	entry = malloc(sizeof(struct input_client_entry));
 	if (!entry) {
 		pom_oom(sizeof(struct input_client_entry));
 		goto err;
@@ -247,15 +249,15 @@ int input_client_cmd_add(char *name) {
 
 	memset(entry, 0, sizeof(struct input_client_entry));
 
+	entry->id = input_id;
+	entry->shm_id = shm_id;
+	entry->shm_buff = buff;
+
 	entry->type = strdup(name);
 	if (!entry->type) {
 		pom_oom(sizeof(struct packet));
 		goto err;
 	}
-
-	entry->id = input_id;
-	entry->shm_id = shm_id;
-	entry->shm_buff = buff;
 
 	entry->next = input_client_head;
 	input_client_head = entry;

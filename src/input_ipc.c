@@ -150,29 +150,28 @@ int input_ipc_process_reply(int queue_id) {
 		// Find that request in the request backlog
 		
 		pom_mutex_lock(&input_ipc_req_mutex);
-
 		struct input_ipc_request *req = input_ipc_reqs;
-
-		while (req) {
-			if (req->id == msg.id)
-				break;
-			req = req->next;
-		}
-
+		for (; req && req->id != msg.id; req = req->next);
+		
 		if (!req) {
 			pomlog(POMLOG_ERR "IPC request %u not found in the queue !", msg.id);
 			pom_mutex_unlock(&input_ipc_req_mutex);
 			return POM_OK;
 		}
 
+		pom_mutex_lock(&req->mutex);
+		pom_mutex_unlock(&input_ipc_req_mutex);
+
+
 		memcpy(&req->reply, &msg, sizeof(struct input_ipc_raw_cmd_reply));
 
 		req->replied = 1;
-		pom_mutex_unlock(&input_ipc_req_mutex);
 
 		pomlog(POMLOG_ERR "Processing request %u", req->id);
-	
 		pthread_cond_broadcast(&req->cond);
+		pom_mutex_unlock(&req->mutex);
+
+	
 
 	}
 
@@ -186,10 +185,7 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
 	struct input_ipc_request *req = input_ipc_reqs;
 
-	while (req) {
-		if (req->id == req_id)
-			break;
-	}
+	for (; req && req->id != req_id; req = req->next);
 
 	if (!req) {
 		pomlog(POMLOG_ERR "IPC request %u not found in the queue !");
@@ -197,17 +193,18 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 		return POM_OK;
 	}
 
+	pom_mutex_lock(&req->mutex);
+	pom_mutex_unlock(&input_ipc_req_mutex);
+
 	if (req->replied) {
 		*msg = &req->reply;
-		pom_mutex_unlock(&input_ipc_req_mutex);
+		pom_mutex_unlock(&req->mutex);
 		return POM_OK;
 	}
 
-	pom_mutex_unlock(&input_ipc_req_mutex);
 
 	// Wait for the reply to be processed by the main process
 	pomlog("Waiting for reply %u", req_id);
-	pom_mutex_lock(&req->mutex);
 
 	if (pthread_cond_wait(&req->cond, &req->mutex)) {
 		pomlog(POMLOG_ERR "Error while waiting for request condition : %s", pom_strerror(errno));
@@ -226,18 +223,15 @@ int input_ipc_destroy_request(int req_id) {
 	pom_mutex_lock(&input_ipc_req_mutex);
 
 	struct input_ipc_request *req = input_ipc_reqs;
+	for (; req && req->id != req_id; req = req->next);
 
-	while (req) {
-		if (req->id == req_id)
-			break;
-	}
 
 	if (!req) {
 		pomlog(POMLOG_ERR "IPC request %u not found in the queue !");
 		pom_mutex_unlock(&input_ipc_req_mutex);
 		return POM_OK;
 	}
-
+	
 	if (req->prev)
 		req->prev->next = req->next;
 	else
