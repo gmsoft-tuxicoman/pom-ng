@@ -22,8 +22,6 @@
 #ifndef __POM_NG_PACKET_H__
 #define __POM_NG_PACKET_H__
 
-#define PACKET_INFO_MAX 8
-
 #include <pthread.h>
 
 struct packet {
@@ -34,35 +32,10 @@ struct packet {
 	struct packet_info_list *info_head, *info_tail;
 };
 
-struct packet_info_reg {
-	char *name;
-	struct ptype *value_template;
+struct packet_info {
+	struct ptype **fields_value;
+	struct packet_info *pool_next, *pool_prev;
 };
-
-struct packet_info_val {
-	struct packet_info_reg *reg;
-	struct ptype *value;
-};
-
-struct packet_info_owner {
-	char *name;
-	unsigned int refcount;
-	pthread_mutex_t lock;
-	struct packet_info_reg info[PACKET_INFO_MAX + 1];
-
-	struct packet_info_owner *prev, *next;
-};
-
-struct packet_info_list {
-	struct packet_info_owner *owner;
-	struct packet_info_val *values;
-	struct packet_info_list *next, *prev;
-};
-
-
-struct packet_info_owner *packet_register_info_owner(char *owner, struct packet_info_reg *info);
-int packet_unregister_info_owner(struct packet_info_owner *owner);
-struct packet_info_list *packet_add_infos(struct packet *p, struct packet_info_owner *owner);
 
 
 #endif

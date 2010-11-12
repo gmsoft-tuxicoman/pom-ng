@@ -29,6 +29,7 @@
 static struct proto_reg *proto_head = NULL;
 
 static struct proto_dependency *proto_dependency_head = NULL;
+static pthread_mutex_t proto_list_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t proto_dependency_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
@@ -36,17 +37,23 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 	if (input_server_is_current_process()) {
 		pomlog(POMLOG_DEBUG "Not loading protocol %s in the input process", reg_info->name);
-		return POM_OK;
+		return POM_ERR;
 	}
+
+	pom_mutex_lock(&proto_list_lock);
 
 	// Check if the protocol already exists
 	struct proto_reg *proto;
 	for (proto = proto_head; proto && strcmp(proto->info->name, reg_info->name); proto = proto->next);
-	if (proto)
+	if (proto) {
+		pom_mutex_unlock(&proto_list_lock);
 		return POM_ERR;
+	}
 
+	// Allocate the protocol
 	proto = malloc(sizeof(struct proto_reg));
 	if (!proto) {
+		pom_mutex_unlock(&proto_list_lock);
 		pom_oom(sizeof(struct proto_reg));
 		return POM_ERR;
 	}
@@ -54,10 +61,50 @@ int proto_register(struct proto_reg_info *reg_info) {
 	memset(proto, 0, sizeof(struct proto_reg));
 	proto->info = reg_info;
 
+	
+
+	if (packet_info_pool_init(&proto->pkt_info_pool)) {
+		pomlog(POMLOG_ERR "Error while initializing the pkt_info_pool");
+		pom_mutex_unlock(&proto_list_lock);
+		free(proto);
+		return POM_ERR;
+	}
+
+	// Allocate the conntrack table
+	if (reg_info->ct_info.default_table_size) {
+		size_t size = sizeof(struct proto_conntrack_list) * reg_info->ct_info.default_table_size;
+		proto->ct.fwd_table = malloc(size);
+		if (!proto->ct.fwd_table) {
+			pom_mutex_unlock(&proto_list_lock);
+			pom_oom(size);
+			free(proto);
+			return POM_ERR;
+		}
+		memset(proto->ct.fwd_table, 0, size);
+
+		if (reg_info->ct_info.rev_pkt_field_id != -1) {
+			proto->ct.rev_table = malloc(size);
+			if (!proto->ct.rev_table) {
+				pom_mutex_unlock(&proto_list_lock);
+				free(proto->ct.fwd_table);
+				pom_oom(size);
+				free(proto);
+				return POM_ERR;
+			}
+			memset(proto->ct.rev_table, 0, size);
+		}
+		proto->ct.tables_size = reg_info->ct_info.default_table_size;
+	}
+
 	if (reg_info->init) {
 		if (reg_info->init() == POM_ERR) {
 			free(proto);
+			if (proto->ct.fwd_table)
+				free(proto->ct.fwd_table);
+			if (proto->ct.rev_table)
+				free(proto->ct.rev_table);
 			pomlog(POMLOG_ERR "Error while registering proto %s", reg_info->name);
+			pom_mutex_unlock(&proto_list_lock);
 			return POM_ERR;
 		}
 	}
@@ -70,6 +117,9 @@ int proto_register(struct proto_reg_info *reg_info) {
 		proto->next->prev = proto;
 	proto_head = proto;
 
+	pom_mutex_unlock(&proto_list_lock);
+
+	pom_mutex_lock(&proto_dependency_list_lock);
 	// Update dependencies
 	struct proto_dependency *dep;
 	for (dep = proto_dependency_head; dep && strcmp(dep->name, reg_info->name); dep = dep->next);
@@ -77,6 +127,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 		dep->proto = proto;
 		proto->dep = dep;
 	}
+	pom_mutex_unlock(&proto_dependency_list_lock);
 
 	pomlog(POMLOG_DEBUG "Proto %s registered", reg_info->name);
 
@@ -84,27 +135,43 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 }
 
-int proto_process(struct proto_reg *proto, struct packet *p, struct proto_process_state *s) {
+int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
 
-	if (!proto || !proto->info->process)
+	if (!s)
 		return POM_ERR;
-	return proto->info->process(p, s);
+	
+	struct proto_reg *proto = s[stack_index].proto;
+
+	if (!proto || !proto->info->parse)
+		return POM_ERR;
+	return proto->info->parse(p, s, stack_index);
 }
 
 int proto_unregister(char *name) {
 
+	pom_mutex_lock(&proto_list_lock);
 	struct proto_reg *proto;
 	for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
-	if (!proto)
+	if (!proto) {
+		pom_mutex_unlock(&proto_list_lock);
 		return POM_OK;
+	}
 	
 	if (proto->info->cleanup && proto->info->cleanup()) {
+		pom_mutex_unlock(&proto_list_lock);
 		pomlog(POMLOG_ERR "Error while cleaning up the protocol %s", name);
 		return POM_ERR;
 	}
 
 	if (proto->dep)
 		proto->dep->proto = NULL;
+
+	if (proto->ct.fwd_table)
+		free(proto->ct.fwd_table);
+	if (proto->ct.rev_table)
+		free(proto->ct.rev_table);
+
+	packet_info_pool_cleanup(&proto->pkt_info_pool);
 	
 	if (proto->next)
 		proto->next->prev = proto->prev;
@@ -116,6 +183,8 @@ int proto_unregister(char *name) {
 	mod_refcount_dec(proto->info->mod);
 
 	free(proto);
+
+	pom_mutex_unlock(&proto_list_lock);
 
 	return POM_OK;
 }
@@ -205,16 +274,23 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 
 int proto_cleanup() {
 
+	pom_mutex_lock(&proto_list_lock);
+
 	while (proto_head) {
 		struct proto_reg *proto = proto_head;
 		proto_head = proto->next;
 		if (proto->info->cleanup && proto->info->cleanup() == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
+		if (proto->ct.fwd_table)
+			free(proto->ct.fwd_table);
+		if (proto->ct.rev_table)
+			free(proto->ct.rev_table);
 		if (proto->dep)
 			proto->dep->proto = NULL;
 		mod_refcount_dec(proto->info->mod);
 		free(proto);
 	}
+	pom_mutex_unlock(&proto_list_lock);
 
 	pom_mutex_lock(&proto_dependency_list_lock);
 

@@ -25,6 +25,8 @@
 #include "input.h"
 #include "packet.h"
 #include "input_client.h"
+#include "proto_ct.h"
+#include "packet.h"
 
 
 struct core_thread* core_spawn_thread(struct input_client_entry *i) {
@@ -72,34 +74,15 @@ void *core_process_thread(void *thread) {
 
 		if (!t->pkt->len) {
 			// EOF
-			packet_drop_infos(t->pkt);
+			//packet_drop_infos(t->pkt);
 			return NULL;
 		}
 
 		if (core_process_packet(t->pkt, t->input->datalink_dep->proto) == POM_ERR) {
-			packet_drop_infos(t->pkt);
+			//packet_drop_infos(t->pkt);
 			return NULL;
 		}
 
-		// Dump the packet info
-		struct packet_info_list *info = t->pkt->info_head;
-		while (info) {
-			printf("%s{", info->owner->name);
-			int i;
-			for (i = 0; i < PACKET_INFO_MAX && info->values[i].value; i++) {
-				char buff[256];
-				ptype_print_val(info->values[i].value, buff, sizeof(buff) - 1);
-				printf("%s : %s; ", info->values[i].reg->name, buff);
-			}
-			printf("} ");
-
-			info = info->next;
-
-		}
-		printf("\n");
-
-		// Cleanup the info which were added
-		packet_drop_infos(t->pkt);
 	}
 
 	return NULL;
@@ -124,18 +107,63 @@ int core_destroy_thread(struct core_thread *t) {
 
 int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 
-	struct proto_process_state s;
-	memset(&s, 0, sizeof(struct proto_process_state));
-	s.pload = p->buff;
-	s.plen = p->len;
-	s.next_proto = datalink;
+	struct proto_process_stack s[CORE_PROTO_STACK_MAX];
 
-	while (s.next_proto) {
-		if (proto_process(s.next_proto, p, &s) == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while processing packet");
+	memset(s, 0, sizeof(struct proto_process_stack) * CORE_PROTO_STACK_MAX);
+	s[0].pload = p->buff;
+	s[0].plen = p->len;
+	s[0].proto = datalink;
+
+	int i;
+	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
+		
+		s[i].pkt_info = packet_info_pool_get(s[i].proto);
+
+		if (proto_parse(p, s, i) == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while parsing packet");
 			return POM_ERR;
 		}
+		if (!s[i].proto) // Packet was invalid, stop here
+			break;
+
+		if ((s[i + 1].pload > s[i].pload + s[i].plen) || // Check if next payload is further than the end of current paylod
+			(s[i + 1].pload < s[i].pload) || // Check if next payload is before the start of the current payload
+			(s[i + 1].pload + s[i + 1].plen > s[i].pload + s[i].plen) || // Check if the end of the next payload is after the end of the current payload
+			(s[i + 1].pload + s[i + 1].plen < s[i + 1].pload)) { // Check for integer overflow
+			// Invalid packet
+			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s[i].proto->info->name);
+		}
+
+		if (s[i].ct_field_fwd) {
+			s[i].ce = proto_ct_get(s[i].proto, s[i].ct_field_fwd, s[i].ct_field_rev);
+			if (!s[i].ce) 
+				pomlog(POMLOG_WARN "Warning : could not get conntrack for proto %s", s[i].proto->info->name);
+		}
+
 	}
+
+
+	// Packet parsed at this point
+	
+
+	// Dump packet info
+	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
+		printf("%s{", s[i].proto->info->name);
+		int j;
+		for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
+			char buff[256];
+			ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
+			printf("%s : %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+		}
+
+		printf("} ");
+	}
+	printf("\n");
+
+	// Cleanup pkt_info
+
+	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)
+		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 
 	return POM_OK;
 }

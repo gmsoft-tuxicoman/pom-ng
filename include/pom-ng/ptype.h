@@ -147,6 +147,15 @@ struct ptype_reg_info {
 	int (*copy) (struct ptype *dst, struct ptype *src);
 
 
+	/// Pointer to the value size function
+	/**
+	 * This function returns the size of the value stored in this ptype.
+	 * @param pt Ptype to get the value size from.
+	 * @return the size of the value on success, -1 on failure.
+	 **/
+	 size_t (*value_size) (struct ptype *pt);
+
+
 };
 
 // Full decl is private
@@ -205,4 +214,7 @@ int ptype_unregister(char *name);
 
 /// Get the ptype name
 char *ptype_get_name(struct ptype *p);
+
+/// Get the size of pt->value
+size_t ptype_get_value_size(struct ptype *pt);
 #endif

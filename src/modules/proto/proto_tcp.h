@@ -18,26 +18,27 @@
  *
  */
 
+#ifndef __PROTO_TCP_H__
+#define __PROTO_TCP_H__
 
+#include <stdint.h>
 
-#ifndef __CORE_H__
-#define __CORE_H__
+#define PROTO_TCP_FIELD_NUM 5
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-#define CORE_PROTO_STACK_MAX	16
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
+enum proto_tcp_fields {
+	proto_tcp_field_sport = 0,
+	proto_tcp_field_dport,
+	proto_tcp_field_flags,
+	proto_tcp_field_seq,
+	proto_tcp_field_ack,
+	proto_tcp_field_win,
 };
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+struct mod_reg_info* proto_tcp_reg_info();
+static int proto_tcp_init();
+static int proto_tcp_mod_register(struct mod_reg *mod);
+static size_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_tcp_cleanup();
+static int proto_tcp_mod_unregister();
 
 #endif

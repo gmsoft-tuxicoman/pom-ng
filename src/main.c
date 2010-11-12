@@ -288,7 +288,6 @@ err_registry:
 	registry_cleanup();
 err_early:
 	proto_cleanup();
-	packet_info_cleanup();
 	mod_unload_all();
 	pomlog_cleanup();
 

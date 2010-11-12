@@ -57,6 +57,7 @@ int ptype_ipv4_mod_register(struct mod_reg *mod) {
 	pt_ipv4.serialize = ptype_ipv4_print;
 	pt_ipv4.unserialize = ptype_ipv4_parse;
 	pt_ipv4.copy = ptype_ipv4_copy;
+	pt_ipv4.value_size = ptype_ipv4_value_size;
 
 	pt_ipv4.ops = PTYPE_OP_ALL;
 
@@ -166,4 +167,9 @@ int ptype_ipv4_copy(struct ptype *dst, struct ptype *src) {
 	memcpy(d, s, sizeof(struct ptype_ipv4_val));
 
 	return POM_OK;
+}
+
+size_t ptype_ipv4_value_size(struct ptype *pt) {
+
+	return sizeof(struct in_addr);
 }

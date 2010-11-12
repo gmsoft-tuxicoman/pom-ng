@@ -23,10 +23,20 @@
 
 #include <stdint.h>
 
+#define PROTO_IPV4_FIELD_NUM 4
+
+enum proto_ipv4_fields {
+	proto_ipv4_field_src = 0,
+	proto_ipv4_field_dst,
+	proto_ipv4_field_tos,
+	proto_ipv4_field_ttl,
+
+};
+
 struct mod_reg_info* proto_ipv4_reg_info();
 static int proto_ipv4_init();
 static int proto_ipv4_mod_register(struct mod_reg *mod);
-static size_t proto_ipv4_process(struct packet *p,struct proto_process_state *s);
+static size_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_ipv4_cleanup();
 static int proto_ipv4_mod_unregister();
 

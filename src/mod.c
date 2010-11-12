@@ -75,7 +75,7 @@ int mod_load_all() {
 
 			char *name = strdup(dp->d_name);
 			if (!name) {
-				pomlog(POMLOG_ERR "Not enough memory to strdup(%s)", dp->d_name);
+				pom_oom(strlen(dp->d_name));
 				return POM_ERR;
 			}
 			*(name + strlen(dp->d_name) - strlen(POM_LIB_EXT)) = 0;

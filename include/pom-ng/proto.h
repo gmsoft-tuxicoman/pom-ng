@@ -27,8 +27,13 @@
 #include <pom-ng/ptype.h>
 #include <pom-ng/packet.h>
 
+#include <stdint.h>
+
 // Current proto API version
 #define PROTO_API_VER	1
+
+
+#define PROTO_FLAG_HAS_CONNTRACK	0x1
 
 // Full decl is private
 struct proto_reg;
@@ -40,14 +45,43 @@ struct proto_dependency {
 	struct proto_dependency *next, *prev;
 };
 
-struct proto_process_state {
-	// Set before calling process
+struct proto_process_stack {
+	struct proto_reg *proto;
 	void *pload;
 	size_t plen;
 
-	// Set by the processing function
-	size_t processed_size;
-	struct proto_reg *next_proto;
+	struct packet_info *pkt_info;
+
+	struct proto_conntrack_entry *ce;
+
+	struct ptype *ct_field_fwd;
+	struct ptype *ct_field_rev;
+};
+
+struct proto_conntrack_entry {
+
+	uint32_t fwd_hash, rev_hash; ///< Full hash prior to modulo
+	struct ptype *fwd_value, *rev_value;
+	char *buff;
+	size_t buffsize;
+};
+
+struct proto_conntrack_list {
+	struct proto_conntrack_entry *ce; ///< Corresponding connection
+	struct proto_conntrack_list *prev, *next; ///< Next and previous connection in the list
+	struct proto_conntrack_list *rev; ///< Reverse connection
+};
+
+struct proto_pkt_field {
+	char *name;
+	struct ptype *value_template;
+	char *description;
+
+};
+
+struct proto_ct_info {
+	unsigned int default_table_size;
+	int fwd_pkt_field_id, rev_pkt_field_id;
 
 };
 
@@ -56,9 +90,11 @@ struct proto_reg_info {
 	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
+	struct proto_pkt_field *pkt_fields;
+	struct proto_ct_info ct_info;
 
 	int (*init) ();
-	size_t (*process) (struct packet *p, struct proto_process_state *s);
+	size_t (*parse) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 	int (*cleanup) ();
 
 };
@@ -68,7 +104,7 @@ struct proto_reg_info {
 int proto_register(struct proto_reg_info *reg);
 
 /// Process part of a packet with a protocol
-int proto_process(struct proto_reg *proto, struct packet *p, struct proto_process_state *s);
+int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 
 /// Unregister a protocol
 int proto_unregister(char *name);

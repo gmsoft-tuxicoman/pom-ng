@@ -29,8 +29,10 @@
 #include <arpa/inet.h>
 
 
-static struct packet_info_owner *proto_ethernet_packet_info_owner = NULL;
 static struct proto_dependency *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_arp = NULL, *proto_vlan = NULL, *proto_pppoe = NULL;
+
+// ptype for fields value template
+static struct ptype *ptype_mac = NULL;
 
 struct mod_reg_info* proto_ethernet_reg_info() {
 	static struct mod_reg_info reg_info;
@@ -45,38 +47,46 @@ struct mod_reg_info* proto_ethernet_reg_info() {
 
 static int proto_ethernet_mod_register(struct mod_reg *mod) {
 
+	ptype_mac = ptype_alloc("mac");
+	
+	if (!ptype_mac)
+		goto err;
+
+	static struct proto_pkt_field fields[PROTO_ETHERNET_FIELD_NUM + 1];
+	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_ETHERNET_FIELD_NUM + 1));
+	fields[0].name = "src";
+	fields[0].value_template = ptype_mac;
+	fields[0].description = "Source address";
+	fields[1].name = "dst";
+	fields[1].value_template = ptype_mac;
+	fields[1].description = "Destination address";
+
 	static struct proto_reg_info proto_ethernet;
 	memset(&proto_ethernet, 0, sizeof(struct proto_reg_info));
 	proto_ethernet.name = "ethernet";
 	proto_ethernet.api_ver = PROTO_API_VER;
 	proto_ethernet.mod = mod;
+	proto_ethernet.pkt_fields = fields;
+
+	// No contrack here
+
 	proto_ethernet.init = proto_ethernet_init;
-	proto_ethernet.process = proto_ethernet_process;
+	proto_ethernet.parse = proto_ethernet_parse;
 	proto_ethernet.cleanup = proto_ethernet_cleanup;
 
-	proto_register(&proto_ethernet);
-	return POM_OK;
+	if (proto_register(&proto_ethernet) == POM_OK)
+		return POM_OK;
+
+err:
+	if (ptype_mac)
+		ptype_cleanup(ptype_mac);
+
+	return POM_ERR;
 
 }
 
 
 static int proto_ethernet_init() {
-
-	const int proto_ethernet_info_max = 2;
-
-	struct packet_info_reg infos[proto_ethernet_info_max + 1];
-	memset(infos, 0, sizeof(struct packet_info_reg) * (proto_ethernet_info_max + 1));
-	infos[0].name = "src";
-	infos[0].value_template = ptype_alloc("mac");
-	infos[1].name = "dst";
-	infos[1].value_template = ptype_alloc("mac");
-
-	proto_ethernet_packet_info_owner = packet_register_info_owner("ethernet", infos);
-	if (!proto_ethernet_packet_info_owner) {
-		ptype_cleanup(infos[0].value_template);
-		ptype_cleanup(infos[1].value_template);
-		return POM_ERR;
-	}
 
 	proto_ipv4 = proto_add_dependency("ipv4");
 	proto_ipv6 = proto_add_dependency("ipv6");
@@ -93,45 +103,45 @@ static int proto_ethernet_init() {
 
 }
 
-static size_t proto_ethernet_process(struct packet *p, struct proto_process_state *s) {
+static size_t proto_ethernet_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	// TODO buffer stuff
 	if (sizeof(struct ether_header) > s->plen)
 		return POM_ERR;
 
-	struct packet_info_list *infos = packet_add_infos(p, proto_ethernet_packet_info_owner);
-
 	struct ether_header *ehdr = s->pload;
 
-
-	PTYPE_MAC_SETADDR(infos->values[0].value, ehdr->ether_shost);
-	PTYPE_MAC_SETADDR(infos->values[1].value, ehdr->ether_dhost);
+	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_src], ehdr->ether_shost);
+	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_dst], ehdr->ether_dhost);
 
 	switch (ntohs(ehdr->ether_type)) {
 		case 0x0800:
-			s->next_proto = proto_ipv4->proto;
+			s_next->proto = proto_ipv4->proto;
 			break;
 		case 0x0806:
-			s->next_proto = proto_arp->proto;
+			s_next->proto = proto_arp->proto;
 			break;
 		case 0x8100:
-			s->next_proto = proto_vlan->proto;
+			s_next->proto = proto_vlan->proto;
 			break;
 		case 0x86dd:
-			s->next_proto = proto_ipv6->proto;
+			s_next->proto = proto_ipv6->proto;
 			break;
 		case 0x8863:
 		case 0x8864:
-			s->next_proto = proto_pppoe->proto;
+			s_next->proto = proto_pppoe->proto;
 
 		default:
-			s->next_proto = NULL;
+			s_next->proto = NULL;
 			break;
 
 	}
 
-	s->pload += sizeof(struct ether_header);
-	s->plen -= sizeof(struct ether_header);
+	s_next->pload = s->pload + sizeof(struct ether_header);
+	s_next->plen = s->plen - sizeof(struct ether_header);
 
 	return POM_OK;
 
@@ -139,9 +149,10 @@ static size_t proto_ethernet_process(struct packet *p, struct proto_process_stat
 
 static int proto_ethernet_cleanup() {
 
-	int res = POM_OK;
+	ptype_cleanup(ptype_mac);
+	ptype_mac = NULL;
 
-	res += packet_unregister_info_owner(proto_ethernet_packet_info_owner);
+	int res = POM_OK;
 
 	res += proto_remove_dependency(proto_ipv4);
 	res += proto_remove_dependency(proto_ipv6);

@@ -183,8 +183,8 @@ char *ptype_print_val_alloc(struct ptype *pt) {
 		size = new_size;
 		res = realloc(res, size + 1);
 		if (!res) {
-			pomlog(POMLOG_ERR "Error, not enough memory while trying to allocate the value buffer");
-			return "err";
+			pom_oom(size + 1);
+			return NULL;
 		}
 		new_size = ptype_print_val(pt, res, size);
 		new_size = (new_size < 1) ? new_size * 2 : new_size + 1;
@@ -390,4 +390,11 @@ void ptype_reg_unlock() {
 char *ptype_get_name(struct ptype *p) {
 
 	return p->type->info->name;
+}
+
+size_t ptype_get_value_size(struct ptype *pt) {
+
+	if (!pt->type->info->value_size)
+		return -1;
+	return pt->type->info->value_size(pt);
 }

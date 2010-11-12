@@ -33,11 +33,11 @@
 #include <pom-ng/ptype_string.h>
 
 static struct input_client_entry *input_client_head;
-static struct packet_info_owner *input_client_packet_info_owner;
+//static struct packet_info_owner *input_client_packet_info_owner;
 
 int input_client_init() {
 
-	const int packet_input_info_max = 1;
+/*	const int packet_input_info_max = 1;
 	struct packet_info_reg infos[packet_input_info_max + 1];
 	memset(infos, 0, sizeof(struct packet_info_reg) * (packet_input_info_max + 1));
 	infos[0].name = "type";
@@ -50,6 +50,7 @@ int input_client_init() {
 	input_client_packet_info_owner = packet_register_info_owner("input", infos);
 	if (!input_client_packet_info_owner)
 		return POM_ERR;
+*/
 	return registry_add_branch("root", "input");
 }
 
@@ -159,12 +160,12 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 
 	pom_mutex_unlock(&buff->lock);
 
-	struct packet_info_list *info = packet_add_infos(p, input_client_packet_info_owner);
+/*	struct packet_info_list *info = packet_add_infos(p, input_client_packet_info_owner);
 	if (!info)
 		return POM_ERR;
-
 	PTYPE_STRING_SETVAL(info->values[0].value, input->type);
 
+*/
 
 	return POM_OK;
 }
@@ -296,6 +297,12 @@ int input_client_cmd_add(char *name) {
 
 		struct ptype *value = ptype_alloc(reply->data.get_param.type);
 		if (!value) {
+			input_ipc_destroy_request(id);
+			goto err;
+		}
+		if (ptype_parse_val(value, reply->data.get_param.defval) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while parsing default parameter \"%s\" of type \"%s\"", reply->data.get_param.defval, reply->data.get_param.type);
+			ptype_cleanup(value);
 			input_ipc_destroy_request(id);
 			goto err;
 		}

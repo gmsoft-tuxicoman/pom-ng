@@ -84,7 +84,7 @@ xmlrpc_value *xmlrpccmd_registry_get_param(xmlrpc_env * const envP, xmlrpc_value
 		return NULL;
 	}
 
-	xmlrpc_value *result = xmlrpc_build_value(envP, "{s:s}",
+	xmlrpc_value *result = xmlrpc_build_value(envP, "{s:s,s:s}",
 					"name", p->name,
 					"value", value);
 	free(value);

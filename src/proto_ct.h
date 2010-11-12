@@ -19,25 +19,13 @@
  */
 
 
-#ifndef __POM_NG_PARAM_H__
-#define __POM_NG_PARAM_H__
+#ifndef __PROTO_CT_H__
+#define __PROTO_CT_H__
 
-#include <pom-ng/ptype.h>
+#include <pom-ng/proto.h>
 
-struct param_entry {
-	char *name;
-	struct ptype *value;
-	char *default_value;
-	char *description;
-};
-
-struct param_list {
-	struct param_entry *entry;
-	struct param_list *next, *prev;
-};
-
-int param_list_add_entry(struct param_list **list_head, char *name, struct ptype *value, char *default_value, char *description);
-int param_list_add_entry2(struct param_list **list_head, struct param_entry *entry);
-int param_list_cleanup(struct param_list **list_head);
+int proto_ct_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
+struct proto_conntrack_entry *proto_ct_find(struct proto_conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value);
+struct proto_conntrack_entry *proto_ct_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value);
 
 #endif

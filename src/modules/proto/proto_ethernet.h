@@ -31,11 +31,17 @@ struct ether_header
 	uint16_t ether_type;
 } __attribute__ ((__packed__));
 
+#define PROTO_ETHERNET_FIELD_NUM 2
+
+enum proto_ethernet_fields {
+	proto_ethernet_field_src = 0,
+	proto_ethernet_field_dst,
+};
 
 struct mod_reg_info* proto_ethernet_reg_info();
 static int proto_ethernet_init();
 static int proto_ethernet_mod_register(struct mod_reg *mod);
-static size_t proto_ethernet_process(struct packet *p,struct proto_process_state *s);
+static size_t proto_ethernet_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_ethernet_cleanup();
 static int proto_ethernet_mod_unregister();
 

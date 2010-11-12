@@ -23,9 +23,19 @@
 #ifndef __PACKET_H__
 #define __PACKET_H__
 
+#include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
 
-int packet_drop_infos(struct packet *p);
-int packet_info_cleanup();
+
+struct packet_info_pool {
+	pthread_mutex_t lock;
+	struct packet_info *used, *unused;
+	unsigned int pool_size, usage;
+};
+
+int packet_info_pool_init(struct packet_info_pool *pool);
+struct packet_info *packet_info_pool_get(struct proto_reg *p);
+int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
+int packet_info_pool_cleanup(struct packet_info_pool *pool);
 
 #endif

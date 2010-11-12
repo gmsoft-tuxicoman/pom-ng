@@ -18,26 +18,22 @@
  *
  */
 
+#ifndef __PTYPE_UINT16_H__
+#define __PTYPE_UINT16_H__
+
+#include <pom-ng/ptype.h>
+
+int ptype_uint16_mod_register(struct mod_reg *mod);
+int ptype_uint16_mod_unregister();
 
 
-#ifndef __CORE_H__
-#define __CORE_H__
-
-#include <pom-ng/proto.h>
-#include <pthread.h>
-
-#define CORE_PROTO_STACK_MAX	16
-
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+int ptype_uint16_alloc(struct ptype *p);
+int ptype_uint16_cleanup(struct ptype *p);
+int ptype_uint16_parse(struct ptype *p, char *val);
+int ptype_uint16_print(struct ptype *p, char *val, size_t size);
+int ptype_uint16_compare(int op, void *val_a, void* val_b);
+int ptype_uint16_serialize(struct ptype *p, char *val, size_t size);
+int ptype_uint16_copy(struct ptype *dst, struct ptype *src);
+size_t ptype_uint16_value_size(struct ptype *p);
 
 #endif

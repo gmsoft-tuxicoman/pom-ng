@@ -34,5 +34,6 @@ int ptype_uint32_print(struct ptype *p, char *val, size_t size);
 int ptype_uint32_compare(int op, void *val_a, void* val_b);
 int ptype_uint32_serialize(struct ptype *p, char *val, size_t size);
 int ptype_uint32_copy(struct ptype *dst, struct ptype *src);
+size_t ptype_uint32_value_size(struct ptype *p);
 
 #endif

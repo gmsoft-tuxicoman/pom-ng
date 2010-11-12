@@ -18,26 +18,28 @@
  *
  */
 
+#ifndef __POM_NG_PTYPE_UINT16_H__
+#define __POM_NG_PTYPE_UINT16_H__
 
+#include <pom-ng/ptype.h>
 
-#ifndef __CORE_H__
-#define __CORE_H__
+#define PTYPE_UINT16_PRINT_DECIMAL	0
+#define PTYPE_UINT16_PRINT_HEX		1
+#define PTYPE_UINT16_PRINT_HUMAN	2
+#define PTYPE_UINT16_PRINT_HUMAN_1024	4
 
-#include <pom-ng/proto.h>
-#include <pthread.h>
+/// x the struct ptype
+#define PTYPE_UINT16_GETVAL(x) 			\
+	(uint16_t) *((uint16_t*) (x)->value)
 
-#define CORE_PROTO_STACK_MAX	16
+/// x is the struct ptype, y the value
+#define PTYPE_UINT16_SETVAL(x, y) {	\
+	uint16_t *v = (x)->value;	\
+	*v = (y);			\
+}
 
-struct core_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+/// x is the struct ptype, y the increment
+#define PTYPE_UINT16_INC(x, y) 		\
+	*((uint16_t*)(x)->value) += (y)	
 
 #endif

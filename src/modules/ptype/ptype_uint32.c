@@ -57,6 +57,7 @@ int ptype_uint32_mod_register(struct mod_reg *mod) {
 	pt_u32.serialize = ptype_uint32_serialize;
 	pt_u32.unserialize = ptype_uint32_parse;
 	pt_u32.copy = ptype_uint32_copy;
+	pt_u32.value_size = ptype_uint32_value_size;
 
 	pt_u32.ops = PTYPE_OP_ALL;
 
@@ -198,4 +199,8 @@ int ptype_uint32_copy(struct ptype *dst, struct ptype *src) {
 
 	*((uint32_t*)dst->value) = *((uint32_t*)src->value);
 	return POM_OK;
+}
+
+size_t ptype_uint32_value_size(struct ptype *p) {
+	return sizeof(uint32_t);
 }
