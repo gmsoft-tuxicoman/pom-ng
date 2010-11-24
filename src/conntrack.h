@@ -19,13 +19,16 @@
  */
 
 
-#ifndef __PROTO_CT_H__
-#define __PROTO_CT_H__
+#ifndef __CONNTRACK_H__
+#define __CONNTRACK_H__
 
 #include <pom-ng/proto.h>
+#include <pom-ng/conntrack.h>
 
-int proto_ct_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
-struct proto_conntrack_entry *proto_ct_find(struct proto_conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value);
-struct proto_conntrack_entry *proto_ct_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value);
+struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev);
+int conntrack_tables_free(struct conntrack_tables *ct);
+int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
+struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
+struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
 
 #endif

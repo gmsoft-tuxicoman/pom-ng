@@ -19,13 +19,109 @@
  */
 
 #include "proto.h"
+#include "conntrack.h"
 #include "jhash.h"
 
 #include "common.h"
 
 #define INITVAL 0x5de97c2d // random value
 
-int proto_ct_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev) {
+struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev) {
+
+	struct conntrack_tables *ct = malloc(sizeof(struct conntrack_tables));
+	if (!ct) {
+		pom_oom(sizeof(struct conntrack_tables));
+		return NULL;
+	}
+
+	size_t size = sizeof(struct conntrack_list) * tables_size;
+	ct->fwd_table = malloc(size);
+	if (!ct->fwd_table) {
+		pom_oom(size);
+		free(ct);
+		return NULL;
+	}
+	memset(ct->fwd_table, 0, size);
+
+	if (has_rev) {
+		ct->rev_table = malloc(size);
+		if (!ct->rev_table) {
+			free(ct->fwd_table);
+			free(ct);
+			pom_oom(size);
+			return NULL;
+		}
+		memset(ct->rev_table, 0, size);
+	}
+
+	ct->tables_size = tables_size;
+
+	return ct;
+}
+
+int conntrack_tables_free(struct conntrack_tables *ct) {
+
+	if (!ct)
+		return POM_OK;
+	if (ct->fwd_table) {
+		int i;
+		for (i = 0; i < ct->tables_size; i++) {
+			while (ct->fwd_table[i]) {
+				struct conntrack_list *tmp = ct->fwd_table[i];
+				ct->fwd_table[i] = tmp->next;
+
+				// Free the conntrack entry
+				if (tmp->ce) {
+					if (tmp->ce->fwd_value)
+						ptype_cleanup(tmp->ce->fwd_value);
+					if (tmp->ce->rev_value)
+						ptype_cleanup(tmp->ce->rev_value);
+					free(tmp->ce);
+					tmp->ce = NULL;
+				} else {
+					pomlog(POMLOG_WARN "Forward conntrack list without a conntrack entry");
+				}
+
+				if (tmp->rev)
+					tmp->rev->ce = NULL;
+
+				free(tmp);
+				
+			}
+
+		}
+		free(ct->fwd_table);
+
+	}
+
+	if (ct->rev_table) {
+		int i;
+		for (i = 0; i < ct->tables_size; i++) {
+			while (ct->rev_table[i]) {
+				struct conntrack_list *tmp = ct->rev_table[i];
+				ct->rev_table[i] = tmp->next;
+
+				// Free the conntrack entry
+				if (tmp->ce) {
+					if (tmp->ce->fwd_value)
+						ptype_cleanup(tmp->ce->fwd_value);
+					if (tmp->ce->rev_value)
+						ptype_cleanup(tmp->ce->rev_value);
+					free(tmp->ce);
+					tmp->ce = NULL;
+				}
+
+				free(tmp);
+			}
+		}
+		free(ct->rev_table);
+	}
+	free(ct);
+
+	return POM_OK;
+}
+
+int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev) {
 
 	if (!fwd)
 		return POM_ERR;
@@ -69,16 +165,20 @@ int proto_ct_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev) {
 }
 
 
-struct proto_conntrack_entry *proto_ct_find(struct proto_conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value) {
+struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent) {
 
 	if (!fwd_value)
 		return NULL;
 
 
 	for (; lst; lst = lst->next) {
+		struct conntrack_entry *ce = lst->ce;
+
+		// Check the parent conntrack
+		if (ce->parent != parent)
+			continue;
 
 		// Check the forward value
-		struct proto_conntrack_entry *ce = lst->ce;
 		if (!ptype_compare_val(PTYPE_OP_EQ, ce->fwd_value, fwd_value))
 			continue;
 		
@@ -105,40 +205,40 @@ struct proto_conntrack_entry *proto_ct_find(struct proto_conntrack_list *lst, st
 	return NULL;
 }
 
-struct proto_conntrack_entry *proto_ct_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value) {
+struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent) {
 
-	if (!proto || !fwd_value)
+	if (!ct || !fwd_value)
 		return NULL;
 
-	if (!proto->ct.fwd_table) {
-		pomlog(POMLOG_ERR "Cannot get conntrack for proto %s as it has no conntrack table allocated", proto->info->name);
+	if (!ct->fwd_table) {
+		pomlog(POMLOG_ERR "Cannot get conntrack as the forward table is not allocated");
 		return NULL;
 	}
 
 	uint32_t full_hash_fwd = 0, hash_fwd = 0, full_hash_rev = 0, hash_rev = 0;
 
-	if (proto_ct_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {
+	if (conntrack_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {
 		pomlog(POMLOG_ERR "Error while computing forward hash for conntrack");
 		return NULL;
 	}
 
 	// Try to find the conntrack in the forward table
-	hash_fwd = full_hash_fwd % proto->ct.tables_size;
+	hash_fwd = full_hash_fwd % ct->tables_size;
 
 	// Check if we can find this entry in the forward way
-	struct proto_conntrack_entry *res = proto_ct_find(proto->ct.fwd_table[hash_fwd], fwd_value, rev_value);
+	struct conntrack_entry *res = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, parent);
 	if (res)
 		return res;
 
 	// It wasn't found in the forward way, maybe in the reverse direction ?
 	if (rev_value) {
-		if (proto_ct_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
+		if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
 			return NULL;
 		}
-		hash_rev = full_hash_rev % proto->ct.tables_size;
+		hash_rev = full_hash_rev % ct->tables_size;
 
-		res = proto_ct_find(proto->ct.rev_table[hash_rev], rev_value, fwd_value);
+		res = conntrack_find(ct->rev_table[hash_rev], rev_value, fwd_value, parent);
 		if (res)
 			return res;
 
@@ -147,12 +247,14 @@ struct proto_conntrack_entry *proto_ct_get(struct proto_reg *proto, struct ptype
 	// It's not found in the reverse direction either, let's create it then
 
 	// Alloc the conntrack entry
-	res = malloc(sizeof(struct proto_conntrack_entry));
+	res = malloc(sizeof(struct conntrack_entry));
 	if (!res) {
-		pom_oom(sizeof(struct proto_conntrack_entry));
+		pom_oom(sizeof(struct conntrack_entry));
 		return NULL;
 	}
-	memset(res, 0, sizeof(struct proto_conntrack_entry));
+	memset(res, 0, sizeof(struct conntrack_entry));
+
+	res->parent = parent;
 
 	res->fwd_hash = full_hash_fwd;
 
@@ -163,28 +265,28 @@ struct proto_conntrack_entry *proto_ct_get(struct proto_reg *proto, struct ptype
 	}
 
 	// Alloc the forward list
-	struct proto_conntrack_list *lst_fwd = malloc(sizeof(struct proto_conntrack_list));
+	struct conntrack_list *lst_fwd = malloc(sizeof(struct conntrack_list));
 	if (!lst_fwd) {
 		ptype_cleanup(res->fwd_value);
 		free(res);
-		pom_oom(sizeof(struct proto_conntrack_list));
+		pom_oom(sizeof(struct conntrack_list));
 		return NULL;
 	}
-	memset(lst_fwd, 0, sizeof(struct proto_conntrack_list));
+	memset(lst_fwd, 0, sizeof(struct conntrack_list));
 	lst_fwd->ce = res;
 
 	// Alloc the reverse list
 	if (rev_value) {
 		res->rev_hash = full_hash_rev;
-		struct proto_conntrack_list *lst_rev = malloc(sizeof(struct proto_conntrack_list));
+		struct conntrack_list *lst_rev = malloc(sizeof(struct conntrack_list));
 		if (!lst_rev) {
 			ptype_cleanup(res->fwd_value);
 			free(res);
 			free(lst_fwd);
-			pom_oom(sizeof(struct proto_conntrack_list));
+			pom_oom(sizeof(struct conntrack_list));
 			return NULL;
 		}
-		memset(lst_rev, 0, sizeof(struct proto_conntrack_list));
+		memset(lst_rev, 0, sizeof(struct conntrack_list));
 		lst_rev->ce = res;
 
 		res->rev_value = ptype_alloc_from(rev_value);
@@ -197,19 +299,22 @@ struct proto_conntrack_entry *proto_ct_get(struct proto_reg *proto, struct ptype
 		}
 
 		// Insert the reverse direction in the conntrack table
-		lst_rev->next = proto->ct.rev_table[hash_rev];
+		lst_rev->next = ct->rev_table[hash_rev];
 		if (lst_rev->next)
 			lst_rev->next->prev = lst_rev;
-		proto->ct.rev_table[hash_rev] = lst_rev;
+		ct->rev_table[hash_rev] = lst_rev;
+
+		lst_fwd->rev = lst_rev;
+		lst_rev->rev = lst_fwd;
 
 
 	}
 
 	// Insert the forward direction in the conntrack table
-	lst_fwd->next = proto->ct.fwd_table[hash_fwd];
+	lst_fwd->next = ct->fwd_table[hash_fwd];
 	if (lst_fwd->next)
 		lst_fwd->next->prev = lst_fwd;
-	proto->ct.fwd_table[hash_fwd] = lst_fwd;
+	ct->fwd_table[hash_fwd] = lst_fwd;
 
 	return res;
 }

@@ -111,7 +111,7 @@ int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *
 	info->pool_next = pool->unused;
 	if (info->pool_next)
 		info->pool_next->pool_prev = info;
-	pool->used = info;
+	pool->unused = info;
 
 	pom_mutex_unlock(&pool->lock);
 	return POM_OK;
@@ -132,6 +132,8 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 			ptype_cleanup(tmp->fields_value[i]);
 
 		free(tmp->fields_value);
+
+		free(tmp);
 	}
 
 	while (pool->unused) {	
@@ -143,6 +145,8 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 			ptype_cleanup(tmp->fields_value[i]);
 
 		free(tmp->fields_value);
+
+		free(tmp);
 	}
 
 

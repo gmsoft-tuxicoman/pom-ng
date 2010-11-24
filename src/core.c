@@ -25,8 +25,8 @@
 #include "input.h"
 #include "packet.h"
 #include "input_client.h"
-#include "proto_ct.h"
 #include "packet.h"
+#include "conntrack.h"
 
 
 struct core_thread* core_spawn_thread(struct input_client_entry *i) {
@@ -135,7 +135,10 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 		}
 
 		if (s[i].ct_field_fwd) {
-			s[i].ce = proto_ct_get(s[i].proto, s[i].ct_field_fwd, s[i].ct_field_rev);
+			struct conntrack_entry *parent = NULL;
+			if (i > 1)
+				parent = s[i - 1].ce;
+			s[i].ce = conntrack_get(s[i].proto->ct, s[i].ct_field_fwd, s[i].ct_field_rev, parent);
 			if (!s[i].ce) 
 				pomlog(POMLOG_WARN "Warning : could not get conntrack for proto %s", s[i].proto->info->name);
 		}

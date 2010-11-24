@@ -24,18 +24,15 @@
 
 #include <pom-ng/proto.h>
 #include "packet.h"
+#include "conntrack.h"
 
 struct proto_reg {
 
 	struct proto_reg_info *info;
 	struct proto_dependency *dep; // Corresponding dependency
 	
-	/// List of conntracks
-	struct proto_conntrack {
-		struct proto_conntrack_list **fwd_table;
-		struct proto_conntrack_list **rev_table;
-		unsigned int tables_size;
-	} ct;
+	/// Conntrack tables
+	struct conntrack_tables *ct;
 
 	// Packet info pool
 	struct packet_info_pool pkt_info_pool;

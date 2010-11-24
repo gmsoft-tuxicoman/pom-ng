@@ -29,6 +29,7 @@
 #include <pom-ng/pomlog.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdint.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 

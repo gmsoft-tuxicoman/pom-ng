@@ -26,8 +26,7 @@
 #include <pom-ng/mod.h>
 #include <pom-ng/ptype.h>
 #include <pom-ng/packet.h>
-
-#include <stdint.h>
+#include <pom-ng/conntrack.h>
 
 // Current proto API version
 #define PROTO_API_VER	1
@@ -52,24 +51,10 @@ struct proto_process_stack {
 
 	struct packet_info *pkt_info;
 
-	struct proto_conntrack_entry *ce;
+	struct conntrack_entry *ce;
 
 	struct ptype *ct_field_fwd;
 	struct ptype *ct_field_rev;
-};
-
-struct proto_conntrack_entry {
-
-	uint32_t fwd_hash, rev_hash; ///< Full hash prior to modulo
-	struct ptype *fwd_value, *rev_value;
-	char *buff;
-	size_t buffsize;
-};
-
-struct proto_conntrack_list {
-	struct proto_conntrack_entry *ce; ///< Corresponding connection
-	struct proto_conntrack_list *prev, *next; ///< Next and previous connection in the list
-	struct proto_conntrack_list *rev; ///< Reverse connection
 };
 
 struct proto_pkt_field {
@@ -79,19 +64,13 @@ struct proto_pkt_field {
 
 };
 
-struct proto_ct_info {
-	unsigned int default_table_size;
-	int fwd_pkt_field_id, rev_pkt_field_id;
-
-};
-
 struct proto_reg_info {
 
 	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
 	struct proto_pkt_field *pkt_fields;
-	struct proto_ct_info ct_info;
+	struct conntrack_info ct_info;
 
 	int (*init) ();
 	size_t (*parse) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
