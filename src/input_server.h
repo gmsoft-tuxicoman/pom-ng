@@ -31,6 +31,7 @@ int input_server_is_current_process();
 int input_server_cmd_mod_load(struct input_ipc_raw_cmd *cmd);
 int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid);
 int input_server_cmd_get_param(struct input_ipc_raw_cmd *cmd);
+int input_server_cmd_set_param(struct input_ipc_raw_cmd *cmd);
 int input_server_cmd_remove(struct input_ipc_raw_cmd *cmd);
 int input_server_cmd_start(struct input_ipc_raw_cmd *cmd);
 int input_server_cmd_stop(struct input_ipc_raw_cmd *cmd);

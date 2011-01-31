@@ -32,26 +32,17 @@
 
 #include <pom-ng/ptype_string.h>
 
-static struct input_client_entry *input_client_head;
-//static struct packet_info_owner *input_client_packet_info_owner;
+static struct input_client_entry *input_client_head = NULL;
+static struct registry_class *input_registry_class = NULL;
 
 int input_client_init() {
 
-/*	const int packet_input_info_max = 1;
-	struct packet_info_reg infos[packet_input_info_max + 1];
-	memset(infos, 0, sizeof(struct packet_info_reg) * (packet_input_info_max + 1));
-	infos[0].name = "type";
-	infos[0].value_template = ptype_alloc("string");
-	if (!infos[0].value_template) {
-		pomlog(POMLOG_ERR "Error while allocating ptype string");
-		return POM_ERR;
-	}
 
-	input_client_packet_info_owner = packet_register_info_owner("input", infos);
-	if (!input_client_packet_info_owner)
+	input_registry_class = registry_add_class(INPUT_CLIENT_REGISTRY);
+	if (!input_registry_class)
 		return POM_ERR;
-*/
-	return registry_add_branch("root", "input");
+
+	return POM_OK;
 }
 
 int input_client_cleanup() {
@@ -71,6 +62,13 @@ int input_client_cleanup() {
 				pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
 		}
 
+		while (i->params) {
+			struct input_client_param *p = i->params;
+			i->params = p->next;
+			ptype_cleanup(p->value);
+			free(p);
+		}
+
 		if (i->datalink_dep)
 			proto_remove_dependency(i->datalink_dep);
 		free(i->type);
@@ -84,6 +82,8 @@ int input_client_cleanup() {
 		free(i);
 
 	}
+
+	registry_remove_class(input_registry_class);
 
 	return POM_OK;
 }
@@ -160,12 +160,6 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 
 	pom_mutex_unlock(&buff->lock);
 
-/*	struct packet_info_list *info = packet_add_infos(p, input_client_packet_info_owner);
-	if (!info)
-		return POM_ERR;
-	PTYPE_STRING_SETVAL(info->values[0].value, input->type);
-
-*/
 
 	return POM_OK;
 }
@@ -270,11 +264,9 @@ int input_client_cmd_add(char *name) {
 	char num[16];
 	memset(num, 0, sizeof(num));
 	snprintf(num, sizeof(num), "%u", input_id);
-	if (registry_add_branch(REGISTRY_ROOT "." INPUT_CLIENT_REGISTRY, num) != POM_OK)
+	entry->reg_instance = registry_add_instance(input_registry_class, num);
+	if (!entry->reg_instance)
 		goto err;
-	char branch[strlen(REGISTRY_ROOT "." INPUT_CLIENT_REGISTRY ".") + sizeof(num) + 1];
-	strcpy(branch, REGISTRY_ROOT "." INPUT_CLIENT_REGISTRY ".");
-	strcat(branch, num);
 
 	// Fetch the input parameters
 
@@ -295,32 +287,51 @@ int input_client_cmd_add(char *name) {
 
 		pomlog("Got param %s of type %s, with defval %s", reply->data.get_param.name, reply->data.get_param.type, reply->data.get_param.defval);
 
-		struct ptype *value = ptype_alloc(reply->data.get_param.type);
-		if (!value) {
+		struct input_client_param *p = malloc(sizeof(struct input_client_param));
+		if (!p) {
+			pom_oom(sizeof(struct input_client_param));
 			input_ipc_destroy_request(id);
 			goto err;
 		}
-		if (ptype_parse_val(value, reply->data.get_param.defval) != POM_OK) {
+		memset(p, 0, sizeof(struct input_client_param));
+
+		p->value = ptype_alloc(reply->data.get_param.type);
+		if (!p->value) {
+			free(p);
+			input_ipc_destroy_request(id);
+			goto err;
+		}
+		if (ptype_parse_val(p->value, reply->data.get_param.defval) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while parsing default parameter \"%s\" of type \"%s\"", reply->data.get_param.defval, reply->data.get_param.type);
-			ptype_cleanup(value);
+			ptype_cleanup(p->value);
+			free(p);
 			input_ipc_destroy_request(id);
 			goto err;
 		}
 
-		if (registry_add_param(	branch,
-					reply->data.get_param.name,
-					reply->data.get_param.defval,
-					value,
-					reply->data.get_param.description,
-					reply->data.get_param.flags | REGISTRY_FLAG_CLEANUP_VAL
-					) != POM_OK) {
-			ptype_cleanup(value);
+		struct registry_param *reg_p = registry_new_param(	reply->data.get_param.name,
+									reply->data.get_param.defval,
+									p->value,
+									reply->data.get_param.description,
+									reply->data.get_param.flags);
+		if (!reg_p) {
+			ptype_cleanup(p->value);
+			free(p);
 			input_ipc_destroy_request(id);
 			goto err;
 		}
+
+		registry_param_set_check_callbacks(reg_p, p, NULL, input_client_registry_param_apply);
+
+		registry_instance_add_param(entry->reg_instance, reg_p);
 		
 		last = reply->data.get_param.last;
 		input_ipc_destroy_request(id);
+
+		p->id = msg.data.get_param.param_id;
+		p->input = entry;
+		p->next = entry->params;
+		entry->params = p;
 
 		msg.data.get_param.param_id++;
 
@@ -391,6 +402,15 @@ int input_client_cmd_remove(unsigned int input_id) {
 			pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
 	}
 
+	registry_remove_instance(i->reg_instance);
+
+	while (i->params) {
+		struct input_client_param *p = i->params;
+		i->params = p->next;
+		ptype_cleanup(p->value);
+		free(p);
+	}
+
 	if (i->datalink_dep)
 		proto_remove_dependency(i->datalink_dep);
 	free(i->type);
@@ -412,7 +432,6 @@ err:
 }
 
 int input_client_cmd_start(unsigned int input_id) {
-	
 	
 	struct input_client_entry *i;
 	for (i = input_client_head; i && i->id != input_id; i = i->next);
@@ -489,4 +508,38 @@ int input_client_cmd_stop(unsigned int input_id) {
 	i->datalink_dep = NULL;
 
 	return status;
+}
+
+
+int input_client_registry_param_apply(void *priv, struct ptype *value) {
+
+	struct input_client_param *p = priv;
+
+	struct input_client_entry *i = p->input;
+
+	struct input_ipc_raw_cmd msg;
+	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
+	msg.subtype = input_ipc_cmd_type_set_param;
+	msg.data.set_param.input_id = i->id;
+	msg.data.set_param.param_id = p->id;
+	
+	if (ptype_serialize(value, msg.data.set_param.value, INPUT_PARAM_VALUE_MAX) == POM_ERR)
+		return POM_ERR;
+
+	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
+
+	if (id == POM_ERR)
+		return POM_ERR;
+
+	struct input_ipc_raw_cmd_reply *reply;
+
+	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
+		return POM_ERR;
+
+	int status = reply->status;
+	
+	input_ipc_destroy_request(id);
+
+	return status;
+
 }

@@ -25,9 +25,20 @@
 
 #include "core.h"
 #include "proto.h"
+#include "registry.h"
 
 #define INPUT_CLIENT_REGISTRY "input"
 
+
+struct input_client_param {
+
+	int id;
+	struct ptype *value;
+	struct input_client_entry *input;
+
+	struct input_client_param *next;
+
+};
 
 struct input_client_entry {
 	unsigned int id;
@@ -37,7 +48,10 @@ struct input_client_entry {
 	struct input_buff *shm_buff;
 	struct core_thread *thread;
 	struct proto_dependency *datalink_dep;
+	struct input_client_param *params;
 	struct input_client_entry *next, *prev;
+
+	struct registry_instance *reg_instance;
 };
 
 int input_client_init();
@@ -50,5 +64,7 @@ int input_client_cmd_add(char *name);
 int input_client_cmd_remove(unsigned int input_id);
 int input_client_cmd_start(unsigned int input_id);
 int input_client_cmd_stop(unsigned int input_id);
+
+int input_client_registry_param_apply(void *param, struct ptype *value);
 
 #endif

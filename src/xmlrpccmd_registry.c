@@ -29,17 +29,17 @@
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
-		.name = "registry.getParam",
-		.callback_func = xmlrpccmd_registry_get_param,
-		.signature = "i:s",
-		.help = "Get the details of a parameter",
+		.name = "registry.getInstanceParam",
+		.callback_func = xmlrpccmd_registry_get_instance_param,
+		.signature = "i:sss",
+		.help = "Get the details of an instance parameter. Arguments are : class, instance, parameter",
 	},
 
 	{
-		.name = "registry.setParam",
-		.callback_func = xmlrpccmd_registry_set_param,
-		.signature = "i:ss",
-		.help = "Add an input",
+		.name = "registry.setInstanceParam",
+		.callback_func = xmlrpccmd_registry_set_instance_param,
+		.signature = "i:ssss",
+		.help = "Set the value of an instance parameter. Arguments are : class, instance, parameter, value",
 	},
 
 
@@ -58,61 +58,93 @@ int xmlrpccmd_registry_register_all() {
 
 }
 
-xmlrpc_value *xmlrpccmd_registry_get_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+xmlrpc_value *xmlrpccmd_registry_get_instance_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
-
-	char *param = NULL;
-	xmlrpc_decompose_value(envP, paramArrayP, "(s)", &param);
+	char *cls = NULL, *instance = NULL, *param = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(sss)", &cls, &instance, &param);
 
 	if (envP->fault_occurred)
 		return NULL;
 
-	struct registry_param *p = registry_find_param(param);
+	xmlrpc_value *result = NULL;
+
+	struct registry_class *c = registry_get_head();
+
+	for (;c && strcmp(c->name, cls); c = c->next);
+	if (!c) {
+		xmlrpc_faultf(envP, "Class %s not found", cls);
+		goto err;
+	}
+
+	struct registry_instance *i = c->instances;
+	for (; i && strcmp(i->name, instance); i = i->next);
+	if (!i) {
+		xmlrpc_faultf(envP, "Instance %s not found", instance);
+		goto err;
+	}
+
+	struct registry_param *p = i->params;
+	for (; p && strcmp(p->name, param); p = p->next);
 
 	if (!p) {
 		xmlrpc_faultf(envP, "Parameter %s not found", param);
-		free(param);
-		return NULL;
+		goto err;
 	}
-
-	free(param);
-
+	
 
 	char *value = ptype_print_val_alloc(p->value);
 	if (!value) {
-		xmlrpc_faultf(envP, "Error while getting the parameter value");
-		return NULL;
+		xmlrpc_faultf(envP, "Error while getting the parameter value of parameter %s", param);
+		goto err;
 	}
 
-	xmlrpc_value *result = xmlrpc_build_value(envP, "{s:s,s:s}",
+	result = xmlrpc_build_value(envP, "{s:s,s:s}",
 					"name", p->name,
 					"value", value);
-	free(value);
+err:
+	free(cls);
+	free(instance);
+	free(param);
 
 	return result;
 
+
 }
 
-xmlrpc_value *xmlrpccmd_registry_set_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
-	char *param = NULL, *value = NULL;
-	xmlrpc_decompose_value(envP, paramArrayP, "(ss)", &param, &value);
+	char *cls = NULL, *instance = NULL, *param = NULL, *value = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(ssss)", &cls, &instance, &param, &value);
 
 	if (envP->fault_occurred)
 		return NULL;
 
-	struct registry_param *p = registry_find_param(param);
+
+	struct registry_class *c = registry_get_head();
+	struct registry_param *p = NULL;
+
+	for (;c && strcmp(c->name, cls); c = c->next);
+	if (c) {
+		struct registry_instance *i = c->instances;
+		for (; i && strcmp(i->name, instance); i = i->next);
+		if (i) {
+			p = i->params;
+			for (; p && strcmp(p->name, param); p = p->next);
+		}
+	}
+
+	free(cls);
+	free(instance);
+	free(param);
 
 	if (!p) {
-		xmlrpc_faultf(envP, "Parameter %s not found", param);
-		free(param);
+		xmlrpc_faultf(envP, "Parameter not found");
 		free(value);
 		return NULL;
 	}
-	free(param);
 
-	if (ptype_parse_val(p->value, value) != POM_OK) {
-		xmlrpc_faultf(envP, "Unable to parse \"%s\"", value);
+	if (registry_set_param_value(p, value) != POM_OK) {
+		xmlrpc_faultf(envP, "Unable set parameter value to \"%s\"", value);
 		free(value);
 		return NULL;
 	}

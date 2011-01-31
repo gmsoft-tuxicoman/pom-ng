@@ -170,7 +170,7 @@ static size_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stac
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_tcp_field_flags], hdr->th_flags);
 	PTYPE_UINT32_SETVAL(s->pkt_info->fields_value[proto_tcp_field_seq], ntohl(hdr->th_seq));
 	PTYPE_UINT32_SETVAL(s->pkt_info->fields_value[proto_tcp_field_ack], ntohl(hdr->th_ack));
-	PTYPE_UINT32_SETVAL(s->pkt_info->fields_value[proto_tcp_field_win], ntohl(hdr->th_win));
+	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_tcp_field_win], ntohl(hdr->th_win));
 
 
 	// Conntrack stuff

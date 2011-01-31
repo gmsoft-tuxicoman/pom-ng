@@ -23,8 +23,6 @@
 #ifndef __REGISTRY_H__
 #define __REGISTRY_H__
 
-#define REGISTRY_ROOT "root"
-
 
 #define REGISTRY_FLAG_CLEANUP_VAL	1
 
@@ -35,26 +33,46 @@ struct registry_param {
 	char *description;
 	unsigned int flags;
 
+	void *check_priv;
+	int (*set_pre_check) (void *priv, char *value);
+	int (*set_post_check) (void *priv, struct ptype *value);
+
 	struct registry_param *next, *prev;
-	struct registry_node *parent;
 };
 
-struct registry_node {
+struct registry_instance {
 	char *name;
-
-	struct registry_node *branches;
 
 	struct registry_param *params;
 
-	struct registry_node *next, *prev;
-	struct registry_node *parent;
+	struct registry_instance *next, *prev;
+	struct registry_class *parent;
+};
+
+struct registry_class {
+	char *name;
+
+	struct registry_instance *instances;
+
+	struct registry_param *global_params;
+
+	struct registry_class *next, *prev;
 };
 
 int registry_init();
-struct registry_node* registry_find_branch(char *path);
-struct registry_param* registry_find_param(char *path);
-int registry_add_branch(char *node, char *branch);
-int registry_add_param(char* branch, char *param, char *default_value, struct ptype *value, char *description, int flags);
 int registry_cleanup();
+struct registry_class * registry_get_head();
+
+struct registry_class* registry_add_class(char *name);
+int registry_remove_class(struct registry_class *c);
+
+struct registry_instance *registry_add_instance(struct registry_class *c, char *name);
+int registry_remove_instance(struct registry_instance *i);
+
+struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags);
+int registry_param_set_check_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value));
+int registry_class_add_param(struct registry_class *c, struct registry_param *p);
+int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
+int registry_set_param_value(struct registry_param *p, char *value);
 
 #endif

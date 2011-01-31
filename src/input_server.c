@@ -116,6 +116,10 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 				res = input_server_cmd_get_param(&cmd);
 				break;
 
+			case input_ipc_cmd_type_set_param:
+				res = input_server_cmd_set_param(&cmd);
+				break;
+
 			case input_ipc_cmd_type_remove:
 				res = input_server_cmd_remove(&cmd);
 				break;
@@ -270,6 +274,40 @@ err:
 
 }
 
+int input_server_cmd_set_param(struct input_ipc_raw_cmd *cmd) {
+
+	struct input_ipc_raw_cmd_reply cmd_reply;
+	memset(&cmd_reply, 0, sizeof(struct input_ipc_raw_cmd_reply));
+	cmd_reply.type = IPC_TYPE_INPUT_CMD_REPLY;
+	cmd_reply.id = cmd->id;
+	cmd_reply.status = POM_ERR;
+
+
+	// Find the right input
+	input_server_list_lock(0);
+	if (cmd->data.get_param.param_id < 0)
+		goto err;
+	
+	struct input_list *l = input_server_list_head;
+	for (; l && l->id != cmd->data.set_param.input_id; l = l->next);
+	if (!l) 
+		goto err;
+
+	struct input_param *p = l->i->params;
+	int i;
+	for (i = 0; p && i < cmd->data.set_param.param_id; i++)
+		p = p->next;
+
+	if (!p) 
+		goto err;
+	
+	cmd_reply.status = ptype_unserialize(p->value, cmd->data.set_param.value);
+
+err:
+	input_server_list_unlock();
+	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));
+
+}
 
 int input_server_cmd_remove(struct input_ipc_raw_cmd *cmd) {
 

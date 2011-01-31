@@ -41,6 +41,7 @@ enum input_ipc_msg_type {
 	input_ipc_cmd_type_mod_unload,
 	input_ipc_cmd_type_add,
 	input_ipc_cmd_type_get_param,
+	input_ipc_cmd_type_set_param,
 	input_ipc_cmd_type_remove,
 	input_ipc_cmd_type_start,
 	input_ipc_cmd_type_stop,
