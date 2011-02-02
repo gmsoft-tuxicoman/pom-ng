@@ -348,7 +348,7 @@ int input_open(struct input *i) {
 }
 
 
-int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts) {
+int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts, unsigned int drop_if_full) {
 
 	struct input_buff *buff = i->shm_buff;
 
@@ -366,6 +366,8 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 
 	pom_mutex_lock(&buff->lock);
 
+retry:
+
 	if (!buff_tail) { // buffer is empty
 		pkt = buff_start;
 	} else {
@@ -379,32 +381,45 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 				// Ok packet won't fit, let's see if we can put it at the begining
 				next = buff_start;
 				if ((void *) buff_head < next + buff_pkt_len) {
-					// Ok it doesn't fit at the begining, let's drop the packet then ...
-					pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
-					goto end;
+					// Ok it doesn't fit at the begining, buffer is full
+					next = NULL;
 				}
 			}
 		} else {
 			if ((void*)buff_head < next + buff_pkt_len) {
-				// Ok it doesn't fit at the begining, let's drop the packet then ...
+				// Ok it doesn't fit at the begining, buffer is full
+				next = NULL;
+			}
+		}
+
+		if (!next) { // Buffer overflow
+
+			if (drop_if_full) {
 				pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
 				goto end;
+			} else {
+				pomlog(POMLOG_DEBUG "Buffer overflow, waiting ....");
+				if (pthread_cond_wait(&buff->overrun_cond, &buff->lock)) {
+					pom_mutex_unlock(&buff->lock);
+					pomlog(POMLOG_ERR "Error while waiting for overrun condition : %s", pom_strerror(errno));
+					return POM_ERR;
+				}
+
+				goto retry;
 			}
 		}
 
 		pkt = next;
 	}
 
-	pom_mutex_unlock(&buff->lock);
-
 	// The copy of the packet is done unlocked
+	pom_mutex_unlock(&buff->lock);
 	memset(pkt, 0, sizeof(struct input_packet));	
 	memcpy(&pkt->ts, ts, sizeof(struct timeval));
 	pkt->len = pkt_size;
 	void *pkt_buff = (unsigned char *)pkt + sizeof(struct input_packet);
 	memcpy(pkt_buff, pkt_data, pkt_size);
 	pkt->buff_offset = pkt_buff - (void*)buff;
-
 	pom_mutex_lock(&buff->lock);
 
 	// Refecth the variables after relocking
@@ -416,9 +431,10 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 		pom_mutex_unlock(&buff->lock);
 
 		if (pthread_cond_signal(&buff->underrun_cond)) {
-			pomlog(POMLOG_ERR "Could not signal the underrun condition");
+			pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
 			return POM_ERR;
 		}
+
 		return POM_OK;
 	} else {
 		buff_tail->inpkt_next_offset = (void*)pkt - (void*)buff;

@@ -44,10 +44,10 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_interface.api_ver = INPUT_API_VER;
 	in_pcap_interface.alloc = input_pcap_interface_alloc;
 	in_pcap_interface.open = input_pcap_interface_open;
-	in_pcap_interface.read = input_pcap_interface_read;
-	in_pcap_interface.get_caps = input_pcap_interface_get_caps;
-	in_pcap_interface.close = input_pcap_interface_close;
-	in_pcap_interface.cleanup = input_pcap_interface_cleanup;
+	in_pcap_interface.read = input_pcap_read;
+	in_pcap_interface.get_caps = input_pcap_get_caps;
+	in_pcap_interface.close = input_pcap_close;
+	in_pcap_interface.cleanup = input_pcap_cleanup;
 	input_register(&in_pcap_interface, mod);
 
 
@@ -57,14 +57,22 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_file.api_ver = INPUT_API_VER;
 	in_pcap_file.alloc = input_pcap_file_alloc;
 	in_pcap_file.open = input_pcap_file_open;
-	in_pcap_file.read = input_pcap_file_read;
-	in_pcap_file.get_caps = input_pcap_file_get_caps;
-	in_pcap_file.close = input_pcap_file_close;
-	in_pcap_file.cleanup = input_pcap_file_cleanup;
-
+	in_pcap_file.read = input_pcap_read;
+	in_pcap_file.get_caps = input_pcap_get_caps;
+	in_pcap_file.close = input_pcap_close;
+	in_pcap_file.cleanup = input_pcap_cleanup;
 	input_register(&in_pcap_file, mod);
+
 	return POM_OK;
 
+}
+
+static int input_pcap_mod_unregister() {
+
+	int res = POM_OK;
+	res += input_unregister("pcap_file");
+	res += input_unregister("pcap_interface");
+	return res;
 }
 
 
@@ -74,17 +82,17 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 
 static int input_pcap_interface_alloc(struct input *i) {
 
-	struct input_pcap_interface_priv *priv;
-	priv = malloc(sizeof(struct input_pcap_interface_priv));
+	struct input_pcap_priv *priv;
+	priv = malloc(sizeof(struct input_pcap_priv));
 	if (!priv) {
-		pomlog(POMLOG_ERR "Not enough memory to allocate struct input_pcap_interface_priv");
+		pom_oom(sizeof(struct input_pcap_priv));
 		return POM_ERR;
 	}
-	memset(priv, 0, sizeof(struct input_pcap_interface_priv));
+	memset(priv, 0, sizeof(struct input_pcap_priv));
 	
-	priv->interface = ptype_alloc("string");
-	priv->promisc = ptype_alloc("bool");
-	if (!priv->interface || !priv->promisc)
+	priv->tpriv.iface.interface = ptype_alloc("string");
+	priv->tpriv.iface.promisc = ptype_alloc("bool");
+	if (!priv->tpriv.iface.interface || !priv->tpriv.iface.promisc)
 		return POM_ERR;
 
 	char err[PCAP_ERRBUF_SIZE];
@@ -92,8 +100,10 @@ static int input_pcap_interface_alloc(struct input *i) {
 	if (!dev)
 		dev = "none";
 
-	input_register_param(i, "interface", priv->interface, dev, "Interface to capture packets from", 0);
-	input_register_param(i, "promisc", priv->promisc, "no", "Promiscious mode", 0);
+	input_register_param(i, "interface", priv->tpriv.iface.interface, dev, "Interface to capture packets from", 0);
+	input_register_param(i, "promisc", priv->tpriv.iface.promisc, "no", "Promiscious mode", 0);
+
+	priv->type = input_pcap_type_interface;
 
 	i->priv = priv;
 
@@ -103,93 +113,16 @@ static int input_pcap_interface_alloc(struct input *i) {
 
 static int input_pcap_interface_open(struct input *i) {
 
-	struct input_pcap_interface_priv *p = i->priv;
+	struct input_pcap_priv *p = i->priv;
 	char errbuf[PCAP_ERRBUF_SIZE + 1];
 	memset(errbuf, 0, PCAP_ERRBUF_SIZE + 1);
 
-	char *interface = PTYPE_STRING_GETVAL(p->interface);
-	p->p = pcap_open_live(interface, INPUT_PCAP_SNAPLEN_MAX, PTYPE_BOOL_GETVAL(p->promisc), 0,errbuf);
+	char *interface = PTYPE_STRING_GETVAL(p->tpriv.iface.interface);
+	p->p = pcap_open_live(interface, INPUT_PCAP_SNAPLEN_MAX, PTYPE_BOOL_GETVAL(p->tpriv.iface.promisc), 0,errbuf);
 	if (!p->p) {
 		pomlog(POMLOG_ERR "Error opening interface %s : %s", interface, errbuf);
 		return POM_ERR;
 	}
-
-	return POM_OK;
-
-}
-
-static int input_pcap_interface_read(struct input *i) {
-
-	struct input_pcap_interface_priv *p = i->priv;
-	unsigned char *data;
-
-	struct pcap_pkthdr *phdr;
-
-	int result = pcap_next_ex(p->p, &phdr, (const u_char**) &data);
-	if (phdr->len > phdr->caplen) 
-		pomlog(POMLOG_WARN "Warning, some packets were truncated at capture time");
-
-	if (result == 0) // Timeout
-		return POM_OK;
-
-	if (result != 1) {
-		pomlog(POMLOG_ERR "Error reading packets from interface");
-		return POM_ERR;
-	}
-
-	return input_add_processed_packet(i, phdr->caplen, data, &phdr->ts);
-}
-
-static int input_pcap_interface_get_caps(struct input *i, struct input_caps *ic) {
-
-	struct input_pcap_interface_priv *p = i->priv;
-
-	if (!p->p)
-		return POM_ERR;
-
-	switch (pcap_datalink(p->p)) {
-		case DLT_EN10MB:
-			ic->datalink = "ethernet";
-			// Ethernet is 14 bytes long
-			ic->align_offset = 2;
-			break;
-
-		case DLT_DOCSIS:
-			ic->datalink = "docsis";
-			break;
-
-		case DLT_LINUX_SLL:
-			ic->datalink = "linux_cooked";
-			break;
-		default:
-			ic->datalink = "undefined";
-	}
-
-	return POM_OK;
-
-}
-
-static int input_pcap_interface_close(struct input *i) {
-
-	struct input_pcap_interface_priv *p = i->priv;
-
-	if (!p->p)
-		return POM_OK;
-	pcap_close(p->p);
-	p->p = NULL;
-	
-	return POM_OK;
-}
-
-static int input_pcap_interface_cleanup(struct input *i) {
-
-	struct input_pcap_interface_priv *priv;
-	priv = i->priv;
-	if (priv->p)
-		pcap_close(priv->p);
-	ptype_cleanup(priv->interface);
-	ptype_cleanup(priv->promisc);
-	free(priv);
 
 	return POM_OK;
 
@@ -201,19 +134,21 @@ static int input_pcap_interface_cleanup(struct input *i) {
 
 static int input_pcap_file_alloc(struct input *i) {
 
-	struct input_pcap_file_priv *priv;
-	priv = malloc(sizeof(struct input_pcap_file_priv));
+	struct input_pcap_priv *priv;
+	priv = malloc(sizeof(struct input_pcap_priv));
 	if (!priv) {
-		pomlog(POMLOG_ERR "Not enough memory to allocate struct input_pcap_file_priv");
+		pom_oom(sizeof(struct input_pcap_priv));
 		return POM_ERR;
 	}
-	memset(priv, 0, sizeof(struct input_pcap_file_priv));
+	memset(priv, 0, sizeof(struct input_pcap_priv));
 	
-	priv->file = ptype_alloc("string");
-	if (!priv->file)
+	priv->tpriv.file.file = ptype_alloc("string");
+	if (!priv->tpriv.file.file)
 		return POM_ERR;
 
-	input_register_param(i, "filename", priv->file, "dump.cap", "File in PCAP format", 0);
+	input_register_param(i, "filename", priv->tpriv.file.file, "dump.cap", "File in PCAP format", 0);
+
+	priv->type = input_pcap_type_file;
 
 	i->priv = priv;
 
@@ -223,11 +158,11 @@ static int input_pcap_file_alloc(struct input *i) {
 
 static int input_pcap_file_open(struct input *i) {
 
-	struct input_pcap_file_priv *p = i->priv;
+	struct input_pcap_priv *p = i->priv;
 	char errbuf[PCAP_ERRBUF_SIZE + 1];
 	memset(errbuf, 0, PCAP_ERRBUF_SIZE + 1);
 
-	char *filename = PTYPE_STRING_GETVAL(p->file);
+	char *filename = PTYPE_STRING_GETVAL(p->tpriv.file.file);
 	p->p = pcap_open_offline(filename, errbuf);
 	if (!p->p) {
 		pomlog(POMLOG_ERR "Error opening file %s for reading : %s", filename, errbuf);
@@ -238,9 +173,14 @@ static int input_pcap_file_open(struct input *i) {
 
 }
 
-static int input_pcap_file_read(struct input *i) {
 
-	struct input_pcap_file_priv *p = i->priv;
+/*
+ * common input pcap functions
+ */
+
+static int input_pcap_read(struct input *i) {
+
+	struct input_pcap_priv *p = i->priv;
 	unsigned char *data;
 
 	struct pcap_pkthdr *phdr;
@@ -254,15 +194,18 @@ static int input_pcap_file_read(struct input *i) {
 		return POM_OK;
 	}
 
+	if (result == 0) // Timeout
+		return POM_OK;
+
 	if (result != 1)
 		return POM_ERR;
 
-	return input_add_processed_packet(i, phdr->caplen, data, &phdr->ts);
+	return input_add_processed_packet(i, phdr->caplen, data, &phdr->ts, (p->type == input_pcap_type_interface));
 }
 
-static int input_pcap_file_get_caps(struct input *i, struct input_caps *ic) {
+static int input_pcap_get_caps(struct input *i, struct input_caps *ic) {
 
-	struct input_pcap_file_priv *p = i->priv;
+	struct input_pcap_priv *p = i->priv;
 
 	if (!p->p)
 		return POM_ERR;
@@ -285,12 +228,18 @@ static int input_pcap_file_get_caps(struct input *i, struct input_caps *ic) {
 			ic->datalink = "undefined";
 	}
 
+	if (p->type == input_pcap_type_interface)
+		ic->is_live = 1;
+	else
+		ic->is_live = 0;
+
 	return POM_OK;
+
 }
 
-static int input_pcap_file_close(struct input *i) {
+static int input_pcap_close(struct input *i) {
 
-	struct input_pcap_file_priv *p = i->priv;
+	struct input_pcap_priv *p = i->priv;
 
 	if (!p->p)
 		return POM_OK;
@@ -300,23 +249,24 @@ static int input_pcap_file_close(struct input *i) {
 	return POM_OK;
 }
 
-static int input_pcap_file_cleanup(struct input *i) {
+static int input_pcap_cleanup(struct input *i) {
 
-	struct input_pcap_file_priv *priv;
+	struct input_pcap_priv *priv;
 	priv = i->priv;
 	if (priv->p)
 		pcap_close(priv->p);
-	ptype_cleanup(priv->file);
+	switch (priv->type) {
+		case input_pcap_type_interface:
+			ptype_cleanup(priv->tpriv.iface.interface);
+			ptype_cleanup(priv->tpriv.iface.promisc);
+			break;
+		case input_pcap_type_file:
+			ptype_cleanup(priv->tpriv.file.file);
+			break;
+	}
 	free(priv);
 
 	return POM_OK;
 
 }
 
-static int input_pcap_mod_unregister() {
-
-	int res = POM_OK;
-	res += input_unregister("pcap_file");
-	res += input_unregister("pcap_interface");
-	return res;
-}

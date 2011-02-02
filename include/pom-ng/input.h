@@ -53,6 +53,7 @@ struct input_caps {
 
 	char *datalink;
 	unsigned int align_offset;
+	unsigned int is_live;
 };
 
 struct input_reg_info {
@@ -133,7 +134,7 @@ int input_close(struct input *i);
 int input_unregister(char *name);
 
 // Add a packet in the input kernel ring buffer
-int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts);
+int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts, unsigned int drop_if_full);
 
 // Called by an input module to register a parameter
 int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags);

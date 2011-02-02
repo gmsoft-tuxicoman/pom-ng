@@ -115,11 +115,13 @@ int input_client_wait_for_empty_buff(struct input_client_entry *input) {
 }
 
 int input_client_get_packet(struct input_client_entry *input, struct packet *p) {
-	
+
+
 	struct input_buff *buff = input->shm_buff;
 
 	pom_mutex_lock(&buff->lock);
 
+	// FIXME : Don't use 0 to specify an empty buffer
 	while (!buff->inpkt_head_offset) {
 		// Wait for a packet
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
@@ -132,6 +134,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 			// EOF
 			p->len = 0;
 			pom_mutex_unlock(&buff->lock);
+			pomlog(POMLOG_DEBUG "EOF");
 			return POM_OK;
 		}
 	}
@@ -150,6 +153,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 		p->bufflen = buff_head->len;
 	}
 
+	// FIXME : Do not use a copy of the buffer
 	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
 	p->len = buff_head->len;
 	memcpy(p->buff, inpkt_buff, buff_head->len);
@@ -157,6 +161,14 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	buff->inpkt_head_offset = buff_head->inpkt_next_offset;
 	if (!buff->inpkt_head_offset)
 		buff->inpkt_tail_offset = 0;
+
+	// Signal that we removed a packet
+	pomlog(POMLOG_DEBUG "overrun signal");
+	if (pthread_cond_signal(&buff->overrun_cond)) {
+		pomlog(POMLOG_ERR "Unable to signal overrun condition : %s", pom_strerror(errno));
+		pom_mutex_unlock(&buff->lock);
+		return POM_ERR;
+	}
 
 	pom_mutex_unlock(&buff->lock);
 
@@ -455,21 +467,25 @@ int input_client_cmd_start(unsigned int input_id) {
 	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
 		return POM_ERR;
 
-	int status = reply->status;
-
-	i->datalink_dep = proto_add_dependency(reply->data.start_reply.datalink);
-	if (!i->datalink_dep) {
+	if (reply->status != POM_OK) {
 		input_ipc_destroy_request(id);
 		return POM_ERR;
 	}
-	
-	input_ipc_destroy_request(id);
 
-	i->thread = core_spawn_thread(i);
-	if (!i->thread)
+	i->datalink_dep = proto_add_dependency(reply->data.start_reply.datalink);
+	if (!i->datalink_dep)
 		return POM_ERR;
+	
+	i->thread = core_spawn_thread(i);
 
-	return status;
+	if (!i->thread) {
+		input_client_cmd_stop(id);
+		proto_remove_dependency(i->datalink_dep);
+		return POM_ERR;
+	}
+
+
+	return POM_OK;
 }
 
 int input_client_cmd_stop(unsigned int input_id) {
