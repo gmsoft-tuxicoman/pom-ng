@@ -56,8 +56,8 @@ struct input_list {
 struct input_packet {
 	struct timeval ts;
 	size_t len;
-	unsigned int inpkt_next_offset;
-	unsigned int buff_offset;
+	int inpkt_prev_offset, inpkt_next_offset;
+	int buff_offset;
 };
 
 struct input_param {
@@ -71,8 +71,9 @@ struct input_param {
 };
 
 struct input_buff {
-	unsigned int inpkt_head_offset;
-	unsigned int inpkt_tail_offset;
+	int inpkt_head_offset; ///< Offset of the first packet in the buffer
+	int inpkt_process_head_offset; ///< Offset of the next packet to process in the buffer
+	int inpkt_tail_offset; ///< Last packet in the buffer
 	unsigned int attached;
 
 	pthread_mutex_t lock;
@@ -84,9 +85,8 @@ struct input_buff {
 
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod);
 struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t gid);
-int input_open(struct input *i);
+int input_open(struct input *i, struct input_caps *ic);
 int input_cleanup(struct input *i);
-int input_get_caps(struct input *i, struct input_caps *ic);
 
 void *input_process_thread(void *param);
 

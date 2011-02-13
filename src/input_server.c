@@ -22,9 +22,6 @@
 
 #include "common.h"
 
-//#include <sys/ipc.h>
-//#include <sys/msg.h>
-//#include <sys/shm.h>
 #include <signal.h>
 
 #include "mod.h"
@@ -364,18 +361,13 @@ int input_server_cmd_start(struct input_ipc_raw_cmd *cmd) {
 		input_server_list_unlock();
 		goto err;
 	}
-	cmd_reply.status = input_open(l->i);
-
 	struct input_caps ic;
 	memset(&ic, 0, sizeof(struct input_caps));
-	if (input_get_caps(l->i, &ic) == POM_ERR) {
-		pomlog(POMLOG_ERR "Unable to get the input caps");
-		input_close(l->i);
-		cmd_reply.status = POM_ERR;
-		goto err;
-	}
 
-	strncpy(cmd_reply.data.start_reply.datalink, ic.datalink, INPUT_IPC_DATALINK_MAX);
+	cmd_reply.status = input_open(l->i, &ic);
+
+	if (cmd_reply.status == POM_OK)
+		strncpy(cmd_reply.data.start_reply.datalink, ic.datalink, INPUT_IPC_DATALINK_MAX);
 
 err:
 	input_server_list_unlock();

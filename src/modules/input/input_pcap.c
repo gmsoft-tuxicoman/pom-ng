@@ -224,6 +224,11 @@ static int input_pcap_get_caps(struct input *i, struct input_caps *ic) {
 		case DLT_LINUX_SLL:
 			ic->datalink = "linux_cooked";
 			break;
+
+		case DLT_RAW:
+			ic->datalink = "ipv4";
+			break;
+	
 		default:
 			ic->datalink = "undefined";
 	}

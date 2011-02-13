@@ -83,7 +83,8 @@ int input_client_cleanup() {
 
 	}
 
-	registry_remove_class(input_registry_class);
+	if (input_registry_class)
+		registry_remove_class(input_registry_class);
 
 	return POM_OK;
 }
@@ -97,7 +98,7 @@ int input_client_wait_for_empty_buff(struct input_client_entry *input) {
 
 		pom_mutex_lock(&buff->lock);
 
-		if (!buff->inpkt_head_offset)
+		if (buff->inpkt_head_offset < 0)
 			empty = 1;
 
 		pom_mutex_unlock(&buff->lock);
@@ -121,8 +122,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 
 	pom_mutex_lock(&buff->lock);
 
-	// FIXME : Don't use 0 to specify an empty buffer
-	while (!buff->inpkt_head_offset) {
+	while (buff->inpkt_head_offset < 0) {
 		// Wait for a packet
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
@@ -130,18 +130,16 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 			return POM_ERR;
 		}
 
-		if (!buff->inpkt_head_offset) {
+		if (buff->inpkt_head_offset < 0) {
 			// EOF
 			p->len = 0;
 			pom_mutex_unlock(&buff->lock);
-			pomlog(POMLOG_DEBUG "EOF");
 			return POM_OK;
 		}
 	}
 
-	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
 	unsigned char *inpkt_buff = (unsigned char *)buff + buff_head->buff_offset;
-
 
 	if (p->bufflen < buff_head->len) {
 		p->buff = realloc(p->buff, buff_head->len);
@@ -159,11 +157,10 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	memcpy(p->buff, inpkt_buff, buff_head->len);
 
 	buff->inpkt_head_offset = buff_head->inpkt_next_offset;
-	if (!buff->inpkt_head_offset)
-		buff->inpkt_tail_offset = 0;
+	if (buff->inpkt_head_offset < 0)
+		buff->inpkt_tail_offset = -1;
 
 	// Signal that we removed a packet
-	pomlog(POMLOG_DEBUG "overrun signal");
 	if (pthread_cond_signal(&buff->overrun_cond)) {
 		pomlog(POMLOG_ERR "Unable to signal overrun condition : %s", pom_strerror(errno));
 		pom_mutex_unlock(&buff->lock);
@@ -476,6 +473,7 @@ int input_client_cmd_start(unsigned int input_id) {
 	if (!i->datalink_dep)
 		return POM_ERR;
 	
+	input_ipc_destroy_request(id);
 	i->thread = core_spawn_thread(i);
 
 	if (!i->thread) {

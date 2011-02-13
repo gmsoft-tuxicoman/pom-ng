@@ -81,6 +81,9 @@ struct registry_class* registry_add_class(char *name) {
 
 int registry_remove_class(struct registry_class *c) {
 
+	if (!c)
+		return POM_OK;
+
 	while (c->instances) {
 		if (registry_remove_instance(c->instances) != POM_OK)
 			return POM_ERR;

@@ -170,6 +170,10 @@ struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t 
 	buff->buff_start_offset = sizeof(struct input_buff);
 	buff->buff_end_offset = ret->shm_buff_size;
 
+	buff->inpkt_head_offset = -1;
+	buff->inpkt_process_head_offset = -1;
+	buff->inpkt_tail_offset = -1;
+
 	// Setup the buffer lock
 	pthread_mutexattr_t attr;
 	pthread_condattr_t condattr;
@@ -313,14 +317,14 @@ err_name:
 }
 
 
-int input_open(struct input *i) {
+int input_open(struct input *i, struct input_caps *ic) {
 
-	if (!i)
+	if (!i || !ic)
 		return POM_ERR;
 
 	input_instance_lock(i, 1);
 
-	if (i->running) {
+	if (i->running || !i->type->info->get_caps) {
 		input_instance_unlock(i);
 		return POM_ERR;
 	}
@@ -334,11 +338,20 @@ int input_open(struct input *i) {
 		}
 	}
 
+	if (i->type->info->get_caps(i, ic) == POM_ERR) {
+		input_instance_unlock(i);
+		pomlog(POMLOG_ERR "Unable to get input capabilities");
+		input_close(i);
+		return POM_ERR;
+	}
+
+
 	i->running = 1;
 
 	if (pthread_create(&i->thread, NULL, input_process_thread, (void *) i)) {
-		pomlog(POMLOG_ERR "Unable to spawn a new thread for the input");
 		input_instance_unlock(i);
+		pomlog(POMLOG_ERR "Unable to spawn a new thread for the input");
+		input_close(i);
 		return POM_ERR;
 
 	}
@@ -350,6 +363,10 @@ int input_open(struct input *i) {
 
 int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts, unsigned int drop_if_full) {
 
+
+	if (!i || !pkt_size || !pkt_data || !ts)
+		return POM_ERR;
+
 	struct input_buff *buff = i->shm_buff;
 
 	// Find some space where to store the packet in the shared mem
@@ -359,8 +376,8 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	size_t buff_pkt_len = sizeof(struct input_packet) + pkt_size;
 	void *buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
 	void *buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
-	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
-	struct input_packet *buff_tail = (struct input_packet *)(buff->inpkt_tail_offset ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct input_packet *buff_tail = (struct input_packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 
 	// Check for that size right after tail
 
@@ -414,8 +431,11 @@ retry:
 
 	// The copy of the packet is done unlocked
 	pom_mutex_unlock(&buff->lock);
-	memset(pkt, 0, sizeof(struct input_packet));	
+	memset(pkt, 0, sizeof(struct input_packet));
 	memcpy(&pkt->ts, ts, sizeof(struct timeval));
+	pkt->inpkt_prev_offset = -1;
+	pkt->inpkt_next_offset = -1;
+
 	pkt->len = pkt_size;
 	void *pkt_buff = (unsigned char *)pkt + sizeof(struct input_packet);
 	memcpy(pkt_buff, pkt_data, pkt_size);
@@ -423,11 +443,13 @@ retry:
 	pom_mutex_lock(&buff->lock);
 
 	// Refecth the variables after relocking
-	buff_head = (struct input_packet*)(buff->inpkt_head_offset ? (void*)buff + buff->inpkt_head_offset : NULL);
-	buff_tail = (struct input_packet*)(buff->inpkt_tail_offset ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	buff_head = (struct input_packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	buff_tail = (struct input_packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 	if (!buff_head) {
 		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
+
+
 		pom_mutex_unlock(&buff->lock);
 
 		if (pthread_cond_signal(&buff->underrun_cond)) {
@@ -437,7 +459,11 @@ retry:
 
 		return POM_OK;
 	} else {
+		// Connect the new packet to the last one in the buffer
+		pkt->inpkt_prev_offset = buff->inpkt_tail_offset;
+		// Update the last one to point to the next one
 		buff_tail->inpkt_next_offset = (void*)pkt - (void*)buff;
+		// Update tail of packets
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
 	}
 
@@ -446,16 +472,6 @@ end:
 
 	return POM_OK;
 }
-
-int input_get_caps(struct input *i, struct input_caps *ic) {
-
-	if (!i || !i->type->info->get_caps)
-		return POM_ERR;
-	
-	return i->type->info->get_caps(i, ic);
-
-}
-
 
 int input_close(struct input *i) {
 
