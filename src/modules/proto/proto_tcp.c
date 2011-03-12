@@ -32,6 +32,12 @@
 #define __FAVOR_BSD
 #include <netinet/tcp.h>
 
+#if 0 
+#define tcp_tshoot(x...) pomlog(POMLOG_TSHOOT x)
+#else
+#define tcp_tshoot(x...)
+#endif
+
 
 static struct proto_dependency *proto_http = NULL;
 
@@ -93,6 +99,7 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	
 	proto_tcp.init = proto_tcp_init;
 	proto_tcp.parse = proto_tcp_parse;
+	proto_tcp.process = proto_tcp_process;
 	proto_tcp.cleanup = proto_tcp_cleanup;
 
 
@@ -129,10 +136,9 @@ static int proto_tcp_init() {
 	return POM_OK;
 }
 
-static size_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 
 	if (s->plen < sizeof(struct tcphdr)) {
@@ -145,24 +151,24 @@ static size_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stac
 	unsigned int hdrlen = (hdr->th_off << 2);
 
 	if (hdrlen > s->plen || hdrlen < 20) {
-		s->proto = NULL; // Incomplete or invalid packet
-		return POM_OK;
+		// Incomplete or invalid packet
+		return 0;
 	}
 	
-	s_next->pload = s->pload + hdrlen;
-	s_next->plen = s->plen - hdrlen;
+	unsigned int plen = s->plen - hdrlen;
 
-	if ((hdr->th_flags & TH_RST) && s_next->plen > 0)
-		s_next->plen = 0; // RFC 1122 4.2.2.12 : RST may contain the data that caused the packet to be sent, discard it
+	if ((hdr->th_flags & TH_RST) && plen > 0) {
+		s->plen = hdrlen; // RFC 1122 4.2.2.12 : RST may contain the data that caused the packet to be sent, discard it
+	}
 	
-	if ((hdr->th_flags & TH_SYN) && s_next->plen > 0) {
-		s->proto = NULL; // Invalid packet, SYN or RST flag present and len > 0
-		return POM_OK;
+	if ((hdr->th_flags & TH_SYN) && plen > 0) {
+		// Invalid packet, SYN or RST flag present and len > 0
+		return 0;
 	}
 
 	if ((hdr->th_flags & TH_SYN) && ((hdr->th_flags & TH_RST) || (hdr->th_flags & TH_FIN))) {
-		s->proto = NULL; // Invalid packet SYN and either RST or FIN flag present
-		return POM_OK;
+		// Invalid packet SYN and either RST or FIN flag present
+		return 0;
 	}
 
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_tcp_field_sport], ntohs(hdr->th_sport));
@@ -177,6 +183,68 @@ static size_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stac
 	s->ct_field_fwd = s->pkt_info->fields_value[proto_tcp_field_sport];
 	s->ct_field_rev = s->pkt_info->fields_value[proto_tcp_field_dport];
 
+	return hdrlen;
+
+}
+
+static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
+
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	struct tcphdr* hdr = s->pload;
+
+	if (!s->ce)
+		return POM_ERR;
+
+	struct proto_tcp_conntrack_priv *cp = s->ce->priv;
+
+	if (!cp) {
+		cp = malloc(sizeof(struct proto_tcp_conntrack_priv));
+		if (!cp) {
+			pom_oom(sizeof(struct proto_tcp_conntrack_priv));
+			return POM_ERR;
+		}
+		memset(cp, 0, sizeof(struct proto_tcp_conntrack_priv));
+	}
+
+	uint32_t new_seq, new_ack;
+	new_seq = ntohl(hdr->th_seq);
+	new_ack = ntohl(hdr->th_ack);
+/*
+	if (cp->flags[dir] & PROTO_TCP_SEQ_KNOWN) {
+
+
+
+
+	} else {
+		if (hdr->th_flags & TH_RST) {
+			// Don't learn initial sequence from RST packets as it's often bogus (0)
+			tcp_tshoot("Ignoring sequence from RST packet and processing it");
+			return POM_OK;
+		}
+
+		cp->flags[dir] |= PROTO_TCP_SEQ_KNOWN;
+
+	}
+
+
+	cp->seq_expected[dir] = new_seq + payload_size;
+	if (hdr->th_flags & TH_SYN || hdr->th_flags & TH_FIN)
+		cp->seq_expected[dir]++;
+*/
+	tcp_tshoot("Processing packet");
+
+
+
+
+
+
+
+
+
+
+
+
 	// TODO improve this
 	
 	if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
@@ -187,6 +255,7 @@ static size_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stac
 	return POM_OK;
 
 }
+
 
 static int proto_tcp_cleanup() {
 

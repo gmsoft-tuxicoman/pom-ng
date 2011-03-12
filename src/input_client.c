@@ -52,11 +52,11 @@ int input_client_cleanup() {
 		input_client_head = i->next;
 
 		if (i->thread)
-			core_destroy_thread(i->thread);
+			core_destroy_reader_thread(i->thread);
 
 		if (i->shm_buff) {
 			pom_mutex_lock(&i->shm_buff->lock);
-			i->shm_buff->attached = 0;
+			i->shm_buff->flags &= ~INPUT_FLAG_ATTACHED;
 			pom_mutex_unlock(&i->shm_buff->lock);
 			if (shmdt(i->shm_buff))
 				pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
@@ -115,32 +115,40 @@ int input_client_wait_for_empty_buff(struct input_client_entry *input) {
 	return POM_OK;
 }
 
-int input_client_get_packet(struct input_client_entry *input, struct packet *p) {
+// Return NULL on error, -1 on EOF
+
+struct packet *input_client_get_packet(struct input_client_entry *input) {
 
 
 	struct input_buff *buff = input->shm_buff;
 
 	pom_mutex_lock(&buff->lock);
 
-	while (buff->inpkt_head_offset < 0) {
+	while (buff->inpkt_process_head_offset < 0) {
+
+		if (buff->flags & INPUT_FLAG_EOF) {
+			
+			// Clear the EOF flag so the input will be allowed to start again
+			buff->flags &= !INPUT_FLAG_EOF;
+
+			// EOF
+			pom_mutex_unlock(&buff->lock);
+			return (void*)-1;
+		}
+
 		// Wait for a packet
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
 			pom_mutex_unlock(&buff->lock);
-			return POM_ERR;
-		}
-
-		if (buff->inpkt_head_offset < 0) {
-			// EOF
-			p->len = 0;
-			pom_mutex_unlock(&buff->lock);
-			return POM_OK;
+			return NULL;
 		}
 	}
 
-	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct packet *buff_head = (struct packet *)(buff->inpkt_process_head_offset >= 0 ? (void*)buff + buff->inpkt_process_head_offset : NULL);
 	unsigned char *inpkt_buff = (unsigned char *)buff + buff_head->buff_offset;
 
+
+/*
 	if (p->bufflen < buff_head->len) {
 		p->buff = realloc(p->buff, buff_head->len);
 		if (!p->buff) {
@@ -155,20 +163,53 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
 	p->len = buff_head->len;
 	memcpy(p->buff, inpkt_buff, buff_head->len);
+*/
 
-	buff->inpkt_head_offset = buff_head->inpkt_next_offset;
-	if (buff->inpkt_head_offset < 0)
-		buff->inpkt_tail_offset = -1;
+
+	buff->inpkt_process_head_offset = buff_head->inpkt_next_offset;
 
 	// Signal that we removed a packet
 	if (pthread_cond_signal(&buff->overrun_cond)) {
 		pomlog(POMLOG_ERR "Unable to signal overrun condition : %s", pom_strerror(errno));
 		pom_mutex_unlock(&buff->lock);
-		return POM_ERR;
+		return NULL;
 	}
 
 	pom_mutex_unlock(&buff->lock);
 
+	buff_head->buff = inpkt_buff;
+
+	return buff_head;
+}
+
+int input_client_release_packet(struct input_client_entry *input, struct packet *p) {
+
+	struct input_buff *buff = input->shm_buff;
+
+	pom_mutex_lock(&buff->lock);
+
+	struct packet *prev = (struct packet*)(p->inpkt_prev_offset >= 0 ? (void*) buff + p->inpkt_prev_offset : NULL);
+	struct packet *next = (struct packet*)(p->inpkt_next_offset >= 0 ? (void*) buff + p->inpkt_next_offset : NULL);
+
+	if (prev) {
+		prev->inpkt_next_offset = p->inpkt_next_offset;
+	} else {
+		buff->inpkt_head_offset = p->inpkt_next_offset;
+	}
+	
+	if (next) {
+		next->inpkt_prev_offset = p->inpkt_prev_offset;
+	} else {
+		buff->inpkt_tail_offset = p->inpkt_prev_offset;
+	}
+
+	if (pthread_cond_signal(&buff->overrun_cond)) { // A packet has been taken out
+		pomlog(POMLOG_ERR "Error while signaling overrun condition : %s", pom_strerror(errno));
+		pom_mutex_unlock(&buff->lock);
+		return POM_ERR;
+	}
+
+	pom_mutex_unlock(&buff->lock);
 
 	return POM_OK;
 }
@@ -242,7 +283,7 @@ int input_client_cmd_add(char *name) {
 	}
 
 	pom_mutex_lock(&buff->lock);
-	buff->attached = 1;
+	buff->flags |= INPUT_FLAG_ATTACHED;
 	pom_mutex_unlock(&buff->lock);
 
 	entry = malloc(sizeof(struct input_client_entry));
@@ -358,7 +399,7 @@ err:
 
 	if (buff) {
 		pom_mutex_lock(&buff->lock);
-		buff->attached = 0;
+		buff->flags &= ~INPUT_FLAG_ATTACHED;
 		pom_mutex_unlock(&buff->lock);
 		shmdt(buff);
 	}
@@ -405,7 +446,7 @@ int input_client_cmd_remove(unsigned int input_id) {
 
 	if (i->shm_buff) {
 		pom_mutex_lock(&i->shm_buff->lock);
-		i->shm_buff->attached = 0;
+		i->shm_buff->flags &= ~INPUT_FLAG_ATTACHED;
 		pom_mutex_unlock(&i->shm_buff->lock);
 		if (shmdt(i->shm_buff))
 			pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
@@ -474,9 +515,8 @@ int input_client_cmd_start(unsigned int input_id) {
 		return POM_ERR;
 	
 	input_ipc_destroy_request(id);
-	i->thread = core_spawn_thread(i);
+	if (core_spawn_reader_thread(i) == POM_ERR) {
 
-	if (!i->thread) {
 		input_client_cmd_stop(id);
 		proto_remove_dependency(i->datalink_dep);
 		return POM_ERR;
@@ -514,12 +554,12 @@ int input_client_cmd_stop(unsigned int input_id) {
 	
 	input_ipc_destroy_request(id);
 
-	if (core_destroy_thread(i->thread))
-		return POM_ERR;
-	i->thread = NULL;
-
 	proto_remove_dependency(i->datalink_dep);
 	i->datalink_dep = NULL;
+
+	if (core_destroy_reader_thread(i->thread))
+		return POM_ERR;
+	i->thread = NULL;
 
 	return status;
 }

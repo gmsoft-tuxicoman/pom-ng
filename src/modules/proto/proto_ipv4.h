@@ -36,7 +36,8 @@ enum proto_ipv4_fields {
 struct mod_reg_info* proto_ipv4_reg_info();
 static int proto_ipv4_init();
 static int proto_ipv4_mod_register(struct mod_reg *mod);
-static size_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static ssize_t proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
 static int proto_ipv4_cleanup();
 static int proto_ipv4_mod_unregister();
 

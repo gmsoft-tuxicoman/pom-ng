@@ -36,6 +36,10 @@
 
 #define INPUT_SHM_BUFF_SIZE 2 * 1024 * 1024
 
+#define INPUT_FLAG_ATTACHED	0x1 ///< the parent process has attached the buffer
+#define INPUT_FLAG_RUNNING	0x2 ///< the parent process is reading packets
+#define INPUT_FLAG_EOF		0x4 ///< the input reached EOF
+
 struct input_reg {
 
 	struct input_reg_info *info;
@@ -53,12 +57,6 @@ struct input_list {
 
 };
 
-struct input_packet {
-	struct timeval ts;
-	size_t len;
-	int inpkt_prev_offset, inpkt_next_offset;
-	int buff_offset;
-};
 
 struct input_param {
 	char *name;
@@ -74,7 +72,7 @@ struct input_buff {
 	int inpkt_head_offset; ///< Offset of the first packet in the buffer
 	int inpkt_process_head_offset; ///< Offset of the next packet to process in the buffer
 	int inpkt_tail_offset; ///< Last packet in the buffer
-	unsigned int attached;
+	unsigned int flags;
 
 	pthread_mutex_t lock;
 	pthread_cond_t underrun_cond, overrun_cond;

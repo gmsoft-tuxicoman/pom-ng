@@ -73,7 +73,8 @@ struct proto_reg_info {
 	struct conntrack_info ct_info;
 
 	int (*init) ();
-	size_t (*parse) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	ssize_t (*parse) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	ssize_t (*process) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);
 	int (*cleanup) ();
 
 };
@@ -82,8 +83,11 @@ struct proto_reg_info {
 /// Register a new protocol
 int proto_register(struct proto_reg_info *reg);
 
-/// Process part of a packet with a protocol
+/// Parse the headers of a packet
 int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+
+/// Process the payload of the packet
+int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);
 
 /// Unregister a protocol
 int proto_unregister(char *name);

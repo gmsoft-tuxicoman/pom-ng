@@ -28,81 +28,320 @@
 #include "packet.h"
 #include "conntrack.h"
 
+static int core_run = 0; // Set to 1 while the processing thread should run
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i) {
-	
-	struct core_thread *t = malloc(sizeof(struct core_thread));
-	if (!t) {
-		pom_oom(sizeof(struct core_thread));
-		return NULL;
-	}
-	memset(t, 0, sizeof(struct core_thread));
+static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
 
-	t->pkt = malloc(sizeof(struct packet));
-	if (!t->pkt) {
-		free(t);
-		pom_oom(sizeof(struct packet));
-		return NULL;
-	}
-	memset(t->pkt, 0, sizeof(struct packet));
+// Packet queue
+struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
+struct core_packet_queue *core_pkt_queue_unused = NULL;
+unsigned int core_pkt_queue_usage = 0;
+static pthread_cond_t core_pkt_queue_restart_cond;
+static pthread_mutex_t core_pkt_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-	t->input = i;
 
-	if (pthread_create(&t->thread, NULL, core_process_thread, (void*)t)) {
-		pomlog(POMLOG_ERR "Error while creating a new processing thread : %s", pom_strerror(errno));
-		free(t->pkt);
-		free(t);
-		return NULL;
+int core_init() {
+
+	// Initialize the conditions for the sheduler thread
+	if (pthread_cond_init(&core_pkt_queue_restart_cond, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing the restart condition : %s", pom_strerror(errno));
+		return POM_ERR;
 	}
 
-	return t;
+	// Start the processing threads
+	int numcpu = sysconf(_SC_NPROCESSORS_ONLN);
+	if (numcpu < 1) {
+		pomlog(POMLOG_WARN "Could not find the number of CPU, starting %u processing threads", CORE_PROCESS_THREAD_DEFAULT);
+		numcpu = CORE_PROCESS_THREAD_DEFAULT;
+	} else {
+		if (numcpu > CORE_PROCESS_THREAD_MAX)
+			numcpu = CORE_PROCESS_THREAD_MAX;
+		pomlog(POMLOG_INFO "Starting %u processing threads", numcpu);
+	}
+
+	core_run = 1;
+
+	memset(core_processing_threads, 0, sizeof(struct core_processing_thread*) * CORE_PROCESS_THREAD_MAX);
+
+	int i;
+
+	for (i = 0; i < numcpu; i++) {
+		struct core_processing_thread *tmp = malloc(sizeof(struct core_processing_thread));
+		if (!tmp) {
+			pom_oom(sizeof(struct core_processing_thread));
+			goto err;
+		}
+		memset(tmp, 0, sizeof(struct core_processing_thread));
+		
+		if (pthread_mutex_init(&tmp->lock, NULL)) {
+			pomlog(POMLOG_ERR "Error while initializing the processing thread's mutex : %s", pom_strerror(errno));
+			free(tmp);
+			goto err;
+		}
+
+		if (pthread_cond_init(&tmp->restart_cond, NULL)) {
+			pomlog(POMLOG_ERR "Error while initializing processing thread's mutex condition : %s", pom_strerror(errno));
+			pthread_mutex_destroy(&tmp->lock);
+			free(tmp);
+			goto err;
+		}
+		
+		if (pthread_create(&tmp->thread, NULL, core_processing_thread_func, tmp)) {
+			pomlog(POMLOG_ERR "Error while creating a new processing thread : %s", pom_strerror(errno));
+			pthread_mutex_destroy(&tmp->lock);
+			pthread_cond_destroy(&tmp->restart_cond);
+			free(tmp);
+			goto err;
+		}
+
+
+		core_processing_threads[i] = tmp;
+	}
+
+	return POM_OK;
+
+err:
+	core_cleanup();
+	return POM_ERR;
+
 }
 
 
-void *core_process_thread(void *thread) {
+int core_cleanup() {
 
-	struct core_thread *t = thread;
+	core_run = 0;
+
+	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
+		pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	int i;
+	for (i = 0; i < CORE_PROCESS_THREAD_MAX && core_processing_threads[i]; i++) {
+		pthread_join(core_processing_threads[i]->thread, NULL);
+		pthread_cond_destroy(&core_processing_threads[i]->restart_cond);
+		pthread_mutex_destroy(&core_processing_threads[i]->lock);
+		free(core_processing_threads[i]);
+	}
+
+	pthread_cond_destroy(&core_pkt_queue_restart_cond);
+
+	while (core_pkt_queue_head) {
+		struct core_packet_queue *tmp = core_pkt_queue_head;
+		core_pkt_queue_head = tmp->next;
+		free(tmp);
+		pomlog(POMLOG_WARN "A packet was still in the buffer");
+	}
+
+	while (core_pkt_queue_unused) {
+		struct core_packet_queue *tmp = core_pkt_queue_unused;
+		core_pkt_queue_unused = tmp->next;
+		free(tmp);
+	}
+
+	
+	return POM_OK;
+}
+
+int core_spawn_reader_thread(struct input_client_entry *i) {
+	
+	struct core_reader_thread *t = malloc(sizeof(struct core_reader_thread));
+	if (!t) {
+		pom_oom(sizeof(struct core_reader_thread));
+		return POM_ERR;
+	}
+	memset(t, 0, sizeof(struct core_reader_thread));
+
+	t->input = i;
+	i->thread = t;
+
+	if (pthread_create(&t->thread, NULL, core_reader_thread_func, t)) {
+		pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+
+void *core_reader_thread_func(void *thread) {
+
+	struct core_reader_thread *t = thread;
 
 	pomlog(POMLOG_INFO "New thread created for input %u", t->input->id);
 
 	while (1) {
 
-		if (input_client_get_packet(t->input, t->pkt) == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while reading packet");
+		struct packet *p = input_client_get_packet(t->input);
+		if (!p) {
+			pomlog(POMLOG_ERR "Error while reading packet from input %u", t->input->id);
 			return NULL;
 		}
 
-		if (!t->pkt->len) {
+		if (p == (void*)-1) {
 			// EOF
-			//packet_drop_infos(t->pkt);
 			return NULL;
 		}
 
-		if (core_process_packet(t->pkt, t->input->datalink_dep->proto) == POM_ERR) {
-			//packet_drop_infos(t->pkt);
+		if (core_queue_packet(p, t->input->datalink_dep->proto, t->input) == POM_ERR) {
 			return NULL;
 		}
 
 	}
 
+	pthread_detach(pthread_self());
+
+	input_client_cmd_stop(t->input->id);
+
 	return NULL;
 }
 
-int core_destroy_thread(struct core_thread *t) {
+int core_queue_packet(struct packet *p, struct proto_reg *datalink, struct input_client_entry *i) {
+
+	pom_mutex_lock(&core_pkt_queue_mutex);
+
+	while (core_pkt_queue_usage >= CORE_PKT_QUEUE_MAX) {
+		// Queue full
+		if (pthread_cond_wait(&core_pkt_queue_restart_cond, &core_pkt_queue_mutex)) {
+			pomlog(POMLOG_ERR "Error while waiting for overrun mutex condition : %s", pom_strerror(errno));
+			pom_mutex_unlock(&core_pkt_queue_mutex);
+			return POM_ERR;
+		}
+	}
+
+	struct core_packet_queue *tmp = NULL;
+
+	if (core_pkt_queue_unused) {
+		// Get a packet from the already allocated items
+		tmp = core_pkt_queue_unused;
+		core_pkt_queue_unused = tmp->next;
+		if (core_pkt_queue_unused)
+			core_pkt_queue_unused->prev = NULL;
+
+	} else {
+		// Allocate a new item
+		tmp = malloc(sizeof(struct core_packet_queue));
+		if (!tmp) {
+			pom_mutex_unlock(&core_pkt_queue_mutex);
+			pom_oom(sizeof(struct core_packet_queue));
+			return POM_ERR;
+		}
+
+	}
+
+	memset(tmp, 0, sizeof(struct core_packet_queue));
+	tmp->pkt = p;
+	tmp->datalink = datalink;
+	tmp->input = i;
+	core_pkt_queue_usage++;
+
+	// Add the packet at the end of the queue
+	if (core_pkt_queue_tail) {
+		tmp->prev = core_pkt_queue_tail;
+		core_pkt_queue_tail->next = tmp;
+		core_pkt_queue_tail = tmp;
+	} else {
+		core_pkt_queue_head = tmp;
+		core_pkt_queue_tail = tmp;
+	}
+
+	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
+		pomlog(POMLOG_ERR "Error while signaling restart condition : %s", pom_strerror(errno));
+		pom_mutex_unlock(&core_pkt_queue_mutex);
+		return POM_ERR;
+
+	}
+
+	pom_mutex_unlock(&core_pkt_queue_mutex);
+
+	return POM_OK;
+}
+
+
+int core_destroy_reader_thread(struct core_reader_thread *t) {
 
 	if (input_client_wait_for_empty_buff(t->input) == POM_ERR)
 		return POM_ERR;
 
 	if (pthread_join(t->thread, NULL)) {
-		pomlog(POMLOG_ERR "Error while joining a processing thread : %s", pom_strerror(errno));
+		pomlog(POMLOG_ERR "Error while joining processing thread for input %u : %s", t->input->id, pom_strerror(errno));
 		return POM_ERR;
 	}
-	if (t->pkt->buff)
-		free(t->pkt->buff);
-	free(t->pkt);
 	free(t);
 
 	return POM_OK;
+}
+
+
+void *core_processing_thread_func(void *priv) {
+
+	struct core_processing_thread *t = priv;
+
+	while (core_run) {
+		
+		pom_mutex_lock(&core_pkt_queue_mutex);
+		while (!core_pkt_queue_head) {
+			if (!core_run) {
+				pom_mutex_unlock(&core_pkt_queue_mutex);
+				return NULL;
+			}
+
+			if (pthread_cond_wait(&core_pkt_queue_restart_cond, &core_pkt_queue_mutex)) {
+				pomlog(POMLOG_ERR "Error while waiting for restart condition : %s", pom_strerror(errno));
+				// Should probably abort here
+				return NULL;
+			}
+
+		}
+	
+		struct core_packet_queue *tmp = core_pkt_queue_head;
+
+		struct packet *pkt = tmp->pkt;
+		struct proto_reg *datalink = tmp->datalink;
+		struct input_client_entry *input = tmp->input;
+
+		// Remove the packet from the queue
+		core_pkt_queue_head = tmp->next;
+		if (core_pkt_queue_head)
+			core_pkt_queue_head->prev = NULL;
+		else
+			core_pkt_queue_tail = NULL;
+
+		// Add it to the unused list
+		memset(tmp, 0, sizeof(struct core_packet_queue));
+		tmp->next = core_pkt_queue_unused;
+		if (tmp->next)
+			tmp->next->prev = tmp;
+		core_pkt_queue_unused = tmp;
+
+		core_pkt_queue_usage--;
+
+		pom_mutex_unlock(&core_pkt_queue_mutex);
+
+
+
+
+
+		pomlog(POMLOG_DEBUG "Thread %u processing ...", t->thread);
+		if (core_process_packet(pkt, datalink) == POM_ERR)
+			return NULL;
+
+		if (input) {
+			if (input_client_release_packet(input, pkt) != POM_OK) {
+				pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
+				return NULL;
+			}
+		}
+
+		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
+			pomlog(POMLOG_ERR "Error while signaling the done condition : %s", pom_strerror(errno));
+			return NULL;
+
+		}
+
+	}
+
+	return NULL;
 }
 
 int core_process_packet(struct packet *p, struct proto_reg *datalink) {
@@ -119,19 +358,17 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 		
 		s[i].pkt_info = packet_info_pool_get(s[i].proto);
 
-		if (proto_parse(p, s, i) == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while parsing packet");
+		ssize_t hdr_len = proto_parse(p, s, i);
+
+		if (hdr_len == POM_ERR)
 			return POM_ERR;
-		}
-		if (!s[i].proto) // Packet was invalid, stop here
+
+		if (hdr_len <= 0) // Nothing more to process
 			break;
 
-		if ((s[i + 1].pload > s[i].pload + s[i].plen) || // Check if next payload is further than the end of current paylod
-			(s[i + 1].pload < s[i].pload) || // Check if next payload is before the start of the current payload
-			(s[i + 1].pload + s[i + 1].plen > s[i].pload + s[i].plen) || // Check if the end of the next payload is after the end of the current payload
-			(s[i + 1].pload + s[i + 1].plen < s[i + 1].pload)) { // Check for integer overflow
-			// Invalid packet
-			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s[i].proto->info->name);
+		if (hdr_len > s[i].plen) {
+			pomlog(POMLOG_WARN "Warning : parsed header bigger than available payload : parsed %u, had %u", hdr_len, s[i].plen);
+			break;
 		}
 
 		if (s[i].ct_field_fwd) {
@@ -143,6 +380,33 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 				pomlog(POMLOG_WARN "Warning : could not get conntrack for proto %s", s[i].proto->info->name);
 		}
 
+		ssize_t pload_len = proto_process(p, s, i, hdr_len);
+
+		if (pload_len == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
+			return POM_ERR;
+		}
+
+		if (pload_len <= 0) // Nothing more to process
+			break;
+
+		if (hdr_len + pload_len > s[i].plen) {
+			pomlog(POMLOG_WARN "Warning : parsed lenght bigger than available payload : header %u, pload %u (tot %u), had %u", hdr_len, pload_len, hdr_len + pload_len, s[i].plen);
+		}
+
+		s[i + 1].pload = s[i].pload + hdr_len;
+		s[i + 1].plen = s[i].plen - hdr_len;
+		
+
+		if ((s[i + 1].pload > s[i].pload + s[i].plen) || // Check if next payload is further than the end of current paylod
+			(s[i + 1].pload < s[i].pload) || // Check if next payload is before the start of the current payload
+			(s[i + 1].pload + s[i + 1].plen > s[i].pload + s[i].plen) || // Check if the end of the next payload is after the end of the current payload
+			(s[i + 1].pload + s[i + 1].plen < s[i + 1].pload)) { // Check for integer overflow
+			// Invalid packet
+			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s[i].proto->info->name);
+			break;
+		}
+
 	}
 
 
@@ -151,7 +415,7 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 
 	// Dump packet info
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
-		printf("%s{", s[i].proto->info->name);
+		printf("%s { ", s[i].proto->info->name);
 		int j;
 		for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
 			char buff[256];

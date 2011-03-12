@@ -32,7 +32,8 @@
 #include "input_ipc.h"
 #include "input_server.h"
 #include "mod.h"
-#include <ptype.h>
+#include <pom-ng/ptype.h>
+#include <pom-ng/packet.h>
 
 static pthread_rwlock_t input_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static struct input_reg *input_reg_head = NULL;
@@ -324,6 +325,16 @@ int input_open(struct input *i, struct input_caps *ic) {
 
 	input_instance_lock(i, 1);
 
+	pom_mutex_lock(&i->shm_buff->lock);
+	if (i->shm_buff->flags & INPUT_FLAG_EOF) {
+		pom_mutex_unlock(&i->shm_buff->lock);
+		input_instance_unlock(i);
+		pomlog(POMLOG_ERR "Input packets are still being processed. Please wait ...");
+		return POM_ERR;
+	}
+	pom_mutex_unlock(&i->shm_buff->lock);
+	
+
 	if (i->running || !i->type->info->get_caps) {
 		input_instance_unlock(i);
 		return POM_ERR;
@@ -371,17 +382,18 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 
 	// Find some space where to store the packet in the shared mem
 	
-	struct input_packet *pkt = NULL;
+	struct packet *pkt = NULL;
 
-	size_t buff_pkt_len = sizeof(struct input_packet) + pkt_size;
+	pom_mutex_lock(&buff->lock);
+
+	size_t buff_pkt_len = sizeof(struct packet) + pkt_size;
 	void *buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
 	void *buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
-	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	struct input_packet *buff_tail = (struct input_packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	struct packet *buff_head = (struct packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct packet *buff_tail = (struct packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 
 	// Check for that size right after tail
 
-	pom_mutex_lock(&buff->lock);
 
 retry:
 
@@ -389,7 +401,7 @@ retry:
 		pkt = buff_start;
 	} else {
 		// Something is in the buffer, see if it fits 
-		void *next = buff_tail + sizeof(struct input_packet) + buff_tail->len;
+		void *next = buff_tail + sizeof(struct packet) + buff_tail->len;
 
 
 		if (buff_tail >= buff_head) {
@@ -431,33 +443,32 @@ retry:
 
 	// The copy of the packet is done unlocked
 	pom_mutex_unlock(&buff->lock);
-	memset(pkt, 0, sizeof(struct input_packet));
+	memset(pkt, 0, sizeof(struct packet));
 	memcpy(&pkt->ts, ts, sizeof(struct timeval));
 	pkt->inpkt_prev_offset = -1;
 	pkt->inpkt_next_offset = -1;
 
 	pkt->len = pkt_size;
-	void *pkt_buff = (unsigned char *)pkt + sizeof(struct input_packet);
+	void *pkt_buff = (unsigned char *)pkt + sizeof(struct packet);
 	memcpy(pkt_buff, pkt_data, pkt_size);
 	pkt->buff_offset = pkt_buff - (void*)buff;
 	pom_mutex_lock(&buff->lock);
 
 	// Refecth the variables after relocking
-	buff_head = (struct input_packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	buff_tail = (struct input_packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	buff_head = (struct packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	buff_tail = (struct packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 	if (!buff_head) {
 		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
+		buff->inpkt_process_head_offset = (void*)pkt - (void*)buff;
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
 
 
-		pom_mutex_unlock(&buff->lock);
-
 		if (pthread_cond_signal(&buff->underrun_cond)) {
 			pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
+			pom_mutex_unlock(&buff->lock);
 			return POM_ERR;
 		}
 
-		return POM_OK;
 	} else {
 		// Connect the new packet to the last one in the buffer
 		pkt->inpkt_prev_offset = buff->inpkt_tail_offset;
@@ -465,6 +476,15 @@ retry:
 		buff_tail->inpkt_next_offset = (void*)pkt - (void*)buff;
 		// Update tail of packets
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
+
+		if (buff->inpkt_process_head_offset == -1) {
+			buff->inpkt_process_head_offset = buff->inpkt_tail_offset;
+			if (pthread_cond_signal(&buff->underrun_cond)) {
+				pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
+				pom_mutex_unlock(&buff->lock);
+				return POM_ERR;
+			}
+		}
 	}
 
 end:
@@ -486,6 +506,11 @@ int input_close(struct input *i) {
 	}
 
 	i->running = 0;
+
+	pom_mutex_lock(&i->shm_buff->lock);
+	i->shm_buff->flags |= INPUT_FLAG_EOF;
+	pom_mutex_unlock(&i->shm_buff->lock);
+
 	input_instance_unlock(i);
 
 	if (!pthread_equal(pthread_self(), i->thread)) {
@@ -522,16 +547,19 @@ int input_cleanup(struct input *i) {
 
 	// Free shm stuff
 	if (i->shm_buff) {
-		int attached = 1;
-		while (1) {
-			pomlog(POMLOG_DEBUG "Waiting for the other process to detach the buffer ...");
+		int try = 0, maxtry = 5;
+		for (; try < maxtry; i++) {
 			pom_mutex_lock(&i->shm_buff->lock);
-			attached = i->shm_buff->attached;
+			unsigned int attached = i->shm_buff->flags & INPUT_FLAG_ATTACHED;
 			pom_mutex_unlock(&i->shm_buff->lock);
 			if (!attached)
 				break;
+			pomlog(POMLOG_DEBUG "Waiting for the other process to detach the buffer ...");
 			sleep(1);
 		}
+
+		if (try == maxtry)
+			pomlog(POMLOG_WARN "Buffer still attached after %u tries. Is the other process dead ? Cleaning up anyway ...", try);
 
 		if (shmdt(i->shm_buff))
 			pomlog(POMLOG_WARN "Error while detaching shared memory : %s", pom_strerror(errno));

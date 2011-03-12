@@ -80,6 +80,7 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	
 	proto_ipv4.init = proto_ipv4_init;
 	proto_ipv4.parse = proto_ipv4_parse;
+	proto_ipv4.process = proto_ipv4_process;
 	proto_ipv4.cleanup = proto_ipv4_cleanup;
 
 	if (proto_register(&proto_ipv4) == POM_OK)
@@ -115,11 +116,10 @@ static int proto_ipv4_init() {
 	return POM_OK;
 }
 
-static size_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	struct in_addr saddr, daddr;
 	struct ip* hdr = s->pload;
@@ -146,6 +146,16 @@ static size_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *sta
 	s->ct_field_fwd = s->pkt_info->fields_value[proto_ipv4_field_src];
 	s->ct_field_rev = s->pkt_info->fields_value[proto_ipv4_field_dst];
 
+	return hdr_len;
+
+}
+
+static ssize_t proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
+
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	struct ip* hdr = s->pload;
+
 	switch (hdr->ip_p) {
 		case IPPROTO_ICMP: // 1
 			s_next->proto = proto_icmp->proto;
@@ -168,13 +178,12 @@ static size_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *sta
 			break;
 
 	}
+	
 
-	s_next->pload = s->pload + hdr_len;
-	s_next->plen = s->plen - hdr_len;
-
-	return POM_OK;
+	return s->plen - hdr_len;
 
 }
+
 
 static int proto_ipv4_cleanup() {
 

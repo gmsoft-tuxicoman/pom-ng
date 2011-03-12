@@ -26,18 +26,43 @@
 #include <pom-ng/proto.h>
 #include <pthread.h>
 
-#define CORE_PROTO_STACK_MAX	16
+#define CORE_PROTO_STACK_MAX		16
 
-struct core_thread {
+#define CORE_PKT_QUEUE_MAX		64
+#define CORE_PROCESS_THREAD_MAX		64
+#define CORE_PROCESS_THREAD_DEFAULT	2
+
+struct core_packet_queue {
+	struct packet *pkt;
+	struct proto_reg *datalink;
+	struct input_client_entry *input;
+	struct core_packet_queue *prev, *next;
+};
+
+struct core_processing_thread {
+	struct proto_process_stack stack[CORE_PROTO_STACK_MAX];
+	int stack_index;
+	pthread_t thread;
+	pthread_mutex_t lock;
+	pthread_cond_t restart_cond; // Issued by the reader thread when there is a packet to process
+
+};
+
+struct core_reader_thread {
 	struct input_client_entry *input;
 	pthread_t thread;
 	int run; // Indicate if the thread should continue to run or not
 	struct packet *pkt;
 };
 
-struct core_thread* core_spawn_thread(struct input_client_entry *i);
-void *core_process_thread(void *input);
-int core_destroy_thread(struct core_thread *t);
+int core_init();
+int core_cleanup();
+
+int core_spawn_reader_thread(struct input_client_entry *i);
+void *core_reader_thread_func(void *input);
+int core_queue_packet(struct packet *p, struct proto_reg *datalink, struct input_client_entry *i);
+int core_destroy_reader_thread(struct core_reader_thread *t);
+void *core_processing_thread_func(void *priv);
 int core_process_packet(struct packet *p, struct proto_reg *datalink);
 
 #endif

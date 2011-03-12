@@ -249,6 +249,12 @@ int main(int argc, char *argv[]) {
 		goto err_xmlrpcsrv;
 	}
 
+	if (core_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing core");
+		res = -1;
+		goto err_httpd;
+	}
+
 	// Main loop
 	
 	pomlog(PACKAGE_NAME " started !");
@@ -280,7 +286,9 @@ err:
 		pomlog("Waiting for input process to terminate ...");
 		waitpid(input_process_pid, NULL, 0);
 	}
-
+	
+	core_cleanup();
+err_httpd:
 	httpd_cleanup();
 err_xmlrpcsrv:
 	xmlrpcsrv_cleanup();

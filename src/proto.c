@@ -129,6 +129,18 @@ int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int st
 	return proto->info->parse(p, s, stack_index);
 }
 
+int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len) {
+
+	if (!s)
+		return POM_ERR;
+	
+	struct proto_reg *proto = s[stack_index].proto;
+
+	if (!proto || !proto->info->process)
+		return POM_ERR;
+	return proto->info->process(p, s, stack_index, hdr_len);
+}
+
 int proto_unregister(char *name) {
 
 	pom_mutex_lock(&proto_list_lock);

@@ -46,7 +46,7 @@ struct input_client_entry {
 	int shm_key;
 	int shm_id;
 	struct input_buff *shm_buff;
-	struct core_thread *thread;
+	struct core_reader_thread *thread;
 	struct proto_dependency *datalink_dep;
 	struct input_client_param *params;
 	struct input_client_entry *next, *prev;
@@ -57,7 +57,8 @@ struct input_client_entry {
 int input_client_init();
 int input_client_cleanup();
 int input_client_wait_for_empty_buff(struct input_client_entry *input);
-int input_client_get_packet(struct input_client_entry *input, struct packet *p);
+struct packet *input_client_get_packet(struct input_client_entry *input);
+int input_client_release_packet(struct input_client_entry *input, struct packet *p);
 
 int input_client_cmd_mod_load(char *mod_name);
 int input_client_cmd_add(char *name);
