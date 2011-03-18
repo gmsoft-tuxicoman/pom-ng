@@ -115,10 +115,12 @@ int input_client_wait_for_empty_buff(struct input_client_entry *input) {
 	return POM_OK;
 }
 
-// Return NULL on error, -1 on EOF
 
-struct packet *input_client_get_packet(struct input_client_entry *input) {
+int input_client_get_packet(struct input_client_entry *input, struct packet *p) {
 
+
+	if (!p || !input)
+		return POM_ERR;
 
 	struct input_buff *buff = input->shm_buff;
 
@@ -133,38 +135,23 @@ struct packet *input_client_get_packet(struct input_client_entry *input) {
 
 			// EOF
 			pom_mutex_unlock(&buff->lock);
-			return (void*)-1;
+			p->buff = NULL;
+			p->ts = NULL;
+			p->len = 0;
+			return POM_OK;
 		}
 
 		// Wait for a packet
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
 			pom_mutex_unlock(&buff->lock);
-			return NULL;
-		}
-	}
-
-	struct packet *buff_head = (struct packet *)(buff->inpkt_process_head_offset >= 0 ? (void*)buff + buff->inpkt_process_head_offset : NULL);
-	unsigned char *inpkt_buff = (unsigned char *)buff + buff_head->buff_offset;
-
-
-/*
-	if (p->bufflen < buff_head->len) {
-		p->buff = realloc(p->buff, buff_head->len);
-		if (!p->buff) {
-			pom_oom(buff_head->len);
-			pom_mutex_unlock(&buff->lock);
 			return POM_ERR;
 		}
-		p->bufflen = buff_head->len;
 	}
 
-	// FIXME : Do not use a copy of the buffer
-	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
-	p->len = buff_head->len;
-	memcpy(p->buff, inpkt_buff, buff_head->len);
-*/
 
+	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_process_head_offset >= 0 ? (void*)buff + buff->inpkt_process_head_offset : NULL);
+	unsigned char *inpkt_buff = (unsigned char *)buff + buff_head->buff_offset;
 
 	buff->inpkt_process_head_offset = buff_head->inpkt_next_offset;
 
@@ -172,14 +159,17 @@ struct packet *input_client_get_packet(struct input_client_entry *input) {
 	if (pthread_cond_signal(&buff->overrun_cond)) {
 		pomlog(POMLOG_ERR "Unable to signal overrun condition : %s", pom_strerror(errno));
 		pom_mutex_unlock(&buff->lock);
-		return NULL;
+		return POM_ERR;
 	}
 
 	pom_mutex_unlock(&buff->lock);
 
-	buff_head->buff = inpkt_buff;
+	p->buff = inpkt_buff;
+	p->ts = &buff_head->ts;
+	p->len = buff_head->len;
+	p->input_pkt = buff_head;
 
-	return buff_head;
+	return POM_OK;
 }
 
 int input_client_release_packet(struct input_client_entry *input, struct packet *p) {
@@ -188,19 +178,21 @@ int input_client_release_packet(struct input_client_entry *input, struct packet 
 
 	pom_mutex_lock(&buff->lock);
 
-	struct packet *prev = (struct packet*)(p->inpkt_prev_offset >= 0 ? (void*) buff + p->inpkt_prev_offset : NULL);
-	struct packet *next = (struct packet*)(p->inpkt_next_offset >= 0 ? (void*) buff + p->inpkt_next_offset : NULL);
+	struct input_packet *input_pkt = p->input_pkt;
+
+	struct input_packet *prev = (struct input_packet*)(input_pkt->inpkt_prev_offset >= 0 ? (void*) buff + input_pkt->inpkt_prev_offset : NULL);
+	struct input_packet *next = (struct input_packet*)(input_pkt->inpkt_next_offset >= 0 ? (void*) buff + input_pkt->inpkt_next_offset : NULL);
 
 	if (prev) {
-		prev->inpkt_next_offset = p->inpkt_next_offset;
+		prev->inpkt_next_offset = input_pkt->inpkt_next_offset;
 	} else {
-		buff->inpkt_head_offset = p->inpkt_next_offset;
+		buff->inpkt_head_offset = input_pkt->inpkt_next_offset;
 	}
 	
 	if (next) {
-		next->inpkt_prev_offset = p->inpkt_prev_offset;
+		next->inpkt_prev_offset = input_pkt->inpkt_prev_offset;
 	} else {
-		buff->inpkt_tail_offset = p->inpkt_prev_offset;
+		buff->inpkt_tail_offset = input_pkt->inpkt_prev_offset;
 	}
 
 	if (pthread_cond_signal(&buff->overrun_cond)) { // A packet has been taken out
@@ -300,7 +292,7 @@ int input_client_cmd_add(char *name) {
 
 	entry->type = strdup(name);
 	if (!entry->type) {
-		pom_oom(sizeof(struct packet));
+		pom_oom(sizeof(strlen(name) + 1));
 		goto err;
 	}
 

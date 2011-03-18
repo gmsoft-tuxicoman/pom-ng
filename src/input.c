@@ -382,15 +382,15 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 
 	// Find some space where to store the packet in the shared mem
 	
-	struct packet *pkt = NULL;
+	struct input_packet *pkt = NULL;
 
 	pom_mutex_lock(&buff->lock);
 
-	size_t buff_pkt_len = sizeof(struct packet) + pkt_size;
+	size_t buff_pkt_len = sizeof(struct input_packet) + pkt_size;
 	void *buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
 	void *buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
-	struct packet *buff_head = (struct packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	struct packet *buff_tail = (struct packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct input_packet *buff_tail = (struct input_packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 
 	// Check for that size right after tail
 
@@ -401,7 +401,7 @@ retry:
 		pkt = buff_start;
 	} else {
 		// Something is in the buffer, see if it fits 
-		void *next = buff_tail + sizeof(struct packet) + buff_tail->len;
+		void *next = buff_tail + sizeof(struct input_packet) + buff_tail->len;
 
 
 		if (buff_tail >= buff_head) {
@@ -443,20 +443,20 @@ retry:
 
 	// The copy of the packet is done unlocked
 	pom_mutex_unlock(&buff->lock);
-	memset(pkt, 0, sizeof(struct packet));
+	memset(pkt, 0, sizeof(struct input_packet));
 	memcpy(&pkt->ts, ts, sizeof(struct timeval));
 	pkt->inpkt_prev_offset = -1;
 	pkt->inpkt_next_offset = -1;
 
 	pkt->len = pkt_size;
-	void *pkt_buff = (unsigned char *)pkt + sizeof(struct packet);
+	void *pkt_buff = (unsigned char *)pkt + sizeof(struct input_packet);
 	memcpy(pkt_buff, pkt_data, pkt_size);
 	pkt->buff_offset = pkt_buff - (void*)buff;
 	pom_mutex_lock(&buff->lock);
 
 	// Refecth the variables after relocking
-	buff_head = (struct packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	buff_tail = (struct packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	buff_head = (struct input_packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	buff_tail = (struct input_packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 	if (!buff_head) {
 		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
 		buff->inpkt_process_head_offset = (void*)pkt - (void*)buff;

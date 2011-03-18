@@ -109,6 +109,17 @@ err:
 
 int core_cleanup() {
 
+
+	
+	while (core_pkt_queue_head) {
+		pomlog("Waiting for all the packets to be processed");
+		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
+			pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
+			return POM_ERR;
+		}
+		sleep(1);
+	}
+
 	core_run = 0;
 
 	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
@@ -172,24 +183,27 @@ void *core_reader_thread_func(void *thread) {
 
 	while (1) {
 
-		struct packet *p = input_client_get_packet(t->input);
-		if (!p) {
-			pomlog(POMLOG_ERR "Error while reading packet from input %u", t->input->id);
-			return NULL;
-		}
+		struct packet *p = packet_pool_get();
+		if (!p) 
+			goto err;
+		
+		if (input_client_get_packet(t->input, p) != POM_OK)
+			goto err;
 
-		if (p == (void*)-1) {
+		if (!p->buff) {
 			// EOF
 			return NULL;
 		}
 
 		if (core_queue_packet(p, t->input->datalink_dep->proto, t->input) == POM_ERR) {
-			return NULL;
+			goto err;
 		}
 
 	}
 
 	pthread_detach(pthread_self());
+
+err:
 
 	input_client_cmd_stop(t->input->id);
 
@@ -333,6 +347,11 @@ void *core_processing_thread_func(void *priv) {
 			}
 		}
 
+		if (packet_pool_release(pkt) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while releasing the packet to the pool");
+			return NULL;
+		}
+
 		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
 			pomlog(POMLOG_ERR "Error while signaling the done condition : %s", pom_strerror(errno));
 			return NULL;
@@ -375,7 +394,7 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 			struct conntrack_entry *parent = NULL;
 			if (i > 1)
 				parent = s[i - 1].ce;
-			s[i].ce = conntrack_get(s[i].proto->ct, s[i].ct_field_fwd, s[i].ct_field_rev, parent);
+			s[i].ce = conntrack_get(s[i].proto->ct, s[i].ct_field_fwd, s[i].ct_field_rev, parent, &s[i].proto->info->ct_info);
 			if (!s[i].ce) 
 				pomlog(POMLOG_WARN "Warning : could not get conntrack for proto %s", s[i].proto->info->name);
 		}

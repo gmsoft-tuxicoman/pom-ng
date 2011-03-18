@@ -96,6 +96,7 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	proto_tcp.ct_info.default_table_size = 20000;
 	proto_tcp.ct_info.fwd_pkt_field_id = proto_tcp_field_sport;
 	proto_tcp.ct_info.rev_pkt_field_id = proto_tcp_field_dport;
+	proto_tcp.ct_info.cleanup_handler = proto_tcp_conntrack_cleanup;
 	
 	proto_tcp.init = proto_tcp_init;
 	proto_tcp.parse = proto_tcp_parse;
@@ -205,6 +206,8 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 			return POM_ERR;
 		}
 		memset(cp, 0, sizeof(struct proto_tcp_conntrack_priv));
+
+		s->ce->priv = cp;
 	}
 
 	uint32_t new_seq, new_ack;
@@ -256,6 +259,15 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 
 }
 
+static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
+
+
+	if (ce->priv)
+		free(ce->priv);
+
+
+	return POM_OK;
+}
 
 static int proto_tcp_cleanup() {
 

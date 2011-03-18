@@ -25,15 +25,14 @@
 #include <pthread.h>
 
 struct packet {
-	// Used by input buffer
-	int inpkt_prev_offset, inpkt_next_offset;
-	int buff_offset;
 
 	// Packet description
-	struct timeval ts;
+	struct timeval *ts;
 	size_t len;
-	unsigned char *buff; // Only valid when input_client updates it in get_packet
+	unsigned char *buff;
+	struct input_packet *input_pkt;
 	struct packet_info_list *info_head, *info_tail;
+	struct packet *prev, *next;
 };
 
 struct packet_info {

@@ -72,6 +72,12 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 
 				// Free the conntrack entry
 				if (tmp->ce) {
+					
+					if (tmp->ce->priv && tmp->ce->ct_info->cleanup_handler) {
+						if (tmp->ce->ct_info->cleanup_handler(tmp->ce) != POM_OK)
+							pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
+					}
+
 					if (tmp->ce->fwd_value)
 						ptype_cleanup(tmp->ce->fwd_value);
 					if (tmp->ce->rev_value)
@@ -103,6 +109,12 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 
 				// Free the conntrack entry
 				if (tmp->ce) {
+
+					if (tmp->ce->priv && tmp->ce->ct_info->cleanup_handler) {
+						if (tmp->ce->ct_info->cleanup_handler(tmp->ce) != POM_OK)
+							pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
+					}
+
 					if (tmp->ce->fwd_value)
 						ptype_cleanup(tmp->ce->fwd_value);
 					if (tmp->ce->rev_value)
@@ -205,7 +217,7 @@ struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype 
 	return NULL;
 }
 
-struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent) {
+struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, struct conntrack_info *info) {
 
 	if (!ct || !fwd_value)
 		return NULL;
@@ -255,6 +267,7 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 	memset(res, 0, sizeof(struct conntrack_entry));
 
 	res->parent = parent;
+	res->ct_info = info;
 
 	res->fwd_hash = full_hash_fwd;
 

@@ -27,6 +27,98 @@
 
 #include <pom-ng/ptype.h>
 
+static struct packet *packet_head, *packet_unused_head;
+static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+struct packet *packet_pool_get() {
+
+	pom_mutex_lock(&packet_list_mutex);
+
+	struct packet *tmp = packet_unused_head;
+
+	if (!tmp) {
+		// Alloc a new packet
+		tmp = malloc(sizeof(struct packet));
+		if (!tmp) {
+			pom_mutex_unlock(&packet_list_mutex);
+			pom_oom(sizeof(struct packet));
+			return NULL;
+		}
+	} else {
+		// Fetch it from the unused pool
+		packet_unused_head = tmp->next;
+		if (packet_unused_head)
+			packet_unused_head->prev = NULL;
+	}
+
+	memset(tmp, 0, sizeof(struct packet));
+
+	// Add the packet to the used pool
+	tmp->next = packet_head;
+	if (tmp->next)
+		tmp->next->prev = tmp;
+	
+	packet_head = tmp;
+
+	pom_mutex_unlock(&packet_list_mutex);
+
+	return tmp;
+}
+
+int packet_pool_release(struct packet *p) {
+
+	pom_mutex_lock(&packet_list_mutex);
+
+	// Remove the packet from the used list
+	if (p->next)
+		p->next->prev = p->prev;
+
+	if (p->prev)
+		p->prev->next = p->next;
+	else
+		packet_head = p->next;
+
+	memset(p, 0, sizeof(struct packet));
+	
+	// Add it back to the unused list
+	
+	p->next = packet_unused_head;
+	if (p->next)
+		p->next->prev = p;
+	packet_unused_head = p;
+
+	pom_mutex_unlock(&packet_list_mutex);
+
+	return POM_OK;
+
+}
+
+int packet_pool_cleanup() {
+
+	pom_mutex_lock(&packet_list_mutex);
+
+	struct packet *tmp = packet_head;
+	while (tmp) {
+		pomlog(POMLOG_WARN "A packet was not released");
+		packet_head = tmp->next;
+
+		free(tmp);
+		tmp = packet_head;
+	}
+
+	tmp = packet_unused_head;
+
+	while (tmp) {
+		packet_unused_head = tmp->next;
+		free(tmp);
+		tmp = packet_unused_head;
+	}
+
+	pom_mutex_unlock(&packet_list_mutex);
+
+	return POM_OK;
+}
+
 int packet_info_pool_init(struct packet_info_pool *pool) {
 
 	if (pthread_mutex_init(&pool->lock, NULL)) {

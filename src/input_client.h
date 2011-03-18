@@ -57,7 +57,7 @@ struct input_client_entry {
 int input_client_init();
 int input_client_cleanup();
 int input_client_wait_for_empty_buff(struct input_client_entry *input);
-struct packet *input_client_get_packet(struct input_client_entry *input);
+int input_client_get_packet(struct input_client_entry *input, struct packet *p);
 int input_client_release_packet(struct input_client_entry *input, struct packet *p);
 
 int input_client_cmd_mod_load(char *mod_name);

@@ -50,6 +50,7 @@ static int proto_tcp_init();
 static int proto_tcp_mod_register(struct mod_reg *mod);
 static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tcp_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);
+static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_tcp_cleanup();
 static int proto_tcp_mod_unregister();
 

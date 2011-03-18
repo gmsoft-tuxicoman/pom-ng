@@ -37,8 +37,18 @@
 #define INPUT_SHM_BUFF_SIZE 2 * 1024 * 1024
 
 #define INPUT_FLAG_ATTACHED	0x1 ///< the parent process has attached the buffer
-#define INPUT_FLAG_RUNNING	0x2 ///< the parent process is reading packets
-#define INPUT_FLAG_EOF		0x4 ///< the input reached EOF
+#define INPUT_FLAG_EOF		0x2 ///< the input reached EOF
+
+struct input_packet {
+
+	// Used by input buffer
+	int inpkt_prev_offset, inpkt_next_offset;
+	int buff_offset;
+
+	// Packet description
+	struct timeval ts;
+	size_t len;
+};
 
 struct input_reg {
 

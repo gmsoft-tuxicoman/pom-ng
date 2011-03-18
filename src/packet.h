@@ -33,8 +33,13 @@ struct packet_info_pool {
 	unsigned int pool_size, usage;
 };
 
+struct packet *packet_pool_get();
+int packet_pool_release(struct packet *p);
+
+
 int packet_info_pool_init(struct packet_info_pool *pool);
 struct packet_info *packet_info_pool_get(struct proto_reg *p);
+int packet_pool_cleanup();
 int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
 int packet_info_pool_cleanup(struct packet_info_pool *pool);
 
