@@ -136,7 +136,6 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 			// EOF
 			pom_mutex_unlock(&buff->lock);
 			p->buff = NULL;
-			p->ts = NULL;
 			p->len = 0;
 			return POM_OK;
 		}
@@ -165,9 +164,9 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	pom_mutex_unlock(&buff->lock);
 
 	p->buff = inpkt_buff;
-	p->ts = &buff_head->ts;
 	p->len = buff_head->len;
 	p->input_pkt = buff_head;
+	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
 
 	return POM_OK;
 }

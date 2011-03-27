@@ -120,24 +120,24 @@ int proto_register(struct proto_reg_info *reg_info) {
 int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
 
 	if (!s)
-		return POM_ERR;
+		return PROTO_ERR;
 	
 	struct proto_reg *proto = s[stack_index].proto;
 
 	if (!proto || !proto->info->parse)
-		return POM_ERR;
+		return PROTO_ERR;
 	return proto->info->parse(p, s, stack_index);
 }
 
 int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len) {
 
 	if (!s)
-		return POM_ERR;
+		return PROTO_ERR;
 	
 	struct proto_reg *proto = s[stack_index].proto;
 
 	if (!proto || !proto->info->process)
-		return POM_ERR;
+		return PROTO_ERR;
 	return proto->info->process(p, s, stack_index, hdr_len);
 }
 
@@ -229,6 +229,15 @@ struct proto_dependency *proto_add_dependency(char *name) {
 	pom_mutex_unlock(&proto_dependency_list_lock);
 	
 	return dep;
+}
+
+struct proto_dependency *proto_add_dependency_by_proto(struct proto_reg *proto) {
+	
+	pom_mutex_lock(&proto_dependency_list_lock);
+	proto->dep->refcount++;
+	pom_mutex_unlock(&proto_dependency_list_lock);
+
+	return proto->dep;
 }
 
 int proto_remove_dependency(struct proto_dependency *dep) {

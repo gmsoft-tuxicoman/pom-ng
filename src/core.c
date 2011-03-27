@@ -195,7 +195,9 @@ void *core_reader_thread_func(void *thread) {
 			return NULL;
 		}
 
-		if (core_queue_packet(p, t->input->datalink_dep->proto, t->input) == POM_ERR) {
+		p->datalink = t->input->datalink_dep->proto;
+
+		if (core_queue_packet(p, t->input) == POM_ERR) {
 			goto err;
 		}
 
@@ -210,7 +212,7 @@ err:
 	return NULL;
 }
 
-int core_queue_packet(struct packet *p, struct proto_reg *datalink, struct input_client_entry *i) {
+int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 
 	pom_mutex_lock(&core_pkt_queue_mutex);
 
@@ -245,7 +247,6 @@ int core_queue_packet(struct packet *p, struct proto_reg *datalink, struct input
 
 	memset(tmp, 0, sizeof(struct core_packet_queue));
 	tmp->pkt = p;
-	tmp->datalink = datalink;
 	tmp->input = i;
 	core_pkt_queue_usage++;
 
@@ -311,7 +312,6 @@ void *core_processing_thread_func(void *priv) {
 		struct core_packet_queue *tmp = core_pkt_queue_head;
 
 		struct packet *pkt = tmp->pkt;
-		struct proto_reg *datalink = tmp->datalink;
 		struct input_client_entry *input = tmp->input;
 
 		// Remove the packet from the queue
@@ -337,7 +337,7 @@ void *core_processing_thread_func(void *priv) {
 
 
 		pomlog(POMLOG_DEBUG "Thread %u processing ...", t->thread);
-		if (core_process_packet(pkt, datalink) == POM_ERR)
+		if (core_process_packet(pkt) == POM_ERR)
 			return NULL;
 
 		if (input) {
@@ -363,14 +363,14 @@ void *core_processing_thread_func(void *priv) {
 	return NULL;
 }
 
-int core_process_packet(struct packet *p, struct proto_reg *datalink) {
+int core_process_packet(struct packet *p) {
 
 	struct proto_process_stack s[CORE_PROTO_STACK_MAX];
 
 	memset(s, 0, sizeof(struct proto_process_stack) * CORE_PROTO_STACK_MAX);
 	s[0].pload = p->buff;
 	s[0].plen = p->len;
-	s[0].proto = datalink;
+	s[0].proto = p->datalink;
 
 	int i;
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
@@ -399,18 +399,15 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 				pomlog(POMLOG_WARN "Warning : could not get conntrack for proto %s", s[i].proto->info->name);
 		}
 
-		ssize_t pload_len = proto_process(p, s, i, hdr_len);
+		switch (proto_process(p, s, i, hdr_len)) {
 
-		if (pload_len == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
-			return POM_ERR;
-		}
-
-		if (pload_len <= 0) // Nothing more to process
-			break;
-
-		if (hdr_len + pload_len > s[i].plen) {
-			pomlog(POMLOG_WARN "Warning : parsed lenght bigger than available payload : header %u, pload %u (tot %u), had %u", hdr_len, pload_len, hdr_len + pload_len, s[i].plen);
+			case POM_ERR:
+				pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
+				return POM_ERR;
+			case PROTO_STOP:
+				goto stop;
+			default:
+				break;
 		}
 
 		s[i + 1].pload = s[i].pload + hdr_len;
@@ -446,8 +443,8 @@ int core_process_packet(struct packet *p, struct proto_reg *datalink) {
 	}
 	printf("\n");
 
+stop:
 	// Cleanup pkt_info
-
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 

@@ -27,12 +27,14 @@
 struct packet {
 
 	// Packet description
-	struct timeval *ts;
+	struct timeval ts;
 	size_t len;
+	struct proto_reg *datalink;
 	unsigned char *buff;
-	struct input_packet *input_pkt;
+	struct input_packet *input_pkt; // Input packet if it comes from an input
+	struct packet_multipart *multipart; // Multipart details if the current packet is compose of multiple ones
 	struct packet_info_list *info_head, *info_tail;
-	struct packet *prev, *next;
+	struct packet *prev, *next; // Used internally
 };
 
 struct packet_info {
@@ -40,5 +42,27 @@ struct packet_info {
 	struct packet_info *pool_next, *pool_prev;
 };
 
+
+struct packet_multipart_pkt {
+
+	size_t offset, len, pkt_buff_offset;
+	struct packet *pkt;
+	struct packet_multipart_pkt *prev, *next;
+
+};
+
+struct packet_multipart {
+
+	size_t cur; // Current ammount of data in the buffer
+	struct packet_multipart_pkt *head, *tail;
+	struct proto_dependency *proto;
+};
+
+
+struct packet_multipart *packet_multipart_alloc(struct proto_reg *proto);
+int packet_multipart_cleanup(struct packet_multipart *m);
+int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
+int packet_multipart_is_complete(struct packet_multipart *multipart);
+int packet_multipart_process(struct packet_multipart *multipart);
 
 #endif

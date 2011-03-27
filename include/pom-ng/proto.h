@@ -34,6 +34,12 @@
 
 #define PROTO_FLAG_HAS_CONNTRACK	0x1
 
+#define PROTO_OK	0
+#define PROTO_ERR	-1
+#define PROTO_STOP	-2
+#define PROTO_INVALID	-3
+
+
 // Full decl is private
 struct proto_reg;
 

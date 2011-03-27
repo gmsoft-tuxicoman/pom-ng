@@ -23,6 +23,10 @@
 
 #include <stdint.h>
 
+#define PROTO_IPV4_FLAG_GOT_LAST	0x1
+#define PROTO_IPV4_FLAG_PROCESSED	0x2
+
+
 #define PROTO_IPV4_FIELD_NUM 4
 
 enum proto_ipv4_fields {
@@ -32,6 +36,15 @@ enum proto_ipv4_fields {
 	proto_ipv4_field_ttl,
 
 };
+
+struct proto_ipv4_fragment {
+
+	uint16_t id;
+	struct packet_multipart *multipart;
+	unsigned int flags;
+	struct proto_ipv4_fragment *next;
+};
+
 
 struct mod_reg_info* proto_ipv4_reg_info();
 static int proto_ipv4_init();

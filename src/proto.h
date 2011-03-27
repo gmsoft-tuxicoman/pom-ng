@@ -43,6 +43,7 @@ struct proto_reg {
 
 };
 
+struct proto_dependency *proto_add_dependency_by_proto(struct proto_reg *proto);
 int proto_cleanup();
 
 #endif

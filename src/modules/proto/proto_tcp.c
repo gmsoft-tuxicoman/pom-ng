@@ -61,8 +61,21 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	ptype_uint16 = ptype_alloc("uint16");
 	ptype_uint32 = ptype_alloc("uint32");
 	
-	if (!ptype_uint8 || !ptype_uint16 || !ptype_uint32)
-		goto err;
+	if (!ptype_uint8 || !ptype_uint16 || !ptype_uint32) {
+		if (ptype_uint8) {
+			ptype_cleanup(ptype_uint8);
+			ptype_uint8 = NULL;
+		}
+		if (ptype_uint16) {
+			ptype_cleanup(ptype_uint16);
+			ptype_uint16 = NULL;
+		}
+		if (ptype_uint32) {
+			ptype_cleanup(ptype_uint32);
+			ptype_uint32 = NULL;
+		}
+		return POM_ERR;
+	}
 
 	static struct proto_pkt_field fields[PROTO_TCP_FIELD_NUM + 1];
 	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_TCP_FIELD_NUM + 1));
@@ -107,25 +120,13 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	if (proto_register(&proto_tcp) == POM_OK)
 		return POM_OK;
 
-err:
-	if (ptype_uint8) {
-		ptype_cleanup(ptype_uint8);
-		ptype_uint8 = NULL;
-	}
-	if (ptype_uint16) {
-		ptype_cleanup(ptype_uint16);
-		ptype_uint16 = NULL;
-	}
-	if (ptype_uint32) {
-		ptype_cleanup(ptype_uint32);
-		ptype_uint32 = NULL;
-	}
 	return POM_ERR;
 
 }
 
 
 static int proto_tcp_init() {
+
 
 	proto_http = proto_add_dependency("http");
 
@@ -271,12 +272,6 @@ static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
 
 static int proto_tcp_cleanup() {
 
-	ptype_cleanup(ptype_uint8);
-	ptype_uint8 = NULL;
-	ptype_cleanup(ptype_uint16);
-	ptype_uint16 = NULL;
-	ptype_cleanup(ptype_uint32);
-	ptype_uint32 = NULL;
 
 	int res = POM_OK;
 
@@ -286,6 +281,15 @@ static int proto_tcp_cleanup() {
 }
 
 static int proto_tcp_mod_unregister() {
+	
+	int res = proto_unregister("tcp");
 
-	return proto_unregister("tcp");
+	ptype_cleanup(ptype_uint8);
+	ptype_uint8 = NULL;
+	ptype_cleanup(ptype_uint16);
+	ptype_uint16 = NULL;
+	ptype_cleanup(ptype_uint32);
+	ptype_uint32 = NULL;
+
+	return res;
 }

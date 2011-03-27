@@ -28,6 +28,9 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+#define IP_DONT_FRAG 0x4000
+#define IP_MORE_FRAG 0x2000
+#define IP_OFFSET_MASK 0x1fff
 
 static struct proto_dependency *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp = NULL, *proto_ipv6 = NULL, *proto_gre = NULL;
 
@@ -49,8 +52,17 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	ptype_uint8 = ptype_alloc("uint8");
 	ptype_ipv4 = ptype_alloc("ipv4");
 
-	if (!ptype_uint8 || !ptype_ipv4)
-		goto err;
+	if (!ptype_uint8 || !ptype_ipv4) {
+		if (ptype_uint8) {
+			ptype_cleanup(ptype_uint8);
+			ptype_uint8 = NULL;
+		}
+		if (ptype_ipv4) {
+			ptype_cleanup(ptype_ipv4);
+			ptype_ipv4 = NULL;
+		}
+		return POM_ERR;
+	}
 
 	static struct proto_pkt_field fields[PROTO_IPV4_FIELD_NUM + 1];
 	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_IPV4_FIELD_NUM + 1));
@@ -86,21 +98,12 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	if (proto_register(&proto_ipv4) == POM_OK)
 		return POM_OK;
 
-err:
-	if (ptype_uint8) {
-		ptype_cleanup(ptype_uint8);
-		ptype_uint8 = NULL;
-	}
-	if (ptype_ipv4) {
-		ptype_cleanup(ptype_ipv4);
-		ptype_ipv4 = NULL;
-	}
-
 	return POM_ERR;
 }
 
 
 static int proto_ipv4_init() {
+
 
 	proto_icmp = proto_add_dependency("icmp");
 	proto_tcp = proto_add_dependency("tcp");
@@ -120,6 +123,7 @@ static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *st
 
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	struct in_addr saddr, daddr;
 	struct ip* hdr = s->pload;
@@ -132,8 +136,7 @@ static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *st
 		hdr->ip_hl < 5 || // ip header < 5 bytes
 		ntohs(hdr->ip_len) < hdr_len || // datagram size < ip header length
 		ntohs(hdr->ip_len) > s->plen) { // datagram size > given size
-		s->proto = NULL;
-		return POM_OK;
+		return PROTO_INVALID;
 	}
 
 
@@ -145,16 +148,6 @@ static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *st
 	// Handle conntrack stuff
 	s->ct_field_fwd = s->pkt_info->fields_value[proto_ipv4_field_src];
 	s->ct_field_rev = s->pkt_info->fields_value[proto_ipv4_field_dst];
-
-	return hdr_len;
-
-}
-
-static ssize_t proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	struct ip* hdr = s->pload;
 
 	switch (hdr->ip_p) {
 		case IPPROTO_ICMP: // 1
@@ -178,23 +171,104 @@ static ssize_t proto_ipv4_process(struct packet *p, struct proto_process_stack *
 			break;
 
 	}
-	
 
-	return s->plen - hdr_len;
+	return hdr_len;
+
+}
+
+
+static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
+
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+
+	if (!s->ce)
+		return PROTO_ERR;
+
+	struct ip* hdr = s->pload;
+
+	uint16_t frag_off = ntohs(hdr->ip_off);
+
+	// Check if packet is fragmented and need more handling
+
+	if (frag_off & IP_DONT_FRAG)
+		return PROTO_OK; // Nothing to do
+
+	if (!(frag_off & IP_MORE_FRAG) && !(frag_off & IP_OFFSET_MASK))
+		return PROTO_OK; // Nothing to do, full packet
+
+	uint16_t offset = (frag_off & IP_OFFSET_MASK) << 3;
+	size_t frag_size = ntohs(hdr->ip_len) - (hdr->ip_hl * 4);
+
+	// Ignore invalid fragments
+	if (frag_size > 0xFFFF) 
+		return PROTO_INVALID;
+
+	if (frag_size > s->plen + hdr_len)
+		return PROTO_INVALID;
+
+
+	pom_mutex_lock(&s->ce->lock);
+
+	struct proto_ipv4_fragment *tmp = s->ce->priv;
+
+	// Let's find the right buffer
+	for (; tmp && tmp->id != hdr->ip_id; tmp = tmp->next);
+
+	if (!tmp) {
+		// Buffer not found, create it
+		tmp = malloc(sizeof(struct proto_ipv4_fragment));
+		if (!tmp) {
+			pom_oom(sizeof(struct proto_ipv4_fragment));
+			pom_mutex_unlock(&s->ce->lock);
+			return PROTO_ERR;
+		}
+		memset(tmp, 0, sizeof(struct proto_ipv4_fragment));
+
+		tmp->id = hdr->ip_id;
+		tmp->multipart = packet_multipart_alloc(s_next->proto);
+		if (!tmp->multipart) {
+			pom_mutex_unlock(&s->ce->lock);
+			free(tmp);
+			return PROTO_ERR;
+		}
+	}
+
+	// Fragment was already handled
+	if (tmp->flags & PROTO_IPV4_FLAG_PROCESSED)
+		return PROTO_STOP;
+	
+	// Add the fragment
+	if (packet_multipart_add(tmp->multipart, p, offset, frag_size, (s->pload - (void*)p->buff) + (hdr->ip_hl * 4)) != POM_OK) {
+		pom_mutex_unlock(&s->ce->lock);
+		packet_multipart_cleanup(tmp->multipart);
+		free(tmp);
+		return PROTO_ERR;
+	}
+
+	tmp->next = s->ce->priv;
+	s->ce->priv = tmp;
+
+	if (!(frag_off & IP_MORE_FRAG))
+		tmp->flags |= PROTO_IPV4_FLAG_GOT_LAST;
+
+	if ((tmp->flags & PROTO_IPV4_FLAG_GOT_LAST) && packet_multipart_is_complete(tmp->multipart) == POM_OK)
+		tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
+
+	// We can process the packet unlocked
+	pom_mutex_unlock(&s->ce->lock);
+
+	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED) && packet_multipart_process(tmp->multipart) != POM_OK)
+		return PROTO_ERR;
+
+	return PROTO_STOP; // Stop processing the packet
 
 }
 
 
 static int proto_ipv4_cleanup() {
 
-	ptype_cleanup(ptype_uint8);
-	ptype_uint8 = NULL;
-	ptype_cleanup(ptype_ipv4);
-	ptype_ipv4 = NULL;
-
 	int res = POM_OK;
-
-//	res += packet_unregister_info_owner(proto_ipv4_packet_info_owner);
 
 	res += proto_remove_dependency(proto_icmp);
 	res += proto_remove_dependency(proto_udp);
@@ -207,5 +281,13 @@ static int proto_ipv4_cleanup() {
 
 static int proto_ipv4_mod_unregister() {
 
-	return proto_unregister("ipv4");
+	int res = proto_unregister("ipv4");
+
+	ptype_cleanup(ptype_uint8);
+	ptype_uint8 = NULL;
+	ptype_cleanup(ptype_ipv4);
+	ptype_ipv4 = NULL;
+
+
+	return res;
 }

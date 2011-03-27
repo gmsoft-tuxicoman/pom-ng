@@ -50,7 +50,7 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	ptype_mac = ptype_alloc("mac");
 	
 	if (!ptype_mac)
-		goto err;
+		return POM_ERR;
 
 	static struct proto_pkt_field fields[PROTO_ETHERNET_FIELD_NUM + 1];
 	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_ETHERNET_FIELD_NUM + 1));
@@ -78,9 +78,6 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	if (proto_register(&proto_ethernet) == POM_OK)
 		return POM_OK;
 
-err:
-	if (ptype_mac)
-		ptype_cleanup(ptype_mac);
 
 	return POM_ERR;
 
@@ -88,6 +85,7 @@ err:
 
 
 static int proto_ethernet_init() {
+
 
 	proto_ipv4 = proto_add_dependency("ipv4");
 	proto_ipv6 = proto_add_dependency("ipv6");
@@ -99,6 +97,7 @@ static int proto_ethernet_init() {
 		proto_ethernet_cleanup();
 		return POM_ERR;
 	}
+
 
 	return POM_OK;
 
@@ -157,9 +156,6 @@ static ssize_t proto_ethernet_process(struct packet *p, struct proto_process_sta
 
 static int proto_ethernet_cleanup() {
 
-	ptype_cleanup(ptype_mac);
-	ptype_mac = NULL;
-
 	int res = POM_OK;
 
 	res += proto_remove_dependency(proto_ipv4);
@@ -173,5 +169,10 @@ static int proto_ethernet_cleanup() {
 
 static int proto_ethernet_mod_unregister() {
 
-	return proto_unregister("ethernet");
+	int res = proto_unregister("ethernet");
+
+	ptype_cleanup(ptype_mac);
+	ptype_mac = NULL;
+
+	return res;
 }

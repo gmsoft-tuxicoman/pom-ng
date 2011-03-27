@@ -33,6 +33,13 @@ struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev)
 		pom_oom(sizeof(struct conntrack_tables));
 		return NULL;
 	}
+	memset(ct, 0, sizeof(struct conntrack_tables));
+
+	if (pthread_mutex_init(&ct->lock, NULL)) {
+		pomlog(POMLOG_ERR "Could not initialize conntrack tables mutex : %s", pom_strerror(errno));
+		free(ct);
+		return NULL;
+	}
 
 	size_t size = sizeof(struct conntrack_list) * tables_size;
 	ct->fwd_table = malloc(size);
@@ -42,6 +49,7 @@ struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev)
 		return NULL;
 	}
 	memset(ct->fwd_table, 0, size);
+
 
 	if (has_rev) {
 		ct->rev_table = malloc(size);
@@ -128,6 +136,9 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 		}
 		free(ct->rev_table);
 	}
+
+	pthread_mutex_destroy(&ct->lock);
+
 	free(ct);
 
 	return POM_OK;
@@ -234,25 +245,33 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 		return NULL;
 	}
 
+	// Lock the tables while browsing for a conntrack
+	pom_mutex_lock(&ct->lock);
+
 	// Try to find the conntrack in the forward table
 	hash_fwd = full_hash_fwd % ct->tables_size;
 
 	// Check if we can find this entry in the forward way
 	struct conntrack_entry *res = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, parent);
-	if (res)
+	if (res) {
+		pom_mutex_unlock(&ct->lock);
 		return res;
+	}
 
 	// It wasn't found in the forward way, maybe in the reverse direction ?
 	if (rev_value) {
 		if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
+			pom_mutex_unlock(&ct->lock);
 			return NULL;
 		}
 		hash_rev = full_hash_rev % ct->tables_size;
 
 		res = conntrack_find(ct->rev_table[hash_rev], rev_value, fwd_value, parent);
-		if (res)
+		if (res) {
+			pom_mutex_unlock(&ct->lock);
 			return res;
+		}
 
 	}
 
@@ -261,10 +280,18 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 	// Alloc the conntrack entry
 	res = malloc(sizeof(struct conntrack_entry));
 	if (!res) {
+		pom_mutex_unlock(&ct->lock);
 		pom_oom(sizeof(struct conntrack_entry));
 		return NULL;
 	}
 	memset(res, 0, sizeof(struct conntrack_entry));
+
+	if(pthread_mutex_init(&res->lock, NULL)) {
+		pom_mutex_unlock(&ct->lock);
+		free(res);
+		pomlog(POMLOG_ERR "Error while initializing a conntrack lock : %s", pom_strerror(errno));
+		return NULL;
+	}
 
 	res->parent = parent;
 	res->ct_info = info;
@@ -272,18 +299,15 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 	res->fwd_hash = full_hash_fwd;
 
 	res->fwd_value = ptype_alloc_from(fwd_value);
-	if (!res->fwd_value) {
-		free(res);
-		return NULL;
-	}
+	if (!res->fwd_value)
+		goto err;
 
 	// Alloc the forward list
 	struct conntrack_list *lst_fwd = malloc(sizeof(struct conntrack_list));
 	if (!lst_fwd) {
 		ptype_cleanup(res->fwd_value);
-		free(res);
 		pom_oom(sizeof(struct conntrack_list));
-		return NULL;
+		goto err;
 	}
 	memset(lst_fwd, 0, sizeof(struct conntrack_list));
 	lst_fwd->ce = res;
@@ -294,10 +318,9 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 		struct conntrack_list *lst_rev = malloc(sizeof(struct conntrack_list));
 		if (!lst_rev) {
 			ptype_cleanup(res->fwd_value);
-			free(res);
 			free(lst_fwd);
 			pom_oom(sizeof(struct conntrack_list));
-			return NULL;
+			goto err;
 		}
 		memset(lst_rev, 0, sizeof(struct conntrack_list));
 		lst_rev->ce = res;
@@ -305,10 +328,9 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 		res->rev_value = ptype_alloc_from(rev_value);
 		if (!res->rev_value) {
 			ptype_cleanup(res->fwd_value);
-			free(res);
 			free(lst_fwd);
 			free(lst_rev);
-			return NULL;
+			goto err;
 		}
 
 		// Insert the reverse direction in the conntrack table
@@ -329,5 +351,15 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 		lst_fwd->next->prev = lst_fwd;
 	ct->fwd_table[hash_fwd] = lst_fwd;
 
+	// Unlock the tables
+	pom_mutex_unlock(&ct->lock);
+
 	return res;
+
+err:
+	pthread_mutex_destroy(&res->lock);
+	free(res);
+	pom_mutex_unlock(&ct->lock);
+
+	return NULL;
 }

@@ -34,7 +34,6 @@
 
 struct core_packet_queue {
 	struct packet *pkt;
-	struct proto_reg *datalink;
 	struct input_client_entry *input;
 	struct core_packet_queue *prev, *next;
 };
@@ -60,9 +59,9 @@ int core_cleanup();
 
 int core_spawn_reader_thread(struct input_client_entry *i);
 void *core_reader_thread_func(void *input);
-int core_queue_packet(struct packet *p, struct proto_reg *datalink, struct input_client_entry *i);
+int core_queue_packet(struct packet *p, struct input_client_entry *i);
 int core_destroy_reader_thread(struct core_reader_thread *t);
 void *core_processing_thread_func(void *priv);
-int core_process_packet(struct packet *p, struct proto_reg *datalink);
+int core_process_packet(struct packet *p);
 
 #endif
