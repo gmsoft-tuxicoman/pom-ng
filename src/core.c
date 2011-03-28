@@ -27,15 +27,19 @@
 #include "input_client.h"
 #include "packet.h"
 #include "conntrack.h"
+#include "timer.h"
 
 static int core_run = 0; // Set to 1 while the processing thread should run
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
 
+static struct timeval core_clock;
+static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
+
 // Packet queue
-struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
-struct core_packet_queue *core_pkt_queue_unused = NULL;
-unsigned int core_pkt_queue_usage = 0;
+static struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
+static struct core_packet_queue *core_pkt_queue_unused = NULL;
+static unsigned int core_pkt_queue_usage = 0;
 static pthread_cond_t core_pkt_queue_restart_cond;
 static pthread_mutex_t core_pkt_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -332,8 +336,18 @@ void *core_processing_thread_func(void *priv) {
 
 		pom_mutex_unlock(&core_pkt_queue_mutex);
 
+		// Update the current clock
+		pom_mutex_lock(&core_clock_lock);
+		if ((pkt->ts.tv_sec > core_clock.tv_sec) ||
+			((pkt->ts.tv_sec == core_clock.tv_sec) && (pkt->ts.tv_usec > core_clock.tv_sec))) {
 
+			memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
+		}
+		pom_mutex_unlock(&core_clock_lock);
 
+		// Process timers
+		if (timers_process() != POM_OK)
+			return NULL;
 
 
 		pomlog(POMLOG_DEBUG "Thread %u processing ...", t->thread);
@@ -345,7 +359,13 @@ void *core_processing_thread_func(void *priv) {
 				pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
 				return NULL;
 			}
+		} else {
+			// Packet doesn't come from an input -> free the buffer
+			free(pkt->buff);
 		}
+
+		if (pkt->multipart)  // Cleanup multipart if any
+			packet_multipart_cleanup(pkt->multipart);
 
 		if (packet_pool_release(pkt) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while releasing the packet to the pool");
@@ -450,3 +470,12 @@ stop:
 
 	return POM_OK;
 }
+
+void core_get_clock(struct timeval *now) {
+
+	pom_mutex_lock(&core_clock_lock);
+	memcpy(now, &core_clock, sizeof(struct timeval));
+	pom_mutex_unlock(&core_clock_lock);
+
+}
+

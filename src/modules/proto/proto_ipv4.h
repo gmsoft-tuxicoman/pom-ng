@@ -22,6 +22,7 @@
 #define __PROTO_IPV4_H__
 
 #include <stdint.h>
+#include <pom-ng/timer.h>
 
 #define PROTO_IPV4_FLAG_GOT_LAST	0x1
 #define PROTO_IPV4_FLAG_PROCESSED	0x2
@@ -42,7 +43,9 @@ struct proto_ipv4_fragment {
 	uint16_t id;
 	struct packet_multipart *multipart;
 	unsigned int flags;
-	struct proto_ipv4_fragment *next;
+	struct timer *t;
+	struct conntrack_entry *ce;
+	struct proto_ipv4_fragment *prev, *next;
 };
 
 
@@ -51,6 +54,8 @@ static int proto_ipv4_init();
 static int proto_ipv4_mod_register(struct mod_reg *mod);
 static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static ssize_t proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
+static int proto_ipv4_fragment_cleanup(void *priv);
+static int proto_ipv4_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_ipv4_cleanup();
 static int proto_ipv4_mod_unregister();
 

@@ -64,4 +64,5 @@ int core_destroy_reader_thread(struct core_reader_thread *t);
 void *core_processing_thread_func(void *priv);
 int core_process_packet(struct packet *p);
 
+void core_get_clock(struct timeval *now);
 #endif

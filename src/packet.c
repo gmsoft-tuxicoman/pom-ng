@@ -285,6 +285,8 @@ int packet_multipart_cleanup(struct packet_multipart *m) {
 
 	}
 
+	proto_remove_dependency(m->proto);
+
 	free(m);
 
 	return POM_OK;

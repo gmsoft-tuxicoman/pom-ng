@@ -28,6 +28,6 @@ pom_ng_CFLAGS = @libxml2_CFLAGS@ -DPOM_LIBDIR='"@POM_MOD_LIBDIR@"' -DDATAROOT='"
 pom_ng_LDFLAGS = @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@
 pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@
 
-libpom_ng_la_SOURCES = common.c common.h ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h
+libpom_ng_la_SOURCES = common.c common.h ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h timer.c timer.h
 
 lib_LTLIBRARIES = libpom-ng.la

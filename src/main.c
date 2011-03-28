@@ -295,9 +295,10 @@ err_xmlrpcsrv:
 err_registry:
 	registry_cleanup();
 err_early:
-	packet_pool_cleanup();
 	proto_cleanup();
+	packet_pool_cleanup();
 	mod_unload_all();
+	timers_cleanup();
 	pomlog_cleanup();
 
 	// Delete the IPC queue

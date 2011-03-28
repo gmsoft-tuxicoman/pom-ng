@@ -89,6 +89,7 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	proto_ipv4.ct_info.default_table_size = 20000;
 	proto_ipv4.ct_info.fwd_pkt_field_id = proto_ipv4_field_src;
 	proto_ipv4.ct_info.rev_pkt_field_id = proto_ipv4_field_dst;
+	proto_ipv4.ct_info.cleanup_handler = proto_ipv4_conntrack_cleanup;
 	
 	proto_ipv4.init = proto_ipv4_init;
 	proto_ipv4.parse = proto_ipv4_parse;
@@ -225,13 +226,26 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 		}
 		memset(tmp, 0, sizeof(struct proto_ipv4_fragment));
 
+		tmp->t = timer_alloc(tmp, proto_ipv4_fragment_cleanup);
+		if (!tmp->t) {
+			free(tmp);
+			return PROTO_ERR;
+		}
+		
+		tmp->ce = s->ce;
 		tmp->id = hdr->ip_id;
 		tmp->multipart = packet_multipart_alloc(s_next->proto);
 		if (!tmp->multipart) {
 			pom_mutex_unlock(&s->ce->lock);
+			timer_cleanup(tmp->t);
 			free(tmp);
 			return PROTO_ERR;
 		}
+
+		tmp->next = s->ce->priv;
+		if (tmp->next)
+			tmp->next->prev = tmp;
+		s->ce->priv = tmp;
 	}
 
 	// Fragment was already handled
@@ -242,12 +256,11 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	if (packet_multipart_add(tmp->multipart, p, offset, frag_size, (s->pload - (void*)p->buff) + (hdr->ip_hl * 4)) != POM_OK) {
 		pom_mutex_unlock(&s->ce->lock);
 		packet_multipart_cleanup(tmp->multipart);
+		timer_cleanup(tmp->t);
 		free(tmp);
 		return PROTO_ERR;
 	}
 
-	tmp->next = s->ce->priv;
-	s->ce->priv = tmp;
 
 	if (!(frag_off & IP_MORE_FRAG))
 		tmp->flags |= PROTO_IPV4_FLAG_GOT_LAST;
@@ -258,13 +271,71 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	// We can process the packet unlocked
 	pom_mutex_unlock(&s->ce->lock);
 
-	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED) && packet_multipart_process(tmp->multipart) != POM_OK)
-		return PROTO_ERR;
+	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED)) {
+		if (packet_multipart_process(tmp->multipart) == POM_OK)
+			tmp->multipart = NULL; // Multipart will be cleared automatically
+		else
+			return PROTO_ERR;
+	}
+	
+	
 
 	return PROTO_STOP; // Stop processing the packet
 
 }
 
+static int proto_ipv4_fragment_cleanup(void *priv) {
+
+	struct proto_ipv4_fragment *f = priv;
+
+	// Remove the frag from the conntrack
+	pom_mutex_lock(&f->ce->lock);
+	if (f->prev)
+		f->prev->next = f->next;
+	else
+		f->ce->priv = f->next;
+
+	if (f->next)
+		f->next->prev = f->prev;
+
+	pom_mutex_unlock(&f->ce->lock);
+
+	if (!(f->flags & PROTO_IPV4_FLAG_PROCESSED))
+		pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
+
+	if (f->multipart)
+		packet_multipart_cleanup(f->multipart);
+	
+	if (f->t)
+		timer_cleanup(f->t);
+	
+	free(f);
+
+	return POM_OK;
+
+}
+
+static int proto_ipv4_conntrack_cleanup(struct conntrack_entry *ce) {
+
+	while (ce->priv) {
+		struct proto_ipv4_fragment *f = ce->priv;
+		ce->priv = f->next;
+
+		if (!(f->flags & PROTO_IPV4_FLAG_PROCESSED))
+			pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
+
+		if (f->multipart)
+			packet_multipart_cleanup(f->multipart);
+		
+		if (f->t)
+			timer_cleanup(f->t);
+		
+		free(f);
+
+	}
+
+	return POM_OK;
+}
 
 static int proto_ipv4_cleanup() {
 
