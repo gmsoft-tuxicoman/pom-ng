@@ -32,6 +32,7 @@ struct registry_param {
 	struct ptype *value;
 	char *description;
 	unsigned int flags;
+	pthread_mutex_t lock;
 
 	void *check_priv;
 	int (*set_pre_check) (void *priv, char *value);
@@ -42,20 +43,30 @@ struct registry_param {
 
 struct registry_instance {
 	char *name;
-
 	struct registry_param *params;
-
+	struct registry_function *funcs;
+	pthread_mutex_t lock;
+	void *priv;
 	struct registry_instance *next, *prev;
 	struct registry_class *parent;
 };
 
+struct registry_function {
+	
+	char *name;
+	int (*handler) (struct registry_instance *instance);
+	char *description;
+	struct registry_function *next;
+
+};
+
 struct registry_class {
 	char *name;
-
 	struct registry_instance *instances;
-
 	struct registry_param *global_params;
-
+	pthread_mutex_t lock;
+	int (*instance_add) (char *type, char *name);
+	int (*instance_remove) (struct registry_instance *i);
 	struct registry_class *next, *prev;
 };
 
@@ -73,6 +84,10 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 int registry_param_set_check_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value));
 int registry_class_add_param(struct registry_class *c, struct registry_param *p);
 int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
+int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
 int registry_set_param_value(struct registry_param *p, char *value);
+
+struct registry_class *registry_find_class(char *cls);
+struct registry_instance *registry_find_instance(char *cls, char *instance);
 
 #endif

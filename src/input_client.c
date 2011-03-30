@@ -42,6 +42,9 @@ int input_client_init() {
 	if (!input_registry_class)
 		return POM_ERR;
 
+	input_registry_class->instance_add = input_client_cmd_add;
+	input_registry_class->instance_remove = input_client_cmd_remove;
+
 	return POM_OK;
 }
 
@@ -52,7 +55,7 @@ int input_client_cleanup() {
 		input_client_head = i->next;
 
 		if (i->thread)
-			core_destroy_reader_thread(i->thread);
+			input_client_wait_for_empty_buff(i);
 
 		if (i->shm_buff) {
 			pom_mutex_lock(&i->shm_buff->lock);
@@ -60,6 +63,7 @@ int input_client_cleanup() {
 			pom_mutex_unlock(&i->shm_buff->lock);
 			if (shmdt(i->shm_buff))
 				pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+			i->shm_buff = NULL;
 		}
 
 		while (i->params) {
@@ -131,7 +135,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 		if (buff->flags & INPUT_FLAG_EOF) {
 			
 			// Clear the EOF flag so the input will be allowed to start again
-			buff->flags &= !INPUT_FLAG_EOF;
+			buff->flags &= ~INPUT_FLAG_EOF;
 
 			// EOF
 			pom_mutex_unlock(&buff->lock);
@@ -228,12 +232,12 @@ int input_client_cmd_mod_load(char *mod_name) {
 
 }
 
-int input_client_cmd_add(char *name) {
+int input_client_cmd_add(char *type, char *name) {
 	
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_add;
-	strncpy(msg.data.add.name, name, INPUT_NAME_MAX);
+	strncpy(msg.data.add.name, type, INPUT_NAME_MAX);
 
 	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
 
@@ -289,9 +293,9 @@ int input_client_cmd_add(char *name) {
 	entry->shm_id = shm_id;
 	entry->shm_buff = buff;
 
-	entry->type = strdup(name);
+	entry->type = strdup(type);
 	if (!entry->type) {
-		pom_oom(sizeof(strlen(name) + 1));
+		pom_oom(sizeof(strlen(type) + 1));
 		goto err;
 	}
 
@@ -302,11 +306,14 @@ int input_client_cmd_add(char *name) {
 
 	// Add the input in the registry
 	
-	char num[16];
-	memset(num, 0, sizeof(num));
-	snprintf(num, sizeof(num), "%u", input_id);
-	entry->reg_instance = registry_add_instance(input_registry_class, num);
+	entry->reg_instance = registry_add_instance(input_registry_class, name);
 	if (!entry->reg_instance)
+		goto err;
+
+	entry->reg_instance->priv = entry;
+
+	if (registry_instance_add_function(entry->reg_instance, "start", input_client_cmd_start , "Start the input") != POM_OK ||
+		registry_instance_add_function(entry->reg_instance, "stop", input_client_cmd_stop, "Stop the input") != POM_OK)
 		goto err;
 
 	// Fetch the input parameters
@@ -378,7 +385,7 @@ int input_client_cmd_add(char *name) {
 
 	} while (!last);
 
-	return input_id;
+	return POM_OK;
 
 err:
 
@@ -396,7 +403,7 @@ err:
 	}
 	
 	// Remove the input on the other side
-	input_client_cmd_remove(input_id);
+	input_client_cmd_remove(entry->reg_instance);
 
 	// TODO remove registry branch
 
@@ -405,14 +412,9 @@ err:
 
 }
 
-int input_client_cmd_remove(unsigned int input_id) {
+int input_client_cmd_remove(struct registry_instance *ri) {
 	
-	struct input_client_entry *i;
-	for (i = input_client_head; i && i->id != input_id; i = i->next);
-	if (!i) {
-		pomlog(POMLOG_ERR "Input with id %u does not exists", input_id);
-		return POM_ERR;
-	}
+	struct input_client_entry *i = ri->priv;
 
 	if (i->thread) {
 		pomlog(POMLOG_WARN "Cannot remove input %u as it's running");
@@ -422,7 +424,7 @@ int input_client_cmd_remove(unsigned int input_id) {
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_remove;
-	msg.data.remove.id = input_id;
+	msg.data.remove.id = i->id;
 
 	int status = POM_ERR;
 	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
@@ -432,16 +434,17 @@ int input_client_cmd_remove(unsigned int input_id) {
 
 	struct input_ipc_raw_cmd_reply *reply;
 
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		goto err;
-
 	if (i->shm_buff) {
 		pom_mutex_lock(&i->shm_buff->lock);
 		i->shm_buff->flags &= ~INPUT_FLAG_ATTACHED;
 		pom_mutex_unlock(&i->shm_buff->lock);
 		if (shmdt(i->shm_buff))
 			pomlog(POMLOG_WARN "Warning, error while detaching IPC shared memory segment : %s", pom_strerror(errno));
+		i->shm_buff = NULL;
 	}
+
+	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
+		goto err;
 
 	registry_remove_instance(i->reg_instance);
 
@@ -472,19 +475,23 @@ err:
 	return status;
 }
 
-int input_client_cmd_start(unsigned int input_id) {
+int input_client_cmd_start(struct registry_instance *ri) {
 	
-	struct input_client_entry *i;
-	for (i = input_client_head; i && i->id != input_id; i = i->next);
-	if (!i) {
-		pomlog(POMLOG_ERR "Input with id %u does not exists", input_id);
+	struct input_client_entry *i = ri->priv;
+
+	pom_mutex_lock(&i->shm_buff->lock);
+	int running = i->shm_buff->flags & INPUT_FLAG_RUNNING;
+	pom_mutex_unlock(&i->shm_buff->lock);
+
+	if (running) {
+		pomlog(POMLOG_ERR "Input is already running");
 		return POM_ERR;
 	}
 
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_start;
-	msg.data.start.id = input_id;
+	msg.data.start.id = i->id; 
 
 	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
 
@@ -508,7 +515,7 @@ int input_client_cmd_start(unsigned int input_id) {
 	input_ipc_destroy_request(id);
 	if (core_spawn_reader_thread(i) == POM_ERR) {
 
-		input_client_cmd_stop(id);
+		input_client_cmd_stop(ri);
 		proto_remove_dependency(i->datalink_dep);
 		return POM_ERR;
 	}
@@ -517,19 +524,22 @@ int input_client_cmd_start(unsigned int input_id) {
 	return POM_OK;
 }
 
-int input_client_cmd_stop(unsigned int input_id) {
+int input_client_cmd_stop(struct registry_instance *ri) {
 	
-	struct input_client_entry *i;
-	for (i = input_client_head; i && i->id != input_id; i = i->next);
-	if (!i) {
-		pomlog(POMLOG_ERR "Input with id %u does not exists", input_id);
+	struct input_client_entry *i = ri->priv;
+
+	pom_mutex_lock(&i->shm_buff->lock);
+	int running = i->shm_buff->flags & INPUT_FLAG_RUNNING;
+	pom_mutex_unlock(&i->shm_buff->lock);
+
+	if (!running) {
+		pomlog(POMLOG_ERR "Input is already stopped");
 		return POM_ERR;
 	}
-
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
 	msg.subtype = input_ipc_cmd_type_stop;
-	msg.data.stop.id = input_id;
+	msg.data.stop.id = i->id;
 
 	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
 
@@ -545,11 +555,12 @@ int input_client_cmd_stop(unsigned int input_id) {
 	
 	input_ipc_destroy_request(id);
 
+	if (input_client_wait_for_empty_buff(i) == POM_ERR)
+		return POM_ERR;
+
 	proto_remove_dependency(i->datalink_dep);
 	i->datalink_dep = NULL;
 
-	if (core_destroy_reader_thread(i->thread))
-		return POM_ERR;
 	i->thread = NULL;
 
 	return status;

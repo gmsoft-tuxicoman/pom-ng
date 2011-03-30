@@ -38,6 +38,7 @@
 #include "pomlog.h"
 #include "proto.h"
 #include "packet.h"
+#include "timer.h"
 
 #include <pom-ng/ptype.h>
 
@@ -66,9 +67,10 @@ void print_usage() {
 	printf(	"Usage : " PACKAGE_NAME " [options]\n"
 		"\n"
 		"Options :\n"
-		" -d, --debug=LEVEL	specify the debug level <0-4> (default 3)\n"
+		" -d, --debug=LEVEL	specify the debug level <0-4> (default: 3)\n"
 		" -h, --help		print this usage\n"
 		" -u, --user=USER	drop privilege to this user\n"
+		" -t, --threads=num     number of processing threads to start (default: number of cpu)\n"
 		"\n"
 		);
 }
@@ -82,17 +84,19 @@ int main(int argc, char *argv[]) {
 	
 	uid_t uid = 0;
 	gid_t gid = 0;
+	int num_threads = 0;
 
 	while (1) {
 
 		static struct option long_options[] = {
 			{ "user", 1, 0, 'u' },
 			{ "debug", 1, 0, 'd' },
+			{ "threads", 1, 0, 't' },
 			{ "help", 0, 0, 'h' },
 		};
 
 		
-		char *args = "u:d:h";
+		char *args = "u:d:t:h";
 
 		c = getopt_long(argc, argv, args, long_options, NULL);
 
@@ -131,6 +135,14 @@ int main(int argc, char *argv[]) {
 					pomlog_set_debug_level(debug_level);
 				} else {
 					printf("Invalid debug level \"%s\"\n", optarg);
+					print_usage();
+					return -1;
+				}
+				break;
+			}
+			case 't': {
+				if (sscanf(optarg, "%u", &num_threads) != 1) {
+					printf("Invalid number of threads : \"%s\"\n", optarg);
 					print_usage();
 					return -1;
 				}
@@ -249,7 +261,7 @@ int main(int argc, char *argv[]) {
 		goto err_xmlrpcsrv;
 	}
 
-	if (core_init() != POM_OK) {
+	if (core_init(num_threads) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing core");
 		res = -1;
 		goto err_httpd;

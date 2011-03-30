@@ -189,10 +189,8 @@ static int input_pcap_read(struct input *i) {
 	if (phdr->len > phdr->caplen) 
 		pomlog(POMLOG_WARN "Warning, some packets were truncated at capture time");
 
-	if (result == -2) { // EOF
-		input_close(i);
-		return POM_OK;
-	}
+	if (result == -2) // EOF
+		return POM_ERR;
 
 	if (result == 0) // Timeout
 		return POM_OK;

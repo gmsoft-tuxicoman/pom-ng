@@ -358,6 +358,7 @@ int input_open(struct input *i, struct input_caps *ic) {
 
 
 	i->running = 1;
+	i->shm_buff->flags |= INPUT_FLAG_RUNNING;
 
 	if (pthread_create(&i->thread, NULL, input_process_thread, (void *) i)) {
 		input_instance_unlock(i);
@@ -509,6 +510,7 @@ int input_close(struct input *i) {
 
 	pom_mutex_lock(&i->shm_buff->lock);
 	i->shm_buff->flags |= INPUT_FLAG_EOF;
+	i->shm_buff->flags &= ~INPUT_FLAG_RUNNING;
 	pom_mutex_unlock(&i->shm_buff->lock);
 
 	input_instance_unlock(i);
@@ -548,7 +550,7 @@ int input_cleanup(struct input *i) {
 	// Free shm stuff
 	if (i->shm_buff) {
 		int try = 0, maxtry = 5;
-		for (; try < maxtry; i++) {
+		for (; try < maxtry; try++) {
 			pom_mutex_lock(&i->shm_buff->lock);
 			unsigned int attached = i->shm_buff->flags & INPUT_FLAG_ATTACHED;
 			pom_mutex_unlock(&i->shm_buff->lock);
@@ -563,6 +565,7 @@ int input_cleanup(struct input *i) {
 
 		if (shmdt(i->shm_buff))
 			pomlog(POMLOG_WARN "Error while detaching shared memory : %s", pom_strerror(errno));
+		i->shm_buff = NULL;
 	}
 	
 	if (i->shm_id != -1 && shmctl(i->shm_id, IPC_RMID, 0) == -1)
@@ -643,6 +646,8 @@ void *input_process_thread(void *param) {
 		}
 		input_instance_unlock(i);
 	}
+
+	input_close(i);
 
 	pomlog("Input thread finished");
 

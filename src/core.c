@@ -44,7 +44,7 @@ static pthread_cond_t core_pkt_queue_restart_cond;
 static pthread_mutex_t core_pkt_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-int core_init() {
+int core_init(int num_threads) {
 
 	// Initialize the conditions for the sheduler thread
 	if (pthread_cond_init(&core_pkt_queue_restart_cond, NULL)) {
@@ -53,14 +53,16 @@ int core_init() {
 	}
 
 	// Start the processing threads
-	int numcpu = sysconf(_SC_NPROCESSORS_ONLN);
-	if (numcpu < 1) {
+	if (num_threads == 0)
+		num_threads = sysconf(_SC_NPROCESSORS_ONLN);
+
+	if (num_threads < 1) {
 		pomlog(POMLOG_WARN "Could not find the number of CPU, starting %u processing threads", CORE_PROCESS_THREAD_DEFAULT);
-		numcpu = CORE_PROCESS_THREAD_DEFAULT;
+		num_threads = CORE_PROCESS_THREAD_DEFAULT;
 	} else {
-		if (numcpu > CORE_PROCESS_THREAD_MAX)
-			numcpu = CORE_PROCESS_THREAD_MAX;
-		pomlog(POMLOG_INFO "Starting %u processing threads", numcpu);
+		if (num_threads > CORE_PROCESS_THREAD_MAX)
+			num_threads = CORE_PROCESS_THREAD_MAX;
+		pomlog(POMLOG_INFO "Starting %u processing threads", num_threads);
 	}
 
 	core_run = 1;
@@ -69,7 +71,7 @@ int core_init() {
 
 	int i;
 
-	for (i = 0; i < numcpu; i++) {
+	for (i = 0; i < num_threads; i++) {
 		struct core_processing_thread *tmp = malloc(sizeof(struct core_processing_thread));
 		if (!tmp) {
 			pom_oom(sizeof(struct core_processing_thread));
@@ -170,6 +172,8 @@ int core_spawn_reader_thread(struct input_client_entry *i) {
 	t->input = i;
 	i->thread = t;
 
+	pomlog(POMLOG_DEBUG "Starting new thread for input %u", i->id);
+
 	if (pthread_create(&t->thread, NULL, core_reader_thread_func, t)) {
 		pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
 		return POM_ERR;
@@ -185,6 +189,8 @@ void *core_reader_thread_func(void *thread) {
 
 	pomlog(POMLOG_INFO "New thread created for input %u", t->input->id);
 
+	// No need to stay attached
+
 	while (1) {
 
 		struct packet *p = packet_pool_get();
@@ -196,7 +202,7 @@ void *core_reader_thread_func(void *thread) {
 
 		if (!p->buff) {
 			// EOF
-			return NULL;
+			goto err;
 		}
 
 		p->datalink = t->input->datalink_dep->proto;
@@ -211,7 +217,13 @@ void *core_reader_thread_func(void *thread) {
 
 err:
 
-	input_client_cmd_stop(t->input->id);
+	// Do the cleanup
+	
+	proto_remove_dependency(t->input->datalink_dep);
+	t->input->datalink_dep = NULL;
+
+	t->input->thread = NULL;
+	free(t);
 
 	return NULL;
 }
@@ -272,21 +284,6 @@ int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 	}
 
 	pom_mutex_unlock(&core_pkt_queue_mutex);
-
-	return POM_OK;
-}
-
-
-int core_destroy_reader_thread(struct core_reader_thread *t) {
-
-	if (input_client_wait_for_empty_buff(t->input) == POM_ERR)
-		return POM_ERR;
-
-	if (pthread_join(t->thread, NULL)) {
-		pomlog(POMLOG_ERR "Error while joining processing thread for input %u : %s", t->input->id, pom_strerror(errno));
-		return POM_ERR;
-	}
-	free(t);
 
 	return POM_OK;
 }

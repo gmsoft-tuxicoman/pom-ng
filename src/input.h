@@ -38,6 +38,7 @@
 
 #define INPUT_FLAG_ATTACHED	0x1 ///< the parent process has attached the buffer
 #define INPUT_FLAG_EOF		0x2 ///< the input reached EOF
+#define INPUT_FLAG_RUNNING	0x4 ///< the input is running in the input process
 
 struct input_packet {
 

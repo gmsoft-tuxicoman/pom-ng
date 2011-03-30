@@ -228,6 +228,7 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 
 		tmp->t = timer_alloc(tmp, proto_ipv4_fragment_cleanup);
 		if (!tmp->t) {
+			pom_mutex_unlock(&s->ce->lock);
 			free(tmp);
 			return PROTO_ERR;
 		}
@@ -249,8 +250,10 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	}
 
 	// Fragment was already handled
-	if (tmp->flags & PROTO_IPV4_FLAG_PROCESSED)
+	if (tmp->flags & PROTO_IPV4_FLAG_PROCESSED) {
+		pom_mutex_unlock(&s->ce->lock);
 		return PROTO_STOP;
+	}
 	
 	// Add the fragment
 	if (packet_multipart_add(tmp->multipart, p, offset, frag_size, (s->pload - (void*)p->buff) + (hdr->ip_hl * 4)) != POM_OK) {

@@ -22,7 +22,6 @@
 #include "xmlrpccmd.h"
 #include "xmlrpcsrv.h"
 
-#include "xmlrpccmd_input.h"
 #include "xmlrpccmd_registry.h"
 
 #define XMLRPCCMD_NUM 1
@@ -49,7 +48,6 @@ int xmlrpccmd_register_all() {
 	}
 
 	int res = POM_OK;
-	res += xmlrpccmd_input_register_all();
 	res += xmlrpccmd_registry_register_all();
 
 	return res;

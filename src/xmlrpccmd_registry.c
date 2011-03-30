@@ -25,8 +25,22 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 2
+#define XMLRPCCMD_REGISTRY_NUM 5
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
+
+	{
+		.name = "registry.addInstance",
+		.callback_func = xmlrpccmd_registry_add_instance,
+		.signature = "i:sss",
+		.help = "Add an instance of a certain class. Arguments are : class, instance_name, instance_type",
+	},
+
+	{
+		.name = "registry.removeInstance",
+		.callback_func = xmlrpccmd_registry_remove_instance,
+		.signature = "i:ss",
+		.help = "Remove an instance from a certain class, Arguments are : class, instance",
+	},
 
 	{
 		.name = "registry.getInstanceParam",
@@ -40,6 +54,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.callback_func = xmlrpccmd_registry_set_instance_param,
 		.signature = "i:ssss",
 		.help = "Set the value of an instance parameter. Arguments are : class, instance, parameter, value",
+	},
+
+	{
+		.name = "registry.instanceAction",
+		.callback_func = xmlrpccmd_registry_instance_action,
+		.signature = "i:sss",
+		.help = "Execute an instance action. Arguments are : class, instance, action",
 	},
 
 
@@ -58,6 +79,87 @@ int xmlrpccmd_registry_register_all() {
 
 }
 
+xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *cls = NULL, *type = NULL, *name = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(sss)", &cls, &name, &type);
+
+	if (envP->fault_occurred)
+		goto err;
+
+	if (registry_find_instance(cls, name)) {
+		xmlrpc_faultf(envP, "Instance already exists");
+		goto err;
+	}
+
+	struct registry_class *c = registry_find_class(cls);
+	if (!c) {
+		xmlrpc_faultf(envP, "Class not found");
+		goto err;
+	}
+	free(cls);
+	cls = NULL;
+	
+	if (!c->instance_add) {
+		xmlrpc_faultf(envP, "This class doesn't support adding instances");
+		goto err;
+	}
+
+	if (c->instance_add(type, name) != POM_OK) {
+		xmlrpc_faultf(envP, "Error while adding the instance");
+		goto err;
+	}
+
+	free(type);
+	free(name);
+
+	return xmlrpc_int_new(envP, 0);
+
+err:
+	if (cls)
+		free(cls);
+	free(type);
+	free(name);
+
+	return NULL;
+}
+
+xmlrpc_value *xmlrpccmd_registry_remove_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *cls = NULL, *instance = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(ss)", &cls, &instance);
+
+	if (envP->fault_occurred)
+		goto err;
+
+	struct registry_instance *i = registry_find_instance(cls, instance);
+	if (!i) {
+		xmlrpc_faultf(envP, "Class or instance not found");
+		goto err;
+	}
+	free(cls);
+	free(instance);
+	
+	if (!i->parent->instance_remove) {
+		xmlrpc_faultf(envP, "This class doesn't support removing instances");
+		return NULL;
+	}
+
+	if (i->parent->instance_remove(i) != POM_OK) {
+		xmlrpc_faultf(envP, "Error while adding the instance");
+		return NULL;
+	}
+
+
+	return xmlrpc_int_new(envP, 0);
+
+err:
+	free(cls);
+	free(instance);
+
+	return NULL;
+}
+
 xmlrpc_value *xmlrpccmd_registry_get_instance_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
 	char *cls = NULL, *instance = NULL, *param = NULL;
@@ -68,31 +170,28 @@ xmlrpc_value *xmlrpccmd_registry_get_instance_param(xmlrpc_env * const envP, xml
 
 	xmlrpc_value *result = NULL;
 
-	struct registry_class *c = registry_get_head();
-
-	for (;c && strcmp(c->name, cls); c = c->next);
-	if (!c) {
-		xmlrpc_faultf(envP, "Class %s not found", cls);
-		goto err;
-	}
-
-	struct registry_instance *i = c->instances;
-	for (; i && strcmp(i->name, instance); i = i->next);
+	struct registry_instance *i = registry_find_instance(cls, instance);
 	if (!i) {
-		xmlrpc_faultf(envP, "Instance %s not found", instance);
+		xmlrpc_faultf(envP, "Class or instance not found");
 		goto err;
 	}
+
+	pom_mutex_lock(&i->lock);
 
 	struct registry_param *p = i->params;
 	for (; p && strcmp(p->name, param); p = p->next);
 
 	if (!p) {
+		pom_mutex_unlock(&i->lock);
 		xmlrpc_faultf(envP, "Parameter %s not found", param);
 		goto err;
 	}
+	pom_mutex_unlock(&i->lock);
 	
+	pom_mutex_lock(&p->lock);
 
 	char *value = ptype_print_val_alloc(p->value);
+	pom_mutex_unlock(&p->lock);
 	if (!value) {
 		xmlrpc_faultf(envP, "Error while getting the parameter value of parameter %s", param);
 		goto err;
@@ -119,38 +218,103 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 	if (envP->fault_occurred)
 		return NULL;
 
-
-	struct registry_class *c = registry_get_head();
-	struct registry_param *p = NULL;
-
-	for (;c && strcmp(c->name, cls); c = c->next);
-	if (c) {
-		struct registry_instance *i = c->instances;
-		for (; i && strcmp(i->name, instance); i = i->next);
-		if (i) {
-			p = i->params;
-			for (; p && strcmp(p->name, param); p = p->next);
-		}
+	struct registry_instance *i = registry_find_instance(cls, instance);
+	if (!i) {
+		xmlrpc_faultf(envP, "Class or instance not found");
+		goto err;
 	}
+
+	pom_mutex_lock(&i->lock);
+
+	struct registry_param *p = i->params;
+	for (; p && strcmp(p->name, param); p = p->next);
+
+	if (!p) {
+		pom_mutex_unlock(&i->lock);
+		xmlrpc_faultf(envP, "Parameter %s not found", param);
+		goto err;
+	}
+	pom_mutex_unlock(&i->lock);
+	
+	pom_mutex_lock(&p->lock);
+
 
 	free(cls);
 	free(instance);
 	free(param);
 
-	if (!p) {
-		xmlrpc_faultf(envP, "Parameter not found");
-		free(value);
-		return NULL;
-	}
 
 	if (registry_set_param_value(p, value) != POM_OK) {
-		xmlrpc_faultf(envP, "Unable set parameter value to \"%s\"", value);
+		pom_mutex_unlock(&p->lock);
 		free(value);
+		xmlrpc_faultf(envP, "Unable set parameter value to \"%s\"", value);
 		return NULL;
 	}
+	pom_mutex_unlock(&p->lock);
 	free(value);
 
 	return xmlrpc_int_new(envP, 0);
 
+err:
+
+	free(cls);
+	free(instance);
+	free(param);
+	free(value);
+	return NULL;
+}
+
+xmlrpc_value *xmlrpccmd_registry_instance_action(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *cls = NULL, *instance = NULL, *action = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(sss)", &cls, &instance, &action);
+
+	if (envP->fault_occurred)
+		goto err;
+
+	struct registry_instance *i = registry_find_instance(cls, instance);
+
+	if (!i) {
+		xmlrpc_faultf(envP, "Class or instance doesn't exists");
+		goto err;
+	}
+
+	free(cls);
+	cls = NULL;
+	free(instance);
+	instance = NULL;
+
+	pom_mutex_lock(&i->lock);
+
+	struct registry_function *f = i->funcs;
+
+	for (; f && strcmp(f->name, action); f = f->next);
+
+	if (!f) {
+		pom_mutex_unlock(&i->lock);
+		xmlrpc_faultf(envP, "Action not found");
+		goto err;
+	}
+
+	if (f->handler(i) != POM_OK) {
+		pom_mutex_unlock(&i->lock);
+		xmlrpc_faultf(envP, "An error occurred");
+		goto err;
+	}
+
+	pom_mutex_unlock(&i->lock);
+
+	free(action);
+
+	return xmlrpc_int_new(envP, 0);
+
+err:
+	if (cls)
+		free(cls);
+	if (instance)
+		free(instance);
+	free(action);
+
+	return NULL;
 }
 

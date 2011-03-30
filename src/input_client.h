@@ -61,10 +61,10 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p);
 int input_client_release_packet(struct input_client_entry *input, struct packet *p);
 
 int input_client_cmd_mod_load(char *mod_name);
-int input_client_cmd_add(char *name);
-int input_client_cmd_remove(unsigned int input_id);
-int input_client_cmd_start(unsigned int input_id);
-int input_client_cmd_stop(unsigned int input_id);
+int input_client_cmd_add(char *type, char *name);
+int input_client_cmd_remove(struct registry_instance *ri);
+int input_client_cmd_start(struct registry_instance *ri);
+int input_client_cmd_stop(struct registry_instance *ri);
 
 int input_client_registry_param_apply(void *param, struct ptype *value);
 
