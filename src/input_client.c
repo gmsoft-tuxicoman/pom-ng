@@ -89,8 +89,56 @@ int input_client_cleanup() {
 
 	if (input_registry_class)
 		registry_remove_class(input_registry_class);
+	input_registry_class = NULL;
 
 	return POM_OK;
+}
+
+void *input_client_reader_thread_func(void *thread) {
+
+	struct input_client_reader_thread *t = thread;
+
+	pomlog(POMLOG_INFO "New thread created for input %u", t->input->id);
+
+	// No need to stay attached
+
+	while (1) {
+
+		struct packet *p = packet_pool_get();
+		if (!p) 
+			goto err;
+		
+		if (input_client_get_packet(t->input, p) != POM_OK)
+			goto err;
+
+		if (!p->buff) {
+			// EOF
+			goto err;
+		}
+
+		p->datalink = t->input->datalink_dep->proto;
+
+		if (core_queue_packet(p, t->input) == POM_ERR) {
+			goto err;
+		}
+
+	}
+
+	pthread_detach(pthread_self());
+
+err:
+	
+	pomlog("Input \"%s\" stopped", t->input->reg_instance->name);
+
+	// Do the cleanup
+	
+	proto_remove_dependency(t->input->datalink_dep);
+	t->input->datalink_dep = NULL;
+
+	t->input->thread = NULL;
+	free(t);
+
+	return NULL;
 }
 
 int input_client_wait_for_empty_buff(struct input_client_entry *input) {
@@ -349,13 +397,6 @@ int input_client_cmd_add(char *type, char *name) {
 			input_ipc_destroy_request(id);
 			goto err;
 		}
-		if (ptype_parse_val(p->value, reply->data.get_param.defval) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while parsing default parameter \"%s\" of type \"%s\"", reply->data.get_param.defval, reply->data.get_param.type);
-			ptype_cleanup(p->value);
-			free(p);
-			input_ipc_destroy_request(id);
-			goto err;
-		}
 
 		struct registry_param *reg_p = registry_new_param(	reply->data.get_param.name,
 									reply->data.get_param.defval,
@@ -513,13 +554,24 @@ int input_client_cmd_start(struct registry_instance *ri) {
 		return POM_ERR;
 	
 	input_ipc_destroy_request(id);
-	if (core_spawn_reader_thread(i) == POM_ERR) {
 
-		input_client_cmd_stop(ri);
-		proto_remove_dependency(i->datalink_dep);
+	// Start the reader thread
+	struct input_client_reader_thread *t = malloc(sizeof(struct input_client_reader_thread));
+	if (!t) {
+		pom_oom(sizeof(struct input_client_reader_thread));
 		return POM_ERR;
 	}
+	memset(t, 0, sizeof(struct input_client_reader_thread));
 
+	t->input = i;
+	i->thread = t;
+
+	pomlog(POMLOG_DEBUG "Starting new thread for input %u", i->id);
+
+	if (pthread_create(&t->thread, NULL, input_client_reader_thread_func, t)) {
+		pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
 
 	return POM_OK;
 }

@@ -32,6 +32,16 @@ static struct proto_dependency *proto_dependency_head = NULL;
 static pthread_mutex_t proto_list_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t proto_dependency_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static struct registry_class *proto_registry_class = NULL;
+
+int proto_init() {
+	
+	proto_registry_class = registry_add_class(PROTO_REGISTRY);
+	if (!proto_registry_class)
+		return POM_ERR;
+
+	return POM_OK;
+}
 
 int proto_register(struct proto_reg_info *reg_info) {
 
@@ -64,32 +74,32 @@ int proto_register(struct proto_reg_info *reg_info) {
 	
 
 	if (packet_info_pool_init(&proto->pkt_info_pool)) {
-		pom_mutex_unlock(&proto_list_lock);
 		pomlog(POMLOG_ERR "Error while initializing the pkt_info_pool");
-		free(proto);
-		return POM_ERR;
+		goto err_proto;
 	}
 
 	// Allocate the conntrack table
 	if (reg_info->ct_info.default_table_size) {
 		proto->ct = conntrack_tables_alloc(reg_info->ct_info.default_table_size, (reg_info->ct_info.rev_pkt_field_id == -1 ? 0 : 1));
 		if (!proto->ct) {
-			pom_mutex_unlock(&proto_list_lock);
 			pomlog(POMLOG_ERR "Error while allocating conntrack tables");
-			free(proto);
-			return POM_ERR;
+			goto err_packet_info;
 		}
 	}
 
+	proto->reg_instance = registry_add_instance(proto_registry_class, reg_info->name);
+	if (!proto->reg_instance) {
+		pomlog(POMLOG_ERR "Error while adding the registry instanc for protocol %s", reg_info->name);
+		goto err_conntrack;
+	}
+
 	if (reg_info->init) {
-		if (reg_info->init() == POM_ERR) {
-			conntrack_tables_free(proto->ct);
-			free(proto);
+		if (reg_info->init(proto->reg_instance) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while registering proto %s", reg_info->name);
-			pom_mutex_unlock(&proto_list_lock);
-			return POM_ERR;
+			goto err_registry;
 		}
 	}
+
 
 
 	mod_refcount_inc(reg_info->mod);
@@ -114,6 +124,19 @@ int proto_register(struct proto_reg_info *reg_info) {
 	pomlog(POMLOG_DEBUG "Proto %s registered", reg_info->name);
 
 	return POM_OK;
+
+err_registry:
+	registry_remove_instance(proto->reg_instance);
+err_conntrack:
+	conntrack_tables_free(proto->ct);
+err_packet_info:
+	packet_info_pool_cleanup(&proto->pkt_info_pool);
+err_proto:
+	free(proto);
+
+	pom_mutex_unlock(&proto_list_lock);
+
+	return POM_ERR;
 
 }
 
@@ -156,6 +179,9 @@ int proto_unregister(char *name) {
 		pomlog(POMLOG_ERR "Error while cleaning up the protocol %s", name);
 		return POM_ERR;
 	}
+
+	if (proto->reg_instance)
+		registry_remove_instance(proto->reg_instance);
 
 	if (proto->dep)
 		proto->dep->proto = NULL;
@@ -314,6 +340,10 @@ int proto_cleanup() {
 	}
 
 	pom_mutex_unlock(&proto_dependency_list_lock);
+
+	if (proto_registry_class)
+		registry_remove_class(proto_registry_class);
+	proto_registry_class = NULL;
 
 	return POM_OK;
 }

@@ -46,7 +46,7 @@ struct input_client_entry {
 	int shm_key;
 	int shm_id;
 	struct input_buff *shm_buff;
-	struct core_reader_thread *thread;
+	struct input_client_reader_thread *thread;
 	struct proto_dependency *datalink_dep;
 	struct input_client_param *params;
 	struct input_client_entry *next, *prev;
@@ -54,8 +54,17 @@ struct input_client_entry {
 	struct registry_instance *reg_instance;
 };
 
+struct input_client_reader_thread {
+	struct input_client_entry *input;
+	pthread_t thread;
+	int run; // Indicate if the thread should continue to run or not
+	struct packet *pkt;
+};
+
 int input_client_init();
 int input_client_cleanup();
+
+void *input_client_reader_thread_func(void *input);
 int input_client_wait_for_empty_buff(struct input_client_entry *input);
 int input_client_get_packet(struct input_client_entry *input, struct packet *p);
 int input_client_release_packet(struct input_client_entry *input, struct packet *p);

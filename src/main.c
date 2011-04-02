@@ -237,22 +237,28 @@ int main(int argc, char *argv[]) {
 		goto err_early;
 	}
 
+	if (proto_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the protocols");
+		res = -1;
+		goto err_registry;
+	}
+
 	// Load all the available modules
 	if (mod_load_all() != POM_OK) { 
 		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
-		goto err;
+		goto err_registry;
 	}
 
 	if (input_client_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the input_client module");
 		res = -1;
-		goto err_registry;
+		goto err_proto;
 	}
 
 	if (xmlrpcsrv_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting XML-RPC server");
 		res = -1;
-		goto err_registry;
+		goto err_proto;
 	}
 
 	if (httpd_init(8080) != POM_OK) {
@@ -285,7 +291,6 @@ int main(int argc, char *argv[]) {
 	shutdown_reason = NULL;
 
 
-err:
 
 	// Cleanup components
 
@@ -304,10 +309,11 @@ err_httpd:
 	httpd_cleanup();
 err_xmlrpcsrv:
 	xmlrpcsrv_cleanup();
+err_proto:
+	proto_cleanup();
 err_registry:
 	registry_cleanup();
 err_early:
-	proto_cleanup();
 	packet_pool_cleanup();
 	mod_unload_all();
 	timers_cleanup();

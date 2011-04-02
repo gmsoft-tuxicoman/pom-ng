@@ -25,6 +25,9 @@
 #include <pom-ng/proto.h>
 #include "packet.h"
 #include "conntrack.h"
+#include "registry.h"
+
+#define PROTO_REGISTRY "proto"
 
 struct proto_reg {
 
@@ -37,12 +40,15 @@ struct proto_reg {
 	// Packet info pool
 	struct packet_info_pool pkt_info_pool;
 
+	struct registry_instance *reg_instance;
+
 	void *priv;
 
 	struct proto_reg *next, *prev;
 
 };
 
+int proto_init();
 struct proto_dependency *proto_add_dependency_by_proto(struct proto_reg *proto);
 int proto_cleanup();
 

@@ -47,18 +47,10 @@ struct core_processing_thread {
 
 };
 
-struct core_reader_thread {
-	struct input_client_entry *input;
-	pthread_t thread;
-	int run; // Indicate if the thread should continue to run or not
-	struct packet *pkt;
-};
-
 int core_init(int num_threads);
 int core_cleanup();
 
 int core_spawn_reader_thread(struct input_client_entry *i);
-void *core_reader_thread_func(void *input);
 int core_queue_packet(struct packet *p, struct input_client_entry *i);
 void *core_processing_thread_func(void *priv);
 int core_process_packet(struct packet *p);

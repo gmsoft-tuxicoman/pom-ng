@@ -27,6 +27,7 @@
 #include <pom-ng/ptype.h>
 #include <pom-ng/packet.h>
 #include <pom-ng/conntrack.h>
+#include <pom-ng/registry.h>
 
 // Current proto API version
 #define PROTO_API_VER	1
@@ -78,7 +79,7 @@ struct proto_reg_info {
 	struct proto_pkt_field *pkt_fields;
 	struct conntrack_info ct_info;
 
-	int (*init) ();
+	int (*init) (struct registry_instance *i);
 	ssize_t (*parse) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 	ssize_t (*process) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);
 	int (*cleanup) ();

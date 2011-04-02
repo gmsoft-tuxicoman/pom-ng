@@ -269,6 +269,11 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 		goto err_defval;
 	}
 
+	if (ptype_parse_val(value, default_value) != POM_OK) {
+		pomlog(POMLOG_ERR "Error whiel parsing default parameter \"%s\" of type \"%s\"", default_value, value->type);
+		goto err_description;
+	}
+
 	p->description = strdup(description);
 	if (!p->description) {
 		pom_oom(strlen(description));

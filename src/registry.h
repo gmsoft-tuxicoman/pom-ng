@@ -23,33 +23,8 @@
 #ifndef __REGISTRY_H__
 #define __REGISTRY_H__
 
+#include <pom-ng/registry.h>
 
-#define REGISTRY_FLAG_CLEANUP_VAL	1
-
-struct registry_param {
-	char *name;
-	char *default_value;
-	struct ptype *value;
-	char *description;
-	unsigned int flags;
-	pthread_mutex_t lock;
-
-	void *check_priv;
-	int (*set_pre_check) (void *priv, char *value);
-	int (*set_post_check) (void *priv, struct ptype *value);
-
-	struct registry_param *next, *prev;
-};
-
-struct registry_instance {
-	char *name;
-	struct registry_param *params;
-	struct registry_function *funcs;
-	pthread_mutex_t lock;
-	void *priv;
-	struct registry_instance *next, *prev;
-	struct registry_class *parent;
-};
 
 struct registry_function {
 	
@@ -80,11 +55,7 @@ int registry_remove_class(struct registry_class *c);
 struct registry_instance *registry_add_instance(struct registry_class *c, char *name);
 int registry_remove_instance(struct registry_instance *i);
 
-struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags);
-int registry_param_set_check_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value));
 int registry_class_add_param(struct registry_class *c, struct registry_param *p);
-int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
-int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
 int registry_set_param_value(struct registry_param *p, char *value);
 
 struct registry_class *registry_find_class(char *cls);

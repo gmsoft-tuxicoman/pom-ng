@@ -22,6 +22,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/ptype_ipv4.h>
 #include <pom-ng/ptype_uint8.h>
+#include <pom-ng/ptype_uint32.h>
 
 #include "proto_ipv4.h"
 
@@ -35,6 +36,8 @@
 static struct proto_dependency *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp = NULL, *proto_ipv6 = NULL, *proto_gre = NULL;
 
 static struct ptype *ptype_uint8 = NULL, *ptype_ipv4 = NULL;
+
+static struct registry_param *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
 struct mod_reg_info* proto_ipv4_reg_info() {
 	static struct mod_reg_info reg_info;
@@ -103,8 +106,23 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 }
 
 
-static int proto_ipv4_init() {
+static int proto_ipv4_init(struct registry_instance *i) {
 
+	struct ptype *value = ptype_alloc_unit("uint32", "seconds");
+	if (!value)
+		return POM_ERR;
+
+	param_frag_timeout = registry_new_param("fragment_timeout", "60", value, "Timeout for incomplete ipv4 fragments", REGISTRY_FLAG_CLEANUP_VAL);
+	if (registry_instance_add_param(i, param_frag_timeout) != POM_OK)
+		goto err;
+
+	value = ptype_alloc_unit("uint32", "seconds");
+	if (!value)
+		goto err;
+
+	param_conntrack_timeout = registry_new_param("conntrack_timeout", "7200", value, "Timeout for ipv4 connections", REGISTRY_FLAG_CLEANUP_VAL);
+	if (registry_instance_add_param(i, param_conntrack_timeout) != POM_OK)
+		goto err;
 
 	proto_icmp = proto_add_dependency("icmp");
 	proto_tcp = proto_add_dependency("tcp");
@@ -118,6 +136,11 @@ static int proto_ipv4_init() {
 	}
 
 	return POM_OK;
+
+err:
+	param_frag_timeout = NULL;
+	param_conntrack_timeout = NULL;
+	return POM_ERR;
 }
 
 static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -263,6 +286,11 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 		free(tmp);
 		return PROTO_ERR;
 	}
+
+	// Schedule the timeout for the fragment
+	pom_mutex_lock(&param_frag_timeout->lock);
+	timer_queue(tmp->t, PTYPE_UINT32_GETVAL(param_frag_timeout->value));
+	pom_mutex_unlock(&param_frag_timeout->lock);
 
 
 	if (!(frag_off & IP_MORE_FRAG))
