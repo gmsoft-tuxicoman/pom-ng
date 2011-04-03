@@ -37,7 +37,7 @@ static struct proto_dependency *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp
 
 static struct ptype *ptype_uint8 = NULL, *ptype_ipv4 = NULL;
 
-static struct registry_param *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
+static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
 struct mod_reg_info* proto_ipv4_reg_info() {
 	static struct mod_reg_info reg_info;
@@ -108,20 +108,20 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 
 static int proto_ipv4_init(struct registry_instance *i) {
 
-	struct ptype *value = ptype_alloc_unit("uint32", "seconds");
-	if (!value)
+	param_frag_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!param_frag_timeout)
 		return POM_ERR;
 
-	param_frag_timeout = registry_new_param("fragment_timeout", "60", value, "Timeout for incomplete ipv4 fragments", REGISTRY_FLAG_CLEANUP_VAL);
-	if (registry_instance_add_param(i, param_frag_timeout) != POM_OK)
+	param_conntrack_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!param_conntrack_timeout)
+		return POM_ERR;
+
+	struct registry_param *p = registry_new_param("fragment_timeout", "60", param_frag_timeout, "Timeout for incomplete ipv4 fragments", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	value = ptype_alloc_unit("uint32", "seconds");
-	if (!value)
-		goto err;
-
-	param_conntrack_timeout = registry_new_param("conntrack_timeout", "7200", value, "Timeout for ipv4 connections", REGISTRY_FLAG_CLEANUP_VAL);
-	if (registry_instance_add_param(i, param_conntrack_timeout) != POM_OK)
+	p = registry_new_param("conntrack_timeout", "7200", param_conntrack_timeout, "Timeout for ipv4 connections", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
 	proto_icmp = proto_add_dependency("icmp");
@@ -138,8 +138,14 @@ static int proto_ipv4_init(struct registry_instance *i) {
 	return POM_OK;
 
 err:
-	param_frag_timeout = NULL;
-	param_conntrack_timeout = NULL;
+	if (param_frag_timeout) {
+		ptype_cleanup(param_frag_timeout);
+		param_frag_timeout = NULL;
+	}
+	if (param_conntrack_timeout) {
+		ptype_cleanup(param_conntrack_timeout);
+		param_conntrack_timeout = NULL;
+	}
 	return POM_ERR;
 }
 
@@ -288,9 +294,8 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	}
 
 	// Schedule the timeout for the fragment
-	pom_mutex_lock(&param_frag_timeout->lock);
-	timer_queue(tmp->t, PTYPE_UINT32_GETVAL(param_frag_timeout->value));
-	pom_mutex_unlock(&param_frag_timeout->lock);
+	uint32_t *frag_timeout; PTYPE_UINT32_GETVAL(param_frag_timeout, frag_timeout);
+	timer_queue(tmp->t, *frag_timeout);
 
 
 	if (!(frag_off & IP_MORE_FRAG))
@@ -371,6 +376,9 @@ static int proto_ipv4_conntrack_cleanup(struct conntrack_entry *ce) {
 static int proto_ipv4_cleanup() {
 
 	int res = POM_OK;
+
+	res += ptype_cleanup(param_frag_timeout);
+	res += ptype_cleanup(param_conntrack_timeout);
 
 	res += proto_remove_dependency(proto_icmp);
 	res += proto_remove_dependency(proto_udp);
