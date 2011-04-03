@@ -108,7 +108,7 @@ int ptype_uint8_print(struct ptype *p, char *val, size_t size) {
 
 	uint8_t *v = p->value;
 
-	switch (p->print_mode) {
+	switch (p->flags & PTYPE_FLAG_RESERVED) {
 		case PTYPE_UINT8_PRINT_HEX:
 			return snprintf(val, size, "0x%X", *v);
 		default:

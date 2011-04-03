@@ -56,13 +56,20 @@
 // Current ptype API version
 #define PTYPE_API_VER	1
 
+// Ptype flags
+#define PTYPE_FLAG_HASLOCK	0x10000
+
+// Reserved for ptypes own usage
+#define PTYPE_FLAG_RESERVED	0xffff
+
 
 /// This structure hold all the informations about a ptype and its attibutes
 struct ptype {
 	struct ptype_reg* type; ///< Type of the ptype
 	char *unit; ///< Unity to be displayed
 	void *value; ///< Pointer to private data storing the actual value
-	unsigned int print_mode; ///< How to display the ptype on the screen
+	unsigned int flags; ///< How to display the ptype
+	pthread_mutex_t lock; ///< ptype lock if needed
 };
 
 
@@ -217,4 +224,7 @@ char *ptype_get_name(struct ptype *p);
 
 /// Get the size of pt->value
 size_t ptype_get_value_size(struct ptype *pt);
+
+/// Make ptype operations atomic for this ptype
+int ptype_make_atomic(struct ptype *pt);
 #endif

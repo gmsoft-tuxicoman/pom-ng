@@ -188,10 +188,8 @@ xmlrpc_value *xmlrpccmd_registry_get_instance_param(xmlrpc_env * const envP, xml
 	}
 	pom_mutex_unlock(&i->lock);
 	
-	pom_mutex_lock(&p->lock);
 
 	char *value = ptype_print_val_alloc(p->value);
-	pom_mutex_unlock(&p->lock);
 	if (!value) {
 		xmlrpc_faultf(envP, "Error while getting the parameter value of parameter %s", param);
 		goto err;
@@ -236,7 +234,6 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 	}
 	pom_mutex_unlock(&i->lock);
 	
-	pom_mutex_lock(&p->lock);
 
 
 	free(cls);
@@ -245,12 +242,10 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 
 
 	if (registry_set_param_value(p, value) != POM_OK) {
-		pom_mutex_unlock(&p->lock);
 		free(value);
 		xmlrpc_faultf(envP, "Unable set parameter value to \"%s\"", value);
 		return NULL;
 	}
-	pom_mutex_unlock(&p->lock);
 	free(value);
 
 	return xmlrpc_int_new(envP, 0);

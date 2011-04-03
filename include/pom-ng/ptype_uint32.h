@@ -23,23 +23,41 @@
 
 #include <pom-ng/ptype.h>
 
-#define PTYPE_UINT32_PRINT_DECIMAL	0
-#define PTYPE_UINT32_PRINT_HEX		1
-#define PTYPE_UINT32_PRINT_HUMAN	2
-#define PTYPE_UINT32_PRINT_HUMAN_1024	4
+#define PTYPE_UINT32_PRINT_DECIMAL	0x1
+#define PTYPE_UINT32_PRINT_HEX		0x2
+#define PTYPE_UINT32_PRINT_HUMAN	0x3
+#define PTYPE_UINT32_PRINT_HUMAN_1024	0x4
 
-/// x the struct ptype
-#define PTYPE_UINT32_GETVAL(x) 			\
-	(uint32_t) *((uint32_t*) (x)->value)
+/// x is the struct ptype, y is a pointer for the value
+#define PTYPE_UINT32_GETVAL(x, y) {				\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {			\
+		pom_mutex_lock(&x->lock);			\
+		static uint32_t value;				\
+		value = (uint32_t) *((uint32_t*) (x)->value);	\
+		pom_mutex_unlock(&x->lock);			\
+		y = &value;					\
+	} else							\
+		y = (uint32_t*) (x)->value;			\
+} 
+
 
 /// x is the struct ptype, y the value
-#define PTYPE_UINT32_SETVAL(x, y) {	\
-	uint32_t *v = (x)->value;	\
-	*v = (y);			\
+#define PTYPE_UINT32_SETVAL(x, y) {		\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_lock(&x->lock);	\
+	uint32_t *v = (x)->value;		\
+	*v = (y);				\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_unlock(&x->lock);	\
 }
 
 /// x is the struct ptype, y the increment
-#define PTYPE_UINT32_INC(x, y) 		\
-	*((uint32_t*)(x)->value) += (y)	
+#define PTYPE_UINT32_INC(x, y) {		\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_lock(&x->lock);	\
+	*((uint32_t*)(x)->value) += (y);	\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_unlock(&x->lock);	\
+}
 
 #endif

@@ -264,7 +264,6 @@ int input_server_cmd_get_param(struct input_ipc_raw_cmd *cmd) {
 	if (!p->next)
 		cmd_reply.data.get_param.last = 1;
 
-
 err:
 	input_server_list_unlock();
 	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));

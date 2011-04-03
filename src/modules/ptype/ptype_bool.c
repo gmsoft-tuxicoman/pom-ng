@@ -72,12 +72,12 @@ int ptype_bool_mod_unregister() {
 
 int ptype_bool_alloc(struct ptype *p) {
 
-	p->value = malloc(sizeof(int));
+	p->value = malloc(sizeof(char));
 	if (!p->value) {
-		pom_oom(sizeof(int));
+		pom_oom(sizeof(char));
 		return POM_ERR;
 	}
-	int *v = p->value;
+	char *v = p->value;
 	*v = 0;
 
 	return POM_OK;
@@ -92,7 +92,7 @@ int ptype_bool_cleanup(struct ptype *p) {
 
 int ptype_bool_parse(struct ptype *p, char *val) {
 
-	int *v = p->value;
+	char *v = p->value;
 
 	if(!strcasecmp(val, "yes") ||
 		!strcasecmp(val, "true") ||
@@ -138,7 +138,7 @@ int ptype_bool_compare(int op, void *val_a, void* val_b) {
 
 int ptype_bool_copy(struct ptype *dst, struct ptype *src) {
 
-	*((int*)dst->value) = *((int*) src->value);
+	*((char*)dst->value) = *((char*) src->value);
 	return POM_OK;
 
 }

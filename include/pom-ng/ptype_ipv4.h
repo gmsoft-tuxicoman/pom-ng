@@ -36,14 +36,26 @@ struct ptype_ipv4_val {
 };
 
 
-/// x is the struct ptype
-#define PTYPE_IPV4_GETADDR(x) \
-	((struct ptype_ipv4_val*) x)->addr
+/// x is the struct ptype, y is a pointer for the value
+#define PTYPE_IPV4_GETADDR(x, y) {									\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {								\
+		pom_mutex_lock(&x->lock);								\
+		static struct in_addr value;								\
+		memcpy(&value, &((struct ptype_ipv4_val*) x)->addr, sizeof(struct in_addr));		\
+		pom_mutex_unlock(&x->lock);								\
+		y = &value;										\
+	} else												\
+		y = &((struct ptype_ipv4_val*) x)->add;							\
+} 
 
-/// x is the struct ptype, y the ipv4
-#define PTYPE_IPV4_SETADDR(x, y) { \
-	struct ptype_ipv4_val *v = (x)->value; \
-	memcpy(&v->addr, &y, sizeof(struct in_addr)); \
+/// x is the struct ptype, y the value
+#define PTYPE_IPV4_SETADDR(x, y) {			\
+	if (x->flags & PTYPE_FLAG_HASLOCK)		\
+		pom_mutex_lock(&x->lock);		\
+	struct ptype_ipv4_val *v = (x)->value;		\
+	memcpy(&v->addr, &y, sizeof(struct in_addr));	\
+	if (x->flags & PTYPE_FLAG_HASLOCK)		\
+		pom_mutex_unlock(&x->lock);		\
 }
 
 #endif

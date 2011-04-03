@@ -159,10 +159,10 @@ fi
 # Check for DVB
 AC_CHECK_HEADERS([linux/dvb/dmx.h linux/dvb/frontend.h], [want_dvb=yes], [want_dvb=no])
 
-#if test "x$want_dvb" = "xyes"
-#then
-#	INPUT_OBJS="input_docsis.la $INPUT_OBJS"
-#fi
+if test "x$want_dvb" = "xyes"
+then
+	INPUT_OBJS="input_dvb.la $INPUT_OBJS"
+fi
 
 if test "x$INPUT_OBJS" = "x"
 then

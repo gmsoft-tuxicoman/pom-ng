@@ -129,28 +129,37 @@ struct ptype* ptype_alloc_from(struct ptype *pt) {
 
 	memset(ret, 0, sizeof(struct ptype));
 	ret->type = pt->type;
+
+	ret->flags = pt->flags;
+	if (ret->flags & PTYPE_FLAG_HASLOCK)
+		if (pthread_mutex_init(&ret->lock, NULL)) {
+			free(ret);
+			pomlog(POMLOG_ERR "Error while initializing ptype lock");
+			goto err;
+		}
+
 	if (pt->type->info->alloc) {
 		if (pt->type->info->alloc(ret) != POM_OK) {
 			pomlog(POMLOG_ERR "Ptype allocation failed while copying from another ptype");
-			return NULL;
+			goto err;
 		}
 	}
 
 	if (pt->type->info->copy) {
 		if (pt->type->info->copy(ret, pt) != POM_OK) {
 			pomlog(POMLOG_ERR "Ptype copy failed while copying from another ptype");
-			return NULL;
+			goto err;
 		}
 	}
 
-
 	if (pt->unit) {
 		ret->unit = strdup(pt->unit);
-		if (!ret->unit)
+		if (!ret->unit) {
 			pom_oom(strlen(pt->unit));
+			goto err;
+		}
 	}
 
-	ret->print_mode = pt->print_mode;
 
 	ptype_reg_lock(1);
 	pt->type->refcount++;
@@ -158,37 +167,71 @@ struct ptype* ptype_alloc_from(struct ptype *pt) {
 
 	return ret;
 
+err:
+
+	if (ret->flags & PTYPE_FLAG_HASLOCK)
+		pthread_mutex_destroy(&ret->lock);
+
+	if (ret->type->info->cleanup)
+		ret->type->info->cleanup(ret);
+	
+	if (pt->unit)
+		free(pt->unit);
+
+	free(ret);
+
+	
+	return NULL;
 }
 
 int ptype_parse_val(struct ptype *pt, char *val) {
 
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&pt->lock);
+
+	int res = POM_ERR;
 	if (pt->type->info->parse_val)
-		return pt->type->info->parse_val(pt, val);
+		res = pt->type->info->parse_val(pt, val);
+
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&pt->lock);
 	
-	return POM_ERR;
+	return res;
 }
 
 int ptype_print_val(struct ptype *pt, char *val, size_t size) {
 	
-	// This function is mandatory
-	return pt->type->info->print_val(pt, val, size);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&pt->lock);
+	int res = pt->type->info->print_val(pt, val, size);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&pt->lock);
+	
+	return res;
 }
 
 char *ptype_print_val_alloc(struct ptype *pt) {
 
 	char *res = NULL;
 
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&pt->lock);
 	int size, new_size = DEFAULT_PRINT_VAL_ALLOC_BUFF;
 	do {
 		size = new_size;
 		res = realloc(res, size + 1);
 		if (!res) {
+			if (pt->flags & PTYPE_FLAG_HASLOCK)
+				pom_mutex_unlock(&pt->lock);
 			pom_oom(size + 1);
 			return NULL;
 		}
 		new_size = ptype_print_val(pt, res, size);
 		new_size = (new_size < 1) ? new_size * 2 : new_size + 1;
 	} while (new_size > size);
+
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&pt->lock);
 
 	return res;
 }
@@ -256,31 +299,56 @@ char *ptype_get_op_name(int op) {
 }
 
 int ptype_compare_val(int op, struct ptype *a, struct ptype *b) {
-	
+
+	if (a->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&a->lock);
+	if (b->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&b->lock);
+
+	int res = 0;
+
 	if (a->type != b->type) {
 		pomlog(POMLOG_ERR "Cannot compare ptypes, type differs. What about you try not to compare pears with apples ...");
-		return 0; // false
+		goto err; // false
 	}
 
 	if (!(a->type->info->ops & op)) {
 		pomlog(POMLOG_ERR "Invalid operation %s for ptype %s", ptype_get_op_sign(op), a->type->info->name);
-		return 0;
+		goto err;
 	}
 
 	if (op == PTYPE_OP_NEQ)
-		return !(a->type->info->compare_val(PTYPE_OP_EQ, a->value, b->value));
-	return (a->type->info->compare_val(op, a->value, b->value));
+		res = !(a->type->info->compare_val(PTYPE_OP_EQ, a->value, b->value));
+	else
+		res = (a->type->info->compare_val(op, a->value, b->value));
 
+err:
+	if (a->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&a->lock);
+	if (b->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&b->lock);
+
+	return res;
 }
 
 int ptype_serialize(struct ptype *pt, char *val, size_t size) {
 
-	return pt->type->info->serialize(pt, val, size);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&pt->lock);
+	int res = pt->type->info->serialize(pt, val, size);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&pt->lock);
+	return res;
 }
 
 int ptype_unserialize(struct ptype *pt, char *val) {
 
-	return pt->type->info->unserialize(pt, val);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&pt->lock);
+	int res = pt->type->info->unserialize(pt, val);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&pt->lock);
+	return res;
 }
 
 
@@ -291,7 +359,20 @@ int ptype_copy(struct ptype *dst, struct ptype *src) {
 		return POM_ERR;
 	}
 
-	return src->type->info->copy(dst, src);
+	if (src->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&src->lock);
+	if (dst->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&dst->lock);
+
+	int res = 0;
+	res = src->type->info->copy(dst, src);
+
+	if (src->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&src->lock);
+	if (dst->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&dst->lock);
+	
+	return res;
 }
 
 int ptype_cleanup(struct ptype* pt) {
@@ -304,6 +385,9 @@ int ptype_cleanup(struct ptype* pt) {
 
 	if (pt->unit)
 		free(pt->unit);
+	
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pthread_mutex_destroy(&pt->lock);
 	
 	ptype_reg_lock(1);
 	pt->type->refcount--;
@@ -396,5 +480,22 @@ size_t ptype_get_value_size(struct ptype *pt) {
 
 	if (!pt->type->info->value_size)
 		return -1;
-	return pt->type->info->value_size(pt);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_lock(&pt->lock);
+	int res = pt->type->info->value_size(pt);
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		pom_mutex_unlock(&pt->lock);
+
+	return res;
+}
+
+int ptype_make_atomic(struct ptype *pt) {
+
+	if (pt->flags & PTYPE_FLAG_HASLOCK)
+		return POM_ERR;
+
+	if (pthread_mutex_init(&pt->lock, NULL))
+		return POM_ERR;
+
+	return POM_OK;
 }

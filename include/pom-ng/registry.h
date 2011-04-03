@@ -33,7 +33,6 @@ struct registry_param {
 	struct ptype *value;
 	char *description;
 	unsigned int flags;
-	pthread_mutex_t lock;
 
 	void *check_priv;
 	int (*set_pre_check) (void *priv, char *value);

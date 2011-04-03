@@ -129,7 +129,7 @@ int ptype_uint16_print(struct ptype *p, char *val, size_t size) {
 
 	uint16_t *v = p->value;
 
-	switch (p->print_mode) {
+	switch (p->flags & PTYPE_FLAG_RESERVED) {
 		case PTYPE_UINT16_PRINT_HEX:
 			return snprintf(val, size, "0x%X", *v);
 		default:

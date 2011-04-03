@@ -47,7 +47,6 @@ struct registry_class {
 
 int registry_init();
 int registry_cleanup();
-struct registry_class * registry_get_head();
 
 struct registry_class* registry_add_class(char *name);
 int registry_remove_class(struct registry_class *c);

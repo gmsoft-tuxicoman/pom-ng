@@ -41,10 +41,6 @@ int registry_cleanup() {
 	return POM_OK;
 }
 
-struct registry_class * registry_get_head() {
-	return registry_head;
-}
-
 struct registry_class* registry_add_class(char *name) {
 
 	if (!name)
@@ -125,8 +121,6 @@ int registry_remove_class(struct registry_class *c) {
 		free(p->default_value);
 		free(p->description);
 
-		pthread_mutex_destroy(&p->lock);
-		
 		if (p->flags & REGISTRY_FLAG_CLEANUP_VAL)
 			ptype_cleanup(p->value);
 
@@ -206,8 +200,6 @@ int registry_remove_instance(struct registry_instance *i) {
 		free(p->default_value);
 		free(p->description);
 
-		pthread_mutex_destroy(&p->lock);
-		
 		if (p->flags & REGISTRY_FLAG_CLEANUP_VAL)
 			ptype_cleanup(p->value);
 
@@ -244,6 +236,9 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 	if (!name || !default_value || !value || !description)
 		return NULL;
 
+	if (ptype_make_atomic(value) != POM_OK)
+		return NULL;
+
 	struct registry_param *p = malloc(sizeof(struct registry_param));
 	if (!p) {
 		pom_oom(sizeof(struct registry_param));
@@ -251,11 +246,6 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 	}
 
 	memset(p, 0, sizeof(struct registry_param));
-
-	if (pthread_mutex_init(&p->lock, NULL)) {
-		pomlog(POMLOG_ERR "Error while initializing the param lock : %s", pom_strerror(errno));
-		goto err_name;
-	}
 
 	p->name = strdup(name);
 	if (!p->name) {

@@ -18,15 +18,19 @@
 include $(top_srcdir)/Makefile.common
 
 INPUT_SRC = @INPUT_OBJS@
-PROTO_SRC = proto_ethernet.la proto_icmp.la proto_ipv4.la proto_tcp.la
+PROTO_SRC = proto_ethernet.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la
 
 lib_LTLIBRARIES = $(INPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
-EXTRA_LTLIBRARIES = input_pcap.la
+EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la
 
 input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
 input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
 input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+
+input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
+input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 proto_ethernet_la_SOURCES = proto/proto_ethernet.c proto/proto_ethernet.h
 proto_ethernet_la_LDFLAGS = -module -avoid-version
@@ -37,6 +41,9 @@ proto_icmp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_ipv4_la_SOURCES = proto/proto_ipv4.c proto/proto_ipv4.h
 proto_ipv4_la_LDFLAGS = -module -avoid-version
 proto_ipv4_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+proto_mpeg_la_SOURCES = proto/proto_mpeg.c proto/proto_mpeg.h
+proto_mpeg_la_LDFLAGS = -module -avoid-version
+proto_mpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_tcp_la_SOURCES = proto/proto_tcp.c proto/proto_tcp.h
 proto_tcp_la_LDFLAGS = -module -avoid-version
 proto_tcp_la_LIBADD = $(top_builddir)/src/libpom-ng.la

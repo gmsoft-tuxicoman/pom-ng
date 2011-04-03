@@ -23,24 +23,40 @@
 
 #include <pom-ng/ptype.h>
 
-/// x is the struct ptype
-#define PTYPE_STRING_GETVAL(x) \
-	(char*) x->value
+/// x is the struct ptype, y is a pointer for the value
+#define PTYPE_STRING_GETVAL(x, y) {			\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {		\
+		pom_mutex_lock(&x->lock);		\
+		y = alloca(strlen((char*)x->value));	\
+		if (y)					\
+			strcpy(y, (char*)x->value);	\
+		pom_mutex_unlock(&x->lock);		\
+	} else 						\
+		y = (char*) x->value;			\
+}
 
 /// x is the struct ptype, y the string
 #define PTYPE_STRING_SETVAL(x, y) {		\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_lock(&x->lock);	\
 	if ((x)->value)				\
 		free((x)->value);		\
 	char *str = malloc(strlen((y)) + 1);	\
 	strcpy(str, (y));			\
 	(x)->value = str;			\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_unlock(&x->lock);	\
 }
 
 /// x is the struct ptype, y the string pointer
 #define PTYPE_STRING_SETVAL_P(x, y) {		\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_lock(&x->lock);	\
 	if ((x)->value)				\
 		free((x)->value);		\
-	(x)->value = y;			\
+	(x)->value = y;				\
+	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		pom_mutex_unlock(&x->lock);	\
 }
 
 #endif
