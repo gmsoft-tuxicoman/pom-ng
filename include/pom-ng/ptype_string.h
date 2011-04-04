@@ -31,8 +31,9 @@
 		if (y)					\
 			strcpy(y, (char*)x->value);	\
 		pom_mutex_unlock(&x->lock);		\
-	} else 						\
+	} else {					\
 		y = (char*) x->value;			\
+	}						\
 }
 
 /// x is the struct ptype, y the string

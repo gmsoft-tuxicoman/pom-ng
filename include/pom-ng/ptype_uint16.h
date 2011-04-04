@@ -36,27 +36,33 @@
 		value = (uint16_t) *((uint16_t*) (x)->value);	\
 		pom_mutex_unlock(&x->lock);			\
 		y = &value;					\
-	} else							\
+	} else {						\
 		y = (uint16_t*) (x)->value;			\
+	}							\
 } 
 
 /// x is the struct ptype, y the value
 #define PTYPE_UINT16_SETVAL(x, y) {		\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {	\
 		pom_mutex_lock(&x->lock);	\
-	uint16_t *v = (x)->value;		\
-	*v = (y);				\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		uint16_t *v = (x)->value;	\
+		*v = (y);			\
 		pom_mutex_unlock(&x->lock);	\
+	} else {				\
+		uint16_t *v = (x)->value;	\
+		*v = (y);			\
+	}					\
 }
 
 /// x is the struct ptype, y the increment
-#define PTYPE_UINT16_INC(x, y) {		\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
-		pom_mutex_lock(&x->lock);	\
-	*((uint16_t*)(x)->value) += (y);	\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
-		pom_mutex_unlock(&x->lock);	\
+#define PTYPE_UINT16_INC(x, y) {			\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {		\
+		pom_mutex_lock(&x->lock);		\
+		*((uint16_t*)(x)->value) += (y);	\
+		pom_mutex_unlock(&x->lock);		\
+	} else {					\
+		*((uint16_t*)(x)->value) += (y);	\
+	}						\
 }
 
 #endif

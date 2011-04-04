@@ -25,9 +25,16 @@
 
 
 // x is the struct ptype, y the mac
-#define PTYPE_MAC_SETADDR(x, y) { \
-	struct ptype_mac_val *v = (x)->value;\
-	memcpy(v->addr, y, 6); \
+#define PTYPE_MAC_SETADDR(x, y) {			\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {		\
+		pom_mutex_lock(&x->lock);		\
+		struct ptype_mac_val *v = (x)->value;	\
+		memcpy(v->addr, y, 6); 			\
+		pom_mutex_unlock(&x->lock);		\
+	} else {					\
+		struct ptype_mac_val *v = (x)->value;	\
+		memcpy(v->addr, y, 6);			\
+	}						\
 }
 
 struct ptype_mac_val {

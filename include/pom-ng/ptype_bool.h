@@ -26,24 +26,28 @@
 /// x is the struct ptype, y is a pocharer for the value
 #define PTYPE_BOOL_GETVAL(x, y) {			\
 	if (x->flags & PTYPE_FLAG_HASLOCK) {		\
+		char value;				\
 		pom_mutex_lock(&x->lock);		\
-		static char value;			\
 		value = (char) *((char*) (x)->value);	\
 		pom_mutex_unlock(&x->lock);		\
 		y = &value;				\
-	} else						\
+	} else {					\
 		y = (char*) (x)->value;			\
+	}						\
 } 
 
 
 /// x is the struct ptype, y the value
 #define PTYPE_BOOL_SETVAL(x, y) {		\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {	\
 		pom_mutex_lock(&x->lock);	\
-	char *v = (x)->value;		\
-	*v = (y);				\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		char *v = (x)->value;		\
+		*v = (y);			\
 		pom_mutex_unlock(&x->lock);	\
+	} else {				\
+		char *v = (x)->value;		\
+		*v = (y);			\
+	}					\
 }
 
 

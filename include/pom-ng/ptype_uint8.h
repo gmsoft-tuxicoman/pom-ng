@@ -34,28 +34,34 @@
 		value = (uint8_t) *((uint8_t*) (x)->value);	\
 		pom_mutex_unlock(&x->lock);			\
 		y = &value;					\
-	} else							\
+	} else {						\
 		y = (uint8_t*) (x)->value;			\
+	}							\
 } 
 
 
 /// x is the struct ptype, y the value
 #define PTYPE_UINT8_SETVAL(x, y) {		\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {	\
 		pom_mutex_lock(&x->lock);	\
-	uint8_t *v = (x)->value;		\
-	*v = (y);				\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		uint8_t *v = (x)->value;	\
+		*v = (y);			\
 		pom_mutex_unlock(&x->lock);	\
+	} else {				\
+		uint8_t *v = (x)->value;	\
+		*v = (y);			\
+	}					\
 }
 
 /// x is the struct ptype, y the increment
-#define PTYPE_UINT8_INC(x, y) {		\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+#define PTYPE_UINT8_INC(x, y) {			\
+	if (x->flags & PTYPE_FLAG_HASLOCK) {	\
 		pom_mutex_lock(&x->lock);	\
-	*((uint8_t*)(x)->value) += (y);	\
-	if (x->flags & PTYPE_FLAG_HASLOCK)	\
+		*((uint8_t*)(x)->value) += (y);	\
 		pom_mutex_unlock(&x->lock);	\
+	} else {				\
+		*((uint8_t*)(x)->value) += (y);	\
+	}					\
 }
 
 
