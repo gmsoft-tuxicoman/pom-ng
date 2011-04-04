@@ -98,7 +98,7 @@ void *input_client_reader_thread_func(void *thread) {
 
 	struct input_client_reader_thread *t = thread;
 
-	pomlog(POMLOG_INFO "New thread created for input %u", t->input->id);
+	pomlog(POMLOG_DEBUG "New thread created for input %u", t->input->id);
 
 	// No need to stay attached
 
@@ -381,7 +381,7 @@ int input_client_cmd_add(char *type, char *name) {
 			goto err;
 		}
 
-		pomlog("Got param %s of type %s, with defval %s", reply->data.get_param.name, reply->data.get_param.type, reply->data.get_param.defval);
+		pomlog(POMLOG_DEBUG "Got param %s of type %s, with defval %s", reply->data.get_param.name, reply->data.get_param.type, reply->data.get_param.defval);
 
 		struct input_client_param *p = malloc(sizeof(struct input_client_param));
 		if (!p) {

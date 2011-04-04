@@ -95,6 +95,7 @@ struct input_buff {
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod);
 struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t gid);
 int input_open(struct input *i, struct input_caps *ic);
+int input_run(struct input *i);
 int input_cleanup(struct input *i);
 
 void *input_process_thread(void *param);

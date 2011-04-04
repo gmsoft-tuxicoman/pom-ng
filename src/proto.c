@@ -47,7 +47,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 	if (input_server_is_current_process()) {
 		pomlog(POMLOG_DEBUG "Not loading protocol %s in the input process", reg_info->name);
-		return POM_ERR;
+		return POM_OK;
 	}
 
 	pom_mutex_lock(&proto_list_lock);

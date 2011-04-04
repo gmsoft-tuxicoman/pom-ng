@@ -70,9 +70,8 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_dvb_c.get_caps = input_dvb_get_caps;
 	in_dvb_c.close = input_dvb_close;
 	in_dvb_c.cleanup = input_dvb_cleanup;
-	input_register(&in_dvb_c, mod);
 
-	return POM_OK;
+	return input_register(&in_dvb_c, mod);
 }
 
 static int input_dvb_mod_unregister() {

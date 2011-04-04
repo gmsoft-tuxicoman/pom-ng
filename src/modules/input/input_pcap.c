@@ -38,6 +38,8 @@ struct mod_reg_info* input_pcap_reg_info() {
 
 static int input_pcap_mod_register(struct mod_reg *mod) {
 
+	int res = POM_OK;
+
 	static struct input_reg_info in_pcap_interface;
 	memset(&in_pcap_interface, 0, sizeof(struct input_reg_info));
 	in_pcap_interface.name = "pcap_interface";
@@ -48,7 +50,7 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_interface.get_caps = input_pcap_get_caps;
 	in_pcap_interface.close = input_pcap_close;
 	in_pcap_interface.cleanup = input_pcap_cleanup;
-	input_register(&in_pcap_interface, mod);
+	res += input_register(&in_pcap_interface, mod);
 
 
 	static struct input_reg_info in_pcap_file;
@@ -61,9 +63,9 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_file.get_caps = input_pcap_get_caps;
 	in_pcap_file.close = input_pcap_close;
 	in_pcap_file.cleanup = input_pcap_cleanup;
-	input_register(&in_pcap_file, mod);
+	res += input_register(&in_pcap_file, mod);
 
-	return POM_OK;
+	return res;
 
 }
 

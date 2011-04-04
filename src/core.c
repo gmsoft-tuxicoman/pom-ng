@@ -223,8 +223,6 @@ int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 
 void *core_processing_thread_func(void *priv) {
 
-	struct core_processing_thread *t = priv;
-
 	while (core_run) {
 		
 		pom_mutex_lock(&core_pkt_queue_mutex);
@@ -279,7 +277,8 @@ void *core_processing_thread_func(void *priv) {
 			return NULL;
 
 
-		pomlog(POMLOG_DEBUG "Thread %u processing ...", t->thread);
+		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
+
 		if (core_process_packet(pkt) == POM_ERR)
 			return NULL;
 
@@ -379,6 +378,7 @@ int core_process_packet(struct packet *p) {
 	
 
 	// Dump packet info
+	
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
 		printf("%s { ", s[i].proto->info->name);
 		int j;
@@ -391,7 +391,7 @@ int core_process_packet(struct packet *p) {
 		printf("} ");
 	}
 	printf("\n");
-
+	
 stop:
 	// Cleanup pkt_info
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)

@@ -149,7 +149,7 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 		input_server_list_head = l->next;
 
 		pomlog("Cleaning up input %u (%s)", l->id, l->i->type->info->name);
-		if (l->i->running)
+		if (l->i->opened)
 			input_close(l->i);
 		input_cleanup(l->i);
 		free(l);
@@ -360,15 +360,66 @@ int input_server_cmd_start(struct input_ipc_raw_cmd *cmd) {
 		input_server_list_unlock();
 		goto err;
 	}
+
+	struct input *i = l->i;
+
 	struct input_caps ic;
 	memset(&ic, 0, sizeof(struct input_caps));
 
-	cmd_reply.status = input_open(l->i, &ic);
+	cmd_reply.status = input_open(i, &ic);
 
-	if (cmd_reply.status == POM_OK)
-		strncpy(cmd_reply.data.start_reply.datalink, ic.datalink, INPUT_IPC_DATALINK_MAX);
+	if (cmd_reply.status != POM_OK)
+		goto err;
+	
+	strncpy(cmd_reply.data.start_reply.datalink, ic.datalink, INPUT_IPC_DATALINK_MAX);
+
+	// Make sure we don't open more than one non-live input
+	if (!ic.is_live) {
+		for (l = input_server_list_head; l; l = l->next) {
+			if (l->i == i)
+				continue;
+			input_instance_lock(l->i, 0);
+			if (l->i->opened) {
+				input_instance_unlock(l->i);
+				pomlog(POMLOG_ERR "Cannot open non-live input as another input is already running");
+				cmd_reply.status = POM_ERR;
+				input_close(i);
+				goto err;
+			}
+			input_instance_unlock(l->i);
+		}
+	} else {
+		for (l = input_server_list_head; l; l = l->next) {
+			if (l->i == i)
+				continue;
+			struct input_caps ic;
+			input_instance_lock(l->i, 0);
+			if (l->i->opened) {
+				if (l->i->type->info->get_caps(l->i, &ic) != POM_OK) {
+					input_instance_unlock(l->i);
+					cmd_reply.status = POM_ERR;
+					input_close(i);
+					pomlog(POMLOG_ERR "Cannot get caps from input %u", cmd->data.start.id);
+					goto err;
+				}
+				if (!ic.is_live) {
+					input_instance_unlock(l->i);
+					cmd_reply.status = POM_ERR;
+					input_close(i);
+					pomlog(POMLOG_ERR "Cannot open a live input while a non-live input is running");
+					goto err;
+				}
+			}
+			input_instance_unlock(l->i);
+
+		}
+	}
+
+	// Run the input
+	cmd_reply.status = input_run(i);
 
 err:
+
 	input_server_list_unlock();
 	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));
 }

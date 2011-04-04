@@ -42,7 +42,7 @@ int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
 	if (!input_server_is_current_process()) {
 		pomlog(POMLOG_DEBUG "Not loading input in another process than the input process");
-		return POM_ERR;
+		return POM_OK;
 	}
 
 	pomlog(POMLOG_DEBUG "Registering input %s", reg_info->name);
@@ -338,7 +338,7 @@ int input_open(struct input *i, struct input_caps *ic) {
 	pom_mutex_unlock(&i->shm_buff->lock);
 	
 
-	if (i->running || !i->type->info->get_caps) {
+	if (i->opened || !i->type->info->get_caps) {
 		input_instance_unlock(i);
 		return POM_ERR;
 	}
@@ -360,7 +360,16 @@ int input_open(struct input *i, struct input_caps *ic) {
 	}
 
 
-	i->running = 1;
+	i->opened = 1;
+	input_instance_unlock(i);
+
+	return res;
+}
+
+
+int input_run(struct input *i) {
+
+	input_instance_lock(i, 1);
 	i->shm_buff->flags |= INPUT_FLAG_RUNNING;
 
 	if (pthread_create(&i->thread, NULL, input_process_thread, (void *) i)) {
@@ -372,7 +381,7 @@ int input_open(struct input *i, struct input_caps *ic) {
 	}
 
 	input_instance_unlock(i);
-	return res;
+	return POM_OK;
 }
 
 
@@ -502,36 +511,43 @@ int input_close(struct input *i) {
 	if (!i)
 		return POM_ERR;
 
+	// Signal the input it has been closed
+	
 	input_instance_lock(i, 1);
-
-	if (!i->running) {
+	if (!i->opened) {
 		input_instance_unlock(i);
 		return POM_ERR;
 	}
 
-	i->running = 0;
-
-	pom_mutex_lock(&i->shm_buff->lock);
-	i->shm_buff->flags |= INPUT_FLAG_EOF;
-	i->shm_buff->flags &= ~INPUT_FLAG_RUNNING;
-	pom_mutex_unlock(&i->shm_buff->lock);
-
+	i->opened = 0;
 	input_instance_unlock(i);
 
-	if (!pthread_equal(pthread_self(), i->thread)) {
-		// Try to join the thread only if it's not ourself
-		if (pthread_join(i->thread, NULL))
-			pomlog(POMLOG_ERR "Error while waiting for the input thread to finish : %s", pom_strerror(errno));
+
+	pom_mutex_lock(&i->shm_buff->lock);
+	if (i->shm_buff->flags & INPUT_FLAG_RUNNING) {
+		i->shm_buff->flags |= INPUT_FLAG_EOF;
+		i->shm_buff->flags &= ~INPUT_FLAG_RUNNING;
+
+		pom_mutex_unlock(&i->shm_buff->lock);
+
+		if (!pthread_equal(pthread_self(), i->thread)) {
+			// Try to join the thread only if it's not ourself
+			if (pthread_join(i->thread, NULL))
+				pomlog(POMLOG_ERR "Error while waiting for the input thread to finish : %s", pom_strerror(errno));
+		}
+	} else {
+		pom_mutex_unlock(&i->shm_buff->lock);
 	}
 
+	input_instance_lock(i, 1);
 	if (i->type->info->close) {
-		int res = i->type->info->close(i);
-		if (res == POM_ERR) {
+		if (i->type->info->close(i) == POM_ERR) {
 			input_instance_unlock(i);
 			return POM_ERR;
 		}
 	}
 
+	input_instance_unlock(i);
 
 	return POM_OK;
 }
@@ -542,7 +558,7 @@ int input_cleanup(struct input *i) {
 		return POM_ERR;
 	
 	input_instance_lock(i, 1);
-	if (i->running) {
+	if (i->opened) {
 		input_instance_unlock(i);
 		return POM_ERR;
 	}
@@ -639,11 +655,11 @@ void *input_process_thread(void *param) {
 
 	struct input *i = param;
 
-	pomlog("New input thread running");
+	pomlog(POMLOG_DEBUG "New input thread running");
 
 	while (i->type->info->read(i) == POM_OK) {
 		input_instance_lock(i, 0);
-		if (!i->running) {
+		if (!i->opened) {
 			input_instance_unlock(i);
 			break;
 		}
@@ -652,7 +668,7 @@ void *input_process_thread(void *param) {
 
 	input_close(i);
 
-	pomlog("Input thread finished");
+	pomlog(POMLOG_DEBUG "Input thread finished");
 
 	return NULL;
 }

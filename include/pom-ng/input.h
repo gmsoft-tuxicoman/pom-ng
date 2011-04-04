@@ -36,7 +36,7 @@ struct input_param;
 
 struct input {
 	struct input_reg* type; ///< Type of the input
-	int running;
+	int opened;
 	struct input_param *params;
 	void *priv;
 

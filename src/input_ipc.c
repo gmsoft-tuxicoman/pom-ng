@@ -136,7 +136,7 @@ int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg) {
 
 	pom_mutex_unlock(&input_ipc_req_mutex);
 
-	pomlog("Sent input IPC request %u", req->id);
+	pomlog(POMLOG_DEBUG "Sent input IPC request %u", req->id);
 
 	return req->id;
 }
@@ -167,7 +167,7 @@ int input_ipc_process_reply(int queue_id) {
 
 		req->replied = 1;
 
-		pomlog(POMLOG_ERR "Processing request %u", req->id);
+		pomlog(POMLOG_DEBUG "Processing request %u", req->id);
 		pthread_cond_broadcast(&req->cond);
 		pom_mutex_unlock(&req->mutex);
 
@@ -204,7 +204,7 @@ int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
 
 	// Wait for the reply to be processed by the main process
-	pomlog("Waiting for reply %u", req_id);
+	pomlog(POMLOG_DEBUG "Waiting for reply %u", req_id);
 
 	if (pthread_cond_wait(&req->cond, &req->mutex)) {
 		pomlog(POMLOG_ERR "Error while waiting for request condition : %s", pom_strerror(errno));
@@ -263,7 +263,7 @@ int input_ipc_cleanup() {
 	// Wait for all the requests to be cleaned up
 	
 	while (input_ipc_reqs) {
-		pomlog("Waiting for requests to be processed ...");
+		pomlog(POMLOG_DEBUG "Waiting for requests to be processed ...");
 		sleep(1);
 	}
 
