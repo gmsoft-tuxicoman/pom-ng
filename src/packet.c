@@ -25,6 +25,7 @@
 #include "packet.h"
 #include "main.h"
 #include "core.h"
+#include "input_client.h"
 
 #include <pom-ng/ptype.h>
 
@@ -61,14 +62,56 @@ struct packet *packet_pool_get() {
 	
 	packet_head = tmp;
 
+	tmp->refcount = 1;
+
 	pom_mutex_unlock(&packet_list_mutex);
 
 	return tmp;
 }
 
+struct packet *packet_copy(struct packet *src) {
+
+	struct packet *dst = NULL;
+
+	if (src->input_pkt) {
+		// It uses the input buffer, we cannot hold this ressource
+		dst = packet_pool_get();
+		if (!dst)
+			return NULL;
+
+		memcpy(&dst->ts, &dst->ts, sizeof(struct timeval));
+		dst->len = src->len;
+		dst->buff = malloc(src->len);
+		if (!dst->buff) {
+			pom_oom(dst->len);
+			packet_pool_release(dst);
+			return NULL;
+		}
+
+		memcpy(dst->buff, src->buff, src->len);
+
+		dst->datalink = src->datalink;
+		dst->input = src->input;
+
+		return dst;
+	}
+
+	src->refcount++;
+	return src;
+}
+
 int packet_pool_release(struct packet *p) {
 
+	p->refcount--;
+
+	if (p->refcount && p->input_pkt)
+		pomlog(POMLOG_WARN "A packet using the input shared buffer has a refount above one");
+
+	if (p->refcount)
+		return POM_OK;
+
 	pom_mutex_lock(&packet_list_mutex);
+
 
 	// Remove the packet from the used list
 	if (p->next)
@@ -78,6 +121,30 @@ int packet_pool_release(struct packet *p) {
 		p->prev->next = p->next;
 	else
 		packet_head = p->next;
+
+	pom_mutex_unlock(&packet_list_mutex);
+
+	int res = POM_OK;
+
+	if (p->input_pkt) {
+		if (input_client_release_packet(p) != POM_OK) {
+			res = POM_ERR;
+			pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
+		}
+	} else {
+		// Packet doesn't come from an input -> free the buffer
+		free(p->buff);
+	}
+
+	if (p->multipart) {  // Cleanup multipart if any
+		if (packet_multipart_cleanup(p->multipart) != POM_OK) {
+			res = POM_ERR;
+			pomlog(POMLOG_ERR "Error while releaseing the multipart");
+		}
+	}
+
+
+	pom_mutex_lock(&packet_list_mutex);
 
 	memset(p, 0, sizeof(struct packet));
 	
@@ -90,7 +157,7 @@ int packet_pool_release(struct packet *p) {
 
 	pom_mutex_unlock(&packet_list_mutex);
 
-	return POM_OK;
+	return res;
 
 }
 
@@ -100,7 +167,7 @@ int packet_pool_cleanup() {
 
 	struct packet *tmp = packet_head;
 	while (tmp) {
-		pomlog(POMLOG_WARN "A packet was not released");
+		pomlog(POMLOG_WARN "A packet was not released, refcount : %u", tmp->refcount);
 		packet_head = tmp->next;
 
 		free(tmp);
@@ -249,7 +316,7 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 }
 
 
-struct packet_multipart *packet_multipart_alloc(struct proto_reg *proto) {
+struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep) {
 
 	struct packet_multipart *res = malloc(sizeof(struct packet_multipart));
 	if (!res) {
@@ -258,7 +325,8 @@ struct packet_multipart *packet_multipart_alloc(struct proto_reg *proto) {
 	}
 	memset(res, 0, sizeof(struct packet_multipart));
 
-	res->proto = proto_add_dependency_by_proto(proto);
+	proto_dependency_refcount_inc(proto_dep);
+	res->proto = proto_dep;
 	if (!res->proto) {
 		free(res);
 		res = NULL;
@@ -278,7 +346,6 @@ int packet_multipart_cleanup(struct packet_multipart *m) {
 		tmp = m->head;
 		m->head = tmp->next;
 
-		free(tmp->pkt->buff);
 		packet_pool_release(tmp->pkt);
 		free(tmp);
 
@@ -302,65 +369,21 @@ int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt,
 	while (tmp) {
 
 		if (tmp->offset + tmp->len <= offset)
-			// Packet is after this one
-			break;
+			break; // Packet is after is one
 
-		if (offset + len <= tmp->offset) {
-			// Packet is before this one
-			tmp = tmp->prev;
-			continue;
+		if (tmp->offset == offset) {
+			if (tmp->len != len)
+				pomlog(POMLOG_WARN "Size missmatch for packet already in the buffer");
+			return POM_OK;
 		}
 
-		// We have a collision
-
-
-		if (offset >= tmp->offset && offset + len <= tmp->offset + tmp->len)
-			// Packet is contained inside an exisiting one, discard
+		if (tmp->offset > offset) {
+			pomlog(POMLOG_WARN "Offset missmatch for packet already in the buffer");
 			return POM_OK;
-
-		if (offset < tmp->offset) {
-			// The begining of the packet is before this one
-
-			if (offset + len >= tmp->offset + tmp->len) {
-				// The current packet is smaller, discard it
-
-				struct packet_multipart_pkt *prev = tmp->prev;
-
-				if (tmp->prev)
-					tmp->prev->next = tmp->next;
-				else
-					multipart->head = tmp->next;
-
-				if (tmp->next)
-					tmp->next->prev = tmp->prev;
-				else
-					multipart->tail = tmp->prev;
-
-				multipart->cur -= tmp->len;
-
-				packet_pool_release(tmp->pkt);
-				free(tmp);
-
-
-				tmp = prev;
-				continue;
-			} else {
-				// The current packet is bigger, discard the excess
-				len = tmp->offset - offset;
-				tmp = tmp->prev;
-				continue;
-			}
-
-
-		} else {
-			// We need to keep some part of the tail
-			size_t discard = tmp->offset + tmp->len - offset;
-			pkt_buff_offset += discard;
-			offset += discard;
-			len -= discard;
-			break;
 		}
 		
+		tmp = tmp->next;
+
 	}
 
 	struct packet_multipart_pkt *res = malloc(sizeof(struct packet_multipart_pkt));
@@ -374,26 +397,15 @@ int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt,
 	res->pkt_buff_offset = pkt_buff_offset;
 	res->len = len;
 
-	res->pkt = packet_pool_get();
-	if (!res->pkt) {
-		free(res);
-		return POM_ERR;
-	}
 
 	// Copy the packet
 
 	
-	memcpy(&res->pkt->ts, &pkt->ts, sizeof(struct timeval));
-	res->pkt->len = pkt->len;
-	res->pkt->buff = malloc(pkt->len);
-	if (!res->pkt->buff) {
-		pom_oom(pkt->len);
-		packet_pool_release(pkt);
+	res->pkt = packet_copy(pkt);
+	if (!res->pkt) {
 		free(res);
 		return POM_ERR;
 	}
-
-	memcpy(res->pkt->buff, pkt->buff, len);
 
 	multipart->cur += len;
 
@@ -405,10 +417,22 @@ int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt,
 
 		tmp->next = res;
 
-		if (res->next)
+		if (res->next) {
 			res->next->prev = res;
-		else
+
+			if ((res->next->offset == res->offset + res->len) &&
+				(res->prev->offset + res->prev->len == res->offset))
+				// A gap was filled
+				multipart->gaps--;
+			else if ((res->next->offset > res->offset + res->len) &&
+				(res->prev->offset + res->prev->len < res->offset))
+				// A gap was created
+				multipart->gaps++;
+
+		} else {
 			multipart->tail = res;
+		}
+
 
 		return POM_OK;
 	} else {
@@ -419,39 +443,33 @@ int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt,
 		else
 			multipart->tail = res;
 		multipart->head = res;
+
+		if (res->offset) {
+			// There is a gap at the begining
+			multipart->gaps++;
+		} else if (res->next && res->len == res->next->offset) {
+			// Gap filled
+			multipart->gaps--;
+		}
 	}
 
 	return POM_OK;
 }
 
-int packet_multipart_is_complete(struct packet_multipart *multipart) {
-
-	struct packet_multipart_pkt *tmp = multipart->head;
-
-	if (!tmp)
-		return POM_ERR;
-	
-	if (tmp->offset) // First packet doesn't start at offset 0
-		return POM_ERR;
-
-	for (; tmp && tmp->next; tmp = tmp->next)
-		if (tmp->offset + tmp->len != tmp->next->offset)
-			return POM_ERR;
-
-	return POM_OK;
-}
-
-
-int packet_multipart_process(struct packet_multipart *multipart) {
+int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct packet *p = packet_pool_get();
-	if (!p)
-		return POM_ERR;
+	if (!p) {
+		packet_multipart_cleanup(multipart);
+		return PROTO_ERR;
+	}
 
 	p->buff = malloc(multipart->cur);
 	if (!p->buff) {
+		packet_pool_release(p);
+		packet_multipart_cleanup(multipart);
 		pom_oom(multipart->cur);
-		return POM_ERR;
+		return PROTO_ERR;
 	}
 
 	struct packet_multipart_pkt *tmp = multipart->head;
@@ -464,8 +482,14 @@ int packet_multipart_process(struct packet_multipart *multipart) {
 	p->multipart = multipart;
 	p->len = multipart->cur;
 	p->datalink = multipart->proto->proto;
-	
-	return core_queue_packet(p, NULL);
+	stack[stack_index].pload = p->buff;
+	stack[stack_index].plen = p->len;
+	stack[stack_index].proto = p->datalink;
+
+	int res = core_process_multi_packet(stack, stack_index, p);
+	packet_pool_release(p);
+
+	return res;
 }
 
 

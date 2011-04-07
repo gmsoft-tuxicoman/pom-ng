@@ -23,7 +23,9 @@
 #ifndef __CORE_H__
 #define __CORE_H__
 
+#include <pom-ng/core.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/packet.h>
 #include <pthread.h>
 
 #define CORE_PROTO_STACK_MAX		16
@@ -48,11 +50,13 @@ struct core_processing_thread {
 };
 
 int core_init(int num_threads);
-int core_cleanup();
+int core_cleanup(int emergency_cleanup);
 
 int core_spawn_reader_thread(struct input_client_entry *i);
 int core_queue_packet(struct packet *p, struct input_client_entry *i);
 void *core_processing_thread_func(void *priv);
+int core_process_dump_pkt_info(struct proto_process_stack *s);
+int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
 int core_process_packet(struct packet *p);
 
 void core_get_clock(struct timeval *now);

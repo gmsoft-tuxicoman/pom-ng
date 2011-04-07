@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,8 @@
 #ifndef __PROTO_MPEG_H__
 #define __PROTO_MPEG_H__
 
-#include <stdint.h>
+#include <pom-ng/proto.h>
+#include <pom-ng/timer.h>
 
 #define MPEG_TS_LEN 188
 
@@ -34,13 +35,45 @@ enum proto_mpeg_ts_fields {
 	proto_mpeg_ts_field_pid,
 };
 
+struct proto_mpeg_ts_stream {
+
+	unsigned int input_id;
+	unsigned int pkt_cur_len;
+	unsigned int pkt_tot_len;
+	struct packet_multipart *multipart;
+
+	uint16_t last_seq;
+	struct timer *t;
+
+	struct conntrack_entry *ce;
+
+	struct mpeg_ts_stream *prev, *next;
+
+};
+
+struct proto_mpeg_ts_conntrack_priv {
+	unsigned int streams_array_size;
+	struct proto_mpeg_ts_stream *streams;
+};
+
+struct proto_mpeg_ts_docsis_hdr {
+	uint8_t fc;
+	uint8_t mac_parm;
+	uint16_t len;
+	// possible ehdr
+	uint16_t hcs;
+};
+
+
 struct mod_reg_info* proto_mpeg_reg_info();
 static int proto_mpeg_mod_register(struct mod_reg *mod);
 static int proto_mpeg_mod_unregister();
 
-static int proto_mpeg_ts_init();
+static int proto_mpeg_ts_init(struct registry_instance *i);
 static ssize_t proto_mpeg_ts_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
+static int proto_mpeg_ts_stream_cleanup(void *);
+static int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_mpeg_ts_cleanup();
 
 #endif

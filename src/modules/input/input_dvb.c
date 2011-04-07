@@ -60,6 +60,21 @@ struct mod_reg_info* input_dvb_reg_info() {
 
 static int input_dvb_mod_register(struct mod_reg *mod) {
 
+	int res = POM_OK;
+
+	static struct input_reg_info in_dvb_file;
+	memset(&in_dvb_file, 0, sizeof(struct input_reg_info));
+	in_dvb_file.name = "dvb_file";
+	in_dvb_file.api_ver = INPUT_API_VER;
+	in_dvb_file.alloc = input_dvb_file_alloc;
+	in_dvb_file.open = input_dvb_file_open;
+	in_dvb_file.read = input_dvb_read;
+	in_dvb_file.get_caps = input_dvb_get_caps;
+	in_dvb_file.close = input_dvb_close;
+	in_dvb_file.cleanup = input_dvb_cleanup;
+
+	res += input_register(&in_dvb_file, mod);
+
 	static struct input_reg_info in_dvb_c;
 	memset(&in_dvb_c, 0, sizeof(struct input_reg_info));
 	in_dvb_c.name = "dvb_c";
@@ -71,23 +86,63 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_dvb_c.close = input_dvb_close;
 	in_dvb_c.cleanup = input_dvb_cleanup;
 
-	return input_register(&in_dvb_c, mod);
+	res += input_register(&in_dvb_c, mod);
+
+
+	return res;
 }
 
 static int input_dvb_mod_unregister() {
 	
 	int res = POM_OK;
+	res += input_unregister("dvb_file");
 	res += input_unregister("dvb_c");
 
 	return res;
 }
 
 
+static int input_dvb_file_alloc(struct input *i) {
+
+	struct input_dvb_priv *priv = malloc(sizeof(struct input_dvb_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct input_dvb_priv));
+		return POM_ERR;
+	}
+
+	memset(priv, 0, sizeof(struct input_dvb_priv));
+	priv->frontend_fd = -1;
+	priv->demux_fd = -1;
+	priv->dvr_fd = -1;
+
+	priv->tpriv.file.filename = ptype_alloc("string");
+	if (!priv->tpriv.file.filename)
+		return POM_ERR;
+
+	if (input_register_param(i, "filename", priv->tpriv.file.filename, "dump.ts", "File to read packets from", 0) != POM_OK)
+		goto err;
+
+	priv->type = input_dvb_type_file;
+	i->priv = priv;
+
+	return POM_OK;
+
+err:
+	if (priv->tpriv.file.filename)
+		ptype_cleanup(priv->tpriv.file.filename);
+
+	free(priv);
+
+	return POM_ERR;
+}
+
 static int input_dvb_c_alloc(struct input *i) {
 
 	struct input_dvb_priv *priv = malloc(sizeof(struct input_dvb_priv));
-	if (!priv)
+	if (!priv) {
+		pom_oom(sizeof(struct input_dvb_priv));
 		return POM_ERR;
+	}
 
 	memset(priv, 0, sizeof(struct input_dvb_priv));
 	priv->frontend_fd = -1;
@@ -118,7 +173,7 @@ static int input_dvb_c_alloc(struct input *i) {
 	if (input_register_param(i, "tuning_timeout", priv->tuning_timeout, "3", "Timeout while trying to tune in seconds", 0) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "modulation", priv->tpriv.c.modulation, "0", "Frequency in Hz", 0) != POM_OK)
+	if (input_register_param(i, "modulation", priv->tpriv.c.modulation, "0", "Modulation either QAM64 or QAM256", 0) != POM_OK)
 		goto err;
 
 	priv->type = input_dvb_type_c;
@@ -143,6 +198,23 @@ err:
 
 	return POM_ERR;
 }
+
+static int input_dvb_file_open(struct input *i) {
+
+	struct input_dvb_priv *priv = i->priv;
+
+	char *filename; PTYPE_STRING_GETVAL(priv->tpriv.file.filename, filename);
+	priv->dvr_fd = open(filename, O_RDONLY);
+	if (priv->dvr_fd == -1) {
+		pomlog(POMLOG_ERR "Unable to open file %s : %s", filename, pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	gettimeofday(&priv->tpriv.file.last_ts, NULL);
+	
+	return POM_OK;
+}
+
 
 static int input_dvb_open(struct input *i) {
 
@@ -392,20 +464,25 @@ static int input_dvb_read(struct input *i) {
 		return POM_ERR;
 	}
 	
-	struct timeval now;
+	struct timeval now; // FIXME this is not valid for dvb_file input
 	if (gettimeofday(&now, NULL)) {
 		pomlog(POMLOG_ERR "Error while getting time of the day : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
 
-	return input_add_processed_packet(i, MPEG_TS_LEN, buff, &now, 1);
+	return input_add_processed_packet(i, MPEG_TS_LEN, buff, &now, p->type != input_dvb_type_file);
 
 }
 
 static int input_dvb_get_caps(struct input *i, struct input_caps *ic) {
 
+	struct input_dvb_priv *priv = i->priv;
+
 	ic->datalink = "mpeg_ts";
-	ic->is_live = 1;
+	if (priv->type == input_dvb_type_file)
+		ic->is_live = 0;
+	else
+		ic->is_live = 1;
 
 	return POM_OK;
 }
@@ -436,12 +513,19 @@ static int input_dvb_cleanup(struct input *i) {
 
 	struct input_dvb_priv *p = i->priv;
 
-	ptype_cleanup(p->adapter);
-	ptype_cleanup(p->frontend);
-	ptype_cleanup(p->freq);
-	ptype_cleanup(p->symbol_rate);
+	if (p->adapter)
+		ptype_cleanup(p->adapter);
+	if (p->frontend)
+		ptype_cleanup(p->frontend);
+	if (p->freq)
+		ptype_cleanup(p->freq);
+	if (p->symbol_rate)
+		ptype_cleanup(p->symbol_rate);
 
 	switch (p->type) {
+		case input_dvb_type_file:
+			ptype_cleanup(p->tpriv.file.filename);
+			break;
 		case input_dvb_type_c:
 			ptype_cleanup(p->tpriv.c.modulation);
 			break;
@@ -450,6 +534,7 @@ static int input_dvb_cleanup(struct input *i) {
 			return POM_ERR;
 	}
 
+	free(p);
 
 	return POM_OK;
 

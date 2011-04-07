@@ -257,13 +257,12 @@ struct proto_dependency *proto_add_dependency(char *name) {
 	return dep;
 }
 
-struct proto_dependency *proto_add_dependency_by_proto(struct proto_reg *proto) {
+void proto_dependency_refcount_inc(struct proto_dependency *proto_dep) {
 	
 	pom_mutex_lock(&proto_dependency_list_lock);
-	proto->dep->refcount++;
+	proto_dep->refcount++;
 	pom_mutex_unlock(&proto_dependency_list_lock);
 
-	return proto->dep;
 }
 
 int proto_remove_dependency(struct proto_dependency *dep) {
@@ -274,10 +273,10 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 	pom_mutex_lock(&proto_dependency_list_lock);
 
 	if (!dep->refcount)
-		pomlog(POMLOG_WARN "Warning, depcount already at 0 for dependency %s", dep->name);
+		pomlog(POMLOG_WARN "Warning, refcount already at 0 for dependency %s", dep->name);
 	else
 		dep->refcount--;
-
+/*
 	if (!dep->refcount) {
 		if (dep->next)
 			dep->next->prev = dep->prev;
@@ -292,7 +291,7 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 		free(dep->name);
 		free(dep);
 	}
-
+*/
 	pom_mutex_unlock(&proto_dependency_list_lock);
 
 	return POM_OK;
@@ -302,17 +301,35 @@ int proto_cleanup() {
 
 	pom_mutex_lock(&proto_list_lock);
 
+	
+	struct proto_reg *proto = proto_head;
+
 	while (proto_head) {
-		struct proto_reg *proto = proto_head;
-		proto_head = proto->next;
+		if (proto->dep && proto->dep->refcount) {
+			proto = proto->next;
+			if (!proto)
+				proto = proto_head;
+			continue;
+		}
+			
 		if (proto->info->cleanup && proto->info->cleanup() == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
 		conntrack_tables_free(proto->ct);
-		if (proto->dep)
-			proto->dep->proto = NULL;
+
 		mod_refcount_dec(proto->info->mod);
 		packet_info_pool_cleanup(&proto->pkt_info_pool);
-		free(proto);
+
+		struct proto_reg *tmp = proto;
+		if (!proto->prev) {
+			proto_head = proto_head->next;
+			if (proto_head)
+				proto_head->prev = NULL;
+		} else {
+			proto->prev->next = proto->next;
+		}
+		free(tmp);
+
+		proto = proto_head;
 	}
 	pom_mutex_unlock(&proto_list_lock);
 
@@ -336,6 +353,7 @@ int proto_cleanup() {
 		else
 			proto_dependency_head = tmp->next;
 	
+		free(tmp->name);
 		free(tmp);
 	}
 

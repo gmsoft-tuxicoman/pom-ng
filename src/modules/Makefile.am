@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 
 INPUT_SRC = @INPUT_OBJS@
-PROTO_SRC = proto_ethernet.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
+PROTO_SRC = proto_docsis.la proto_ethernet.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la
 
 lib_LTLIBRARIES = $(INPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
@@ -32,6 +32,9 @@ input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
 input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
+proto_docsis_la_SOURCES = proto/proto_docsis.c proto/proto_docsis.h
+proto_docsis_la_LDFLAGS = -module -avoid-version
+proto_docsis_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_ethernet_la_SOURCES = proto/proto_ethernet.c proto/proto_ethernet.h
 proto_ethernet_la_LDFLAGS = -module -avoid-version
 proto_ethernet_la_LIBADD = $(top_builddir)/src/libpom-ng.la

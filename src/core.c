@@ -23,11 +23,11 @@
 #include "common.h"
 #include "core.h"
 #include "input.h"
-#include "packet.h"
 #include "input_client.h"
 #include "packet.h"
 #include "conntrack.h"
 #include "timer.h"
+#include "main.h"
 
 static int core_run = 0; // Set to 1 while the processing thread should run
 
@@ -57,12 +57,12 @@ int core_init(int num_threads) {
 		num_threads = sysconf(_SC_NPROCESSORS_ONLN);
 
 	if (num_threads < 1) {
-		pomlog(POMLOG_WARN "Could not find the number of CPU, starting %u processing threads", CORE_PROCESS_THREAD_DEFAULT);
+		pomlog(POMLOG_WARN "Could not find the number of CPU, starting %u processing thread(s)", CORE_PROCESS_THREAD_DEFAULT);
 		num_threads = CORE_PROCESS_THREAD_DEFAULT;
 	} else {
 		if (num_threads > CORE_PROCESS_THREAD_MAX)
 			num_threads = CORE_PROCESS_THREAD_MAX;
-		pomlog(POMLOG_INFO "Starting %u processing threads", num_threads);
+		pomlog(POMLOG_INFO "Starting %u processing thread(s)", num_threads);
 	}
 
 	core_run = 1;
@@ -107,23 +107,24 @@ int core_init(int num_threads) {
 	return POM_OK;
 
 err:
-	core_cleanup();
+	core_cleanup(0);
 	return POM_ERR;
 
 }
 
 
-int core_cleanup() {
+int core_cleanup(int emergency_cleanup) {
 
 
-	
-	while (core_pkt_queue_head) {
-		pomlog("Waiting for all the packets to be processed");
-		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
-			pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
-			return POM_ERR;
+	if (!emergency_cleanup) {
+		while (core_pkt_queue_head) {
+			pomlog("Waiting for all the packets to be processed");
+			if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
+				pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
+				return POM_ERR;
+			}
+			sleep(1);
 		}
-		sleep(1);
 	}
 
 	core_run = 0;
@@ -243,7 +244,6 @@ void *core_processing_thread_func(void *priv) {
 		struct core_packet_queue *tmp = core_pkt_queue_head;
 
 		struct packet *pkt = tmp->pkt;
-		struct input_client_entry *input = tmp->input;
 
 		// Remove the packet from the queue
 		core_pkt_queue_head = tmp->next;
@@ -279,63 +279,85 @@ void *core_processing_thread_func(void *priv) {
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 
-		if (core_process_packet(pkt) == POM_ERR)
+		if (core_process_packet(pkt) == POM_ERR) {
+			halt("Packet processing encountered an error");
 			return NULL;
-
-		if (input) {
-			if (input_client_release_packet(input, pkt) != POM_OK) {
-				pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
-				return NULL;
-			}
-		} else {
-			// Packet doesn't come from an input -> free the buffer
-			free(pkt->buff);
 		}
-
-		if (pkt->multipart)  // Cleanup multipart if any
-			packet_multipart_cleanup(pkt->multipart);
 
 		if (packet_pool_release(pkt) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while releasing the packet to the pool");
-			return NULL;
+			break;
 		}
 
 		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
 			pomlog(POMLOG_ERR "Error while signaling the done condition : %s", pom_strerror(errno));
-			return NULL;
+			break;
 
 		}
 
 	}
 
+	halt("Processing thread encountered an error");
 	return NULL;
 }
 
-int core_process_packet(struct packet *p) {
+int core_process_dump_pkt_info(struct proto_process_stack *s) {
 
-	struct proto_process_stack s[CORE_PROTO_STACK_MAX];
-
-	memset(s, 0, sizeof(struct proto_process_stack) * CORE_PROTO_STACK_MAX);
-	s[0].pload = p->buff;
-	s[0].plen = p->len;
-	s[0].proto = p->datalink;
-
-	int i;
+	// Dump packet info
+	int i;	
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
+		printf("%s { ", s[i].proto->info->name);
+		int j;
+		for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
+			char buff[256];
+			ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
+			printf("%s : %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+		}
+
+		printf("} ");
+	}
+	printf("\n");
+
+	return POM_OK;
+}
+
+int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p) {
+
+	
+	int res = core_process_packet_stack(s, stack_index, p);
+
+	if (res == POM_OK)
+		core_process_dump_pkt_info(s);
+	
+	int i;
+	// Cleanup pkt_info
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)
+		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
+	
+	// Clean the stack
+	memset(&s[stack_index], 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX - stack_index));
+
+
+	return res;
+}
+
+int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p) {
+	
+	unsigned int i;
+
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
 		
 		s[i].pkt_info = packet_info_pool_get(s[i].proto);
 
 		ssize_t hdr_len = proto_parse(p, s, i);
 
-		if (hdr_len == POM_ERR)
-			return POM_ERR;
 
 		if (hdr_len <= 0) // Nothing more to process
-			break;
+			return hdr_len;
 
 		if (hdr_len > s[i].plen) {
 			pomlog(POMLOG_WARN "Warning : parsed header bigger than available payload : parsed %u, had %u", hdr_len, s[i].plen);
-			break;
+			return PROTO_INVALID;
 		}
 
 		if (s[i].ct_field_fwd) {
@@ -343,20 +365,20 @@ int core_process_packet(struct packet *p) {
 			if (i > 1)
 				parent = s[i - 1].ce;
 			s[i].ce = conntrack_get(s[i].proto->ct, s[i].ct_field_fwd, s[i].ct_field_rev, parent, &s[i].proto->info->ct_info);
-			if (!s[i].ce) 
-				pomlog(POMLOG_WARN "Warning : could not get conntrack for proto %s", s[i].proto->info->name);
+			if (!s[i].ce) {
+				pomlog(POMLOG_ERR "Could not get conntrack for proto %s", s[i].proto->info->name);
+				return PROTO_ERR;
+			}
 		}
 
-		switch (proto_process(p, s, i, hdr_len)) {
+		int res = proto_process(p, s, i, hdr_len);
 
-			case POM_ERR:
-				pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
-				return POM_ERR;
-			case PROTO_STOP:
-				goto stop;
-			default:
-				break;
-		}
+		if (res == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
+			return POM_ERR;
+		} else if (res < 0)
+			return res;
+		
 
 		s[i + 1].pload = s[i].pload + hdr_len;
 		s[i + 1].plen = s[i].plen - hdr_len;
@@ -372,32 +394,32 @@ int core_process_packet(struct packet *p) {
 		}
 
 	}
-
-
-	// Packet parsed at this point
 	
+	return PROTO_OK;
 
-	// Dump packet info
-	
-	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
-		printf("%s { ", s[i].proto->info->name);
-		int j;
-		for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
-			char buff[256];
-			ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
-			printf("%s : %s; ", s[i].proto->info->pkt_fields[j].name, buff);
-		}
+}
 
-		printf("} ");
-	}
-	printf("\n");
-	
-stop:
+int core_process_packet(struct packet *p) {
+
+	struct proto_process_stack s[CORE_PROTO_STACK_MAX];
+
+	memset(s, 0, sizeof(struct proto_process_stack) * CORE_PROTO_STACK_MAX);
+	s[0].pload = p->buff;
+	s[0].plen = p->len;
+	s[0].proto = p->datalink;
+
+	int res = core_process_packet_stack(s, 0, p);
+
+	if (res == PROTO_OK)
+		core_process_dump_pkt_info(s);
+
 	// Cleanup pkt_info
+	int i;
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
-
-	return POM_OK;
+	if (res == PROTO_ERR)
+		return PROTO_ERR;
+	return PROTO_OK;
 }
 
 void core_get_clock(struct timeval *now) {

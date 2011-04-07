@@ -25,5 +25,6 @@
 void signal_handler(int signal);
 int main(int argc, char *argv[]);
 int halt(char *reason);
+int halt_signal(char *reason);
 
 #endif

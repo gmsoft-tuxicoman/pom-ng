@@ -33,6 +33,7 @@
 #include "input_server.h"
 #include "mod.h"
 #include <pom-ng/ptype.h>
+#include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
 
 static pthread_rwlock_t input_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
@@ -400,15 +401,19 @@ int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *
 	pom_mutex_lock(&buff->lock);
 
 	size_t buff_pkt_len = sizeof(struct input_packet) + pkt_size;
-	void *buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
-	void *buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
-	struct input_packet *buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	struct input_packet *buff_tail = (struct input_packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
+
+	void *buff_start, *buff_end;
+	struct input_packet *buff_head, *buff_tail;
+retry:
+
+	buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
+	buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
+	buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	buff_tail = (struct input_packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 
 	// Check for that size right after tail
 
 
-retry:
 
 	if (!buff_tail) { // buffer is empty
 		pkt = buff_start;
@@ -437,10 +442,10 @@ retry:
 		if (!next) { // Buffer overflow
 
 			if (drop_if_full) {
-				pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
+				//pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
 				goto end;
 			} else {
-				pomlog(POMLOG_DEBUG "Buffer overflow, waiting ....");
+				//pomlog(POMLOG_DEBUG "Buffer overflow, waiting ....");
 				if (pthread_cond_wait(&buff->overrun_cond, &buff->lock)) {
 					pom_mutex_unlock(&buff->lock);
 					pomlog(POMLOG_ERR "Error while waiting for overrun condition : %s", pom_strerror(errno));
@@ -475,7 +480,6 @@ retry:
 		buff->inpkt_process_head_offset = (void*)pkt - (void*)buff;
 		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
 
-
 		if (pthread_cond_signal(&buff->underrun_cond)) {
 			pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
 			pom_mutex_unlock(&buff->lock);
@@ -499,6 +503,7 @@ retry:
 			}
 		}
 	}
+
 
 end:
 	pom_mutex_unlock(&buff->lock);

@@ -210,7 +210,6 @@ static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *st
 static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	if (!s->ce)
 		return PROTO_ERR;
@@ -264,7 +263,36 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 		
 		tmp->ce = s->ce;
 		tmp->id = hdr->ip_id;
-		tmp->multipart = packet_multipart_alloc(s_next->proto);
+
+		struct proto_dependency *proto = NULL;
+		switch (hdr->ip_p) {
+			case IPPROTO_ICMP: // 1
+				proto = proto_icmp;
+				break;
+			case IPPROTO_TCP: // 6
+				proto = proto_tcp;
+				break;
+			case IPPROTO_UDP: // 17
+				proto = proto_udp;
+				break;
+			case IPPROTO_IPV6: // 41
+				proto = proto_ipv6;
+				break;
+			case IPPROTO_GRE: // 47
+				proto = proto_gre;
+				break;
+		}
+
+		if (!proto || !proto->proto) {
+			// Set processed flag so no attempt to process this will be done
+			tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
+			pom_mutex_unlock(&s->ce->lock);
+			timer_cleanup(tmp->t);
+			free(tmp);
+			return PROTO_STOP;
+		}
+
+		tmp->multipart = packet_multipart_alloc(proto);
 		if (!tmp->multipart) {
 			pom_mutex_unlock(&s->ce->lock);
 			timer_cleanup(tmp->t);
@@ -301,17 +329,16 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	if (!(frag_off & IP_MORE_FRAG))
 		tmp->flags |= PROTO_IPV4_FLAG_GOT_LAST;
 
-	if ((tmp->flags & PROTO_IPV4_FLAG_GOT_LAST) && packet_multipart_is_complete(tmp->multipart) == POM_OK)
+	if ((tmp->flags & PROTO_IPV4_FLAG_GOT_LAST) && !tmp->multipart->gaps)
 		tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
 
 	// We can process the packet unlocked
 	pom_mutex_unlock(&s->ce->lock);
 
 	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED)) {
-		if (packet_multipart_process(tmp->multipart) == POM_OK)
-			tmp->multipart = NULL; // Multipart will be cleared automatically
-		else
-			return PROTO_ERR;
+		int res = packet_multipart_process(tmp->multipart, stack, stack_index + 1);
+		tmp->multipart = NULL; // Multipart will be cleared automatically
+		return res;
 	}
 	
 	

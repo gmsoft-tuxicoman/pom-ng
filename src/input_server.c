@@ -206,10 +206,7 @@ int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid) {
 	if (l->next)
 		l->next->prev = l;
 	input_server_list_head = l;
-	input_server_list_cur_id++;
-	if (input_server_list_cur_id == POM_ERR)
-		input_server_list_cur_id++;
-	l->id = input_server_list_cur_id;
+	l->id = input_server_list_cur_id++;
 
 	input_server_list_unlock();
 

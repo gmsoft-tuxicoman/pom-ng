@@ -141,20 +141,16 @@ static int proto_tcp_init() {
 static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
-
-
-	if (s->plen < sizeof(struct tcphdr)) {
-		s->proto = NULL; // Invalid (CHECKME)
-		return POM_OK;
-	}
-
 	struct tcphdr* hdr = s->pload;
+
+	if (s->plen < sizeof(struct tcphdr))
+		return PROTO_INVALID;
 
 	unsigned int hdrlen = (hdr->th_off << 2);
 
 	if (hdrlen > s->plen || hdrlen < 20) {
 		// Incomplete or invalid packet
-		return 0;
+		return PROTO_INVALID;
 	}
 	
 	unsigned int plen = s->plen - hdrlen;
@@ -165,12 +161,12 @@ static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *sta
 	
 	if ((hdr->th_flags & TH_SYN) && plen > 0) {
 		// Invalid packet, SYN or RST flag present and len > 0
-		return 0;
+		return PROTO_INVALID;
 	}
 
 	if ((hdr->th_flags & TH_SYN) && ((hdr->th_flags & TH_RST) || (hdr->th_flags & TH_FIN))) {
 		// Invalid packet SYN and either RST or FIN flag present
-		return 0;
+		return PROTO_INVALID;
 	}
 
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_tcp_field_sport], ntohs(hdr->th_sport));
@@ -196,8 +192,8 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	struct tcphdr* hdr = s->pload;
 
 	if (!s->ce)
-		return POM_ERR;
-
+		return PROTO_ERR;
+/*
 	struct proto_tcp_conntrack_priv *cp = s->ce->priv;
 
 	if (!cp) {
@@ -214,7 +210,7 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	uint32_t new_seq, new_ack;
 	new_seq = ntohl(hdr->th_seq);
 	new_ack = ntohl(hdr->th_ack);
-/*
+
 	if (cp->flags[dir] & PROTO_TCP_SEQ_KNOWN) {
 
 
@@ -256,7 +252,7 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	else
 		s_next->proto = NULL;
 
-	return POM_OK;
+	return s->plen - hdr_len;
 
 }
 

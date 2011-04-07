@@ -44,20 +44,20 @@
 
 static char* shutdown_reason = NULL;
 static pid_t input_process_pid = 0;
-static int running = 1;
+static int running = 1, shutdown_in_error = 0;
 
 void signal_handler(int signal) {
 
 	switch (signal) {
 		case SIGCHLD:
 			if (running)
-				halt("Input process died :-(\n");
+				halt_signal("Input process died :-(\n");
 			break;
 		case SIGINT:
 		case SIGTERM:
 		default:
 			printf("Main process received signal %u, shutting down ...\n", signal);
-			halt("Received signal");
+			halt_signal("Received signal");
 			break;
 
 	}
@@ -294,7 +294,7 @@ int main(int argc, char *argv[]) {
 
 	// Cleanup components
 
-	input_client_cleanup();
+	input_client_cleanup(shutdown_in_error);
 	input_ipc_cleanup();
 
 	if (kill(input_process_pid, SIGINT) == -1) {
@@ -304,7 +304,7 @@ int main(int argc, char *argv[]) {
 		waitpid(input_process_pid, NULL, 0);
 	}
 	
-	core_cleanup();
+	core_cleanup(shutdown_in_error);
 err_httpd:
 	httpd_cleanup();
 err_xmlrpcsrv:
@@ -329,8 +329,21 @@ err_early:
 	return res;
 }
 
-
 int halt(char *reason) {
+	if (halt_signal(reason) != POM_OK)
+		return POM_ERR;
+
+	shutdown_in_error = 1;
+
+	if (kill(getpid(), SIGINT) == -1) {
+		pomlog(POMLOG_ERR "Unable to send SIGINT to self : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+	
+	return POM_OK;
+}
+
+int halt_signal(char *reason) {
 	// Can be called from a signal handler, don't use pomlog()
 	shutdown_reason = strdup(reason);
 	running = 0;

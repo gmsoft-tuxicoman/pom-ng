@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,38 +18,27 @@
  *
  */
 
+#ifndef __PROTO_DOCSIS_H__
+#define __PROTO_DOCSIS_H__
 
-#ifndef __PROTO_H__
-#define __PROTO_H__
+#include <stdint.h>
+#include <docsis.h>
 
-#include <pom-ng/proto.h>
-#include "packet.h"
-#include "conntrack.h"
-#include "registry.h"
 
-#define PROTO_REGISTRY "proto"
+#define PROTO_DOCSIS_FIELD_NUM 3
 
-struct proto_reg {
-
-	struct proto_reg_info *info;
-	struct proto_dependency *dep; // Corresponding dependency
-	
-	/// Conntrack tables
-	struct conntrack_tables *ct;
-
-	// Packet info pool
-	struct packet_info_pool pkt_info_pool;
-
-	struct registry_instance *reg_instance;
-
-	void *priv;
-
-	struct proto_reg *next, *prev;
-
+enum proto_docsis_fields {
+	proto_docsis_field_fc_type = 0,
+	proto_docsis_field_fc_parm,
+	proto_docsis_field_ehdr_on,
 };
 
-int proto_init();
-void proto_dependency_refcount_inc(struct proto_dependency *proto_dep);
-int proto_cleanup();
+struct mod_reg_info* proto_docsis_reg_info();
+static int proto_docsis_init();
+static int proto_docsis_mod_register(struct mod_reg *mod);
+static ssize_t proto_docsis_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static ssize_t proto_docsis_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
+static int proto_docsis_cleanup();
+static int proto_docsis_mod_unregister();
 
 #endif

@@ -107,9 +107,8 @@ static ssize_t proto_ethernet_parse(struct packet *p, struct proto_process_stack
 
 	struct proto_process_stack *s = &stack[stack_index];
 
-	// TODO buffer stuff
 	if (sizeof(struct ether_header) > s->plen)
-		return POM_ERR;
+		return PROTO_INVALID;
 
 	struct ether_header *ehdr = s->pload;
 

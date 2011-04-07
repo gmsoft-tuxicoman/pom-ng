@@ -113,7 +113,7 @@ int ptype_bool_parse(struct ptype *p, char *val) {
 
 int ptype_bool_print(struct ptype *p, char *val, size_t size) {
 
-	int *v = p->value;
+	char *v = p->value;
 
 	if (*v) {
 		strncpy(val, "yes", size);

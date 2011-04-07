@@ -48,14 +48,19 @@ int input_client_init() {
 	return POM_OK;
 }
 
-int input_client_cleanup() {
+int input_client_cleanup(int emergency_cleanup) {
 
 	while (input_client_head) {
 		struct input_client_entry *i = input_client_head;
 		input_client_head = i->next;
 
-		if (i->thread)
-			input_client_wait_for_empty_buff(i);
+		if (i->thread) {
+			if (emergency_cleanup) {
+				pthread_cancel(i->thread->thread);
+			} else {
+				input_client_wait_for_empty_buff(i);
+			}
+		}
 
 		if (i->shm_buff) {
 			pom_mutex_lock(&i->shm_buff->lock);
@@ -98,7 +103,7 @@ void *input_client_reader_thread_func(void *thread) {
 
 	struct input_client_reader_thread *t = thread;
 
-	pomlog(POMLOG_DEBUG "New thread created for input %u", t->input->id);
+	pomlog("New thread for input \"%s\" started", t->input->reg_instance->name);
 
 	// No need to stay attached
 
@@ -113,6 +118,7 @@ void *input_client_reader_thread_func(void *thread) {
 
 		if (!p->buff) {
 			// EOF
+			packet_pool_release(p);
 			goto err;
 		}
 
@@ -193,6 +199,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 		}
 
 		// Wait for a packet
+		pomlog(POMLOG_DEBUG "Buffer underrun");
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
 			pom_mutex_unlock(&buff->lock);
@@ -217,15 +224,16 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 
 	p->buff = inpkt_buff;
 	p->len = buff_head->len;
+	p->input = input;
 	p->input_pkt = buff_head;
 	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
 
 	return POM_OK;
 }
 
-int input_client_release_packet(struct input_client_entry *input, struct packet *p) {
+int input_client_release_packet(struct packet *p) {
 
-	struct input_buff *buff = input->shm_buff;
+	struct input_buff *buff = p->input->shm_buff;
 
 	pom_mutex_lock(&buff->lock);
 
@@ -565,8 +573,6 @@ int input_client_cmd_start(struct registry_instance *ri) {
 
 	t->input = i;
 	i->thread = t;
-
-	pomlog(POMLOG_DEBUG "Starting new thread for input %u", i->id);
 
 	if (pthread_create(&t->thread, NULL, input_client_reader_thread_func, t)) {
 		pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
