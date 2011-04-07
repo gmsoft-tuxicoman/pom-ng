@@ -56,15 +56,6 @@ struct proto_mpeg_ts_conntrack_priv {
 	struct proto_mpeg_ts_stream *streams;
 };
 
-struct proto_mpeg_ts_docsis_hdr {
-	uint8_t fc;
-	uint8_t mac_parm;
-	uint16_t len;
-	// possible ehdr
-	uint16_t hcs;
-};
-
-
 struct mod_reg_info* proto_mpeg_reg_info();
 static int proto_mpeg_mod_register(struct mod_reg *mod);
 static int proto_mpeg_mod_unregister();

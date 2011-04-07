@@ -302,7 +302,7 @@ void *core_processing_thread_func(void *priv) {
 }
 
 int core_process_dump_pkt_info(struct proto_process_stack *s) {
-
+return POM_OK;
 	// Dump packet info
 	int i;	
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {

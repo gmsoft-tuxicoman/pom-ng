@@ -199,7 +199,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 		}
 
 		// Wait for a packet
-		pomlog(POMLOG_DEBUG "Buffer underrun");
+		//pomlog(POMLOG_DEBUG "Buffer underrun");
 		if (pthread_cond_wait(&buff->underrun_cond, &buff->lock)) {
 			pomlog(POMLOG_ERR "Error while waiting for underrun condition : %s", pom_strerror(errno));
 			pom_mutex_unlock(&buff->lock);

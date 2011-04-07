@@ -28,6 +28,8 @@
 
 #include <string.h>
 #include <arpa/inet.h>
+#include <stddef.h>
+#include <docsis.h>
 
 
 static struct proto_dependency *proto_docsis = NULL;
@@ -227,26 +229,35 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 			// Add missing payload
 		}
 
-		if (stream->multipart)
+		if (stream->multipart) {
 			timer_dequeue(stream->t);
 
+			if (!stream->pkt_tot_len) {
+				// Last packet was too short to know the size
+				if (stream->multipart->head->len >= sizeof(struct docsis_hdr))
+					return PROTO_INVALID;
+
+				unsigned char tmp_buff[sizeof(struct docsis_hdr)];
+				memcpy(tmp_buff, stream->multipart->head->pkt->buff + stream->multipart->head->pkt_buff_offset, stream->multipart->head->len);
+				memcpy(tmp_buff + stream->multipart->head->len, buff + (pusi ? 5 : 4), sizeof(struct docsis_hdr) - stream->multipart->head->len);
+
+				struct docsis_hdr *tmp_hdr = (struct docsis_hdr*)tmp_buff;
+				stream->pkt_tot_len = ntohs(tmp_hdr->len) + sizeof(struct docsis_hdr);
+			}
+
+		}
+
 		unsigned int pos = 4;
-		
 		if (pusi) {
 			pos++;
 
 			unsigned char ptr = buff[4];
 
-			if (ptr > (MPEG_TS_LEN - 1) - sizeof(struct proto_mpeg_ts_docsis_hdr)) {
-				// Not enough space for DOCSIS MAC header
-				// This violates DOCSIS specs
-				return PROTO_INVALID;
-			}
 			
 			if (stream->multipart) {
 				
 				if (ptr != stream->pkt_tot_len - stream->pkt_cur_len) {
-					pomlog(POMLOG_DEBUG "Invalid tail length for DOCSIS packet");
+					pomlog(POMLOG_DEBUG "Invalid tail length for DOCSIS packet : expected %u, got %hhu", stream->pkt_tot_len - stream->pkt_cur_len, ptr);
 					packet_multipart_cleanup(stream->multipart);
 				} else {
 
@@ -268,8 +279,8 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 				stream->pkt_cur_len = 0;
 				stream->pkt_tot_len = 0;
 
-				pos += ptr;
 			}
+			pos += ptr;
 
 			while (1) {
 				// Skip stuff bytes
@@ -280,12 +291,19 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 						return PROTO_STOP;
 				}
 
+				if (pos > (MPEG_TS_LEN - 1) - offsetof(struct docsis_hdr, hcs)) {
+					// Cannot fetch the complete packet size, will do later
+					stream->multipart = packet_multipart_alloc(proto_docsis);
+					if (!stream->multipart)
+						return PROTO_ERR;
+					stream->pkt_tot_len = 0;
+					stream->pkt_cur_len = 0;
+					break;
+				}
 
 				// Check for self contained packets
-				struct proto_mpeg_ts_docsis_hdr *docsis_hdr = (void*)buff + pos;
-				unsigned int docsis_len = ntohs(docsis_hdr->len) + sizeof(struct proto_mpeg_ts_docsis_hdr);
-				if (docsis_len <= sizeof(struct proto_mpeg_ts_docsis_hdr))
-					return PROTO_INVALID;
+				struct docsis_hdr *docsis_hdr = (void*)buff + pos;
+				unsigned int docsis_len = ntohs(docsis_hdr->len) + sizeof(struct docsis_hdr);
 				if (docsis_len + pos > MPEG_TS_LEN) {
 					stream->multipart = packet_multipart_alloc(proto_docsis);
 					if (!stream->multipart)
@@ -328,18 +346,13 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 		}
 
 		stream->pkt_cur_len += MPEG_TS_LEN - pos;
-		if (stream->pkt_cur_len >= stream->pkt_tot_len) {
-			if (stream->pkt_cur_len != stream->pkt_tot_len) {
-				pomlog(POMLOG_DEBUG "Packet size missmatch : got %u, expected %u", stream->pkt_cur_len, stream->pkt_tot_len);
-				packet_multipart_cleanup(stream->multipart);
-			} else {
-				int res = packet_multipart_process(stream->multipart, stack, stack_index + 1);
-				if (res != PROTO_OK) {
-					stream->multipart = NULL;
-					stream->pkt_cur_len = 0;
-					stream->pkt_tot_len = 0;
-					return res;
-				}
+		if (stream->pkt_tot_len && stream->pkt_cur_len >= stream->pkt_tot_len) {
+			int res = packet_multipart_process(stream->multipart, stack, stack_index + 1);
+			if (res != PROTO_OK) {
+				stream->multipart = NULL;
+				stream->pkt_cur_len = 0;
+				stream->pkt_tot_len = 0;
+				return res;
 			}
 
 			stream->multipart = NULL;
