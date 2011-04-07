@@ -25,7 +25,6 @@
 #include <pom-ng/base.h>
 #include <pom-ng/mod.h>
 #include <pom-ng/ptype.h>
-#include <pom-ng/packet.h>
 #include <pom-ng/conntrack.h>
 #include <pom-ng/registry.h>
 
@@ -63,6 +62,9 @@ struct proto_process_stack {
 	struct ptype *ct_field_fwd;
 	struct ptype *ct_field_rev;
 };
+
+// Packet needs process_stack
+#include <pom-ng/packet.h>
 
 struct proto_pkt_field {
 	char *name;

@@ -31,9 +31,11 @@ struct packet {
 	size_t len;
 	struct proto_reg *datalink;
 	unsigned char *buff;
-	struct input_packet *input_pkt; // Input packet if it comes from an input
+	struct input_client_entry *input; // Input the packet came from initially
+	struct input_packet *input_pkt; // Input packet, present if buff points to the input IPC buffer
 	struct packet_multipart *multipart; // Multipart details if the current packet is compose of multiple ones
 	struct packet_info_list *info_head, *info_tail;
+	unsigned int refcount; // Reference count
 	struct packet *prev, *next; // Used internally
 };
 
@@ -54,15 +56,16 @@ struct packet_multipart_pkt {
 struct packet_multipart {
 
 	size_t cur; // Current ammount of data in the buffer
+	unsigned int gaps; // Number of gaps
 	struct packet_multipart_pkt *head, *tail;
 	struct proto_dependency *proto;
 };
 
 
-struct packet_multipart *packet_multipart_alloc(struct proto_reg *proto);
+struct packet *packet_copy(struct packet *src);
+struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep);
 int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
-int packet_multipart_is_complete(struct packet_multipart *multipart);
-int packet_multipart_process(struct packet_multipart *multipart);
+int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif
