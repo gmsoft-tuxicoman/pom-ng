@@ -33,6 +33,7 @@
 
 struct input_buff;
 struct input_param;
+struct input_packet;
 
 struct input {
 	struct input_reg* type; ///< Type of the input
@@ -133,8 +134,11 @@ int input_close(struct input *i);
 /// Unregister a input
 int input_unregister(char *name);
 
-// Add a packet in the input kernel ring buffer
-int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts, unsigned int drop_if_full);
+// Allocate a buffer to store a packet of a specific size
+struct input_packet *input_packet_buffer_alloc(struct input *i, size_t pkt_size, int wait_if_full, unsigned char **pkt_data_ptr, struct timeval **pkt_ts_ptr);
+
+// Process the packet after filling buff and ts
+int input_packet_buffer_process(struct input *i, struct input_packet *pkt);
 
 // Called by an input module to register a parameter
 int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags);
