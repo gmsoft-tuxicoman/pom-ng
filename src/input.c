@@ -386,11 +386,11 @@ int input_run(struct input *i) {
 }
 
 
-int input_add_processed_packet(struct input *i, size_t pkt_size, unsigned char *pkt_data, struct timeval *ts, unsigned int drop_if_full) {
+struct input_packet *input_packet_buffer_alloc(struct input *i, size_t pkt_size, int wait_if_full, unsigned char **pkt_data_ptr, struct timeval **pkt_ts_ptr) {
 
 
-	if (!i || !pkt_size || !pkt_data || !ts)
-		return POM_ERR;
+	if (!i || !pkt_size)
+		return NULL;
 
 	struct input_buff *buff = i->shm_buff;
 
@@ -441,15 +441,16 @@ retry:
 
 		if (!next) { // Buffer overflow
 
-			if (drop_if_full) {
+			if (!wait_if_full) {
 				//pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
-				goto end;
+				pom_mutex_unlock(&buff->lock);
+				return NULL;
 			} else {
 				//pomlog(POMLOG_DEBUG "Buffer overflow, waiting ....");
 				if (pthread_cond_wait(&buff->overrun_cond, &buff->lock)) {
 					pom_mutex_unlock(&buff->lock);
 					pomlog(POMLOG_ERR "Error while waiting for overrun condition : %s", pom_strerror(errno));
-					return POM_ERR;
+					return NULL;
 				}
 
 				goto retry;
@@ -462,19 +463,28 @@ retry:
 	// The copy of the packet is done unlocked
 	pom_mutex_unlock(&buff->lock);
 	memset(pkt, 0, sizeof(struct input_packet));
-	memcpy(&pkt->ts, ts, sizeof(struct timeval));
 	pkt->inpkt_prev_offset = -1;
 	pkt->inpkt_next_offset = -1;
-
 	pkt->len = pkt_size;
-	void *pkt_buff = (unsigned char *)pkt + sizeof(struct input_packet);
-	memcpy(pkt_buff, pkt_data, pkt_size);
-	pkt->buff_offset = pkt_buff - (void*)buff;
+
+	*pkt_data_ptr = (unsigned char *)pkt + sizeof(struct input_packet);
+	*pkt_ts_ptr = &pkt->ts;
+	pkt->buff_offset = (void*)(*pkt_data_ptr) - (void*)buff;
+
+
+
+	return pkt;
+}
+
+int input_packet_buffer_process(struct input *i, struct input_packet *pkt) {
+
+	struct input_buff *buff = i->shm_buff;
+
 	pom_mutex_lock(&buff->lock);
 
 	// Refecth the variables after relocking
-	buff_head = (struct input_packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	buff_tail = (struct input_packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
+	struct input_packet *buff_head = (struct input_packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
+	struct input_packet *buff_tail = (struct input_packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
 	if (!buff_head) {
 		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
 		buff->inpkt_process_head_offset = (void*)pkt - (void*)buff;
@@ -504,8 +514,6 @@ retry:
 		}
 	}
 
-
-end:
 	pom_mutex_unlock(&buff->lock);
 
 	return POM_OK;

@@ -432,12 +432,20 @@ static int input_dvb_read(struct input *i) {
 
 	struct input_dvb_priv *p = i->priv;
 
-	unsigned char buff[MPEG_TS_LEN];
-
 	ssize_t len = 0, r = 0;
 
+	struct input_packet *pkt = NULL;
+	unsigned char *pkt_data = NULL;
+	struct timeval *pkt_ts = NULL;
+
 	do {
-		r = read(p->dvr_fd, buff + len, MPEG_TS_LEN - len);
+		pkt = input_packet_buffer_alloc(i, MPEG_TS_LEN, p->type == input_dvb_type_file, &pkt_data, &pkt_ts);
+
+		unsigned char tmp_buff[MPEG_TS_LEN];
+		if (!pkt) // Store data in a temp buffer if we need to drop them
+			pkt_data = tmp_buff;
+
+		r = read(p->dvr_fd, pkt_data + len, MPEG_TS_LEN - len);
 		if (r < 0) {
 			if (errno == EOVERFLOW) {
 				pomlog(POMLOG_DEBUG "Overflow in the kernel buffer while reading packets. Lots of packets were missed");
@@ -459,18 +467,23 @@ static int input_dvb_read(struct input *i) {
 
 
 	// Check sync byte
-	if (buff[0] != 0x47) {
+	if (pkt_data[0] != 0x47) {
 		pomlog(POMLOG_ERR "Error, stream out of sync !");
 		return POM_ERR;
 	}
+
+	if (!pkt)
+		return POM_OK;
+
+
 	
-	struct timeval now; // FIXME this is not valid for dvb_file input
-	if (gettimeofday(&now, NULL)) {
+	// FIXME this is not valid for dvb_file input
+	if (gettimeofday(pkt_ts, NULL)) {
 		pomlog(POMLOG_ERR "Error while getting time of the day : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
 
-	return input_add_processed_packet(i, MPEG_TS_LEN, buff, &now, p->type != input_dvb_type_file);
+	return input_packet_buffer_process(i, pkt);
 
 }
 

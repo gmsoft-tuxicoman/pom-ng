@@ -202,7 +202,18 @@ static int input_pcap_read(struct input *i) {
 	if (result != 1)
 		return POM_ERR;
 
-	return input_add_processed_packet(i, phdr->caplen, data, &phdr->ts, (p->type == input_pcap_type_interface));
+	unsigned char *pkt_data = NULL;
+	struct timeval *pkt_ts = NULL;
+
+	struct input_packet *pkt = input_packet_buffer_alloc(i, phdr->caplen, p->type != input_pcap_type_interface, &pkt_data, &pkt_ts);
+
+	if (!pkt) // Drop the packet
+		return POM_OK;
+	
+	memcpy(pkt_data, data, phdr->caplen);
+	memcpy(pkt_ts, &phdr->ts, sizeof(struct timeval));
+
+	return input_packet_buffer_process(i, pkt);
 }
 
 static int input_pcap_get_caps(struct input *i, struct input_caps *ic) {
