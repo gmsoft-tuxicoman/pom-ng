@@ -56,7 +56,4 @@ int mod_unload_all();
 void mod_refcount_inc(struct mod_reg *mod);
 void mod_refcount_dec(struct mod_reg *mod);
 
-void mod_reg_lock(int write);
-void mod_reg_unlock();
-
 #endif

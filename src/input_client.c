@@ -105,36 +105,38 @@ void *input_client_reader_thread_func(void *thread) {
 
 	pomlog("New thread for input \"%s\" started", t->input->reg_instance->name);
 
-	// No need to stay attached
 
 	while (1) {
 
 		struct packet *p = packet_pool_get();
-		if (!p) 
-			goto err;
+		if (!p) {
+			pomlog(POMLOG_ERR "Error while getting a packet from the packet pool for input \"%s\"", t->input->reg_instance->name);
+			break;
+		}
 		
-		if (input_client_get_packet(t->input, p) != POM_OK)
-			goto err;
+		if (input_client_get_packet(t->input, p) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while fetching packets from input \"%s\"", t->input->reg_instance->name);
+			break;
+		}
 
 		if (!p->buff) {
 			// EOF
+			pomlog("Input \"%s\" stopped", t->input->reg_instance->name);
 			packet_pool_release(p);
-			goto err;
+			break;
 		}
 
 		p->datalink = t->input->datalink_dep->proto;
 
 		if (core_queue_packet(p, t->input) == POM_ERR) {
-			goto err;
+			pomlog(POMLOG_ERR "Error while queueing a packet from input \"%s\"", t->input->reg_instance->name);
+			break;
 		}
 
 	}
 
 	pthread_detach(pthread_self());
 
-err:
-	
-	pomlog("Input \"%s\" stopped", t->input->reg_instance->name);
 
 	// Do the cleanup
 	

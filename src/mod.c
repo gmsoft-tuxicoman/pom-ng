@@ -25,7 +25,7 @@
 #include <dirent.h>
 
 static struct mod_reg *mod_reg_head = NULL;
-static pthread_rwlock_t mod_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
+static pthread_mutex_t mod_reg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int mod_load_all() {
 
@@ -94,15 +94,15 @@ struct mod_reg *mod_load(char *name) {
 	
 	pomlog(POMLOG_DEBUG "Opening module %s", name);
 
-	mod_reg_lock(0);
+	pom_mutex_lock(&mod_reg_lock);
 	struct mod_reg *tmp;
 	for (tmp = mod_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 	if (tmp) {
-		mod_reg_unlock();
+		pom_mutex_unlock(&mod_reg_lock);
 		pomlog(POMLOG_WARN "Module %s is already registered");
 		return NULL;
 	}
-	mod_reg_unlock();
+	pom_mutex_unlock(&mod_reg_lock);
 
 	char filename[FILENAME_MAX];
 	memset(filename, 0, FILENAME_MAX);
@@ -181,14 +181,14 @@ struct mod_reg *mod_load(char *name) {
 		return NULL;
 	}
 
-	mod_reg_lock(1);
+	pom_mutex_lock(&mod_reg_lock);
 
 	reg->next = mod_reg_head;
 	mod_reg_head = reg;
 	if (reg->next)
 		reg->next->prev = reg;
 
-	mod_reg_unlock();
+	pom_mutex_unlock(&mod_reg_lock);
 
 	pomlog(POMLOG_DEBUG "Module %s loaded, registering components ...", reg->name);
 
@@ -237,13 +237,13 @@ int mod_unload(struct mod_reg *mod) {
 	if (!mod)
 		return POM_ERR;
 
-	mod_reg_lock(1);
+	pom_mutex_lock(&mod_reg_lock);
 
 	// Try to unregister components registered by the module
 	if (mod->info->unregister_func) {
 		if (mod->info->unregister_func() != POM_OK) {
 			pomlog(POMLOG_ERR "Unable to unregister module %s", mod->name);
-			mod_reg_unlock();
+			pom_mutex_unlock(&mod_reg_lock);
 			return POM_ERR;
 		}
 	}
@@ -251,7 +251,7 @@ int mod_unload(struct mod_reg *mod) {
 	if (mod->refcount) {
 		pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
 		pom_mutex_unlock(&mod->lock);
-		mod_reg_unlock();
+		pom_mutex_unlock(&mod_reg_lock);
 		return POM_ERR;
 	}
 	if (mod->prev)
@@ -268,7 +268,7 @@ int mod_unload(struct mod_reg *mod) {
 	mod->next = NULL;
 	mod->prev = NULL;
 
-	mod_reg_unlock();
+	pom_mutex_unlock(&mod_reg_lock);
 
 	if (dlclose(mod->dl_handle))
 		pomlog(POMLOG_WARN "Error while closing module %s", mod->name);
@@ -286,7 +286,7 @@ int mod_unload(struct mod_reg *mod) {
 
 int mod_unload_all() {
 
-	mod_reg_lock(1);
+	pom_mutex_lock(&mod_reg_lock);
 
 	struct mod_reg *mod;
 	while (mod_reg_head) {
@@ -304,7 +304,7 @@ int mod_unload_all() {
 		if (mod->refcount) {
 			pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
 			pom_mutex_unlock(&mod->lock);
-			mod_reg_unlock();
+			pom_mutex_unlock(&mod_reg_lock);
 			mod = mod->next;
 			continue;
 		}
@@ -326,31 +326,8 @@ int mod_unload_all() {
 		free(mod);
 	}
 
-	mod_reg_unlock();
+	pom_mutex_unlock(&mod_reg_lock);
 
 	return POM_OK;
 }
 
-void mod_reg_lock(int write) {
-	int res = 0;
-
-	if (write)
-		res = pthread_rwlock_wrlock(&mod_reg_rwlock);
-	else
-		res = pthread_rwlock_rdlock(&mod_reg_rwlock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while locking the mod_reg lock");
-		abort();
-	}
-
-}
-
-void mod_reg_unlock() {
-
-	if (pthread_rwlock_unlock(&mod_reg_rwlock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the mod_reg lock");
-		abort();
-	}
-
-}

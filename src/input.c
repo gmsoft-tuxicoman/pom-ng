@@ -228,7 +228,6 @@ struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t 
 		if (reg->info->alloc(ret) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while allocating input %s", type);
 			pthread_cond_destroy(&buff->underrun_cond);
-			pthread_cond_destroy(&buff->underrun_cond);
 			goto err_mutex;
 		}
 	}

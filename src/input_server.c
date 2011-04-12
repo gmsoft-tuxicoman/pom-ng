@@ -195,7 +195,6 @@ int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid) {
 	memset(l, 0, sizeof(struct input_list));
 	l->i = input_alloc(cmd->data.add.name, input_ipc_key, uid, gid);
 	if (!l->i) {
-		pomlog("Error while allocating input %s", cmd->data.add.name);
 		free(l);
 		goto err;
 	}

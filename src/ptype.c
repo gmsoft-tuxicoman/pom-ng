@@ -492,10 +492,12 @@ size_t ptype_get_value_size(struct ptype *pt) {
 int ptype_make_atomic(struct ptype *pt) {
 
 	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		return POM_ERR;
+		return POM_OK;
 
 	if (pthread_mutex_init(&pt->lock, NULL))
 		return POM_ERR;
+
+	pt->flags |= PTYPE_FLAG_HASLOCK;
 
 	return POM_OK;
 }
