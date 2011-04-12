@@ -301,8 +301,23 @@ void *core_processing_thread_func(void *priv) {
 	return NULL;
 }
 
-int core_process_dump_pkt_info(struct proto_process_stack *s) {
-return POM_OK;
+int core_process_dump_pkt_info(struct proto_process_stack *s, int res) {
+
+	char *res_str = "unknown result code";
+	switch (res) {
+		case PROTO_OK:
+			res_str = "processed ok";
+			break;
+		case PROTO_INVALID:
+			res_str = "invalid packet";
+			break;
+		case PROTO_STOP:
+			res_str = "processing stopped";
+			break;
+	}
+
+	printf("thread %u | ", (unsigned int)pthread_self());
+
 	// Dump packet info
 	int i;	
 	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
@@ -311,12 +326,12 @@ return POM_OK;
 		for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
 			char buff[256];
 			ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
-			printf("%s : %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+			printf("%s: %s; ", s[i].proto->info->pkt_fields[j].name, buff);
 		}
 
-		printf("} ");
+		printf("}; ");
 	}
-	printf("\n");
+	printf(": %s\n", res_str);
 
 	return POM_OK;
 }
@@ -326,8 +341,9 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	
 	int res = core_process_packet_stack(s, stack_index, p);
 
-	if (res == POM_OK)
-		core_process_dump_pkt_info(s);
+	if (res != PROTO_ERR) {
+		core_process_dump_pkt_info(s, res);
+	}
 	
 	int i;
 	// Cleanup pkt_info
@@ -373,7 +389,7 @@ int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_
 
 		int res = proto_process(p, s, i, hdr_len);
 
-		if (res == POM_ERR) {
+		if (res == PROTO_ERR) {
 			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
 			return POM_ERR;
 		} else if (res < 0)
@@ -411,7 +427,7 @@ int core_process_packet(struct packet *p) {
 	int res = core_process_packet_stack(s, 0, p);
 
 	if (res == PROTO_OK)
-		core_process_dump_pkt_info(s);
+		core_process_dump_pkt_info(s, res);
 
 	// Cleanup pkt_info
 	int i;

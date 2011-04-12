@@ -26,6 +26,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
 
+#define PACKET_HALF_SEQ (0x1 << 31)
 
 struct packet_info_pool {
 	pthread_mutex_t lock;

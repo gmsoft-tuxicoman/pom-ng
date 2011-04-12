@@ -471,8 +471,6 @@ retry:
 	*pkt_ts_ptr = &pkt->ts;
 	pkt->buff_offset = (void*)(*pkt_data_ptr) - (void*)buff;
 
-
-
 	return pkt;
 }
 

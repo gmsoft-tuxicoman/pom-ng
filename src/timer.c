@@ -22,12 +22,14 @@
 #include "common.h"
 #include "core.h"
 
+
 #if 0
 #define timer_tshoot(x...) pomlog(POMLOG_TSHOOT x)
 #else
 #define timer_tshoot(x...)
 #endif
 
+static pthread_rwlock_t timer_main_lock = PTHREAD_RWLOCK_INITIALIZER;
 static struct timer_queue *timer_queues = NULL;
 
 
@@ -36,17 +38,23 @@ int timers_process() {
 	struct timeval now;
 	core_get_clock(&now);
 
+	timer_queues_lock(0);
+
 	struct timer_queue *tq;
 	tq = timer_queues;
 
 	while (tq) {
+		timer_queue_lock(tq, 0);
 		while (tq->head && timercmp(&tq->head->expires, &now, <)) {
 				timer_tshoot( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tq->head);
 				(*tq->head->handler) (tq->head->priv);
 		}
+		timer_queue_unlock(tq);
 		tq = tq->next;
 
 	}
+
+	timer_queues_unlock(0);
 
 	return POM_OK;
 }
@@ -71,11 +79,13 @@ int timers_cleanup() {
 			free(tmp);
 
 		}
+		pthread_rwlock_destroy(&tmpq->lock);
 		timer_queues = timer_queues->next;
 
 		free(tmpq);
 	}
 
+	pthread_rwlock_destroy(&timer_main_lock);
 	return POM_OK;
 
 }
@@ -98,19 +108,8 @@ struct timer *timer_alloc(void* priv, int (*handler) (void*)) {
 
 int timer_cleanup(struct timer *t) {
 
-	if (t->next || t->prev) {
+	if (t->queue)
 		timer_dequeue(t);
-	} else { // Timer could be alone in the list
-		struct timer_queue *tq;
-		tq = timer_queues;
-		while (tq) {
-			if (tq->head == t) {
-				tq->head = NULL;
-				tq->tail = NULL;
-			}
-			tq = tq->next;
-		}
-	}
 
 	free(t);
 	
@@ -119,13 +118,14 @@ int timer_cleanup(struct timer *t) {
 
 int timer_queue(struct timer *t, unsigned int expiry) {
 
-	struct timer_queue *tq;
-	tq = timer_queues;
-
 	if (t->prev || t->next) {
 		pomlog(POMLOG_WARN "Error, timer not dequeued correctly");
 		return POM_ERR;
 	}
+
+	timer_queues_lock(1);
+
+	struct timer_queue *tq = timer_queues;
 
 	// First find the right queue or create it
 	
@@ -134,11 +134,18 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 		// There is no queue yet
 		tq = malloc(sizeof(struct timer_queue));
 		if (!tq) {
+			timer_queues_unlock();
 			pom_oom(sizeof(struct timer_queue));
 			return POM_ERR;
 		}
 		memset(tq, 0, sizeof(struct timer_queue));
 		timer_queues = tq;
+		if (pthread_rwlock_init(&tq->lock, NULL)) {
+			timer_queues_unlock();
+			pomlog(POMLOG_ERR "Unable to initialize timer queue lock");
+			free(tq);
+			return POM_ERR;
+		}
 
 		tq->expiry = expiry;
 
@@ -156,6 +163,7 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 				tmp = malloc(sizeof(struct timer_queue));
 				if (!tmp) {
 					pom_oom(sizeof(struct timer_queue));
+					timer_queues_unlock();
 					return POM_ERR;
 				}
 				memset(tmp, 0, sizeof(struct timer_queue));
@@ -181,6 +189,7 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 				tmp = malloc(sizeof(struct timer_queue));
 				if (!tmp) {
 					pom_oom(sizeof(struct timer_queue));
+					timer_queues_unlock();
 					return POM_ERR;
 				}
 				memset(tmp, 0, sizeof(struct timer_queue));
@@ -201,6 +210,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 
 	}
 
+	timer_queue_lock(tq, 1);
+	timer_queues_unlock();
 	// Now we can queue the timer
 	
 	if (tq->head == NULL) {
@@ -216,7 +227,9 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 
 	core_get_clock(&t->expires);
 	t->expires.tv_sec += expiry;
+	t->queue = tq;
 
+	timer_queue_unlock(tq);
 	return POM_OK;
 }
 
@@ -225,54 +238,29 @@ int timer_dequeue(struct timer *t) {
 
 	// First let's check if it's the one at the begining of the queue
 
+	if (!t->queue) {
+		pomlog(POMLOG_WARN "Warning, timer 0x%p was already dequeued", t);
+		return POM_OK;
+	}
+
+	timer_queue_lock(t->queue, 1);
+
+
 	if (t->prev) {
 		t->prev->next = t->next;
 	} else {
-		struct timer_queue *tq;
-		tq = timer_queues;
-		while (tq) {
-			if (tq->head == t) {
-				tq->head = t->next;
-
-				// Let's see if the queue is empty
-			
-				/* WE SHOULD NOT TRY TO REMOVE QUEUES FROM THE QUEUE LIST
-				if (!tq->head) { // If it is, remove that queue from the queue list
-					timer_tshoot( "Removing queue 0x%lx from the queue list", (unsigned long) tq);
-					if (tq->prev)
-						tq->prev->next = tq->next;
-					else
-						timer_queues = tq->next;
-
-					if (tq->next)
-						tq->next->prev = tq->prev;
-
-
-					free (tq);
-					return POM_OK;
-				}*/
-				break;
-			}
-			tq = tq->next;
-		}
-		if (!tq)
-			pomlog(POMLOG_WARN "Warning, timer 0x%lx not found in timers queues heads", (unsigned long) t);
+		t->queue->head = t->next;
+		if (t->queue->head)
+			t->queue->head->prev = NULL;
 	}
 
 	if (t->next) {
 		t->next->prev = t->prev;
 	} else {
-		struct timer_queue *tq;
-		tq = timer_queues;
-		while (tq) {
-			if (tq->tail == t) {
-				tq->tail = t->prev;
-				break;
-			}
-			tq = tq->next;
-		}
-		if (!tq) 
-			pomlog(POMLOG_WARN "Warning, timer 0x%lx not found in timers queues tails", (unsigned long) t);
+		t->queue->tail = t->prev;
+		if (t->queue->tail)
+			t->queue->tail->next = NULL;
+		
 	}
 
 
@@ -280,6 +268,60 @@ int timer_dequeue(struct timer *t) {
 
 	t->prev = NULL;
 	t->next = NULL;
+	timer_queue_unlock(t->queue);
+	t->queue = NULL;
+
 
 	return POM_OK;
+}
+
+void timer_queues_lock(int write) {
+
+	int res = 0;
+	if (write)
+		res = pthread_rwlock_wrlock(&timer_main_lock);
+	else
+		res = pthread_rwlock_rdlock(&timer_main_lock);
+
+	if (res) {
+		pomlog(POMLOG_ERR "Error while locking timer queues lock : %s", pom_strerror(errno));
+		abort();
+	}
+
+}
+
+void timer_queues_unlock() {
+
+	int res = pthread_rwlock_unlock(&timer_main_lock);
+
+	if (res) {
+		pomlog(POMLOG_ERR "Error while unlocking timer queues lock : %s", pom_strerror(errno));
+		abort();
+	}
+
+}
+
+void timer_queue_lock(struct timer_queue *q, int write) {
+
+	int res = 0;
+	if (write)
+		res = pthread_rwlock_wrlock(&q->lock);
+	else
+		res = pthread_rwlock_rdlock(&q->lock);
+
+	if (res) {
+		pomlog(POMLOG_ERR "Error while locking timer queue lock : %s", pom_strerror(errno));
+		abort();
+	}
+}
+
+void timer_queue_unlock(struct timer_queue *q) {
+
+	int res = pthread_rwlock_unlock(&q->lock);
+
+	if (res) {
+		pomlog(POMLOG_ERR "Error while unlocking timer queues lock : %s", pom_strerror(errno));
+		abort();
+	}
+
 }

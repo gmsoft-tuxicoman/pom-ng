@@ -327,6 +327,9 @@ int proto_cleanup() {
 		} else {
 			proto->prev->next = proto->next;
 		}
+		
+		if (proto->next)
+			proto->next->prev = proto->prev;
 		free(tmp);
 
 		proto = proto_head;

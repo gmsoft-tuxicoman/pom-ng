@@ -32,6 +32,7 @@ struct timer {
 	struct timeval expires;
 	void *priv;
 	int (*handler) (void *);
+	struct timer_queue *queue;
 	struct timer *next;
 	struct timer *prev;
 

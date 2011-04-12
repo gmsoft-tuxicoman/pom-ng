@@ -27,6 +27,7 @@
 struct timer_queue {
 
 	unsigned int expiry;
+	pthread_rwlock_t lock;
 	struct timer_queue *next;
 	struct timer_queue *prev;
 	struct timer *head;
@@ -38,6 +39,11 @@ struct timer_queue {
 
 int timers_process();
 int timers_cleanup();
+
+void timer_queues_lock(int write);
+void timer_queues_unlock();
+void timer_queue_lock(struct timer_queue *q, int write);
+void timer_queue_unlock(struct timer_queue *q);
 
 
 #endif

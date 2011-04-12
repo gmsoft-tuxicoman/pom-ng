@@ -28,6 +28,7 @@ struct input_client_entry {
 	char *type;
 	int shm_key;
 	int shm_id;
+	uint64_t last_pkt_id;
 	struct input_buff *shm_buff;
 	struct input_client_reader_thread *thread;
 	struct proto_dependency *datalink_dep;

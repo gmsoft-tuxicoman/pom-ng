@@ -534,6 +534,8 @@ static int input_dvb_cleanup(struct input *i) {
 		ptype_cleanup(p->freq);
 	if (p->symbol_rate)
 		ptype_cleanup(p->symbol_rate);
+	if (p->tuning_timeout)
+		ptype_cleanup(p->tuning_timeout);
 
 	switch (p->type) {
 		case input_dvb_type_file:

@@ -53,7 +53,7 @@ struct proto_dependency {
 struct proto_process_stack {
 	struct proto_reg *proto;
 	void *pload;
-	size_t plen;
+	uint32_t plen;
 
 	struct packet_info *pkt_info;
 

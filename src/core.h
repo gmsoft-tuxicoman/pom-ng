@@ -55,7 +55,7 @@ int core_cleanup(int emergency_cleanup);
 int core_spawn_reader_thread(struct input_client_entry *i);
 int core_queue_packet(struct packet *p, struct input_client_entry *i);
 void *core_processing_thread_func(void *priv);
-int core_process_dump_pkt_info(struct proto_process_stack *s);
+int core_process_dump_pkt_info(struct proto_process_stack *s, int res);
 int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
 int core_process_packet(struct packet *p);
 

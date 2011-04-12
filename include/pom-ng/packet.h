@@ -24,17 +24,19 @@
 
 #include <pthread.h>
 
+#define PACKET_FLAG_FORCE_NO_COPY	0x1
+
 struct packet {
 
 	// Packet description
 	struct timeval ts;
 	size_t len;
 	struct proto_reg *datalink;
-	unsigned char *buff;
+	void *buff;
 	struct input_client_entry *input; // Input the packet came from initially
+	uint64_t id; // Unique packet number per input
 	struct input_packet *input_pkt; // Input packet, present if buff points to the input IPC buffer
 	struct packet_multipart *multipart; // Multipart details if the current packet is compose of multiple ones
-	struct packet_info_list *info_head, *info_tail;
 	unsigned int refcount; // Reference count
 	struct packet *prev, *next; // Used internally
 };
@@ -57,15 +59,41 @@ struct packet_multipart {
 
 	size_t cur; // Current ammount of data in the buffer
 	unsigned int gaps; // Number of gaps
+	unsigned int flags;
 	struct packet_multipart_pkt *head, *tail;
 	struct proto_dependency *proto;
 };
 
+struct packet_stream_pkt {
 
-struct packet *packet_copy(struct packet *src);
-struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep);
+	struct packet *pkt;
+	uint32_t seq, len, pkt_buff_offset;
+	struct proto_reg *proto;
+	unsigned int flags;
+	struct packet_info *pkt_info;
+	struct packet_stream_pkt *prev, *next;
+
+};
+
+struct packet_stream {
+
+	uint32_t cur_seq;
+	uint32_t cur_buff_size, max_buff_size;
+	pthread_mutex_t list_lock, processing_lock;
+	struct packet_stream_pkt *head, *tail;
+};
+
+struct packet *packet_clone(struct packet *src, unsigned int flags);
+
+struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep, unsigned int flags);
 int packet_multipart_cleanup(struct packet_multipart *m);
-int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
+int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
+
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size);
+int packet_stream_cleanup(struct packet_stream *stream);
+int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *cur_stack, uint32_t seq);
+struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, struct proto_process_stack *cur_stack);
+int packet_stream_release_packet(struct packet_stream *stream, struct packet_stream_pkt *pkt);
 
 #endif

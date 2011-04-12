@@ -226,6 +226,7 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	p->len = buff_head->len;
 	p->input = input;
 	p->input_pkt = buff_head;
+	p->id = input->last_pkt_id++;
 	memcpy(&p->ts, &buff_head->ts, sizeof(struct timeval));
 
 	return POM_OK;

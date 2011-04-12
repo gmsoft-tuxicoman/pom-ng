@@ -63,23 +63,23 @@ struct packet *packet_pool_get() {
 	packet_head = tmp;
 
 	tmp->refcount = 1;
-
+	
 	pom_mutex_unlock(&packet_list_mutex);
 
 	return tmp;
 }
 
-struct packet *packet_copy(struct packet *src) {
+struct packet *packet_clone(struct packet *src, unsigned int flags) {
 
 	struct packet *dst = NULL;
 
-	if (src->input_pkt) {
+	if (!(flags & PACKET_FLAG_FORCE_NO_COPY) && src->input_pkt) {
 		// It uses the input buffer, we cannot hold this ressource
 		dst = packet_pool_get();
 		if (!dst)
 			return NULL;
 
-		memcpy(&dst->ts, &dst->ts, sizeof(struct timeval));
+		memcpy(&dst->ts, &src->ts, sizeof(struct timeval));
 		dst->len = src->len;
 		dst->buff = malloc(src->len);
 		if (!dst->buff) {
@@ -92,7 +92,10 @@ struct packet *packet_copy(struct packet *src) {
 
 		dst->datalink = src->datalink;
 		dst->input = src->input;
+		dst->id = src->id;
 
+		// Multipart and stream are not copied
+		
 		return dst;
 	}
 
@@ -104,14 +107,10 @@ int packet_pool_release(struct packet *p) {
 
 	p->refcount--;
 
-	if (p->refcount && p->input_pkt)
-		pomlog(POMLOG_WARN "A packet using the input shared buffer has a refount above one");
-
 	if (p->refcount)
 		return POM_OK;
 
 	pom_mutex_lock(&packet_list_mutex);
-
 
 	// Remove the packet from the used list
 	if (p->next)
@@ -316,7 +315,7 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 }
 
 
-struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep) {
+struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep, unsigned int flags) {
 
 	struct packet_multipart *res = malloc(sizeof(struct packet_multipart));
 	if (!res) {
@@ -331,6 +330,8 @@ struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_d
 		free(res);
 		res = NULL;
 	}
+
+	res->flags = flags;
 
 	return res;
 }
@@ -356,12 +357,11 @@ int packet_multipart_cleanup(struct packet_multipart *m) {
 	free(m);
 
 	return POM_OK;
-	
 
 }
 
 
-int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset) {
+int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset) {
 
 	struct packet_multipart_pkt *tmp = multipart->tail;
 
@@ -401,7 +401,7 @@ int packet_multipart_add(struct packet_multipart *multipart, struct packet *pkt,
 	// Copy the packet
 
 	
-	res->pkt = packet_copy(pkt);
+	res->pkt = packet_clone(pkt, multipart->flags);
 	if (!res->pkt) {
 		free(res);
 		return POM_ERR;
@@ -493,5 +493,256 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 }
 
 
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size) {
+	
+	struct packet_stream *res = malloc(sizeof(struct packet_stream));
+	if (!res) {
+		pom_oom(sizeof(struct packet_stream));
+		return NULL;
+	}
+
+	memset(res, 0, sizeof(struct packet_stream));
+	res->cur_seq = start_seq;
+	res->max_buff_size = max_buff_size;
+
+	if (pthread_mutex_init(&res->list_lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing packet_stream list mutex : %s", pom_strerror(errno));
+		return NULL;
+	}
+
+	if (pthread_mutex_init(&res->processing_lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing packet_stream processing mutex : %s", pom_strerror(errno));
+		return NULL;
+	}
+
+	return res;
+}
+
+int packet_stream_cleanup(struct packet_stream *stream) {
+
+	struct packet_stream_pkt *p = stream->head;
+	while (p) {
+		stream->head = p->next;
+		packet_pool_release(p->pkt);
+		packet_info_pool_release(&p->proto->pkt_info_pool, p->pkt_info);
+		free(p);
+		p = stream->head;
+	}
+
+	pthread_mutex_destroy(&stream->list_lock);
+	pthread_mutex_destroy(&stream->processing_lock);
+
+	free(stream);
+
+	return POM_OK;
+}
 
 
+int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *cur_stack, uint32_t seq) {
+
+	if (!stream || !pkt || !cur_stack)
+		return POM_ERR;
+
+	int res = 0;
+
+	pom_mutex_lock(&stream->list_lock);
+	if (stream->cur_seq != seq) {
+
+		if ((stream->cur_seq < seq && seq - stream->cur_seq < PACKET_HALF_SEQ)
+			|| (stream->cur_seq > seq && stream->cur_seq - seq > PACKET_HALF_SEQ))
+			// cur_seq is before the packet
+			res = -1;
+		else if ((stream->cur_seq > (seq + cur_stack->plen) && stream->cur_seq - (seq + cur_stack->plen) < PACKET_HALF_SEQ)
+			|| (stream->cur_seq < (seq + cur_stack->plen) && (seq + cur_stack->plen) - stream->cur_seq > PACKET_HALF_SEQ)) {
+			// cur_seq is after the packet
+			pom_mutex_unlock(&stream->list_lock);
+			return POM_OK;
+		}
+
+		// cur_seq is inside the packet
+	}
+
+
+	struct packet_stream_pkt *p = malloc(sizeof(struct packet_stream_pkt));
+	if (!p) {
+		pom_mutex_unlock(&stream->list_lock);
+		pom_oom(sizeof(struct packet_stream_pkt));
+		return POM_ERR;
+	}
+	memset(p, 0 , sizeof(struct packet_stream_pkt));
+	p->seq = seq;
+	p->len = cur_stack->plen;
+	p->pkt_info = cur_stack->pkt_info;
+	p->pkt_buff_offset = cur_stack->pload - pkt->buff; 
+	p->proto = cur_stack->proto;
+	cur_stack->pload = NULL;
+	cur_stack->plen = 0;
+	cur_stack->proto = NULL;
+	cur_stack->pkt_info = NULL;
+
+	unsigned int pkt_flags = 0;
+
+	if (!stream->tail) {
+		stream->head = p;
+		stream->tail = p;
+		pkt_flags = PACKET_FLAG_FORCE_NO_COPY;
+	} else { 
+
+		struct packet_stream_pkt *tmp = stream->tail;
+		while ( tmp && 
+			((tmp->seq > seq && tmp->seq - seq < PACKET_HALF_SEQ)
+			|| (tmp->seq < seq && seq - tmp->seq > PACKET_HALF_SEQ))) {
+
+			tmp = tmp->prev;
+
+		}
+
+		if (!tmp) {
+			// Packet goes at the begining of the list
+			p->next = stream->head;
+			if (p->next)
+				p->next->prev = p;
+			else
+				stream->tail = p;
+			stream->head = p;
+
+		} else {
+			// Insert the packet after the current one
+			p->next = tmp->next;
+			p->prev = tmp;
+
+			if (p->next)
+				p->next->prev = p;
+			else
+				stream->tail = p;
+
+			tmp->next = p;
+
+			// Don't copy the packet if the previous one has no copy
+			// We know it will be processed soon
+			if ((tmp->flags & PACKET_FLAG_FORCE_NO_COPY)
+				// Check that the end of the previous packet starts at or after the sequence of the current one
+				&& ( 	((tmp->seq + tmp->len) >= seq && (tmp->seq + tmp->len) - seq < PACKET_HALF_SEQ)
+					|| ((tmp->seq + tmp->len) < seq && seq - (tmp->seq + tmp->len) > PACKET_HALF_SEQ)) )
+
+				pkt_flags = PACKET_FLAG_FORCE_NO_COPY;
+
+		}
+	}
+
+	p->pkt = packet_clone(pkt, pkt_flags);
+	if (!p->pkt) {
+		
+		if (p->prev) {
+			p->prev->next = p->next;
+		} else {
+			stream->head = p->next;
+			if (stream->head)
+				stream->head->prev = NULL;
+		}
+
+		if (p->next) {
+			p->next->prev = p->prev;
+		} else {
+			stream->tail = p->prev;
+			if (stream->tail)
+				stream->tail->next = NULL;
+		}
+
+		free(p);
+		pom_mutex_unlock(&stream->list_lock);
+		return POM_ERR;
+	}
+	stream->cur_buff_size += p->len;	
+	pom_mutex_unlock(&stream->list_lock);
+	return POM_OK;
+}
+
+
+struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, struct proto_process_stack *cur_stack) {
+
+	if (!stream)
+		return NULL;
+
+	if (pthread_mutex_trylock(&stream->processing_lock)) {
+		
+		// Clear the stack make sure it's not processed
+		cur_stack->pkt_info = NULL;
+		cur_stack->pload = NULL;
+		cur_stack->proto = NULL;
+		cur_stack->plen = 0;
+
+		return NULL;
+
+	}
+
+	pom_mutex_lock(&stream->list_lock);
+
+	// FIXME : Improve this to mangle useless parts of the packets
+	if (!stream->head) {
+		pom_mutex_unlock(&stream->processing_lock);
+		pom_mutex_unlock(&stream->list_lock);
+		return NULL;
+	}
+	
+	if (stream->cur_seq != stream->head->seq && stream->cur_buff_size < stream->max_buff_size) {
+		pom_mutex_unlock(&stream->processing_lock);
+		pom_mutex_unlock(&stream->list_lock);
+		return NULL;
+	}
+
+	struct packet_stream_pkt *res = stream->head;
+	pom_mutex_unlock(&stream->list_lock);
+
+	cur_stack->pload = res->pkt->buff + res->pkt_buff_offset;
+	cur_stack->plen = res->len;
+	cur_stack->pkt_info = res->pkt_info;
+	cur_stack->proto = res->proto;
+
+
+	return res;
+}
+
+
+int packet_stream_release_packet(struct packet_stream *stream, struct packet_stream_pkt *pkt) {
+
+	if (!stream || !pkt)
+		return POM_ERR;
+
+	if (!pthread_mutex_trylock(&stream->processing_lock)) {
+		pomlog(POMLOG_ERR "packet_stream_release_packet() called without a call to packet_stream_get_next() before");
+		pom_mutex_unlock(&stream->processing_lock);
+		return POM_ERR;
+	}
+
+
+	pom_mutex_lock(&stream->list_lock);
+	if (pkt->prev) {
+		pomlog(POMLOG_WARN "Warning, dequeued packet wasn't the first !!!");
+		pkt->prev->next = pkt->next;
+	} else {
+		stream->head = pkt->next;
+		if (stream->head)
+			stream->head->prev = NULL;
+	}
+
+	if (pkt->next) {
+		pkt->next->prev = pkt->prev;
+	} else {
+		stream->tail = pkt->prev;
+		if (stream->tail)
+			stream->tail->next = NULL;
+	}
+
+	stream->cur_seq += pkt->len;
+	stream->cur_buff_size -= pkt->len;	
+	pom_mutex_unlock(&stream->list_lock);
+
+	pom_mutex_unlock(&stream->processing_lock);
+
+	packet_pool_release(pkt->pkt);
+	free(pkt);
+
+	return POM_OK;
+
+}
