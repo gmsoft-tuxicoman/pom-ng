@@ -53,17 +53,21 @@ int core_init(int num_threads) {
 	}
 
 	// Start the processing threads
-	if (num_threads == 0)
-		num_threads = sysconf(_SC_NPROCESSORS_ONLN);
-
-	if (num_threads < 1) {
-		pomlog(POMLOG_WARN "Could not find the number of CPU, starting %u processing thread(s)", CORE_PROCESS_THREAD_DEFAULT);
-		num_threads = CORE_PROCESS_THREAD_DEFAULT;
-	} else {
-		if (num_threads > CORE_PROCESS_THREAD_MAX)
-			num_threads = CORE_PROCESS_THREAD_MAX;
-		pomlog(POMLOG_INFO "Starting %u processing thread(s)", num_threads);
+	int num_cpu = sysconf(_SC_NPROCESSORS_ONLN);
+	if (num_cpu < 1) {
+		pomlog(POMLOG_WARN "Could not find the number of CPU, assuming %u", CORE_PROCESS_THREAD_DEFAULT);
+		num_cpu = CORE_PROCESS_THREAD_DEFAULT;
 	}
+
+	if (num_threads < 1)
+		num_threads = num_cpu;
+
+	if (num_threads > num_cpu)
+		pomlog(POMLOG_WARN "WARNING : Running more processing threads than available CPU is discouraged as it will cause issues by creating higher latencies and eventually dropping packets !!! You have been warned !");
+
+	if (num_threads > CORE_PROCESS_THREAD_MAX)
+		num_threads = CORE_PROCESS_THREAD_MAX;
+	pomlog(POMLOG_INFO "Starting %u processing thread(s)", num_threads);
 
 	core_run = 1;
 

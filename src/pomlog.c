@@ -143,8 +143,6 @@ void pomlog_internal(char *file, const char *format, ...) {
 	}
 
 	entry->level = level;
-	entry->id = pomlog_buffer_entry_id;
-	pomlog_buffer_entry_id++;
 
 
 	int result = pthread_rwlock_wrlock(&pomlog_buffer_lock);
@@ -153,6 +151,8 @@ void pomlog_internal(char *file, const char *format, ...) {
 		abort();
 		return; // never reached
 	}
+
+	entry->id = pomlog_buffer_entry_id++;
 
 	if (!pomlog_tail) {
 		pomlog_head = entry;

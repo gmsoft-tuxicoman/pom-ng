@@ -79,6 +79,7 @@ struct packet_stream {
 
 	uint32_t cur_seq;
 	uint32_t cur_buff_size, max_buff_size;
+	unsigned int flags;
 	pthread_mutex_t list_lock, processing_lock;
 	struct packet_stream_pkt *head, *tail;
 };
@@ -90,7 +91,7 @@ int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size);
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size, unsigned int FLAGS);
 int packet_stream_cleanup(struct packet_stream *stream);
 int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *cur_stack, uint32_t seq);
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, struct proto_process_stack *cur_stack);

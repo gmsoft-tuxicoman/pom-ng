@@ -99,18 +99,21 @@ struct packet *packet_clone(struct packet *src, unsigned int flags) {
 		return dst;
 	}
 
+	pom_mutex_lock(&packet_list_mutex); // Use this lock to prevent refcount race
 	src->refcount++;
+	pom_mutex_unlock(&packet_list_mutex);
 	return src;
 }
 
 int packet_pool_release(struct packet *p) {
 
-	p->refcount--;
-
-	if (p->refcount)
-		return POM_OK;
-
 	pom_mutex_lock(&packet_list_mutex);
+	p->refcount--;
+	if (p->refcount) {
+		pom_mutex_unlock(&packet_list_mutex);
+		return POM_OK;
+	}
+
 
 	// Remove the packet from the used list
 	if (p->next)
@@ -493,7 +496,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 }
 
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size) {
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size, unsigned int flags) {
 	
 	struct packet_stream *res = malloc(sizeof(struct packet_stream));
 	if (!res) {
@@ -514,6 +517,8 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_
 		pomlog(POMLOG_ERR "Error while initializing packet_stream processing mutex : %s", pom_strerror(errno));
 		return NULL;
 	}
+
+	res->flags = flags;
 
 	return res;
 }
@@ -580,12 +585,11 @@ int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, s
 	cur_stack->proto = NULL;
 	cur_stack->pkt_info = NULL;
 
-	unsigned int pkt_flags = 0;
+	unsigned int pkt_flags = stream->flags;
 
 	if (!stream->tail) {
 		stream->head = p;
 		stream->tail = p;
-		pkt_flags = PACKET_FLAG_FORCE_NO_COPY;
 	} else { 
 
 		struct packet_stream_pkt *tmp = stream->tail;
@@ -618,16 +622,12 @@ int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, s
 
 			tmp->next = p;
 
-			// Don't copy the packet if the previous one has no copy
-			// We know it will be processed soon
-			if ((tmp->flags & PACKET_FLAG_FORCE_NO_COPY)
-				// Check that the end of the previous packet starts at or after the sequence of the current one
-				&& ( 	((tmp->seq + tmp->len) >= seq && (tmp->seq + tmp->len) - seq < PACKET_HALF_SEQ)
-					|| ((tmp->seq + tmp->len) < seq && seq - (tmp->seq + tmp->len) > PACKET_HALF_SEQ)) )
-
-				pkt_flags = PACKET_FLAG_FORCE_NO_COPY;
-
 		}
+	}
+
+	if (!p->prev &&  (stream->cur_seq == p->seq || stream->cur_buff_size > stream->max_buff_size)) {
+		// Packet will be dequeued immediately, don't copy it
+		pkt_flags |= PACKET_FLAG_FORCE_NO_COPY;
 	}
 
 	p->pkt = packet_clone(pkt, pkt_flags);

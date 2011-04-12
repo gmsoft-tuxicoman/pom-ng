@@ -164,20 +164,19 @@ struct mod_reg *mod_load(char *name) {
 
 	memset(reg, 0, sizeof(struct mod_reg));
 
-
 	reg->dl_handle = dl_handle;
 	reg->filename = strdup(filename);
 	reg->name = strdup(name);
 	reg->info = reg_info;
 
-	if (!reg->filename || !reg->name) {
+	if (!reg->filename || !reg->name || pthread_mutex_init(&reg->lock, NULL)) {
 		if (reg->filename)
 			free(reg->filename);
 		if (reg->name)
 			free(reg->name);
 		free(reg);
 		
-		pomlog(POMLOG_ERR "Not enough memory to allocate name and filename of struct mod_reg");
+		pomlog(POMLOG_ERR "Not enough memory to allocate name and filename of struct mod_reg or failed to initialize the lock");
 
 		return NULL;
 	}
@@ -199,15 +198,15 @@ struct mod_reg *mod_load(char *name) {
 		return NULL;
 	}
 
-	mod_reg_lock(0);
+	pom_mutex_lock(&reg->lock);
 	if (!reg->refcount) {
-		pomlog(POMLOG_DEBUG "Module %s did not register anything. Unloading it");
-		mod_reg_unlock();
+		pom_mutex_unlock(&reg->lock);
+		pomlog(POMLOG_DEBUG "Module %s did not register anything. Unloading it", reg->name);
 		mod_unload(reg);
 		return NULL;
 	}
 
-	mod_reg_unlock();
+	pom_mutex_unlock(&reg->lock);
 
 	return reg;
 
@@ -218,28 +217,19 @@ void mod_refcount_inc(struct mod_reg *mod) {
 	if (!mod)
 		return;
 
-	int res = pthread_rwlock_wrlock(&mod_reg_rwlock);
-	if (res && res != EDEADLK) { // If we don't have the lock, lock it
-		pomlog(POMLOG_ERR "Failed to aquire the lock to increment the refcount");
-		abort();
-	}
+	pthread_mutex_lock(&mod->lock);
 	mod->refcount++;
-	if (res != EDEADLK)
-		mod_reg_unlock();
+	pthread_mutex_unlock(&mod->lock);
 }
 
 void mod_refcount_dec(struct mod_reg *mod) {
+
 	if (!mod)
 		return;
 
-	int res = pthread_rwlock_wrlock(&mod_reg_rwlock);
-	if (res && res != EDEADLK) { // If we don't have the lock, lock it
-		pomlog(POMLOG_ERR "Failed to aquire the lock to decrement the refcount");
-		abort();
-	}
+	pthread_mutex_lock(&mod->lock);
 	mod->refcount--;
-	if (res != EDEADLK)
-		mod_reg_unlock();
+	pthread_mutex_unlock(&mod->lock);
 }
 
 int mod_unload(struct mod_reg *mod) {
@@ -257,9 +247,10 @@ int mod_unload(struct mod_reg *mod) {
 			return POM_ERR;
 		}
 	}
-
+	pom_mutex_lock(&mod->lock);
 	if (mod->refcount) {
 		pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
+		pom_mutex_unlock(&mod->lock);
 		mod_reg_unlock();
 		return POM_ERR;
 	}
@@ -270,6 +261,9 @@ int mod_unload(struct mod_reg *mod) {
 
 	if (mod->next)
 		mod->next->prev = mod->prev;
+
+	pom_mutex_unlock(&mod->lock);
+	pthread_mutex_destroy(&mod->lock);
 
 	mod->next = NULL;
 	mod->prev = NULL;
@@ -306,8 +300,10 @@ int mod_unload_all() {
 			}
 		}
 
+		pom_mutex_lock(&mod->lock);
 		if (mod->refcount) {
 			pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
+			pom_mutex_unlock(&mod->lock);
 			mod_reg_unlock();
 			mod = mod->next;
 			continue;
@@ -315,6 +311,9 @@ int mod_unload_all() {
 
 		mod->next = NULL;
 		mod->prev = NULL;
+
+		pom_mutex_unlock(&mod->lock);
+		pthread_mutex_destroy(&mod->lock);
 
 		if (dlclose(mod->dl_handle))
 			pomlog(POMLOG_WARN "Error while closing module %s", mod->name);

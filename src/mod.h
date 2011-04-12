@@ -39,6 +39,7 @@
 struct mod_reg {
 	struct mod_reg_info *info;
 	int refcount;
+	pthread_mutex_t lock;
 	char *name;
 	char *filename;
 	void *dl_handle;

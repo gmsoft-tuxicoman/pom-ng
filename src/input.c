@@ -579,14 +579,14 @@ int input_cleanup(struct input *i) {
 
 	// Free shm stuff
 	if (i->shm_buff) {
-		int try = 0, maxtry = 5;
+		int try = 0, maxtry = 10;
 		for (; try < maxtry; try++) {
 			pom_mutex_lock(&i->shm_buff->lock);
 			unsigned int attached = i->shm_buff->flags & INPUT_FLAG_ATTACHED;
 			pom_mutex_unlock(&i->shm_buff->lock);
 			if (!attached)
 				break;
-			pomlog(POMLOG_DEBUG "Waiting for the other process to detach the buffer ...");
+			pomlog(POMLOG_DEBUG "Input process waiting for the main process to detach the buffer ...");
 			sleep(1);
 		}
 
