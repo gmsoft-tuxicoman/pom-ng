@@ -340,7 +340,8 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED)) {
 		int res = packet_multipart_process(tmp->multipart, stack, stack_index + 1);
 		tmp->multipart = NULL; // Multipart will be cleared automatically
-		return res;
+		if (res == PROTO_ERR)
+			return PROTO_ERR;
 	}
 	
 	
