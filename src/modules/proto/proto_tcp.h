@@ -23,7 +23,7 @@
 
 #include <stdint.h>
 
-#define PROTO_TCP_FIELD_NUM 5
+#define PROTO_TCP_FIELD_NUM 6
 
 #define PROTO_TCP_SEQ_KNOWN 1
 

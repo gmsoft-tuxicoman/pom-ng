@@ -55,7 +55,13 @@ int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen) 
 	xmlrpc_env_init(&env);
 
 	xmlrpc_mem_block *output = NULL;
+#ifdef HAVE_XMLRPC_REGISTRY_PROCESS_CALL2
 	xmlrpc_registry_process_call2(&env, xmlrpcsrv_registry, data, size, NULL, &output);
+#else
+	output = xmlrpc_registry_process_call(&env, xmlrpcsrv_registry, "localhost", data, size);
+#endif
+	if (!output)
+		return POM_ERR;
 
 	*reslen = xmlrpc_mem_block_size(output);
 	*response = malloc(*reslen);

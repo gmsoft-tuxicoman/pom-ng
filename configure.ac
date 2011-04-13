@@ -199,6 +199,7 @@ fi
 
 if test "x$want_xmlrpc" = "xyes"
 then
+	AC_CHECK_LIB([xmlrpc_server], [xmlrpc_registry_process_call2], [AC_DEFINE(HAVE_XMLRPC_REGISTRY_PROCESS_CALL2, , [Has the new xmlrpc API])])
 	xmlrpc_LIBS="-lxmlrpc_server -lxmlrpc -lxmlrpc_util -lz -lm"
 	xmlrpc_LIBS="${xmlrpc_LIBS} `xmlrpc-c-config server-util --libs`"
 	AC_DEFINE(USE_XMLRPC, , [Compile XML-RPC interface])
