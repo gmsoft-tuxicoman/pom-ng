@@ -44,7 +44,7 @@ struct input_dvb_priv {
 	enum input_dvb_type type;
 
 	// Some (mostly) common params
-	struct ptype *adapter, *frontend, *freq, *symbol_rate, *tuning_timeout;
+	struct ptype *adapter, *frontend, *freq, *symbol_rate, *tuning_timeout, *filter_null_pid;
 
 	int frontend_fd, demux_fd, dvr_fd;
 

@@ -34,6 +34,7 @@
 #include <sys/poll.h>
 
 #include <pom-ng/input.h>
+#include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
@@ -115,9 +116,14 @@ static int input_dvb_file_alloc(struct input *i) {
 	priv->demux_fd = -1;
 	priv->dvr_fd = -1;
 
+	priv->filter_null_pid = ptype_alloc("bool");
+
 	priv->tpriv.file.filename = ptype_alloc("string");
-	if (!priv->tpriv.file.filename)
+	if (!priv->tpriv.file.filename || !priv->filter_null_pid)
 		return POM_ERR;
+
+	if (input_register_param(i, "filter_null_pid", priv->filter_null_pid, "yes", "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0) != POM_OK)
+		goto err;
 
 	if (input_register_param(i, "filename", priv->tpriv.file.filename, "dump.ts", "File to read packets from", 0) != POM_OK)
 		goto err;
@@ -154,8 +160,9 @@ static int input_dvb_c_alloc(struct input *i) {
 	priv->freq = ptype_alloc_unit("uint32", "Hz");
 	priv->symbol_rate = ptype_alloc_unit("uint32", "symboles/second");
 	priv->tuning_timeout = ptype_alloc_unit("uint16", "seconds");
+	priv->filter_null_pid = ptype_alloc("bool");
 	priv->tpriv.c.modulation = ptype_alloc_unit("string", NULL);
-	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout || !priv->tpriv.c.modulation) 
+	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout || !priv->filter_null_pid || !priv->tpriv.c.modulation) 
 		goto err;
 
 	if (input_register_param(i, "adapter", priv->freq, "0", "Adapter ID : /dev/dvb/adapterX", 0) != POM_OK)
@@ -171,6 +178,9 @@ static int input_dvb_c_alloc(struct input *i) {
 		goto err;
 
 	if (input_register_param(i, "tuning_timeout", priv->tuning_timeout, "3", "Timeout while trying to tune in seconds", 0) != POM_OK)
+		goto err;
+
+	if (input_register_param(i, "filter_null_pid", priv->filter_null_pid, "yes", "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0) != POM_OK)
 		goto err;
 
 	if (input_register_param(i, "modulation", priv->tpriv.c.modulation, "0", "Modulation either QAM64 or QAM256", 0) != POM_OK)
@@ -191,6 +201,10 @@ err:
 		ptype_cleanup(priv->freq);
 	if (priv->symbol_rate)
 		ptype_cleanup(priv->symbol_rate);
+	if (priv->tuning_timeout)
+		ptype_cleanup(priv->tuning_timeout);
+	if (priv->filter_null_pid)
+		ptype_cleanup(priv->filter_null_pid);
 	if (priv->tpriv.c.modulation)
 		ptype_cleanup(priv->tpriv.c.modulation);
 	
@@ -438,8 +452,9 @@ static int input_dvb_read(struct input *i) {
 	unsigned char *pkt_data = NULL;
 	struct timeval *pkt_ts = NULL;
 
+	pkt = input_packet_buffer_alloc(i, MPEG_TS_LEN, p->type == input_dvb_type_file, &pkt_data, &pkt_ts);
+
 	do {
-		pkt = input_packet_buffer_alloc(i, MPEG_TS_LEN, p->type == input_dvb_type_file, &pkt_data, &pkt_ts);
 
 		unsigned char tmp_buff[MPEG_TS_LEN];
 		if (!pkt) // Store data in a temp buffer if we need to drop them
@@ -462,6 +477,13 @@ static int input_dvb_read(struct input *i) {
 			return POM_ERR;
 		}
 		len += r;
+
+		char *filter_null_pid; PTYPE_BOOL_GETVAL(p->filter_null_pid, filter_null_pid);
+		if (*filter_null_pid) {
+			uint16_t pid = ((pkt_data[1] & 0x1F) << 8) | pkt_data[2];
+			if (len > 3 && pid == 0x1FFF) // 0x1FFF is the NULL PID
+				len = 0;
+		}
 
 	} while (len < MPEG_TS_LEN);
 

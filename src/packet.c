@@ -98,7 +98,6 @@ struct packet *packet_clone(struct packet *src, unsigned int flags) {
 		
 		return dst;
 	}
-
 	pom_mutex_lock(&packet_list_mutex); // Use this lock to prevent refcount race
 	src->refcount++;
 	pom_mutex_unlock(&packet_list_mutex);
@@ -113,7 +112,6 @@ int packet_pool_release(struct packet *p) {
 		pom_mutex_unlock(&packet_list_mutex);
 		return POM_OK;
 	}
-
 
 	// Remove the packet from the used list
 	if (p->next)
@@ -141,7 +139,7 @@ int packet_pool_release(struct packet *p) {
 	if (p->multipart) {  // Cleanup multipart if any
 		if (packet_multipart_cleanup(p->multipart) != POM_OK) {
 			res = POM_ERR;
-			pomlog(POMLOG_ERR "Error while releaseing the multipart");
+			pomlog(POMLOG_ERR "Error while releasing the multipart");
 		}
 	}
 
@@ -653,7 +651,7 @@ int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, s
 		pom_mutex_unlock(&stream->list_lock);
 		return POM_ERR;
 	}
-	stream->cur_buff_size += p->len;	
+	stream->cur_buff_size += p->len;
 	pom_mutex_unlock(&stream->list_lock);
 	return POM_OK;
 }

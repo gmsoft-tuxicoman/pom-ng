@@ -39,7 +39,7 @@ static struct proto_dependency *proto_docsis = NULL;
 static struct ptype *ptype_uint16 = NULL;
 
 // params
-static struct ptype *param_process_null_pid = NULL, *param_mpeg_ts_stream_timeout = NULL;
+static struct ptype *param_force_no_copy = NULL, *param_mpeg_ts_stream_timeout = NULL;
 
 struct mod_reg_info* proto_mpeg_reg_info() {
 
@@ -94,12 +94,12 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 
 static int proto_mpeg_ts_init(struct registry_instance *i) {
 
-	param_process_null_pid = ptype_alloc("bool");
+	param_force_no_copy = ptype_alloc("bool");
 	param_mpeg_ts_stream_timeout = ptype_alloc_unit("uint16", "seconds");
-	if (!param_process_null_pid || !param_mpeg_ts_stream_timeout)
+	if (!param_force_no_copy || !param_mpeg_ts_stream_timeout)
 		goto err;
 
-	struct registry_param *p = registry_new_param("process_null_pid", "false", param_process_null_pid, "Should the NULL MPEG PID (0x1FFF) be processed at all", 0);
+	struct registry_param *p = registry_new_param("force_no_copy", "true", param_force_no_copy, "Should we force packet API to prevent copy packets internally", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
@@ -118,8 +118,8 @@ static int proto_mpeg_ts_init(struct registry_instance *i) {
 	return POM_OK;
 
 err:
-	if (param_process_null_pid)
-		ptype_cleanup(param_process_null_pid);
+	if (param_force_no_copy)
+		ptype_cleanup(param_force_no_copy);
 	
 	if (param_mpeg_ts_stream_timeout)
 		ptype_cleanup(param_mpeg_ts_stream_timeout);
@@ -136,11 +136,6 @@ static ssize_t proto_mpeg_ts_parse(struct packet *p, struct proto_process_stack 
 	uint16_t pid = ((buff[1] & 0x1F) << 8) | buff[2];
 
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_mpeg_ts_field_pid], pid);
-
-	char *process_null_pid; PTYPE_BOOL_GETVAL(param_process_null_pid, process_null_pid);
-
-	if (pid == MPEG_TS_NULL_PID && !*process_null_pid)
-		return PROTO_STOP;
 
 	// Track only DOCSIS streams for now
 	if (pid == MPEG_TS_DOCSIS_PID)
@@ -232,7 +227,8 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 	}
 
 	if (!stream->stream) {
-		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 512 * MPEG_TS_LEN, PACKET_FLAG_FORCE_NO_COPY);
+		char *force_no_copy; PTYPE_BOOL_GETVAL(param_force_no_copy, force_no_copy);
+		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 128 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;
@@ -348,10 +344,11 @@ int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct pac
 					// Nothing left to process
 					return PROTO_STOP;
 			}
-
+		
+			char *force_no_copy; PTYPE_BOOL_GETVAL(param_force_no_copy, force_no_copy);
 			if (pos > (MPEG_TS_LEN - 1) - offsetof(struct docsis_hdr, hcs)) {
 				// Cannot fetch the complete packet size, will do later
-				stream->multipart = packet_multipart_alloc(proto_docsis, PACKET_FLAG_FORCE_NO_COPY);
+				stream->multipart = packet_multipart_alloc(proto_docsis, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
 				if (!stream->multipart)
 					return PROTO_ERR;
 				stream->pkt_tot_len = 0;
@@ -363,7 +360,7 @@ int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct pac
 			struct docsis_hdr *docsis_hdr = (void*)buff + pos;
 			unsigned int docsis_len = ntohs(docsis_hdr->len) + sizeof(struct docsis_hdr);
 			if (docsis_len + pos > MPEG_TS_LEN) {
-				stream->multipart = packet_multipart_alloc(proto_docsis, PACKET_FLAG_FORCE_NO_COPY);
+				stream->multipart = packet_multipart_alloc(proto_docsis, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
 				if (!stream->multipart)
 					return PROTO_ERR;
 				stream->pkt_tot_len = docsis_len;
@@ -468,7 +465,7 @@ static int proto_mpeg_ts_cleanup() {
 
 	int res = POM_OK;
 
-	res += ptype_cleanup(param_process_null_pid);
+	res += ptype_cleanup(param_force_no_copy);
 	res += ptype_cleanup(param_mpeg_ts_stream_timeout);
 
 	res += proto_remove_dependency(proto_docsis);
