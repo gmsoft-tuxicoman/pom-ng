@@ -290,7 +290,8 @@ int main(int argc, char *argv[]) {
 	free(shutdown_reason);
 	shutdown_reason = NULL;
 
-
+	if (!shutdown_in_error)
+		core_wait_state(core_state_idle);
 
 	// Cleanup components
 
@@ -303,7 +304,7 @@ int main(int argc, char *argv[]) {
 		pomlog("Waiting for input process to terminate ...");
 		waitpid(input_process_pid, NULL, 0);
 	}
-	
+
 	core_cleanup(shutdown_in_error);
 err_httpd:
 	httpd_cleanup();

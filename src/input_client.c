@@ -34,6 +34,8 @@
 
 static struct input_client_entry *input_client_head = NULL;
 static struct registry_class *input_registry_class = NULL;
+static unsigned int input_cur_running = 0;
+static pthread_mutex_t input_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int input_client_init() {
 
@@ -50,16 +52,16 @@ int input_client_init() {
 
 int input_client_cleanup(int emergency_cleanup) {
 
+	if (!emergency_cleanup)
+		core_wait_state(core_state_idle);
+
 	while (input_client_head) {
 		struct input_client_entry *i = input_client_head;
 		input_client_head = i->next;
 
 		if (i->thread) {
-			if (emergency_cleanup) {
+			if (emergency_cleanup)
 				pthread_cancel(i->thread->thread);
-			} else {
-				input_client_wait_for_empty_buff(i);
-			}
 		}
 
 		if (i->shm_buff) {
@@ -104,7 +106,12 @@ void *input_client_reader_thread_func(void *thread) {
 	struct input_client_reader_thread *t = thread;
 
 	pomlog("New thread for input \"%s\" started", t->input->reg_instance->name);
-
+	
+	pom_mutex_lock(&input_lock);
+	input_cur_running++;
+	if (input_cur_running == 1)
+		core_set_state(core_state_running);
+	pom_mutex_unlock(&input_lock);
 
 	while (1) {
 
@@ -146,6 +153,11 @@ void *input_client_reader_thread_func(void *thread) {
 	t->input->thread = NULL;
 	free(t);
 
+	pom_mutex_lock(&input_lock);
+	input_cur_running--;
+	if (!input_cur_running)
+		core_set_state(core_state_finishing);
+	pom_mutex_unlock(&input_lock);
 	return NULL;
 }
 
@@ -174,7 +186,6 @@ int input_client_wait_for_empty_buff(struct input_client_entry *input) {
 
 	return POM_OK;
 }
-
 
 int input_client_get_packet(struct input_client_entry *input, struct packet *p) {
 
@@ -262,6 +273,9 @@ int input_client_release_packet(struct packet *p) {
 		pom_mutex_unlock(&buff->lock);
 		return POM_ERR;
 	}
+
+	if (buff->inpkt_head_offset == -1 && core_get_state() == core_state_finishing)
+		core_set_state(core_state_finishing2); // All packets were processed
 
 	pom_mutex_unlock(&buff->lock);
 
@@ -528,7 +542,13 @@ err:
 }
 
 int input_client_cmd_start(struct registry_instance *ri) {
-	
+
+	enum core_state state = core_get_state();
+	if (state != core_state_idle && state != core_state_running) {
+		pomlog(POMLOG_WARN "Cannot start input, core is not ready");
+		return POM_ERR;
+	}
+
 	struct input_client_entry *i = ri->priv;
 
 	pom_mutex_lock(&i->shm_buff->lock);

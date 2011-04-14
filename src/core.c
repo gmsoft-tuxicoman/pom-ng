@@ -30,6 +30,10 @@
 #include "main.h"
 
 static int core_run = 0; // Set to 1 while the processing thread should run
+static enum core_state core_cur_state = core_state_idle;
+static pthread_mutex_t core_state_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t core_state_cond = PTHREAD_COND_INITIALIZER;
+static unsigned int core_thread_active = 0;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
 
@@ -228,10 +232,21 @@ int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 
 void *core_processing_thread_func(void *priv) {
 
+	pom_mutex_lock(&core_pkt_queue_mutex);
+	core_thread_active++;
+	pom_mutex_unlock(&core_pkt_queue_mutex);
+
 	while (core_run) {
 		
 		pom_mutex_lock(&core_pkt_queue_mutex);
+		core_thread_active--;
 		while (!core_pkt_queue_head) {
+			enum core_state state = core_get_state();
+			if (core_thread_active == 0) {
+				if (state == core_state_finishing || state == core_state_finishing2)
+					core_set_state(core_state_idle);
+			}
+
 			if (!core_run) {
 				pom_mutex_unlock(&core_pkt_queue_mutex);
 				return NULL;
@@ -244,7 +259,7 @@ void *core_processing_thread_func(void *priv) {
 			}
 
 		}
-	
+		core_thread_active++;
 		struct core_packet_queue *tmp = core_pkt_queue_head;
 
 		struct packet *pkt = tmp->pkt;
@@ -450,3 +465,36 @@ void core_get_clock(struct timeval *now) {
 
 }
 
+void core_wait_state(enum core_state state) {
+	pom_mutex_lock(&core_state_lock);
+	while (core_cur_state != state) {
+		if (pthread_cond_wait(&core_state_cond, &core_state_lock)) {
+			pomlog(POMLOG_ERR "Error while waiting for core cond : %s", pom_strerror(errno));
+			abort();
+			break;
+		}
+	}
+	pom_mutex_unlock(&core_state_lock);
+}
+
+enum core_state core_get_state() {
+
+	pom_mutex_lock(&core_state_lock);
+	enum core_state state = core_cur_state;
+	pom_mutex_unlock(&core_state_lock);
+	return state;
+}
+
+int core_set_state(enum core_state state) {
+
+	pom_mutex_lock(&core_state_lock);
+	core_cur_state = state;
+	pomlog(POMLOG_DEBUG "Core state changed to %u", state);
+	if (pthread_cond_broadcast(&core_state_cond)) {
+		pomlog(POMLOG_ERR "Unable to signal core state condition : %s", pom_strerror(errno));
+		pom_mutex_unlock(&core_state_lock);
+		return POM_ERR;
+	}
+	pom_mutex_unlock(&core_state_lock);
+	return POM_OK;
+}

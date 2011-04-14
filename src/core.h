@@ -34,6 +34,15 @@
 #define CORE_PROCESS_THREAD_MAX		64
 #define CORE_PROCESS_THREAD_DEFAULT	2
 
+
+enum core_state {
+	core_state_idle = 0, // Core is idle
+	core_state_running, // Core is receiving packets from the input
+	core_state_finishing, // There are still packets in the input
+	core_state_finishing2, // No packets left in the input but still some processing running
+
+};
+
 struct core_packet_queue {
 	struct packet *pkt;
 	struct input_client_entry *input;
@@ -60,4 +69,7 @@ int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_
 int core_process_packet(struct packet *p);
 
 void core_get_clock(struct timeval *now);
+void core_wait_state(enum core_state state);
+enum core_state core_get_state();
+int core_set_state(enum core_state state);
 #endif

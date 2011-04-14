@@ -556,6 +556,8 @@ static int input_dvb_cleanup(struct input *i) {
 		ptype_cleanup(p->freq);
 	if (p->symbol_rate)
 		ptype_cleanup(p->symbol_rate);
+	if (p->filter_null_pid)
+		ptype_cleanup(p->filter_null_pid);
 	if (p->tuning_timeout)
 		ptype_cleanup(p->tuning_timeout);
 
