@@ -143,14 +143,18 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 	// Cleanup input list
 	input_server_list_lock(1);
 
-	struct input_list *l;
+	struct input_list *l = input_server_list_head;
+	// First close all the input
+	for (; l; l = l->next) {
+		if (l->i->opened)
+			input_close(l->i);
+	}
+
 	while (input_server_list_head) {
 		l = input_server_list_head;
 		input_server_list_head = l->next;
 
 		pomlog("Cleaning up input %u (%s)", l->id, l->i->type->info->name);
-		if (l->i->opened)
-			input_close(l->i);
 		input_cleanup(l->i);
 		free(l);
 	}

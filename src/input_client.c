@@ -142,6 +142,11 @@ void *input_client_reader_thread_func(void *thread) {
 
 	}
 
+	pom_mutex_lock(&input_lock);
+	if (t->input->thread) 
+		t->input->thread = NULL;
+	pom_mutex_unlock(&input_lock);
+
 	pthread_detach(pthread_self());
 
 
@@ -150,7 +155,6 @@ void *input_client_reader_thread_func(void *thread) {
 	proto_remove_dependency(t->input->datalink_dep);
 	t->input->datalink_dep = NULL;
 
-	t->input->thread = NULL;
 	free(t);
 
 	pom_mutex_lock(&input_lock);
@@ -159,32 +163,6 @@ void *input_client_reader_thread_func(void *thread) {
 		core_set_state(core_state_finishing);
 	pom_mutex_unlock(&input_lock);
 	return NULL;
-}
-
-int input_client_wait_for_empty_buff(struct input_client_entry *input) {
-
-	struct input_buff *buff = input->shm_buff;
-
-	int empty = 0;
-	do {
-
-		pom_mutex_lock(&buff->lock);
-
-		if (buff->inpkt_head_offset < 0)
-			empty = 1;
-
-		pom_mutex_unlock(&buff->lock);
-
-		usleep(100000);
-
-	} while (!empty);
-
-	if (pthread_cond_broadcast(&buff->underrun_cond)) {
-		pomlog(POMLOG_ERR "Could not signal the underrun condition");
-		return POM_ERR;
-	}
-
-	return POM_OK;
 }
 
 int input_client_get_packet(struct input_client_entry *input, struct packet *p) {
@@ -599,6 +577,7 @@ int input_client_cmd_start(struct registry_instance *ri) {
 
 	if (pthread_create(&t->thread, NULL, input_client_reader_thread_func, t)) {
 		pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
+		free(t);
 		return POM_ERR;
 	}
 
@@ -636,13 +615,20 @@ int input_client_cmd_stop(struct registry_instance *ri) {
 	
 	input_ipc_destroy_request(id);
 
-	if (input_client_wait_for_empty_buff(i) == POM_ERR)
-		return POM_ERR;
+	pthread_t thread = NULL;
+	pom_mutex_lock(&input_lock);
+	if (i->thread) {
+		thread = i->thread->thread;
+		i->thread = NULL;
+	}
+	pom_mutex_unlock(&input_lock);
+
+	if (thread)
+		pthread_join(thread, NULL);
 
 	proto_remove_dependency(i->datalink_dep);
 	i->datalink_dep = NULL;
 
-	i->thread = NULL;
 
 	return status;
 }

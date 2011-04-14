@@ -242,8 +242,8 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 
 
 	if (registry_set_param_value(p, value) != POM_OK) {
+		xmlrpc_faultf(envP, "Unable to set parameter value to \"%s\"", value);
 		free(value);
-		xmlrpc_faultf(envP, "Unable set parameter value to \"%s\"", value);
 		return NULL;
 	}
 	free(value);

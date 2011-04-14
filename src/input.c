@@ -370,7 +370,6 @@ int input_open(struct input *i, struct input_caps *ic) {
 int input_run(struct input *i) {
 
 	input_instance_lock(i, 1);
-	i->shm_buff->flags |= INPUT_FLAG_RUNNING;
 
 	if (pthread_create(&i->thread, NULL, input_process_thread, (void *) i)) {
 		input_instance_unlock(i);
@@ -529,15 +528,13 @@ int input_close(struct input *i) {
 		return POM_ERR;
 	}
 
-	i->opened = 0;
 	input_instance_unlock(i);
 
 
 	pom_mutex_lock(&i->shm_buff->lock);
+	i->opened = 0;
 	if (i->shm_buff->flags & INPUT_FLAG_RUNNING) {
 		i->shm_buff->flags |= INPUT_FLAG_EOF;
-		i->shm_buff->flags &= ~INPUT_FLAG_RUNNING;
-
 		pom_mutex_unlock(&i->shm_buff->lock);
 
 		if (!pthread_equal(pthread_self(), i->thread)) {
@@ -581,6 +578,11 @@ int input_cleanup(struct input *i) {
 		int try = 0, maxtry = 10;
 		for (; try < maxtry; try++) {
 			pom_mutex_lock(&i->shm_buff->lock);
+			if (pthread_cond_signal(&i->shm_buff->underrun_cond)) {
+				pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
+				pom_mutex_unlock(&i->shm_buff->lock);
+				return POM_ERR;
+			}
 			unsigned int attached = i->shm_buff->flags & INPUT_FLAG_ATTACHED;
 			pom_mutex_unlock(&i->shm_buff->lock);
 			if (!attached)
@@ -667,6 +669,10 @@ void *input_process_thread(void *param) {
 
 	pomlog(POMLOG_DEBUG "New input thread running");
 
+	pom_mutex_lock(&i->shm_buff->lock);
+	i->shm_buff->flags |= INPUT_FLAG_RUNNING;
+	pom_mutex_unlock(&i->shm_buff->lock);
+
 	while (i->type->info->read(i) == POM_OK) {
 		input_instance_lock(i, 0);
 		if (!i->opened) {
@@ -676,8 +682,12 @@ void *input_process_thread(void *param) {
 		input_instance_unlock(i);
 	}
 
-	input_close(i);
+	if (i->opened)
+		input_close(i);
 
+	pom_mutex_lock(&i->shm_buff->lock);
+	i->shm_buff->flags &= ~INPUT_FLAG_RUNNING;
+	pom_mutex_unlock(&i->shm_buff->lock);
 	pomlog(POMLOG_DEBUG "Input thread finished");
 
 	return NULL;

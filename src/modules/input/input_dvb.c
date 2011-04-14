@@ -165,10 +165,10 @@ static int input_dvb_c_alloc(struct input *i) {
 	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout || !priv->filter_null_pid || !priv->tpriv.c.modulation) 
 		goto err;
 
-	if (input_register_param(i, "adapter", priv->freq, "0", "Adapter ID : /dev/dvb/adapterX", 0) != POM_OK)
+	if (input_register_param(i, "adapter", priv->adapter, "0", "Adapter ID : /dev/dvb/adapterX", 0) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "frontend", priv->freq, "0", "Frontend ID : /dev/dvb/adapterX/frontendY", 0) != POM_OK)
+	if (input_register_param(i, "frontend", priv->frontend, "0", "Frontend ID : /dev/dvb/adapterX/frontendY", 0) != POM_OK)
 		goto err;
 
 	if (input_register_param(i, "frequency", priv->freq, "0", "Frequency in Hz", 0) != POM_OK)

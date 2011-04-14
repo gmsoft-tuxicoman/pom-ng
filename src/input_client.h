@@ -53,7 +53,6 @@ int input_client_init();
 int input_client_cleanup(int emergency_cleanup);
 
 void *input_client_reader_thread_func(void *input);
-int input_client_wait_for_empty_buff(struct input_client_entry *input);
 int input_client_get_packet(struct input_client_entry *input, struct packet *p);
 int input_client_release_packet(struct packet *p);
 
