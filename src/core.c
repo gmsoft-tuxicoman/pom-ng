@@ -307,12 +307,15 @@ void *core_processing_thread_func(void *priv) {
 			pomlog(POMLOG_ERR "Error while releasing the packet to the pool");
 			break;
 		}
-
+		
+		pom_mutex_lock(&core_pkt_queue_mutex);
 		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
 			pomlog(POMLOG_ERR "Error while signaling the done condition : %s", pom_strerror(errno));
+			pom_mutex_unlock(&core_pkt_queue_mutex);
 			break;
 
 		}
+		pom_mutex_unlock(&core_pkt_queue_mutex);
 
 	}
 
@@ -321,6 +324,7 @@ void *core_processing_thread_func(void *priv) {
 }
 
 int core_process_dump_pkt_info(struct proto_process_stack *s, int res) {
+return POM_OK;
 
 	char *res_str = "unknown result code";
 	switch (res) {
@@ -399,7 +403,7 @@ int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_
 			struct conntrack_entry *parent = NULL;
 			if (i > 1)
 				parent = s[i - 1].ce;
-			s[i].ce = conntrack_get(s[i].proto->ct, s[i].ct_field_fwd, s[i].ct_field_rev, parent, &s[i].proto->info->ct_info);
+			s[i].ce = conntrack_get(s[i].proto, s[i].ct_field_fwd, s[i].ct_field_rev, parent);
 			if (!s[i].ce) {
 				pomlog(POMLOG_ERR "Could not get conntrack for proto %s", s[i].proto->info->name);
 				return PROTO_ERR;

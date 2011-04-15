@@ -228,7 +228,7 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 
 	if (!stream->stream) {
 		char *force_no_copy; PTYPE_BOOL_GETVAL(param_force_no_copy, force_no_copy);
-		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 128 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
+		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;

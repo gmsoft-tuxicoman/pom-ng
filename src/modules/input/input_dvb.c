@@ -277,7 +277,7 @@ static int input_dvb_open(struct input *i) {
 
 	priv->demux_fd = open(demux, O_RDWR);
 	if (priv->demux_fd == -1) {
-		pomlog(POMLOG_ERR "Unable to open demux device %s : %s", strerror(errno), demux);
+		pomlog(POMLOG_ERR "Unable to open demux device %s : %s", demux, strerror(errno));
 		goto err;
 	}
 

@@ -38,14 +38,14 @@ void pom_oom_internal(size_t size, char *file, unsigned int line) {
 
 void pom_mutex_lock_internal(pthread_mutex_t *m, char *file, unsigned int line) {
 	if (pthread_mutex_lock(m)) {
-		pomlog(POMLOG_ERR "Error while locking mutex in %s:%s : %s", file, line, pom_strerror(errno));
+		pomlog(POMLOG_ERR "Error while locking mutex in %s:%u : %s", file, line, pom_strerror(errno));
 		abort();
 	}
 }
 
 void pom_mutex_unlock_internal(pthread_mutex_t *m, char *file, unsigned int line) {
 	if (pthread_mutex_unlock(m)) {
-		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%s : %s", file, line, pom_strerror(errno));
+		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s", file, line, pom_strerror(errno));
 		abort();
 	}
 }

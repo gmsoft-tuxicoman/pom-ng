@@ -27,7 +27,7 @@
 struct timer_queue {
 
 	unsigned int expiry;
-	pthread_rwlock_t lock;
+	pthread_mutex_t lock;
 	struct timer_queue *next;
 	struct timer_queue *prev;
 	struct timer *head;

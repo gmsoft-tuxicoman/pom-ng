@@ -615,7 +615,7 @@ int input_client_cmd_stop(struct registry_instance *ri) {
 	
 	input_ipc_destroy_request(id);
 
-	pthread_t thread = NULL;
+	pthread_t thread = 0;
 	pom_mutex_lock(&input_lock);
 	if (i->thread) {
 		thread = i->thread->thread;

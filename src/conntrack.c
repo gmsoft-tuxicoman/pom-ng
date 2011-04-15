@@ -21,8 +21,10 @@
 #include "proto.h"
 #include "conntrack.h"
 #include "jhash.h"
-
 #include "common.h"
+
+#include <pthread.h>
+#include <pom-ng/timer.h>
 
 #define INITVAL 0x5de97c2d // random value
 
@@ -80,9 +82,16 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 
 				// Free the conntrack entry
 				if (tmp->ce) {
+
+					struct conntrack_child_list *child = tmp->ce->children;
+					while (child) {
+						tmp->ce->children = child->next;
+						free(child);
+						child = tmp->ce->children;
+					}
 					
-					if (tmp->ce->priv && tmp->ce->ct_info->cleanup_handler) {
-						if (tmp->ce->ct_info->cleanup_handler(tmp->ce) != POM_OK)
+					if (tmp->ce->priv && tmp->ce->proto->info->ct_info.cleanup_handler) {
+						if (tmp->ce->proto->info->ct_info.cleanup_handler(tmp->ce) != POM_OK)
 							pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
 					}
 
@@ -118,8 +127,15 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 				// Free the conntrack entry
 				if (tmp->ce) {
 
-					if (tmp->ce->priv && tmp->ce->ct_info->cleanup_handler) {
-						if (tmp->ce->ct_info->cleanup_handler(tmp->ce) != POM_OK)
+					struct conntrack_child_list *child = tmp->ce->children;
+					while (child) {
+						tmp->ce->children = child->next;
+						free(tmp->ce->children);
+						child = child->next;
+					}
+
+					if (tmp->ce->priv && tmp->ce->proto->info->ct_info.cleanup_handler) {
+						if (tmp->ce->proto->info->ct_info.cleanup_handler(tmp->ce) != POM_OK)
 							pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
 					}
 
@@ -228,15 +244,10 @@ struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype 
 	return NULL;
 }
 
-struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, struct conntrack_info *info) {
+struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent) {
 
-	if (!ct || !fwd_value)
+	if (!fwd_value || !proto)
 		return NULL;
-
-	if (!ct->fwd_table) {
-		pomlog(POMLOG_ERR "Cannot get conntrack as the forward table is not allocated");
-		return NULL;
-	}
 
 	uint32_t full_hash_fwd = 0, hash_fwd = 0, full_hash_rev = 0, hash_rev = 0;
 
@@ -245,8 +256,16 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 		return NULL;
 	}
 
+	struct conntrack_tables *ct = proto->ct;
+
 	// Lock the tables while browsing for a conntrack
 	pom_mutex_lock(&ct->lock);
+
+	if (!ct->fwd_table) {
+		pom_mutex_unlock(&ct->lock);
+		pomlog(POMLOG_ERR "Cannot get conntrack as the forward table is not allocated");
+		return NULL;
+	}
 
 	// Try to find the conntrack in the forward table
 	hash_fwd = full_hash_fwd % ct->tables_size;
@@ -286,15 +305,56 @@ struct conntrack_entry *conntrack_get(struct conntrack_tables *ct, struct ptype 
 	}
 	memset(res, 0, sizeof(struct conntrack_entry));
 
-	if(pthread_mutex_init(&res->lock, NULL)) {
+	pthread_mutexattr_t attr;
+	if (pthread_mutexattr_init(&attr)) {
+		pom_mutex_unlock(&ct->lock);
+		free(res);
+		pomlog(POMLOG_ERR "Error while initializing conntrack mutex attribute");
+		return NULL;
+	}
+
+	if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
+		pom_mutex_unlock(&ct->lock);
+		free(res);
+		pomlog(POMLOG_ERR "Error while setting conntrack mutex attribute to recursive");
+		return NULL;
+	}
+
+	if(pthread_mutex_init(&res->lock, &attr)) {
 		pom_mutex_unlock(&ct->lock);
 		free(res);
 		pomlog(POMLOG_ERR "Error while initializing a conntrack lock : %s", pom_strerror(errno));
 		return NULL;
 	}
 
-	res->parent = parent;
-	res->ct_info = info;
+	if (pthread_mutexattr_destroy(&attr)) {
+		pomlog(POMLOG_WARN "Error while destroying conntrack mutex attribute");
+	}
+
+	if (parent) {
+
+		struct conntrack_child_list *child = malloc(sizeof(struct conntrack_child_list));
+		if (!child) {
+			pom_mutex_unlock(&ct->lock);
+			pom_oom(sizeof(struct conntrack_child_list));
+			free(res);
+			return NULL;
+		}
+		memset(child, 0, sizeof(struct conntrack_child_list));
+
+		child->ce = res;
+
+		pom_mutex_lock(&parent->lock);
+		child->next = parent->children;
+		if (child->next)
+			child->next->prev = child;
+		parent->children = child;
+		pom_mutex_unlock(&parent->lock);
+		res->parent = parent;
+
+	}
+
+	res->proto = proto;
 
 	res->fwd_hash = full_hash_fwd;
 
@@ -362,4 +422,142 @@ err:
 	pom_mutex_unlock(&ct->lock);
 
 	return NULL;
+}
+
+int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
+
+	if (!delay) {
+		if (ce->cleanup_timer) {
+			timer_dequeue(ce->cleanup_timer);
+			timer_cleanup(ce->cleanup_timer);
+			ce->cleanup_timer = NULL;
+		}
+		return POM_OK;
+	}
+
+	if (!ce->cleanup_timer) {
+		ce->cleanup_timer = timer_alloc(ce, conntrack_cleanup);
+		if (!ce->cleanup_timer)
+			return POM_ERR;
+	} else {
+		timer_dequeue(ce->cleanup_timer);
+	}
+
+	timer_queue(ce->cleanup_timer, delay);
+
+	return POM_OK;
+}
+
+
+int conntrack_cleanup(void *conntrack) {
+
+	struct conntrack_entry *ce = conntrack;
+
+	pom_mutex_lock(&ce->lock);
+
+	// Cleanup the children
+	while (ce->children)
+		if (conntrack_cleanup(ce->children->ce) != POM_OK)
+			return POM_ERR;
+
+	if (ce->parent) {
+		// Remove the child from the parent
+		pom_mutex_lock(&ce->parent->lock);
+		struct conntrack_child_list *tmp = ce->parent->children;
+
+		for (; tmp; tmp = tmp->next) {
+			if (tmp->ce == ce)
+				break;
+		}
+
+		if (tmp) {
+			if (tmp->prev)
+				tmp->prev->next = tmp->next;
+			else
+				ce->parent->children = tmp->next;
+
+			if (tmp->next)
+				tmp->next->prev = tmp->prev;
+
+			free(tmp);
+		} else {
+			pomlog(POMLOG_WARN "Conntrack not found in parent's children list");
+		}
+
+		pom_mutex_unlock(&ce->parent->lock);
+	}
+
+
+	if (ce->priv && ce->proto->info->ct_info.cleanup_handler) {
+		if (ce->proto->info->ct_info.cleanup_handler(ce) != POM_OK)
+			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
+	}
+	pom_mutex_unlock(&ce->lock);
+
+	struct conntrack_tables *ct = ce->proto->ct;
+
+	// Lock the tables while browsing for a conntrack
+	pom_mutex_lock(&ct->lock);
+
+	// Try to find the conntrack in the forward table
+	uint32_t hash = ce->fwd_hash % ct->tables_size;
+
+	struct conntrack_list *lst = NULL;
+
+	for (lst = ct->fwd_table[hash]; lst; lst = lst->next)
+		if (lst->ce == ce)
+			break;
+	
+	if (!lst) {
+		pom_mutex_unlock(&ct->lock);
+		pomlog(POMLOG_ERR "Conntrack not found in the list for corresponding hash");
+		return POM_ERR;
+	}
+
+	if (lst->prev)
+		lst->prev->next = lst->next;
+	else
+		ct->fwd_table[hash] = lst->next;
+
+	if (lst->next)
+		lst->next->prev = lst->prev;
+
+	struct conntrack_list *lst_rev = lst->rev;
+	
+	free(lst);
+
+	if (lst_rev) {
+		// Remove it from the reverse table
+		hash = ce->rev_hash % ct->tables_size;
+		
+		if (lst_rev->prev)
+			lst_rev->prev->next = lst_rev->next;
+		else {
+			if (lst_rev != ct->rev_table[hash]) {
+				pomlog(POMLOG_ERR "Conntrack list was supposed to be the head of reverse but wasn't !");
+				return POM_ERR;
+			}
+			ct->rev_table[hash] = lst_rev->next;
+		}
+
+		if (lst_rev->next)
+			lst_rev->next->prev = lst_rev->prev;
+	
+		free(lst_rev);
+	}
+
+	pom_mutex_unlock(&ct->lock);
+
+	timer_cleanup(ce->cleanup_timer);
+	
+	if (ce->fwd_value)
+		ptype_cleanup(ce->fwd_value);
+	if (ce->rev_value)
+		ptype_cleanup(ce->rev_value);
+
+	pthread_mutex_destroy(&ce->lock);
+
+	free(ce);
+
+	return POM_OK;
 }

@@ -76,7 +76,7 @@ AC_CHECK_FUNCS([bzero gettimeofday inet_ntoa memmove memset strerror])
 
 # Try to find a good CFLAGS/LDFLAGS for pthreads
 AC_CHECK_HEADERS(pthread.h, [], [AC_MSG_ERROR([pthread support required])])
-CFLAGS="$CFLAGS -D_REENTRANT"
+CFLAGS="$CFLAGS -D_REENTRANT -D_GNU_SOURCE"
 checkpthread=yes
 
 AC_MSG_CHECKING([for pthread_create with libc])

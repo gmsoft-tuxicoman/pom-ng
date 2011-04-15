@@ -23,22 +23,27 @@
 #define __POM_NG_CONNTRACK_H__
 
 #include <pom-ng/base.h>
+#include <pom-ng/proto.h>
 
 struct conntrack_entry {
 
 	uint32_t fwd_hash, rev_hash; ///< Full hash prior to modulo
 	struct ptype *fwd_value, *rev_value; ///< Forward and reverse value for hashing
 	struct conntrack_entry *parent; ///< Parent conntrack
-	void *priv; /// < Private data of the protocol
-	char *buff;
-	size_t buffsize;
+	struct conntrack_child_list *children; ///< Children of this conntrack
+	void *priv; ///< Private data of the protocol
 	pthread_mutex_t lock;
-	unsigned int usage;
-	struct conntrack_info *ct_info;
+	struct timer *cleanup_timer; ///< Cleanup the conntrack when this timer is reached
+	struct proto_reg *proto; ///< Proto of this conntrack
+};
+
+struct conntrack_child_list {
+	struct conntrack_entry *ce; ///< Corresponding conntrack
+	struct conntrack_child_list *prev, *next;
 };
 
 struct conntrack_list {
-	struct conntrack_entry *ce; ///< Corresponding connection
+	struct conntrack_entry *ce; ///< Corresponding conntrack
 	struct conntrack_list *prev, *next; ///< Next and previous connection in the list
 	struct conntrack_list *rev; ///< Reverse connection
 };
@@ -56,5 +61,6 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
+int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
 
 #endif

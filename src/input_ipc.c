@@ -251,6 +251,7 @@ int input_ipc_destroy_request(int req_id) {
 
 int input_ipc_cleanup() {
 
+	pom_mutex_lock(&input_ipc_req_mutex);
 	struct input_ipc_request *req = input_ipc_reqs;
 
 	// Free the lock on all the requests
@@ -260,6 +261,7 @@ int input_ipc_cleanup() {
 		req = req->next;
 	}
 
+	pom_mutex_unlock(&input_ipc_req_mutex);
 	// Wait for all the requests to be cleaned up
 	
 	while (input_ipc_reqs) {

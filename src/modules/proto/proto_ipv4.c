@@ -214,30 +214,46 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	if (!s->ce)
 		return PROTO_ERR;
 
+	pom_mutex_lock(&s->ce->lock);
+	int res = POM_ERR;
+	if (s->ce->children)
+		res = conntrack_delayed_cleanup(s->ce, 0);
+	else
+		res = conntrack_delayed_cleanup(s->ce, 60);
+	if (res == POM_ERR) {
+		pom_mutex_unlock(&s->ce->lock);
+		return PROTO_ERR;
+	}
+
 	struct ip* hdr = s->pload;
 
 	uint16_t frag_off = ntohs(hdr->ip_off);
 
 	// Check if packet is fragmented and need more handling
 
-	if (frag_off & IP_DONT_FRAG)
+	if (frag_off & IP_DONT_FRAG) {
+		pom_mutex_unlock(&s->ce->lock);
 		return PROTO_OK; // Nothing to do
+	}
 
-	if (!(frag_off & IP_MORE_FRAG) && !(frag_off & IP_OFFSET_MASK))
+	if (!(frag_off & IP_MORE_FRAG) && !(frag_off & IP_OFFSET_MASK)) {
+		pom_mutex_unlock(&s->ce->lock);
 		return PROTO_OK; // Nothing to do, full packet
+	}
 
 	uint16_t offset = (frag_off & IP_OFFSET_MASK) << 3;
 	size_t frag_size = ntohs(hdr->ip_len) - (hdr->ip_hl * 4);
 
 	// Ignore invalid fragments
-	if (frag_size > 0xFFFF) 
+	if (frag_size > 0xFFFF) {
+		pom_mutex_unlock(&s->ce->lock);
 		return PROTO_INVALID;
+	}
 
-	if (frag_size > s->plen + hdr_len)
+	if (frag_size > s->plen + hdr_len) {
+		pom_mutex_unlock(&s->ce->lock);
 		return PROTO_INVALID;
-
-
-	pom_mutex_lock(&s->ce->lock);
+	}
 
 	struct proto_ipv4_fragment *tmp = s->ce->priv;
 

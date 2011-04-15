@@ -27,6 +27,16 @@
 
 #define PROTO_TCP_SEQ_KNOWN 1
 
+enum
+{
+  STATE_TCP_ESTABLISHED = 1,
+  STATE_TCP_SYN_SENT,
+  STATE_TCP_SYN_RECV,  
+  STATE_TCP_CLOSE,
+  STATE_TCP_LAST_ACK,
+  STATE_TCP_TIME_WAIT,
+};
+
 enum proto_tcp_fields {
 	proto_tcp_field_sport = 0,
 	proto_tcp_field_dport,
@@ -38,15 +48,11 @@ enum proto_tcp_fields {
 
 struct proto_tcp_conntrack_priv {
 
-	uint32_t seq_expected[2];
-	int flags[2];
-
-	struct timer *t[2];
-
+	unsigned int state;
 };
 
 struct mod_reg_info* proto_tcp_reg_info();
-static int proto_tcp_init();
+static int proto_tcp_init(struct registry_instance *i);
 static int proto_tcp_mod_register(struct mod_reg *mod);
 static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tcp_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);

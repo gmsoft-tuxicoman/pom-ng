@@ -690,6 +690,26 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, s
 	}
 
 	struct packet_stream_pkt *res = stream->head;
+	if (res->prev) {
+		pomlog(POMLOG_WARN "Warning, dequeued packet wasn't the first !!!");
+		res->prev->next = res->next;
+	} else {
+		stream->head = res->next;
+		if (stream->head)
+			stream->head->prev = NULL;
+	}
+
+	if (res->next) {
+		res->next->prev = res->prev;
+	} else {
+		stream->tail = res->prev;
+		if (stream->tail)
+			stream->tail->next = NULL;
+	}
+
+	stream->cur_seq += res->len;
+	stream->cur_buff_size -= res->len;	
+
 	pom_mutex_unlock(&stream->list_lock);
 
 	cur_stack->pload = res->pkt->buff + res->pkt_buff_offset;
@@ -712,29 +732,6 @@ int packet_stream_release_packet(struct packet_stream *stream, struct packet_str
 		pom_mutex_unlock(&stream->processing_lock);
 		return POM_ERR;
 	}
-
-
-	pom_mutex_lock(&stream->list_lock);
-	if (pkt->prev) {
-		pomlog(POMLOG_WARN "Warning, dequeued packet wasn't the first !!!");
-		pkt->prev->next = pkt->next;
-	} else {
-		stream->head = pkt->next;
-		if (stream->head)
-			stream->head->prev = NULL;
-	}
-
-	if (pkt->next) {
-		pkt->next->prev = pkt->prev;
-	} else {
-		stream->tail = pkt->prev;
-		if (stream->tail)
-			stream->tail->next = NULL;
-	}
-
-	stream->cur_seq += pkt->len;
-	stream->cur_buff_size -= pkt->len;	
-	pom_mutex_unlock(&stream->list_lock);
 
 	pom_mutex_unlock(&stream->processing_lock);
 

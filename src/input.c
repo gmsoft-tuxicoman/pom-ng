@@ -575,7 +575,7 @@ int input_cleanup(struct input *i) {
 
 	// Free shm stuff
 	if (i->shm_buff) {
-		int try = 0, maxtry = 10;
+		int try = 0, maxtry = 30;
 		for (; try < maxtry; try++) {
 			pom_mutex_lock(&i->shm_buff->lock);
 			if (pthread_cond_signal(&i->shm_buff->underrun_cond)) {

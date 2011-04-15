@@ -295,6 +295,8 @@ int main(int argc, char *argv[]) {
 
 	// Cleanup components
 
+	proto_cleanup(); // Cleanup proto while input is still attached
+	packet_pool_cleanup();
 	input_client_cleanup(shutdown_in_error);
 	input_ipc_cleanup();
 
@@ -315,7 +317,6 @@ err_proto:
 err_registry:
 	registry_cleanup();
 err_early:
-	packet_pool_cleanup();
 	mod_unload_all();
 	timers_cleanup();
 	pomlog_cleanup();
