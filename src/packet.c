@@ -286,6 +286,7 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 
 	struct packet_info *tmp = NULL;
 	while (pool->used) {	
+		printf("Unreleased packet info !\n");
 		tmp = pool->used;
 		pool->used = tmp->pool_next;
 
@@ -298,7 +299,7 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 		free(tmp);
 	}
 
-	while (pool->unused) {	
+	while (pool->unused) {
 		tmp = pool->unused;
 		pool->unused = tmp->pool_next;
 
@@ -665,6 +666,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, s
 	if (pthread_mutex_trylock(&stream->processing_lock)) {
 		
 		// Clear the stack make sure it's not processed
+		packet_info_pool_release(&cur_stack->proto->pkt_info_pool, cur_stack->pkt_info);
 		cur_stack->pkt_info = NULL;
 		cur_stack->pload = NULL;
 		cur_stack->proto = NULL;
@@ -711,6 +713,10 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, s
 	stream->cur_buff_size -= res->len;	
 
 	pom_mutex_unlock(&stream->list_lock);
+
+
+
+	packet_info_pool_release(&cur_stack->proto->pkt_info_pool, cur_stack->pkt_info);
 
 	cur_stack->pload = res->pkt->buff + res->pkt_buff_offset;
 	cur_stack->plen = res->len;

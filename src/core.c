@@ -34,6 +34,7 @@ static enum core_state core_cur_state = core_state_idle;
 static pthread_mutex_t core_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t core_state_cond = PTHREAD_COND_INITIALIZER;
 static unsigned int core_thread_active = 0;
+static struct timeval core_start_time;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
 
@@ -370,7 +371,7 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	
 	int i;
 	// Cleanup pkt_info
-	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	
 	// Clean the stack
@@ -454,7 +455,7 @@ int core_process_packet(struct packet *p) {
 
 	// Cleanup pkt_info
 	int i;
-	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++)
+	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	if (res == PROTO_ERR)
 		return PROTO_ERR;
@@ -498,6 +499,23 @@ int core_set_state(enum core_state state) {
 		pomlog(POMLOG_ERR "Unable to signal core state condition : %s", pom_strerror(errno));
 		pom_mutex_unlock(&core_state_lock);
 		return POM_ERR;
+	}
+
+	if (state == core_state_finishing2) {
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		if (now.tv_usec < core_start_time.tv_usec) {
+			now.tv_sec--;
+			now.tv_usec += 1000000;
+		}
+
+		now.tv_usec -= core_start_time.tv_usec;
+		now.tv_sec -= core_start_time.tv_sec;
+
+		pomlog("Core was running for %u.%u secs", now.tv_sec, now.tv_usec);
+
+	} else if (state == core_state_running) {
+		gettimeofday(&core_start_time, NULL);
 	}
 	pom_mutex_unlock(&core_state_lock);
 	return POM_OK;
