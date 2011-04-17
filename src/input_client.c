@@ -223,27 +223,24 @@ int input_client_get_packet(struct input_client_entry *input, struct packet *p) 
 	return POM_OK;
 }
 
-int input_client_release_packet(struct packet *p) {
+int input_client_release_packet(struct input_client_entry *i, struct input_packet *pkt) {
 
-	struct input_buff *buff = p->input->shm_buff;
+	struct input_buff *buff = i->shm_buff;
 
 	pom_mutex_lock(&buff->lock);
 
-	struct input_packet *input_pkt = p->input_pkt;
-
-	struct input_packet *prev = (struct input_packet*)(input_pkt->inpkt_prev_offset >= 0 ? (void*) buff + input_pkt->inpkt_prev_offset : NULL);
-	struct input_packet *next = (struct input_packet*)(input_pkt->inpkt_next_offset >= 0 ? (void*) buff + input_pkt->inpkt_next_offset : NULL);
-
-	if (prev) {
-		prev->inpkt_next_offset = input_pkt->inpkt_next_offset;
+	if (pkt->inpkt_prev_offset >= 0) {
+		struct input_packet *prev = (void*)buff + pkt->inpkt_prev_offset;
+		prev->inpkt_next_offset = pkt->inpkt_next_offset;
 	} else {
-		buff->inpkt_head_offset = input_pkt->inpkt_next_offset;
+		buff->inpkt_head_offset = pkt->inpkt_next_offset;
 	}
 	
-	if (next) {
-		next->inpkt_prev_offset = input_pkt->inpkt_prev_offset;
+	if (pkt->inpkt_next_offset >= 0) {
+		struct input_packet *next = (void*) buff + pkt->inpkt_next_offset;
+		next->inpkt_prev_offset = pkt->inpkt_prev_offset;
 	} else {
-		buff->inpkt_tail_offset = input_pkt->inpkt_prev_offset;
+		buff->inpkt_tail_offset = pkt->inpkt_prev_offset;
 	}
 
 	if (pthread_cond_signal(&buff->overrun_cond)) { // A packet has been taken out
@@ -251,9 +248,6 @@ int input_client_release_packet(struct packet *p) {
 		pom_mutex_unlock(&buff->lock);
 		return POM_ERR;
 	}
-
-	if (buff->inpkt_head_offset == -1 && core_get_state() == core_state_finishing)
-		core_set_state(core_state_finishing2); // All packets were processed
 
 	pom_mutex_unlock(&buff->lock);
 

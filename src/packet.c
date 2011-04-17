@@ -122,29 +122,10 @@ int packet_pool_release(struct packet *p) {
 	else
 		packet_head = p->next;
 
-	pom_mutex_unlock(&packet_list_mutex);
-
-	int res = POM_OK;
-
-	if (p->input_pkt) {
-		if (input_client_release_packet(p) != POM_OK) {
-			res = POM_ERR;
-			pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
-		}
-	} else {
-		// Packet doesn't come from an input -> free the buffer
-		free(p->buff);
-	}
-
-	if (p->multipart) {  // Cleanup multipart if any
-		if (packet_multipart_cleanup(p->multipart) != POM_OK) {
-			res = POM_ERR;
-			pomlog(POMLOG_ERR "Error while releasing the multipart");
-		}
-	}
-
-
-	pom_mutex_lock(&packet_list_mutex);
+	struct input_client_entry *i = p->input;
+	struct input_packet *input_pkt = p->input_pkt;
+	struct packet_multipart *multipart = p->multipart;
+	unsigned char *buff = p->buff;
 
 	memset(p, 0, sizeof(struct packet));
 	
@@ -157,8 +138,26 @@ int packet_pool_release(struct packet *p) {
 
 	pom_mutex_unlock(&packet_list_mutex);
 
-	return res;
+	int res = POM_OK;
 
+	if (input_pkt) {
+		if (input_client_release_packet(i, input_pkt) != POM_OK) {
+			res = POM_ERR;
+			pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
+		}
+	} else {
+		// Packet doesn't come from an input -> free the buffer
+		free(buff);
+	}
+
+	if (multipart) {  // Cleanup multipart if any
+		if (packet_multipart_cleanup(multipart) != POM_OK) {
+			res = POM_ERR;
+			pomlog(POMLOG_ERR "Error while releasing the multipart");
+		}
+	}
+
+	return res;
 }
 
 int packet_pool_cleanup() {

@@ -245,7 +245,7 @@ void *core_processing_thread_func(void *priv) {
 		while (!core_pkt_queue_head) {
 			enum core_state state = core_get_state();
 			if (core_thread_active == 0) {
-				if (state == core_state_finishing || state == core_state_finishing2)
+				if (state == core_state_finishing)
 					core_set_state(core_state_idle);
 			}
 
@@ -517,7 +517,7 @@ int core_set_state(enum core_state state) {
 		return POM_ERR;
 	}
 
-	if (state == core_state_finishing2) {
+	if (state == core_state_idle) {
 		struct timeval now;
 		gettimeofday(&now, NULL);
 		if (now.tv_usec < core_start_time.tv_usec) {

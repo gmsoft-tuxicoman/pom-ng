@@ -54,7 +54,7 @@ int input_client_cleanup(int emergency_cleanup);
 
 void *input_client_reader_thread_func(void *input);
 int input_client_get_packet(struct input_client_entry *input, struct packet *p);
-int input_client_release_packet(struct packet *p);
+int input_client_release_packet(struct input_client_entry *i, struct input_packet *pkt);
 
 int input_client_cmd_mod_load(char *mod_name);
 int input_client_cmd_add(char *type, char *name);

@@ -39,8 +39,6 @@ enum core_state {
 	core_state_idle = 0, // Core is idle
 	core_state_running, // Core is receiving packets from the input
 	core_state_finishing, // There are still packets in the input
-	core_state_finishing2, // No packets left in the input but still some processing running
-
 };
 
 struct core_packet_queue {
