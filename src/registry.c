@@ -20,6 +20,7 @@
 
 #include "common.h"
 #include "registry.h"
+#include "core.h"
 #include <pom-ng/ptype.h>
 
 static pthread_mutex_t registry_class_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -236,8 +237,8 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 	if (!name || !default_value || !value || !description)
 		return NULL;
 
-	if (ptype_make_atomic(value) != POM_OK)
-		return NULL;
+//	if (ptype_make_atomic(value) != POM_OK)
+//		return NULL;
 
 	struct registry_param *p = malloc(sizeof(struct registry_param));
 	if (!p) {
@@ -402,9 +403,12 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 		return POM_ERR;
 	}
 
+	core_pause_processing();
+
 	struct ptype *old_value = ptype_alloc_from(p->value);
 
 	if (ptype_parse_val(p->value, value) != POM_OK) {
+		core_resume_processing();
 		ptype_cleanup(old_value);
 		return POM_ERR;
 	}
@@ -413,8 +417,11 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 		// Revert the old value
 		ptype_copy(p->value, old_value);
 		ptype_cleanup(old_value);
+		core_resume_processing();
 		return POM_ERR;
 	}
+
+	core_resume_processing();
 
 	ptype_cleanup(old_value);
 	

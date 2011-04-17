@@ -72,4 +72,8 @@ void core_get_clock(struct timeval *now);
 void core_wait_state(enum core_state state);
 enum core_state core_get_state();
 int core_set_state(enum core_state state);
+
+void core_pause_processing();
+void core_resume_processing();
+
 #endif

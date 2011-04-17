@@ -37,6 +37,7 @@ static unsigned int core_thread_active = 0;
 static struct timeval core_start_time;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
+static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static struct timeval core_clock;
 static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -292,16 +293,31 @@ void *core_processing_thread_func(void *priv) {
 		}
 		pom_mutex_unlock(&core_clock_lock);
 
-		// Process timers
-		if (timers_process() != POM_OK)
+		// Lock the processing thread
+		if (pthread_rwlock_rdlock(&core_processing_lock)) {
+			pomlog(POMLOG_ERR "Error while locking the processing lock : %s", pom_strerror(errno));
+			abort();
 			return NULL;
+		}
+	
+		// Process timers
+		if (timers_process() != POM_OK) {
+			pthread_rwlock_unlock(&core_processing_lock);
+			return NULL;
+		}
 
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 
 		if (core_process_packet(pkt) == POM_ERR) {
 			halt("Packet processing encountered an error");
+			pthread_rwlock_unlock(&core_processing_lock);
 			return NULL;
+		}
+
+		if (pthread_rwlock_unlock(&core_processing_lock)) {
+			pomlog(POMLOG_ERR "Error while releasing the processing lock : %s", pom_strerror(errno));
+			break;
 		}
 
 		if (packet_pool_release(pkt) != POM_OK) {
@@ -511,12 +527,28 @@ int core_set_state(enum core_state state) {
 
 		now.tv_usec -= core_start_time.tv_usec;
 		now.tv_sec -= core_start_time.tv_sec;
-
-		pomlog("Core was running for %u.%u secs", now.tv_sec, now.tv_usec);
+		pomlog(POMLOG_DEBUG "Core was running for %u.%u secs", now.tv_sec, now.tv_usec);
 
 	} else if (state == core_state_running) {
 		gettimeofday(&core_start_time, NULL);
 	}
 	pom_mutex_unlock(&core_state_lock);
 	return POM_OK;
+}
+
+
+void core_pause_processing() {
+
+	if (pthread_rwlock_wrlock(&core_processing_lock)) {
+		pomlog(POMLOG_ERR "Error while locking core processing lock : %s", pom_strerror(errno));
+		abort();
+	}
+}
+
+void core_resume_processing() {
+
+	if (pthread_rwlock_unlock(&core_processing_lock)) {
+		pomlog(POMLOG_ERR "Error while locking core processing lock : %s", pom_strerror(errno));
+		abort();
+	}
 }

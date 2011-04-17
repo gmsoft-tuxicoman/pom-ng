@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <errno.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 
@@ -41,13 +42,18 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 #define pom_oom(x) pom_oom_internal(x, __FILE__, __LINE__)
 
 // Locking handlers
-void pom_mutex_lock_internal(pthread_mutex_t *m, char *file, unsigned int line);
-#define pom_mutex_lock(x) pom_mutex_lock_internal(x, __FILE__, __LINE__)
+#define pom_mutex_lock(x) {												\
+	if (pthread_mutex_lock(x)) {											\
+		pomlog(POMLOG_ERR "Error while locking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+		abort();												\
+	}														\
+}															
 
-void pom_mutex_unlock_internal(pthread_mutex_t *m, char *file, unsigned int line);
-#define pom_mutex_unlock(x) pom_mutex_unlock_internal(x, __FILE__, __LINE__)
-
-
-
+#define pom_mutex_unlock(x) {													\
+	if (pthread_mutex_unlock(x)) {												\
+		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+		abort();													\
+	}															\
+}															
 
 #endif

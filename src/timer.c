@@ -29,7 +29,7 @@
 #define timer_tshoot(x...)
 #endif
 
-static pthread_rwlock_t timer_main_lock = PTHREAD_RWLOCK_INITIALIZER;
+static pthread_mutex_t timer_main_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct timer_queue *timer_queues = NULL;
 
 
@@ -38,13 +38,12 @@ int timers_process() {
 	struct timeval now;
 	core_get_clock(&now);
 
-	timer_queues_lock(0);
+	pom_mutex_lock(&timer_main_lock);
 
 	struct timer_queue *tq;
 	tq = timer_queues;
 
 	while (tq) {
-		pom_mutex_lock(&tq->lock);
 		while (tq->head && timercmp(&tq->head->expires, &now, <)) {
 				
 				// Dequeue the timer
@@ -52,28 +51,26 @@ int timers_process() {
 				tq->head = tq->head->next;
 				if (tq->head)
 					tq->head->prev = NULL;
-				
+				pom_mutex_unlock(&timer_main_lock);
+
 				tmp->next = NULL;
 				tmp->prev = NULL;
 				tmp->queue = NULL;
-
-				//The processing can be done unlocked
-				pom_mutex_unlock(&tq->lock);
 
 				// Process it
 				timer_tshoot( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
 				if ((*tmp->handler) (tmp->priv) != POM_OK) {
 					return POM_ERR;
-				}	
+				}
 
-				pom_mutex_lock(&tq->lock);
+				pom_mutex_lock(&timer_main_lock);
+
 		}
-		pom_mutex_unlock(&tq->lock);
 		tq = tq->next;
 
 	}
 
-	timer_queues_unlock(0);
+	pom_mutex_unlock(&timer_main_lock);
 
 	return POM_OK;
 }
@@ -98,13 +95,11 @@ int timers_cleanup() {
 			free(tmp);
 
 		}
-		pthread_mutex_destroy(&tmpq->lock);
 		timer_queues = timer_queues->next;
 
 		free(tmpq);
 	}
 
-	pthread_rwlock_destroy(&timer_main_lock);
 	return POM_OK;
 
 }
@@ -142,7 +137,7 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 		return POM_ERR;
 	}
 
-	timer_queues_lock(1);
+	pom_mutex_lock(&timer_main_lock);
 
 	struct timer_queue *tq = timer_queues;
 
@@ -153,18 +148,12 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 		// There is no queue yet
 		tq = malloc(sizeof(struct timer_queue));
 		if (!tq) {
-			timer_queues_unlock();
+			pom_mutex_unlock(&timer_main_lock);
 			pom_oom(sizeof(struct timer_queue));
 			return POM_ERR;
 		}
 		memset(tq, 0, sizeof(struct timer_queue));
 		timer_queues = tq;
-		if (pthread_mutex_init(&tq->lock, NULL)) {
-			timer_queues_unlock();
-			pomlog(POMLOG_ERR "Unable to initialize timer queue lock");
-			free(tq);
-			return POM_ERR;
-		}
 
 		tq->expiry = expiry;
 
@@ -182,7 +171,7 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 				tmp = malloc(sizeof(struct timer_queue));
 				if (!tmp) {
 					pom_oom(sizeof(struct timer_queue));
-					timer_queues_unlock();
+					pom_mutex_unlock(&timer_main_lock);
 					return POM_ERR;
 				}
 				memset(tmp, 0, sizeof(struct timer_queue));
@@ -208,7 +197,7 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 				tmp = malloc(sizeof(struct timer_queue));
 				if (!tmp) {
 					pom_oom(sizeof(struct timer_queue));
-					timer_queues_unlock();
+					pom_mutex_unlock(&timer_main_lock);
 					return POM_ERR;
 				}
 				memset(tmp, 0, sizeof(struct timer_queue));
@@ -229,8 +218,6 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 
 	}
 
-	pom_mutex_lock(&tq->lock);
-	timer_queues_unlock();
 	// Now we can queue the timer
 	
 	if (tq->head == NULL) {
@@ -247,8 +234,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 	core_get_clock(&t->expires);
 	t->expires.tv_sec += expiry;
 	t->queue = tq;
+	pom_mutex_unlock(&timer_main_lock);
 
-	pom_mutex_unlock(&tq->lock);
 	return POM_OK;
 }
 
@@ -257,8 +244,7 @@ int timer_dequeue(struct timer *t) {
 
 	// First let's check if it's the one at the begining of the queue
 
-
-	pom_mutex_lock(&t->queue->lock);
+	pom_mutex_lock(&timer_main_lock);
 
 	if (!t->queue) {
 		pomlog(POMLOG_WARN "Warning, timer 0x%p was already dequeued", t);
@@ -287,37 +273,10 @@ int timer_dequeue(struct timer *t) {
 
 	t->prev = NULL;
 	t->next = NULL;
-	struct timer_queue *q = t->queue;
 	t->queue = NULL;
-	pom_mutex_unlock(&q->lock);
+	pom_mutex_unlock(&timer_main_lock);
 
 
 	return POM_OK;
-}
-
-void timer_queues_lock(int write) {
-
-	int res = 0;
-	if (write)
-		res = pthread_rwlock_wrlock(&timer_main_lock);
-	else
-		res = pthread_rwlock_rdlock(&timer_main_lock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while locking timer queues lock : %s", pom_strerror(errno));
-		abort();
-	}
-
-}
-
-void timer_queues_unlock() {
-
-	int res = pthread_rwlock_unlock(&timer_main_lock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while unlocking timer queues lock : %s", pom_strerror(errno));
-		abort();
-	}
-
 }
 

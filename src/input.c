@@ -263,8 +263,8 @@ err:
 
 int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags) {
 
-	if (ptype_make_atomic(value) != POM_OK)
-		return POM_ERR;
+//	if (ptype_make_atomic(value) != POM_OK)
+//		return POM_ERR;
 
 	// Create the input_param structure
 
