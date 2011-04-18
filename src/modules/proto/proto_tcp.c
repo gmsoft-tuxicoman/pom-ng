@@ -20,6 +20,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/core.h>
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
@@ -328,18 +329,45 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		return PROTO_ERR;
 	}
 
+	if (!priv->stream) {
+		priv->stream = packet_stream_alloc(hdr->th_seq, 65535, 0);
+		if (!priv->stream) {
+			pom_mutex_unlock(&s->ce->lock);
+			return PROTO_ERR;
+		}
+		
+		// TODO improve this
+		if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
+			priv->proto = proto_http;
+	}
+
 	pom_mutex_unlock(&s->ce->lock);
-
-
-	// TODO improve this
 	
-	if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
-		s_next->proto = proto_http->proto;
-	else
-		s_next->proto = NULL;
+	if (!priv->proto || !priv->proto->proto)
+		return s->plen - hdr_len;
 
-	return s->plen - hdr_len;
+	if (packet_stream_add_packet(priv->stream, p, s, hdr->th_seq) != POM_OK)
+		return PROTO_ERR;
+	
+	struct packet_stream_pkt *stream_pkt = NULL;
 
+	while ((stream_pkt = packet_stream_get_next(priv->stream, stack))) {
+		
+		// Do the processing
+		int res = POM_OK;
+
+		s_next->pload = s->pload + hdr_len;
+		s_next->plen = s->plen - hdr_len;
+
+		if (priv->proto->proto)
+			res = core_process_multi_packet(stack, stack_index + 1, stream_pkt->pkt);
+
+		if (packet_stream_release_packet(priv->stream, stream_pkt) != POM_OK)
+			return PROTO_ERR;
+
+	}
+
+	return PROTO_STOP;
 }
 
 static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {

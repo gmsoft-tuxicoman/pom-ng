@@ -49,6 +49,8 @@ enum proto_tcp_fields {
 struct proto_tcp_conntrack_priv {
 
 	unsigned int state;
+	struct packet_stream *stream;
+	struct proto_dependency *proto;
 };
 
 struct mod_reg_info* proto_tcp_reg_info();

@@ -218,7 +218,8 @@ int pomlog_cleanup() {
 
 		// Stop the IPC log thread
 		pomlog("Stopping input IPC log thread");
-
+// FIXME temporary workaround for callgrind bug #246152
+// Doesn't cause any downside, just an error message when exiting pom-ng
 //		pthread_cancel(pomlog_input_ipc_thread);
 //		pthread_join(pomlog_input_ipc_thread, NULL);
 	}
