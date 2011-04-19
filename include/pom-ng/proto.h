@@ -59,8 +59,6 @@ struct proto_process_stack {
 
 	struct conntrack_entry *ce;
 
-	struct ptype *ct_field_fwd;
-	struct ptype *ct_field_rev;
 };
 
 // Packet needs process_stack
@@ -82,8 +80,7 @@ struct proto_reg_info {
 	struct conntrack_info ct_info;
 
 	int (*init) (struct registry_instance *i);
-	ssize_t (*parse) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-	ssize_t (*process) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);
+	int (*process) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 	int (*cleanup) ();
 
 };
@@ -92,11 +89,8 @@ struct proto_reg_info {
 /// Register a new protocol
 int proto_register(struct proto_reg_info *reg);
 
-/// Parse the headers of a packet
-int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-
-/// Process the payload of the packet
-int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len);
+/// Process the packet
+int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 
 /// Unregister a protocol
 int proto_unregister(char *name);

@@ -116,7 +116,6 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	proto_tcp.ct_info.cleanup_handler = proto_tcp_conntrack_cleanup;
 	
 	proto_tcp.init = proto_tcp_init;
-	proto_tcp.parse = proto_tcp_parse;
 	proto_tcp.process = proto_tcp_process;
 	proto_tcp.cleanup = proto_tcp_cleanup;
 
@@ -208,7 +207,7 @@ err:
 	return POM_ERR;
 }
 
-static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct tcphdr* hdr = s->pload;
@@ -216,19 +215,15 @@ static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *sta
 	if (s->plen < sizeof(struct tcphdr))
 		return PROTO_INVALID;
 
-	unsigned int hdrlen = (hdr->th_off << 2);
+	unsigned int hdr_len = (hdr->th_off << 2);
 
-	if (hdrlen > s->plen || hdrlen < 20) {
+	if (hdr_len > s->plen || hdr_len < 20) {
 		// Incomplete or invalid packet
 		return PROTO_INVALID;
 	}
 	
-	unsigned int plen = s->plen - hdrlen;
+	unsigned int plen = s->plen - hdr_len;
 
-	if ((hdr->th_flags & TH_RST) && plen > 0) {
-		s->plen = hdrlen; // RFC 1122 4.2.2.12 : RST may contain the data that caused the packet to be sent, discard it
-	}
-	
 	if ((hdr->th_flags & TH_SYN) && plen > 0) {
 		// Invalid packet, SYN or RST flag present and len > 0
 		return PROTO_INVALID;
@@ -246,21 +241,14 @@ static ssize_t proto_tcp_parse(struct packet *p, struct proto_process_stack *sta
 	PTYPE_UINT32_SETVAL(s->pkt_info->fields_value[proto_tcp_field_ack], ntohl(hdr->th_ack));
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_tcp_field_win], ntohl(hdr->th_win));
 
+	if ((hdr->th_flags & TH_RST) && plen > 0) {
+		plen = 0; // RFC 1122 4.2.2.12 : RST may contain the data that caused the packet to be sent, discard it
+	}
+	
 
 	// Conntrack stuff
-	s->ct_field_fwd = s->pkt_info->fields_value[proto_tcp_field_sport];
-	s->ct_field_rev = s->pkt_info->fields_value[proto_tcp_field_dport];
-
-	return hdrlen;
-
-}
-
-static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	struct tcphdr* hdr = s->pload;
-
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_tcp_field_sport], s->pkt_info->fields_value[proto_tcp_field_dport], s_prev->ce);
 	if (!s->ce)
 		return PROTO_ERR;
 
@@ -344,7 +332,7 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	pom_mutex_unlock(&s->ce->lock);
 	
 	if (!priv->proto || !priv->proto->proto)
-		return s->plen - hdr_len;
+		return PROTO_OK;
 
 	if (packet_stream_add_packet(priv->stream, p, s, hdr->th_seq) != POM_OK)
 		return PROTO_ERR;
@@ -355,9 +343,10 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		
 		// Do the processing
 		int res = POM_OK;
+		struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 		s_next->pload = s->pload + hdr_len;
-		s_next->plen = s->plen - hdr_len;
+		s_next->plen = plen;
 
 		if (priv->proto->proto)
 			res = core_process_multi_packet(stack, stack_index + 1, stream_pkt->pkt);
@@ -373,8 +362,15 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
 
 
-	if (ce->priv)
+	if (ce->priv) {
+		struct proto_tcp_conntrack_priv *priv = ce->priv;
+		if (priv->stream) {
+			if (packet_stream_cleanup(priv->stream) != POM_OK)
+				return POM_ERR;
+		}
 		free(ce->priv);
+
+	}
 
 
 	return POM_OK;

@@ -29,7 +29,6 @@ struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev)
 int conntrack_tables_free(struct conntrack_tables *ct);
 int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
-struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
 int conntrack_cleanup(void *conntrack);
 
 #endif

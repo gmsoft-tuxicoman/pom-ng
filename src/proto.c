@@ -140,19 +140,7 @@ err_proto:
 
 }
 
-int proto_parse(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
-
-	if (!s)
-		return PROTO_ERR;
-	
-	struct proto_reg *proto = s[stack_index].proto;
-
-	if (!proto || !proto->info->parse)
-		return PROTO_ERR;
-	return proto->info->parse(p, s, stack_index);
-}
-
-int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index, int hdr_len) {
+int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
 
 	if (!s)
 		return PROTO_ERR;
@@ -161,7 +149,7 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 
 	if (!proto || !proto->info->process)
 		return PROTO_ERR;
-	return proto->info->process(p, s, stack_index, hdr_len);
+	return proto->info->process(p, s, stack_index);
 }
 
 int proto_unregister(char *name) {
@@ -303,14 +291,20 @@ int proto_cleanup() {
 
 	
 	struct proto_reg *proto = proto_head;
-
+	int forced = 0;
 	while (proto_head) {
-		if (proto->dep && proto->dep->refcount) {
+		if (!forced && proto->dep && proto->dep->refcount) {
 			proto = proto->next;
-			if (!proto)
+			if (!proto) {
+				pomlog(POMLOG_ERR "Some proto are still in use, forcing cleanup anyway");
+				forced = 1;
 				proto = proto_head;
+			}
 			continue;
 		}
+
+		if (forced && proto->dep->refcount)
+			pomlog(POMLOG_WARN "Proto %s still has a refcount of %u", proto->dep->name, proto->dep->refcount);
 			
 		if (proto->info->cleanup && proto->info->cleanup() == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);

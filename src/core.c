@@ -397,55 +397,35 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	return res;
 }
 
-int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p) {
+int core_process_packet_stack(struct proto_process_stack *stack, unsigned int stack_index, struct packet *p) {
 	
 	unsigned int i;
 
-	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {
+
+		struct proto_process_stack *s = &stack[i];
 		
-		s[i].pkt_info = packet_info_pool_get(s[i].proto);
+		s->pkt_info = packet_info_pool_get(s->proto);
 
-		ssize_t hdr_len = proto_parse(p, s, i);
-
-
-		if (hdr_len <= 0) // Nothing more to process
-			return hdr_len;
-
-		if (hdr_len > s[i].plen) {
-			pomlog(POMLOG_WARN "Warning : parsed header bigger than available payload : parsed %u, had %u", hdr_len, s[i].plen);
-			return PROTO_INVALID;
-		}
-
-		if (s[i].ct_field_fwd) {
-			struct conntrack_entry *parent = NULL;
-			if (i > 1)
-				parent = s[i - 1].ce;
-			s[i].ce = conntrack_get(s[i].proto, s[i].ct_field_fwd, s[i].ct_field_rev, parent);
-			if (!s[i].ce) {
-				pomlog(POMLOG_ERR "Could not get conntrack for proto %s", s[i].proto->info->name);
-				return PROTO_ERR;
-			}
-		}
-
-		int res = proto_process(p, s, i, hdr_len);
+		int res = proto_process(p, stack, i);
 
 		if (res == PROTO_ERR) {
-			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s[i].proto->info->name);
+			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s->proto->info->name);
 			return POM_ERR;
 		} else if (res < 0)
 			return res;
-		
+	
+		struct proto_process_stack *s_next = &stack[i + 1];
 
-		s[i + 1].pload = s[i].pload + hdr_len;
-		s[i + 1].plen = s[i].plen - hdr_len;
-		
+		if (!s_next->proto)
+			break;
 
-		if ((s[i + 1].pload > s[i].pload + s[i].plen) || // Check if next payload is further than the end of current paylod
-			(s[i + 1].pload < s[i].pload) || // Check if next payload is before the start of the current payload
-			(s[i + 1].pload + s[i + 1].plen > s[i].pload + s[i].plen) || // Check if the end of the next payload is after the end of the current payload
-			(s[i + 1].pload + s[i + 1].plen < s[i + 1].pload)) { // Check for integer overflow
+		if ((s_next->pload > s_next->pload + s_next->plen) || // Check if next payload is further than the end of current paylod
+			(s_next->pload < s->pload) || // Check if next payload is before the start of the current payload
+			(s_next->pload + s_next->plen > s->pload + s->plen) || // Check if the end of the next payload is after the end of the current payload
+			(s_next->pload + s_next->plen < s_next->pload)) { // Check for integer overflow
 			// Invalid packet
-			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s[i].proto->info->name);
+			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s->proto->info->name);
 			break;
 		}
 
@@ -457,21 +437,21 @@ int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_
 
 int core_process_packet(struct packet *p) {
 
-	struct proto_process_stack s[CORE_PROTO_STACK_MAX];
+	struct proto_process_stack s[CORE_PROTO_STACK_MAX + 2]; // Add one entry at the begining and the end 
 
-	memset(s, 0, sizeof(struct proto_process_stack) * CORE_PROTO_STACK_MAX);
-	s[0].pload = p->buff;
-	s[0].plen = p->len;
-	s[0].proto = p->datalink;
+	memset(s, 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX + 2));
+	s[1].pload = p->buff;
+	s[1].plen = p->len;
+	s[1].proto = p->datalink;
 
-	int res = core_process_packet_stack(s, 0, p);
+	int res = core_process_packet_stack(s, 1, p);
 
 	if (res == PROTO_OK)
 		core_process_dump_pkt_info(s, res);
 
 	// Cleanup pkt_info
 	int i;
-	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
+	for (i = 1; i < CORE_PROTO_STACK_MAX && s[i].pkt_info; i++)
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	if (res == PROTO_ERR)
 		return PROTO_ERR;

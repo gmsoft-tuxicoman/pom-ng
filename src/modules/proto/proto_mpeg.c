@@ -79,7 +79,6 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 	proto_mpeg_ts.ct_info.cleanup_handler = proto_mpeg_ts_conntrack_cleanup;
 
 	proto_mpeg_ts.init = proto_mpeg_ts_init;
-	proto_mpeg_ts.parse = proto_mpeg_ts_parse;
 	proto_mpeg_ts.process = proto_mpeg_ts_process;
 	proto_mpeg_ts.cleanup = proto_mpeg_ts_cleanup;
 
@@ -128,55 +127,39 @@ err:
 
 }
 
-static ssize_t proto_mpeg_ts_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	unsigned char *buff = s->pload;
 
 	uint16_t pid = ((buff[1] & 0x1F) << 8) | buff[2];
 
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_mpeg_ts_field_pid], pid);
 
-	// Track only DOCSIS streams for now
-	if (pid == MPEG_TS_DOCSIS_PID)
-		s->ct_field_fwd = s->pkt_info->fields_value[proto_mpeg_ts_field_pid];
+	int hdr_len = 4;
 
 	if (buff[1] & 0x40) { // Check PUSI
 		if (buff[4] > 183)
 			return PROTO_INVALID;
-		return 5; // Header is 5 bytes long, including the payload unit start pointer
+		hdr_len = 5; // Header is 5 bytes long, including the payload unit start pointer
 	}
 
-	return 4; // Header is 4 bytes without the pointer
-
-}
-
-static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
-
-	unsigned char *buff = s->pload;
-	uint16_t pid = ((buff[1] & 0x1F) << 8) | buff[2];
+	// For now only process multipart on DOCSIS PID
 	switch (pid) {
 		case MPEG_TS_DOCSIS_PID:
 			s_next->proto = proto_docsis->proto;
 			break;
 
 		default:
+			s_next->pload = s->pload + hdr_len;
+			s_next->plen = s->plen - hdr_len;
 			s_next->proto = NULL;
-			break;
-
+			return PROTO_OK;
 	}
 
-	// For now only process multipart on DOCSIS PID
-	// TODO : need to check how other payload behave
 
-	if (pid != MPEG_TS_DOCSIS_PID)
-		return MPEG_TS_LEN - hdr_len;
-
-
-
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_mpeg_ts_field_pid], NULL, NULL);
 	if (!s->ce)
 		return PROTO_ERR;
 	
@@ -243,7 +226,7 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 	}
 
 	struct packet_stream_pkt *stream_pkt = NULL;
-	while ((stream_pkt = packet_stream_get_next(stream->stream, stack))) {
+	while ((stream_pkt = packet_stream_get_next(stream->stream, s))) {
 		struct packet_multipart *multipart = NULL;
 		int res = proto_mpeg_ts_process_docsis(stream, stream_pkt->pkt, stack, stack_index, &multipart);
 		if (packet_stream_release_packet(stream->stream, stream_pkt) != POM_OK)
@@ -263,7 +246,7 @@ static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stac
 }
 
 
-int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, struct packet_multipart **multipart) {
+static int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, struct packet_multipart **multipart) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];

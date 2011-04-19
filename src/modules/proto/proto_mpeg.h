@@ -62,9 +62,8 @@ static int proto_mpeg_mod_register(struct mod_reg *mod);
 static int proto_mpeg_mod_unregister();
 
 static int proto_mpeg_ts_init(struct registry_instance *i);
-static ssize_t proto_mpeg_ts_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static ssize_t proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
-int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct packet *p, struct proto_process_stack *s, unsigned int stack_index, struct packet_multipart **multipart);
+static int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct packet *p, struct proto_process_stack *s, unsigned int stack_index, struct packet_multipart **multipart);
 static int proto_mpeg_ts_stream_cleanup(void *);
 static int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_mpeg_ts_cleanup();

@@ -80,7 +80,6 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 	// No contrack here
 
 	proto_docsis.init = proto_docsis_init;
-	proto_docsis.parse = proto_docsis_parse;
 	proto_docsis.process = proto_docsis_process;
 	proto_docsis.cleanup = proto_docsis_cleanup;
 
@@ -109,9 +108,10 @@ static int proto_docsis_init() {
 
 }
 
-static ssize_t proto_docsis_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_docsis_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	struct docsis_hdr *dhdr = s->pload;
 
 	if (s->plen < sizeof(struct docsis_hdr) || ntohs(dhdr->len) > s->plen)
@@ -131,29 +131,21 @@ static ssize_t proto_docsis_parse(struct packet *p, struct proto_process_stack *
 
 		hdr_len += dhdr->mac_parm;
 
-		// Don't process crypted packets
+		// Don't process crypted packets any further
 		struct docsis_ehdr *ehdr = (struct docsis_ehdr*) (dhdr + offsetof(struct docsis_hdr, hcs));
 		if (ehdr->eh_type == EH_TYPE_BP_DOWN || ehdr->eh_type == EH_TYPE_BP_DOWN)
-			return PROTO_STOP;
+			return PROTO_OK;
 			
 	}
 
-	return hdr_len;
-}
-
-static ssize_t proto_docsis_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	struct docsis_hdr *dhdr = s->pload;
-
-	ssize_t plen = s->plen;
+	s_next->pload = s->pload + hdr_len;
+	s_next->plen = s->plen - hdr_len;
 
 	switch (dhdr->fc_type) {
 		case FC_TYPE_PKT_MAC:
 		case FC_TYPE_ISOLATION_PKT_MAC:
 			// We don't need the 4 bytes of ethernet checksum
-			plen -= 4;
+			s_next->plen -= 4;
 			s_next->proto = proto_ethernet->proto;
 			break;
 		case FC_TYPE_MAC_SPC:
@@ -165,7 +157,7 @@ static ssize_t proto_docsis_process(struct packet *p, struct proto_process_stack
 
 	}
 
-	return s->plen - hdr_len;
+	return PROTO_OK;
 
 }
 

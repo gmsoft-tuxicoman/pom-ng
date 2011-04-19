@@ -61,6 +61,7 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
+struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
 
 #endif

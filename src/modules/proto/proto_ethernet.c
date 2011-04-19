@@ -71,7 +71,6 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	// No contrack here
 
 	proto_ethernet.init = proto_ethernet_init;
-	proto_ethernet.parse = proto_ethernet_parse;
 	proto_ethernet.process = proto_ethernet_process;
 	proto_ethernet.cleanup = proto_ethernet_cleanup;
 
@@ -103,7 +102,7 @@ static int proto_ethernet_init() {
 
 }
 
-static ssize_t proto_ethernet_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_ethernet_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 
@@ -115,16 +114,10 @@ static ssize_t proto_ethernet_parse(struct packet *p, struct proto_process_stack
 	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_src], ehdr->ether_shost);
 	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_dst], ehdr->ether_dhost);
 
-
-	return sizeof(struct ether_header);
-
-}
-
-static ssize_t proto_ethernet_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	struct ether_header *ehdr = s->pload;
+
+	s_next->pload = s->pload + sizeof(struct ether_header);
+	s_next->plen = s->plen - sizeof(struct ether_header);
 
 	switch (ntohs(ehdr->ether_type)) {
 		case 0x0800:
@@ -149,7 +142,7 @@ static ssize_t proto_ethernet_process(struct packet *p, struct proto_process_sta
 
 	}
 
-	return s->plen - hdr_len;
+	return PROTO_OK;
 
 }
 

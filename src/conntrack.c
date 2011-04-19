@@ -455,10 +455,18 @@ int conntrack_cleanup(void *conntrack) {
 
 	pom_mutex_lock(&ce->lock);
 
-	// Cleanup the children
-	while (ce->children)
-		if (conntrack_cleanup(ce->children->ce) != POM_OK)
-			return POM_ERR;
+	if (!ce->proto) {
+		// Conntrack is already being cleaned up by another thread
+		return POM_OK;
+	}
+	
+	if (ce->cleanup_timer) {
+		timer_cleanup(ce->cleanup_timer);
+		ce->cleanup_timer = NULL;
+	}
+	
+	struct proto_reg *proto = ce->proto;
+	ce->proto = NULL;
 
 	if (ce->parent) {
 		// Remove the child from the parent
@@ -487,17 +495,26 @@ int conntrack_cleanup(void *conntrack) {
 		pom_mutex_unlock(&ce->parent->lock);
 	}
 
+	// Cleanup the children
+	while (ce->children) {
+		pom_mutex_unlock(&ce->lock);
+		if (conntrack_cleanup(ce->children->ce) != POM_OK) {
+			return POM_ERR;
+		}
+		pom_mutex_lock(&ce->lock);
+	}
 
-	if (ce->priv && ce->proto->info->ct_info.cleanup_handler) {
-		if (ce->proto->info->ct_info.cleanup_handler(ce) != POM_OK)
+
+	if (ce->priv && proto->info->ct_info.cleanup_handler) {
+		if (proto->info->ct_info.cleanup_handler(ce) != POM_OK)
 			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
 	}
-	pom_mutex_unlock(&ce->lock);
 
-	struct conntrack_tables *ct = ce->proto->ct;
+	struct conntrack_tables *ct = proto->ct;
 
 	// Lock the tables while browsing for a conntrack
 	pom_mutex_lock(&ct->lock);
+	pom_mutex_unlock(&ce->lock);
 
 	// Try to find the conntrack in the forward table
 	uint32_t hash = ce->fwd_hash % ct->tables_size;
@@ -548,7 +565,6 @@ int conntrack_cleanup(void *conntrack) {
 
 	pom_mutex_unlock(&ct->lock);
 
-	timer_cleanup(ce->cleanup_timer);
 	
 	if (ce->fwd_value)
 		ptype_cleanup(ce->fwd_value);

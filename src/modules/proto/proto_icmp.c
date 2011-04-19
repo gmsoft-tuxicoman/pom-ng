@@ -66,7 +66,6 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 
 	// No contrack here
 
-	proto_icmp.parse = proto_icmp_parse;
 	proto_icmp.process = proto_icmp_process;
 
 	if (proto_register(&proto_icmp) == POM_OK)
@@ -77,7 +76,7 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 }
 
 
-static ssize_t proto_icmp_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_icmp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 
@@ -87,16 +86,7 @@ static ssize_t proto_icmp_parse(struct packet *p, struct proto_process_stack *st
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_icmp_field_code], ihdr->icmp_code);
 
 
-	return sizeof(uint8_t) * 2;
-
-}
-
-static ssize_t proto_icmp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
-
-	return s->plen - hdr_len;
-
+	return PROTO_OK;
 }
 
 static int proto_icmp_mod_unregister() {

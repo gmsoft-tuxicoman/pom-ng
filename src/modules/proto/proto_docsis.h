@@ -36,8 +36,7 @@ enum proto_docsis_fields {
 struct mod_reg_info* proto_docsis_reg_info();
 static int proto_docsis_init();
 static int proto_docsis_mod_register(struct mod_reg *mod);
-static ssize_t proto_docsis_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static ssize_t proto_docsis_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
+static int proto_docsis_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_docsis_cleanup();
 static int proto_docsis_mod_unregister();
 

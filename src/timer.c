@@ -247,7 +247,8 @@ int timer_dequeue(struct timer *t) {
 	pom_mutex_lock(&timer_main_lock);
 
 	if (!t->queue) {
-		pomlog(POMLOG_WARN "Warning, timer 0x%p was already dequeued", t);
+		pomlog(POMLOG_WARN "Warning, timer %p was already dequeued", t);
+		pom_mutex_unlock(&timer_main_lock);
 		return POM_OK;
 	}
 

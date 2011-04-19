@@ -95,7 +95,6 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	proto_ipv4.ct_info.cleanup_handler = proto_ipv4_conntrack_cleanup;
 	
 	proto_ipv4.init = proto_ipv4_init;
-	proto_ipv4.parse = proto_ipv4_parse;
 	proto_ipv4.process = proto_ipv4_process;
 	proto_ipv4.cleanup = proto_ipv4_cleanup;
 
@@ -149,11 +148,12 @@ err:
 	return POM_ERR;
 }
 
-static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];	
 
 	struct in_addr saddr, daddr;
 	struct ip* hdr = s->pload;
@@ -176,8 +176,13 @@ static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *st
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_ipv4_field_ttl], hdr->ip_ttl);
 
 	// Handle conntrack stuff
-	s->ct_field_fwd = s->pkt_info->fields_value[proto_ipv4_field_src];
-	s->ct_field_rev = s->pkt_info->fields_value[proto_ipv4_field_dst];
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_ipv4_field_src], s->pkt_info->fields_value[proto_ipv4_field_dst], s_prev->ce);
+	if (!s->ce)
+		return PROTO_ERR;
+
+
+	s_next->pload = s->pload + hdr_len;
+	s_next->plen = s->plen - hdr_len;
 
 	switch (hdr->ip_p) {
 		case IPPROTO_ICMP: // 1
@@ -202,17 +207,6 @@ static ssize_t proto_ipv4_parse(struct packet *p, struct proto_process_stack *st
 
 	}
 
-	return hdr_len;
-
-}
-
-
-static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len) {
-
-	struct proto_process_stack *s = &stack[stack_index];
-
-	if (!s->ce)
-		return PROTO_ERR;
 
 	pom_mutex_lock(&s->ce->lock);
 	int res = POM_ERR;
@@ -224,8 +218,6 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 		pom_mutex_unlock(&s->ce->lock);
 		return PROTO_ERR;
 	}
-
-	struct ip* hdr = s->pload;
 
 	uint16_t frag_off = ntohs(hdr->ip_off);
 
@@ -360,8 +352,6 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 			return PROTO_ERR;
 	}
 	
-	
-
 	return PROTO_STOP; // Stop processing the packet
 
 }

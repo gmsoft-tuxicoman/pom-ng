@@ -41,8 +41,7 @@ enum proto_ethernet_fields {
 struct mod_reg_info* proto_ethernet_reg_info();
 static int proto_ethernet_init();
 static int proto_ethernet_mod_register(struct mod_reg *mod);
-static ssize_t proto_ethernet_parse(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static ssize_t proto_ethernet_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, int hdr_len);
+static int proto_ethernet_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_ethernet_cleanup();
 static int proto_ethernet_mod_unregister();
 
