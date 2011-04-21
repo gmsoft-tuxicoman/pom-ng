@@ -244,7 +244,109 @@ struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype 
 	return NULL;
 }
 
-struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent) {
+struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent) {
+
+	if (!proto || !parent)
+		return NULL;
+
+
+	struct conntrack_entry *res = NULL;
+	struct conntrack_child_list *child = NULL;
+	struct conntrack_list *lst_fwd = NULL;
+
+	pom_mutex_lock(&parent->lock);
+
+	if (!parent->children) {
+
+		// Alloc the conntrack
+		res = malloc(sizeof(struct conntrack_entry));
+		if (!res) {
+			pom_oom(sizeof(struct conntrack_entry));
+			goto err;
+		}
+
+		memset(res, 0, sizeof(struct conntrack_entry));
+		res->proto = proto;
+
+		pthread_mutexattr_t attr;
+		if (pthread_mutexattr_init(&attr)) {
+			pomlog(POMLOG_ERR "Error while initializing conntrack mutex attribute");
+			goto err;
+		}
+
+		if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
+			pomlog(POMLOG_ERR "Error while setting conntrack mutex attribute to recursive");
+			goto err;
+		}
+
+		if(pthread_mutex_init(&res->lock, &attr)) {
+			pomlog(POMLOG_ERR "Error while initializing a conntrack lock : %s", pom_strerror(errno));
+			goto err;
+		}
+
+		if (pthread_mutexattr_destroy(&attr)) {
+			pomlog(POMLOG_WARN "Error while destroying conntrack mutex attribute");
+			goto err;
+		}
+
+		// Alloc the child list
+		child = malloc(sizeof(struct conntrack_child_list));
+		if (!child) 
+			goto err;
+		
+		memset(child, 0, sizeof(struct conntrack_child_list));
+		child->ce = res;
+		res->parent = parent;
+
+		// Alloc the forward list
+		lst_fwd = malloc(sizeof(struct conntrack_list));
+		if (!lst_fwd) {
+			pom_oom(sizeof(struct conntrack_list));
+			goto err;
+		}
+		memset(lst_fwd, 0, sizeof(struct conntrack_list));
+		lst_fwd->ce = res;
+
+
+		
+		// Add the child to the parent
+		child->next = parent->children;
+		if (child->next)
+			child->next->prev = child;
+		parent->children = child;
+
+		// Add the conntrack to the table
+		struct conntrack_tables *ct = proto->ct;
+		pom_mutex_lock(&ct->lock);
+		lst_fwd->next = ct->fwd_table[0];
+		if (lst_fwd->next)
+			lst_fwd->next->prev = lst_fwd;
+		ct->fwd_table[0] = lst_fwd;
+		pom_mutex_unlock(&ct->lock);
+
+	} else if (parent->children->next) {
+		pomlog(POMLOG_ERR "Error, parent has more than one child while it was supposed to have only one");
+	} else {
+		res = parent->children->ce;
+	}
+
+	pom_mutex_unlock(&parent->lock);
+
+	return res;
+
+err:
+	pom_mutex_unlock(&parent->lock);
+	if (res)
+		free(res);
+
+	if (child)
+		free(child);
+
+	return NULL;
+
+}
+
+struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction) {
 
 	if (!fwd_value || !proto)
 		return NULL;
@@ -271,23 +373,24 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	hash_fwd = full_hash_fwd % ct->tables_size;
 
 	// Check if we can find this entry in the forward way
-	struct conntrack_entry *res = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, parent);
-	if (res) {
-		pom_mutex_unlock(&ct->lock);
-		return res;
+	struct conntrack_entry *res = NULL;
+	if (ct->fwd_table[hash_fwd]) {
+		res = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, parent);
+		if (res) {
+			if (direction)
+				*direction = CT_DIR_FWD;
+			pom_mutex_unlock(&ct->lock);
+			return res;
+		}
 	}
 
 	// It wasn't found in the forward way, maybe in the reverse direction ?
-	if (rev_value) {
-		if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
-			pom_mutex_unlock(&ct->lock);
-			return NULL;
-		}
-		hash_rev = full_hash_rev % ct->tables_size;
-
-		res = conntrack_find(ct->rev_table[hash_rev], rev_value, fwd_value, parent);
+	if (rev_value && ct->rev_table[hash_fwd]) {
+		// Lookup the forward hash in the reverse table
+		res = conntrack_find(ct->rev_table[hash_fwd], rev_value, fwd_value, parent);
 		if (res) {
+			if (direction)
+				*direction = CT_DIR_REV;
 			pom_mutex_unlock(&ct->lock);
 			return res;
 		}
@@ -331,10 +434,12 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		pomlog(POMLOG_WARN "Error while destroying conntrack mutex attribute");
 	}
 
+	 struct conntrack_child_list *child = NULL;
 	if (parent) {
 
-		struct conntrack_child_list *child = malloc(sizeof(struct conntrack_child_list));
+		child = malloc(sizeof(struct conntrack_child_list));
 		if (!child) {
+			pthread_mutex_destroy(&res->lock);
 			pom_mutex_unlock(&ct->lock);
 			pom_oom(sizeof(struct conntrack_child_list));
 			free(res);
@@ -343,13 +448,6 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		memset(child, 0, sizeof(struct conntrack_child_list));
 
 		child->ce = res;
-
-		pom_mutex_lock(&parent->lock);
-		child->next = parent->children;
-		if (child->next)
-			child->next->prev = child;
-		parent->children = child;
-		pom_mutex_unlock(&parent->lock);
 		res->parent = parent;
 
 	}
@@ -373,9 +471,17 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	lst_fwd->ce = res;
 
 	// Alloc the reverse list
+	struct conntrack_list *lst_rev = NULL;
 	if (rev_value) {
+		if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
+			pom_mutex_unlock(&ct->lock);
+			return NULL;
+		}
+		hash_rev = full_hash_rev % ct->tables_size;
+
 		res->rev_hash = full_hash_rev;
-		struct conntrack_list *lst_rev = malloc(sizeof(struct conntrack_list));
+		lst_rev = malloc(sizeof(struct conntrack_list)); 
 		if (!lst_rev) {
 			ptype_cleanup(res->fwd_value);
 			free(lst_fwd);
@@ -411,15 +517,40 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		lst_fwd->next->prev = lst_fwd;
 	ct->fwd_table[hash_fwd] = lst_fwd;
 
+	// Add the child to the parent if any
+	if (child) {
+		pom_mutex_lock(&parent->lock);
+		child->next = parent->children;
+		if (child->next)
+			child->next->prev = child;
+		parent->children = child;
+		pom_mutex_unlock(&parent->lock);
+	}
 	// Unlock the tables
 	pom_mutex_unlock(&ct->lock);
+	
+	if (direction)
+		*direction = CT_DIR_FWD;
 
 	return res;
 
 err:
-	pthread_mutex_destroy(&res->lock);
-	free(res);
 	pom_mutex_unlock(&ct->lock);
+
+	pthread_mutex_destroy(&res->lock);
+	if (child)
+		free(child);
+
+	if (lst_fwd)
+		free(lst_fwd);
+
+	if (lst_rev)
+		free(lst_rev);
+	
+	if (res->fwd_value)
+		ptype_cleanup(res->fwd_value);
+
+	free(res);
 
 	return NULL;
 }

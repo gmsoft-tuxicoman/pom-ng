@@ -248,7 +248,8 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 
 	// Conntrack stuff
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
-	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_tcp_field_sport], s->pkt_info->fields_value[proto_tcp_field_dport], s_prev->ce);
+	int direction;
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_tcp_field_sport], s->pkt_info->fields_value[proto_tcp_field_dport], s_prev->ce, &direction);
 	if (!s->ce)
 		return PROTO_ERR;
 
@@ -317,8 +318,13 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		return PROTO_ERR;
 	}
 
-	if (!priv->stream) {
-		priv->stream = packet_stream_alloc(hdr->th_seq, 65535, 0);
+	if (!priv->stream[direction]) {
+		
+		uint32_t seq = ntohl(hdr->th_seq);
+		if ((hdr->th_flags & TH_SYN) || (hdr->th_flags & TH_FIN))
+			seq++;
+
+		priv->stream[direction] = packet_stream_alloc(seq, 65535, 0);
 		if (!priv->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;
@@ -334,27 +340,33 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	if (!priv->proto || !priv->proto->proto)
 		return PROTO_OK;
 
-	if (packet_stream_add_packet(priv->stream, p, s, hdr->th_seq) != POM_OK)
-		return PROTO_ERR;
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	s_next->pload = s->pload + hdr_len;
+	s_next->plen = s->plen - hdr_len;
+
+	if (plen) {
+		// only queue the packet if there is some payload
+		if (packet_stream_add_packet(priv->stream[direction], p, s_next, ntohl(hdr->th_seq)) != POM_OK)
+			return PROTO_ERR;
+	}
 	
 	struct packet_stream_pkt *stream_pkt = NULL;
 
-	while ((stream_pkt = packet_stream_get_next(priv->stream, stack))) {
+	while ((stream_pkt = packet_stream_get_next(priv->stream[direction], s_next))) {
 		
 		// Do the processing
 		int res = POM_OK;
-		struct proto_process_stack *s_next = &stack[stack_index + 1];
-
-		s_next->pload = s->pload + hdr_len;
-		s_next->plen = plen;
-
-		if (priv->proto->proto)
+		if (priv->proto->proto) {
+			s_next->proto = priv->proto->proto;
+			s_next->direction = direction;
 			res = core_process_multi_packet(stack, stack_index + 1, stream_pkt->pkt);
+		}
 
-		if (packet_stream_release_packet(priv->stream, stream_pkt) != POM_OK)
+		if (packet_stream_release_packet(priv->stream[direction], stream_pkt) != POM_OK)
 			return PROTO_ERR;
 
 	}
+
 
 	return PROTO_STOP;
 }
@@ -364,9 +376,12 @@ static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
 
 	if (ce->priv) {
 		struct proto_tcp_conntrack_priv *priv = ce->priv;
-		if (priv->stream) {
-			if (packet_stream_cleanup(priv->stream) != POM_OK)
-				return POM_ERR;
+		int i;
+		for (i = 0; i < CT_DIR_TOT; i++) {
+			if (priv->stream[i]) {
+				if (packet_stream_cleanup(priv->stream[i]) != POM_OK)
+					return POM_ERR;
+			}
 		}
 		free(ce->priv);
 

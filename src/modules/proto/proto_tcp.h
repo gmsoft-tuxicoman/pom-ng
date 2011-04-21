@@ -21,7 +21,7 @@
 #ifndef __PROTO_TCP_H__
 #define __PROTO_TCP_H__
 
-#include <stdint.h>
+#include <pom-ng/conntrack.h>
 
 #define PROTO_TCP_FIELD_NUM 6
 
@@ -49,7 +49,7 @@ enum proto_tcp_fields {
 struct proto_tcp_conntrack_priv {
 
 	unsigned int state;
-	struct packet_stream *stream;
+	struct packet_stream *stream[CT_DIR_TOT];
 	struct proto_dependency *proto;
 };
 

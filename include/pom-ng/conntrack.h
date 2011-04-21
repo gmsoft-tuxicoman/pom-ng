@@ -25,6 +25,10 @@
 #include <pom-ng/base.h>
 #include <pom-ng/proto.h>
 
+#define CT_DIR_FWD 0
+#define CT_DIR_REV 1
+#define CT_DIR_TOT 2 // Total number of possible directions
+
 struct conntrack_entry {
 
 	uint32_t fwd_hash, rev_hash; ///< Full hash prior to modulo
@@ -61,7 +65,8 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
-struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
+struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction);
+struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent);
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
 
 #endif

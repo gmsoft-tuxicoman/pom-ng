@@ -683,7 +683,8 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, s
 		pom_mutex_unlock(&stream->list_lock);
 		return NULL;
 	}
-	
+
+	// Check if first packet match
 	if (stream->cur_seq != stream->head->seq && stream->cur_buff_size < stream->max_buff_size) {
 		pom_mutex_unlock(&stream->processing_lock);
 		pom_mutex_unlock(&stream->list_lock);
@@ -700,8 +701,54 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, s
 			stream->head->prev = NULL;
 	}
 
+
+	// Check if packet containes duplicate bytes
+	while (res->next) {
+		
+		struct packet_stream_pkt *next = res->next;
+		uint32_t next_seq = res->seq + res->len;
+
+		// Check if we need to truncate this packet or not
+		if ((next_seq <= next->seq && next->seq - next_seq < PACKET_HALF_SEQ)
+			|| (next_seq > next->seq && next_seq - next->seq > PACKET_HALF_SEQ))
+			// No overlap
+			break;
+
+		
+
+		uint32_t next_next_seq = next->seq + next->len;
+		if ((next_seq > next_next_seq && next_seq - next_next_seq < PACKET_HALF_SEQ)
+			|| (next_seq < next_next_seq && next_next_seq - next_seq > PACKET_HALF_SEQ)) {
+
+			// Next packet is completely duplicate, discard it
+			res->next = next->next;
+			if (res->next)
+				res->next->prev = res;
+			packet_pool_release(next->pkt);
+			free(next);
+		} else {
+			uint32_t dupe;
+			if (next_seq > next->seq)
+				dupe = next_seq - next->seq;
+			else
+				dupe = next->seq - next_seq;
+
+			if (dupe > next->len) {
+				pomlog(POMLOG_ERR "Internal error while computing duplicate bytes");
+				pom_mutex_unlock(&stream->list_lock);
+				return NULL;
+			}
+			next->seq += dupe;
+			next->pkt_buff_offset += dupe;
+			next->len -= dupe;
+			break;
+			
+		}
+	}
+
 	if (res->next) {
 		res->next->prev = res->prev;
+
 	} else {
 		stream->tail = res->prev;
 		if (stream->tail)
@@ -745,4 +792,123 @@ int packet_stream_release_packet(struct packet_stream *stream, struct packet_str
 
 	return POM_OK;
 
+}
+
+
+struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size) {
+	
+	struct packet_stream_parser *res = malloc(sizeof(struct packet_stream_parser));
+	if (!res) {
+		pom_oom(sizeof(struct packet_stream_parser));
+		return NULL;
+	}
+
+	memset(res, 0, sizeof(struct packet_stream_parser));
+
+	res->max_line_size = max_line_size;
+
+	return res;
+}
+
+
+int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len) {
+
+	if (sp->pload || sp->plen)
+		pomlog(POMLOG_WARN "Warning, payload of last packet not entirely consumed !");
+
+	sp->pload = pload;
+	sp->plen = len;
+
+	return POM_OK;
+}
+
+
+int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len) {
+
+	if (!line || !len)
+		return POM_ERR;
+
+	// Find the next line return in the current payload
+	
+	char *pload = sp->pload;
+	
+	int str_len = sp->plen, tmp_len;
+	
+	char *lf = memchr(pload, '\n', sp->plen);
+	if (lf) {
+		tmp_len = lf - pload;
+		str_len = tmp_len + 1;
+		if (lf > pload && *(lf - 1) == '\r')
+			tmp_len--;
+	}
+
+	if (sp->buffpos || !lf) {
+		// If there is a buffer or line return is not found, we need to add to the buffer
+		unsigned int new_len = sp->buffpos + tmp_len;
+		if (sp->bufflen < new_len) {
+			sp->buff = realloc(sp->buff, new_len);
+			if (!sp->buff) {
+				pom_oom(new_len + 1);
+				return POM_ERR;
+			}
+			sp->bufflen = new_len + 1;
+		}
+		memcpy(sp->buff + sp->buffpos, sp->pload, tmp_len);
+		sp->buffpos += tmp_len;
+
+		if (sp->buffpos > sp->max_line_size) {
+			// What to do ? discard it and sned new partial line ?
+			// Send it as is and send a new line afterwards ?
+			// I'll take option two
+			pomlog(POMLOG_DEBUG "Line longer than max size : %u , max %u", sp->buffpos, sp->max_line_size);
+		}
+	}
+
+	if (!lf) {
+		// \n not found
+		*line = NULL;
+		*len = 0;
+		sp->pload = NULL;
+		sp->plen = 0;
+		return POM_OK;
+	}
+
+	
+	if (sp->buffpos) {
+		pload = sp->buff;
+		tmp_len = sp->buffpos;
+		sp->buffpos = 0;
+		return POM_OK;
+	} else {
+		sp->plen -= str_len;
+		if (!sp->plen)
+			sp->pload = NULL;
+		else
+			sp->pload += str_len;
+	}
+
+	// Trim the string
+	while (*pload == ' ' && tmp_len) {
+		pload++;
+		tmp_len--;
+	}
+	while (pload[tmp_len] == ' ' && tmp_len)
+		tmp_len--;
+
+	*line = pload;
+	*len = tmp_len;
+
+	return POM_OK;
+}
+
+
+
+int packet_stream_parser_cleanup(struct packet_stream_parser *sp) {
+
+	if (sp->buff)
+		free(sp->buff);
+
+	free(sp);
+
+	return POM_OK;
 }

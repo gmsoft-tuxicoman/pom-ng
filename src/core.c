@@ -511,6 +511,15 @@ int core_set_state(enum core_state state) {
 
 	} else if (state == core_state_running) {
 		gettimeofday(&core_start_time, NULL);
+	} else if (state == core_state_finishing) {
+		pom_mutex_lock(&core_pkt_queue_mutex);
+		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
+			pom_mutex_unlock(&core_pkt_queue_mutex);
+			pom_mutex_unlock(&core_state_lock);
+			pomlog(POMLOG_ERR "Error while broadcasting restart condition after set state");
+			return POM_ERR;
+		}
+		pom_mutex_unlock(&core_pkt_queue_mutex);
 	}
 	pom_mutex_unlock(&core_state_lock);
 	return POM_OK;

@@ -84,6 +84,16 @@ struct packet_stream {
 	struct packet_stream_pkt *head, *tail;
 };
 
+
+struct packet_stream_parser {
+	unsigned int max_line_size;
+	char *buff;
+	unsigned int bufflen;
+	unsigned int buffpos;
+	char *pload;
+	unsigned int plen;
+};
+
 struct packet *packet_clone(struct packet *src, unsigned int flags);
 
 struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep, unsigned int flags);
@@ -97,4 +107,8 @@ int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, s
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, struct proto_process_stack *cur_stack);
 int packet_stream_release_packet(struct packet_stream *stream, struct packet_stream_pkt *pkt);
 
+struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size);
+int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len);
+int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len);
+int packet_stream_parser_cleanup(struct packet_stream_parser *sp);
 #endif
