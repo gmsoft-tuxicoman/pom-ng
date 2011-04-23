@@ -308,7 +308,6 @@ void *core_processing_thread_func(void *priv) {
 
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
-
 		if (core_process_packet(pkt) == POM_ERR) {
 			halt("Packet processing encountered an error");
 			pthread_rwlock_unlock(&core_processing_lock);
@@ -452,7 +451,7 @@ int core_process_packet(struct packet *p) {
 	// Cleanup pkt_info
 	int i;
 	for (i = 1; i < CORE_PROTO_STACK_MAX && s[i].pkt_info; i++)
-		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
+			packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	if (res == PROTO_ERR)
 		return PROTO_ERR;
 	return PROTO_OK;

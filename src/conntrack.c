@@ -351,6 +351,14 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	if (!fwd_value || !proto)
 		return NULL;
 
+	if (direction && *direction) {
+		// This indicates that the parent conntrack matched in a reverse direction
+		// Let's keep directions consistent and swap fwd and rev values
+		struct ptype *tmp = rev_value;
+		rev_value = fwd_value;
+		fwd_value = tmp;
+	}
+
 	uint32_t full_hash_fwd = 0, hash_fwd = 0, full_hash_rev = 0, hash_rev = 0;
 
 	if (conntrack_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {

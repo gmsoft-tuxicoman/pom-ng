@@ -243,7 +243,10 @@ int proto_http_parse_query_response(struct proto_http_conntrack_priv *priv, char
 				if (priv->state == HTTP_RESPONSE) {
 					// Get the status code
 					unsigned int err_code = 0;
-					if (sscanf(token, "%u", &err_code) != 1 || err_code == 0) {
+					char errcode[4];
+					errcode[3] = 0;
+					strncpy(errcode, token, 3);
+					if (sscanf(errcode, "%3u", &err_code) != 1 || err_code == 0) {
 						pomlog(POMLOG_DEBUG "Invalid code in HTTP response");
 						return PROTO_INVALID;
 					}

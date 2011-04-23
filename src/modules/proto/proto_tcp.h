@@ -21,7 +21,7 @@
 #ifndef __PROTO_TCP_H__
 #define __PROTO_TCP_H__
 
-#include <pom-ng/conntrack.h>
+#include <pom-ng/packet.h>
 
 #define PROTO_TCP_FIELD_NUM 6
 
@@ -49,7 +49,7 @@ enum proto_tcp_fields {
 struct proto_tcp_conntrack_priv {
 
 	unsigned int state;
-	struct packet_stream *stream[CT_DIR_TOT];
+	struct packet_stream *stream;
 	struct proto_dependency *proto;
 };
 
@@ -57,6 +57,7 @@ struct mod_reg_info* proto_tcp_reg_info();
 static int proto_tcp_init(struct registry_instance *i);
 static int proto_tcp_mod_register(struct mod_reg *mod);
 static int proto_tcp_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+static int proto_tcp_process_payload(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_tcp_cleanup();
 static int proto_tcp_mod_unregister();

@@ -54,7 +54,7 @@ struct proto_process_stack {
 	struct proto_reg *proto;
 	void *pload;
 	uint32_t plen;
-	unsigned int direction; // Used ot pass direction to the next proto if he can't find out
+	int direction; // Used ot pass direction to the next proto if he can't find out
 
 	struct packet_info *pkt_info;
 

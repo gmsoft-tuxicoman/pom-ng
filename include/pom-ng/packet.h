@@ -25,6 +25,7 @@
 #include <pthread.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
+#define PACKET_FLAG_STREAM_BIDIR	0x2
 
 struct packet {
 
@@ -77,11 +78,13 @@ struct packet_stream_pkt {
 
 struct packet_stream {
 
-	uint32_t cur_seq;
+	uint32_t cur_seq[CT_DIR_TOT];
 	uint32_t cur_buff_size, max_buff_size;
 	unsigned int flags;
-	pthread_mutex_t list_lock, processing_lock;
-	struct packet_stream_pkt *head, *tail;
+	pthread_mutex_t lock;
+	struct packet_stream_pkt *head[CT_DIR_TOT], *tail[CT_DIR_TOT];
+	int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+	void *priv;
 };
 
 
@@ -101,11 +104,9 @@ int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t max_buff_size, unsigned int FLAGS);
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index),  void *priv);
 int packet_stream_cleanup(struct packet_stream *stream);
-int packet_stream_add_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *cur_stack, uint32_t seq);
-struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, struct proto_process_stack *cur_stack);
-int packet_stream_release_packet(struct packet_stream *stream, struct packet_stream_pkt *pkt);
+int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack);
 
 struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size);
 int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len);

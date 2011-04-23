@@ -176,13 +176,14 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_ipv4_field_ttl], hdr->ip_ttl);
 
 	// Handle conntrack stuff
-	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_ipv4_field_src], s->pkt_info->fields_value[proto_ipv4_field_dst], s_prev->ce, NULL);
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_ipv4_field_src], s->pkt_info->fields_value[proto_ipv4_field_dst], s_prev->ce, &s->direction);
 	if (!s->ce)
 		return PROTO_ERR;
 
 
 	s_next->pload = s->pload + hdr_len;
 	s_next->plen = s->plen - hdr_len;
+	s_next->direction = s->direction;
 
 	switch (hdr->ip_p) {
 		case IPPROTO_ICMP: // 1

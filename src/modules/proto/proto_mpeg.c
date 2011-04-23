@@ -211,7 +211,7 @@ static int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *s
 
 	if (!stream->stream) {
 		char *force_no_copy; PTYPE_BOOL_GETVAL(param_force_no_copy, force_no_copy);
-		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
+		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_docsis, stream);
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;
@@ -221,39 +221,21 @@ static int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *s
 	pom_mutex_unlock(&s->ce->lock);
 	
 	// Add the packet to the stream
-	if (packet_stream_add_packet(stream->stream, p, s, p->id * MPEG_TS_LEN) != POM_OK) {
+	if (packet_stream_process_packet(stream->stream, p, stack, stack_index, p->id * MPEG_TS_LEN, 0) != POM_OK)
 		return PROTO_ERR;
-	}
-
-	struct packet_stream_pkt *stream_pkt = NULL;
-	while ((stream_pkt = packet_stream_get_next(stream->stream, s))) {
-		struct packet_multipart *multipart = NULL;
-		int res = proto_mpeg_ts_process_docsis(stream, stream_pkt->pkt, stack, stack_index, &multipart);
-		if (packet_stream_release_packet(stream->stream, stream_pkt) != POM_OK)
-			return PROTO_ERR;
-
-		if (res == PROTO_ERR)
-			return PROTO_ERR;
-
-		if (multipart) {
-			res = packet_multipart_process(multipart, stack, stack_index + 1);
-			if (res == PROTO_ERR)
-				return PROTO_ERR;
-		}
-	}
 
 	return PROTO_STOP;
 }
 
 
-static int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index, struct packet_multipart **multipart) {
+static int proto_mpeg_ts_process_docsis(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct proto_mpeg_ts_stream *stream = priv;
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	unsigned char *buff = s->pload;
-
-	*multipart = NULL;
 
 	int pusi = buff[1] & 0x40;
 
@@ -307,7 +289,8 @@ static int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, str
 					return PROTO_ERR;
 				
 				// Process the multipart once we're done with the MPEG packet
-				*multipart = stream->multipart;
+				if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR)
+					return PROTO_ERR;
 
 			}
 
@@ -385,13 +368,9 @@ static int proto_mpeg_ts_process_docsis(struct proto_mpeg_ts_stream *stream, str
 
 	stream->pkt_cur_len += MPEG_TS_LEN - pos;
 	if (stream->pkt_tot_len && stream->pkt_cur_len >= stream->pkt_tot_len) {
-		if (*multipart) {
-			pomlog(POMLOG_ERR "A multipart is already ready for processing ! This shouldn't happen !");
-			return PROTO_ERR;
-		}
-
 		// Process the multipart
-		*multipart = stream->multipart;
+		if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR)
+			return PROTO_ERR;
 
 		stream->multipart = NULL;
 		stream->pkt_cur_len = 0;

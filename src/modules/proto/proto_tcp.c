@@ -248,8 +248,7 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 
 	// Conntrack stuff
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
-	int direction;
-	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_tcp_field_sport], s->pkt_info->fields_value[proto_tcp_field_dport], s_prev->ce, &direction);
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_tcp_field_sport], s->pkt_info->fields_value[proto_tcp_field_dport], s_prev->ce, &s->direction);
 	if (!s->ce)
 		return PROTO_ERR;
 
@@ -269,6 +268,10 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		memset(priv, 0, sizeof(struct proto_tcp_conntrack_priv));
 
 		s->ce->priv = priv;
+
+		// TODO improve this
+		if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
+			priv->proto = proto_http;
 
 		// Set the correct state to the conntrack
 		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
@@ -318,70 +321,71 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		return PROTO_ERR;
 	}
 
-	if (!priv->stream[direction]) {
+
+	if (!priv->proto || !priv->proto->proto) {
+		pom_mutex_unlock(&s->ce->lock);
+		return PROTO_OK;
+	}
+
+	if ((hdr->th_flags & TH_SYN) && !(hdr->th_flags & TH_ACK)) {
+		// Start monitoring connections on SYN ACK only to avoid TCP SYN flood
+		pom_mutex_unlock(&s->ce->lock);
+		return PROTO_OK;
+	}
+
+	if (!priv->stream) {
 		
 		uint32_t seq = ntohl(hdr->th_seq);
 		if ((hdr->th_flags & TH_SYN) || (hdr->th_flags & TH_FIN))
 			seq++;
 
-		priv->stream[direction] = packet_stream_alloc(seq, 65535, 0);
+		uint32_t ack = ntohl(hdr->th_ack);
+
+		// FIXME only create bidir stream if we actually get packet from the other direction
+		priv->stream = packet_stream_alloc(seq, ack, s->direction, 65535, PACKET_FLAG_STREAM_BIDIR, proto_tcp_process_payload, priv);
 		if (!priv->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;
 		}
 		
-		// TODO improve this
-		if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
-			priv->proto = proto_http;
 	}
-
 	pom_mutex_unlock(&s->ce->lock);
-	
-	if (!priv->proto || !priv->proto->proto)
-		return PROTO_OK;
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	s_next->pload = s->pload + hdr_len;
 	s_next->plen = s->plen - hdr_len;
+	s_next->direction = s->direction;
 
 	if (plen) {
 		// only queue the packet if there is some payload
-		if (packet_stream_add_packet(priv->stream[direction], p, s_next, ntohl(hdr->th_seq)) != POM_OK)
+		if (packet_stream_process_packet(priv->stream, p, stack, stack_index, ntohl(hdr->th_seq), ntohl(hdr->th_ack)) != POM_OK)
 			return PROTO_ERR;
+		return PROTO_STOP;
 	}
 	
-	struct packet_stream_pkt *stream_pkt = NULL;
-
-	while ((stream_pkt = packet_stream_get_next(priv->stream[direction], s_next))) {
-		
-		// Do the processing
-		int res = POM_OK;
-		if (priv->proto->proto) {
-			s_next->proto = priv->proto->proto;
-			s_next->direction = direction;
-			res = core_process_multi_packet(stack, stack_index + 1, stream_pkt->pkt);
-		}
-
-		if (packet_stream_release_packet(priv->stream[direction], stream_pkt) != POM_OK)
-			return PROTO_ERR;
-
-	}
-
-
-	return PROTO_STOP;
+	return PROTO_OK;
 }
+
+static int proto_tcp_process_payload(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct proto_tcp_conntrack_priv *cp = priv;
+
+	if (cp->proto) {
+		stack[stack_index + 1].proto = cp->proto->proto;
+		return core_process_multi_packet(stack, stack_index + 1, p);
+	}
+	return PROTO_OK;
+}
+
 
 static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
 
 
 	if (ce->priv) {
 		struct proto_tcp_conntrack_priv *priv = ce->priv;
-		int i;
-		for (i = 0; i < CT_DIR_TOT; i++) {
-			if (priv->stream[i]) {
-				if (packet_stream_cleanup(priv->stream[i]) != POM_OK)
-					return POM_ERR;
-			}
+		if (priv->stream) {
+			if (packet_stream_cleanup(priv->stream) != POM_OK)
+				return POM_ERR;
 		}
 		free(ce->priv);
 

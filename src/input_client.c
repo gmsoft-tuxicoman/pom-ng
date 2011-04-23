@@ -143,12 +143,10 @@ void *input_client_reader_thread_func(void *thread) {
 	}
 
 	pom_mutex_lock(&input_lock);
-	if (t->input->thread) 
+	if (t->input->thread) {
+		pthread_detach(t->input->thread->thread);
 		t->input->thread = NULL;
-	pom_mutex_unlock(&input_lock);
-
-	pthread_detach(pthread_self());
-
+	}
 
 	// Do the cleanup
 	
@@ -157,7 +155,6 @@ void *input_client_reader_thread_func(void *thread) {
 
 	free(t);
 
-	pom_mutex_lock(&input_lock);
 	input_cur_running--;
 	if (!input_cur_running)
 		core_set_state(core_state_finishing);
