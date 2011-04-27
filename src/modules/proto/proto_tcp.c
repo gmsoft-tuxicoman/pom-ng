@@ -244,7 +244,11 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	if ((hdr->th_flags & TH_RST) && plen > 0) {
 		plen = 0; // RFC 1122 4.2.2.12 : RST may contain the data that caused the packet to be sent, discard it
 	}
-	
+
+	if ((hdr->th_flags & TH_SYN) && !(hdr->th_flags & TH_ACK)) {
+		// Start monitoring connections on SYN ACK only to avoid TCP SYN flood
+		return PROTO_OK;
+	}
 
 	// Conntrack stuff
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
@@ -327,11 +331,6 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		return PROTO_OK;
 	}
 
-	if ((hdr->th_flags & TH_SYN) && !(hdr->th_flags & TH_ACK)) {
-		// Start monitoring connections on SYN ACK only to avoid TCP SYN flood
-		pom_mutex_unlock(&s->ce->lock);
-		return PROTO_OK;
-	}
 
 	if (!priv->stream) {
 		

@@ -29,6 +29,10 @@
 #define CT_DIR_REV 1
 #define CT_DIR_TOT 2 // Total number of possible directions
 
+#define CT_CONNTRACK_INFO_BIDIR			0x1
+#define CT_CONNTRACK_INFO_LIST			0x2
+#define CT_CONNTRACK_INFO_LIST_FREE_KEY		0x4
+
 struct conntrack_entry {
 
 	uint32_t fwd_hash, rev_hash; ///< Full hash prior to modulo
@@ -39,6 +43,7 @@ struct conntrack_entry {
 	pthread_mutex_t lock;
 	struct timer *cleanup_timer; ///< Cleanup the conntrack when this timer is reached
 	struct proto_reg *proto; ///< Proto of this conntrack
+	struct conntrack_con_info *con_info; ///< Conntrack informations
 };
 
 struct conntrack_child_list {
@@ -55,6 +60,7 @@ struct conntrack_list {
 struct conntrack_info {
 	unsigned int default_table_size;
 	int fwd_pkt_field_id, rev_pkt_field_id;
+	struct conntrack_con_info_reg *con_info;
 	int (*cleanup_handler) (struct conntrack_entry *ce);
 };
 
@@ -65,8 +71,41 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
+struct conntrack_con_info_reg {
+	char *name;
+	unsigned int flags;
+	struct ptype *value_template;
+	char *description;
+};
+
+struct conntrack_con_info_val {
+
+	unsigned int set; ///< Indicate that the variable is actually set
+	struct ptype *value;
+
+};
+
+struct conntrack_con_info_lst {
+	char *key;
+	struct ptype *value;
+	uint32_t hash;
+
+	struct conntrack_con_info_lst *next;
+};
+
+struct conntrack_con_info {
+	union {
+		struct conntrack_con_info_val val[CT_DIR_TOT];
+		struct conntrack_con_info_lst *lst[CT_DIR_TOT];
+	};
+};
+
+
+
 struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction);
 struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent);
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
+struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned int id, char *key, int direction);
+int conntrack_con_info_reset(struct conntrack_entry *ce);
 
 #endif

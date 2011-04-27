@@ -339,8 +339,7 @@ void *core_processing_thread_func(void *priv) {
 	return NULL;
 }
 
-int core_process_dump_pkt_info(struct proto_process_stack *s, int res) {
-return POM_OK;
+int core_process_dump_info(struct proto_process_stack *s, int res) {
 
 	char *res_str = "unknown result code";
 	switch (res) {
@@ -359,14 +358,59 @@ return POM_OK;
 
 	// Dump packet info
 	int i;	
-	for (i = 0; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
+	for (i = 1; i < CORE_PROTO_STACK_MAX - 1 && s[i].proto; i++) {
 		printf("%s { ", s[i].proto->info->name);
-		int j;
-		for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
-			char buff[256];
-			ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
-			printf("%s: %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+	
+		char buff[256];
+
+		if (s[i].proto->info->pkt_fields) {
+			int j;
+			for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
+				ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
+				printf("%s: %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+			}
 		}
+
+		if (s[i].ce && s[i].proto->info->ct_info.con_info) {
+			int j;
+			struct conntrack_con_info_reg *info_reg = s[i].proto->info->ct_info.con_info;
+			for (j = 0; info_reg[j].name; j++) {
+				if (info_reg[j].flags & CT_CONNTRACK_INFO_LIST) {
+					if (!s[i].ce->con_info[j].lst[CT_DIR_FWD] && !s[i].ce->con_info[j].lst[CT_DIR_REV])
+						continue;
+
+					printf("%s [", info_reg[j].name);
+
+					int k;
+					for (k = 0; k < CT_DIR_TOT; k++) {
+						struct conntrack_con_info_lst *tmp = s[i].ce->con_info[j].lst[k];
+						for (; tmp; tmp = tmp->next) {
+							ptype_print_val(tmp->value, buff, sizeof(buff) - 1);
+							printf("%s[%u]: \"%s\"; ", tmp->key, k, buff);
+						}
+					}
+					printf("]; ");
+					
+				} else {
+					if(info_reg[j].flags & CT_CONNTRACK_INFO_BIDIR) {
+						int k = 0;
+						for (k = 0; k < CT_DIR_TOT; k++) {
+							if (!s[i].ce->con_info[j].val[k].set)
+								continue;
+							ptype_print_val(s[i].ce->con_info[j].val[k].value, buff, sizeof(buff) - 1);
+							printf("%s[%u]: \"%s\"; ", info_reg[j].name, k, buff);
+						}
+
+					} else {
+						if (!s[i].ce->con_info[j].val[0].set)
+							continue;
+						ptype_print_val(s[i].ce->con_info[j].val[0].value, buff, sizeof(buff) - 1);
+						printf("%s: \"%s\"; ", info_reg[j].name, buff);
+					}
+				}
+			}
+		}
+
 
 		printf("}; ");
 	}
@@ -381,7 +425,7 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	int res = core_process_packet_stack(s, stack_index, p);
 
 	if (res != PROTO_ERR) {
-		core_process_dump_pkt_info(s, res);
+		core_process_dump_info(s, res);
 	}
 	
 	int i;
@@ -403,8 +447,9 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {
 
 		struct proto_process_stack *s = &stack[i];
-		
-		s->pkt_info = packet_info_pool_get(s->proto);
+	
+		if (s->proto->info->pkt_fields)
+			s->pkt_info = packet_info_pool_get(s->proto);
 
 		int res = proto_process(p, stack, i);
 
@@ -446,7 +491,7 @@ int core_process_packet(struct packet *p) {
 	int res = core_process_packet_stack(s, 1, p);
 
 	if (res == PROTO_OK)
-		core_process_dump_pkt_info(s, res);
+		core_process_dump_info(s, res);
 
 	// Cleanup pkt_info
 	int i;

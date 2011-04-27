@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -77,39 +77,7 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 		int i;
 		for (i = 0; i < ct->tables_size; i++) {
 			while (ct->fwd_table[i]) {
-				struct conntrack_list *tmp = ct->fwd_table[i];
-				ct->fwd_table[i] = tmp->next;
-
-				// Free the conntrack entry
-				if (tmp->ce) {
-
-					struct conntrack_child_list *child = tmp->ce->children;
-					while (child) {
-						tmp->ce->children = child->next;
-						free(child);
-						child = tmp->ce->children;
-					}
-					
-					if (tmp->ce->priv && tmp->ce->proto->info->ct_info.cleanup_handler) {
-						if (tmp->ce->proto->info->ct_info.cleanup_handler(tmp->ce) != POM_OK)
-							pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
-					}
-
-					if (tmp->ce->fwd_value)
-						ptype_cleanup(tmp->ce->fwd_value);
-					if (tmp->ce->rev_value)
-						ptype_cleanup(tmp->ce->rev_value);
-					free(tmp->ce);
-					tmp->ce = NULL;
-				} else {
-					pomlog(POMLOG_WARN "Forward conntrack list without a conntrack entry");
-				}
-
-				if (tmp->rev)
-					tmp->rev->ce = NULL;
-
-				free(tmp);
-				
+				conntrack_cleanup(ct->fwd_table[i]->ce);
 			}
 
 		}
@@ -121,33 +89,7 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 		int i;
 		for (i = 0; i < ct->tables_size; i++) {
 			while (ct->rev_table[i]) {
-				struct conntrack_list *tmp = ct->rev_table[i];
-				ct->rev_table[i] = tmp->next;
-
-				// Free the conntrack entry
-				if (tmp->ce) {
-
-					struct conntrack_child_list *child = tmp->ce->children;
-					while (child) {
-						tmp->ce->children = child->next;
-						free(tmp->ce->children);
-						child = child->next;
-					}
-
-					if (tmp->ce->priv && tmp->ce->proto->info->ct_info.cleanup_handler) {
-						if (tmp->ce->proto->info->ct_info.cleanup_handler(tmp->ce) != POM_OK)
-							pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
-					}
-
-					if (tmp->ce->fwd_value)
-						ptype_cleanup(tmp->ce->fwd_value);
-					if (tmp->ce->rev_value)
-						ptype_cleanup(tmp->ce->rev_value);
-					free(tmp->ce);
-					tmp->ce = NULL;
-				}
-
-				free(tmp);
+				conntrack_cleanup(ct->rev_table[i]->ce);
 			}
 		}
 		free(ct->rev_table);
@@ -268,6 +210,15 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto
 		memset(res, 0, sizeof(struct conntrack_entry));
 		res->proto = proto;
 
+		if (proto->info->ct_info.con_info) {
+			res->con_info = conntrack_con_info_alloc(proto);
+			if (!res->con_info) {
+				pom_mutex_unlock(&parent->lock);
+				free(res);
+				return NULL;
+			}
+		}
+
 		pthread_mutexattr_t attr;
 		if (pthread_mutexattr_init(&attr)) {
 			pomlog(POMLOG_ERR "Error while initializing conntrack mutex attribute");
@@ -351,14 +302,6 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	if (!fwd_value || !proto)
 		return NULL;
 
-	if (direction && *direction) {
-		// This indicates that the parent conntrack matched in a reverse direction
-		// Let's keep directions consistent and swap fwd and rev values
-		struct ptype *tmp = rev_value;
-		rev_value = fwd_value;
-		fwd_value = tmp;
-	}
-
 	uint32_t full_hash_fwd = 0, hash_fwd = 0, full_hash_rev = 0, hash_rev = 0;
 
 	if (conntrack_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {
@@ -407,6 +350,22 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 
 	// It's not found in the reverse direction either, let's create it then
 
+	if (direction && *direction) {
+		// This indicates that the parent conntrack matched in a reverse direction
+		// Let's keep directions consistent and swap fwd and rev values
+		struct ptype *tmp = rev_value;
+		rev_value = fwd_value;
+		fwd_value = tmp;
+		hash_rev = hash_fwd;
+		full_hash_rev = full_hash_fwd;
+		if (conntrack_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while computing forward hash for conntrack");
+			return NULL;
+		}
+		hash_fwd = full_hash_fwd % ct->tables_size;
+	}
+
+
 	// Alloc the conntrack entry
 	res = malloc(sizeof(struct conntrack_entry));
 	if (!res) {
@@ -415,6 +374,15 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		return NULL;
 	}
 	memset(res, 0, sizeof(struct conntrack_entry));
+
+	if (proto->info->ct_info.con_info) {
+		res->con_info = conntrack_con_info_alloc(proto);
+		if (!res->con_info) {
+			pom_mutex_unlock(&ct->lock);
+			free(res);
+			return NULL;
+		}
+	}
 
 	pthread_mutexattr_t attr;
 	if (pthread_mutexattr_init(&attr)) {
@@ -481,12 +449,14 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	// Alloc the reverse list
 	struct conntrack_list *lst_rev = NULL;
 	if (rev_value) {
-		if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
-			pom_mutex_unlock(&ct->lock);
-			return NULL;
+		if (!direction || !*direction) { // Hash rev was already computed if we had to reverse the direction
+			if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
+				pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
+				pom_mutex_unlock(&ct->lock);
+				return NULL;
+			}
+			hash_rev = full_hash_rev % ct->tables_size;
 		}
-		hash_rev = full_hash_rev % ct->tables_size;
 
 		res->rev_hash = full_hash_rev;
 		lst_rev = malloc(sizeof(struct conntrack_list)); 
@@ -537,9 +507,6 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	// Unlock the tables
 	pom_mutex_unlock(&ct->lock);
 	
-	if (direction)
-		*direction = CT_DIR_FWD;
-
 	return res;
 
 err:
@@ -561,6 +528,98 @@ err:
 	free(res);
 
 	return NULL;
+}
+
+struct conntrack_con_info *conntrack_con_info_alloc(struct proto_reg *proto) {
+
+	if (!proto || !proto->info->ct_info.con_info)
+		return NULL;
+
+	struct conntrack_con_info_reg *con_info = proto->info->ct_info.con_info;
+
+	// FIXME optimize this by using pools of conntracks
+	int i;
+	for (i = 0; con_info[i].name; i++);
+		
+	struct conntrack_con_info *infos = malloc(sizeof(struct conntrack_con_info) * i);
+	if (!infos) {
+		pom_oom(sizeof(struct conntrack_con_info) * i);
+		return NULL;
+	}
+	memset(infos, 0, sizeof(struct conntrack_con_info) * i);
+
+	for (i = 0; con_info[i].name; i++) {
+		if (!(con_info[i].flags & CT_CONNTRACK_INFO_LIST)) {
+			int j;
+			for (j = 0; j < (con_info[i].flags & CT_CONNTRACK_INFO_BIDIR ? 2 : 1); j++) {
+				infos[i].val[j].value = ptype_alloc_from(con_info[i].value_template);
+				if (!infos[i].val[j].value)
+					goto err;
+			}
+		}
+	}
+	
+	return infos;
+
+err:
+	// FIXME do the cleanup in case of error
+
+	return NULL;
+}
+
+
+struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned int id, char *key, int direction) {
+
+	struct conntrack_con_info_lst *res = malloc(sizeof(struct conntrack_con_info_lst));
+	if (!res) {
+		pom_oom(sizeof(struct conntrack_con_info_lst));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct conntrack_con_info_lst));
+
+	res->value = ptype_alloc_from(ce->proto->info->ct_info.con_info[id].value_template);
+	if (!res->value) {
+		free(res);
+		return NULL;
+	}
+
+	res->key = key;
+	res->hash = jhash(key, strlen(key), INITVAL);
+
+	res->next = ce->con_info[id].lst[direction];
+	ce->con_info[id].lst[direction] = res;
+
+	return res->value;
+}
+
+int conntrack_con_info_reset(struct conntrack_entry *ce) {
+
+	struct conntrack_con_info_reg *info_reg = ce->proto->info->ct_info.con_info;
+	
+	int i;
+	for (i = 0; info_reg[i].name; i++) {
+		if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST) {
+			int k;
+			for (k = 0; k < CT_DIR_TOT; k++) {
+				while (ce->con_info[i].lst[k]) {
+					struct conntrack_con_info_lst *tmp = ce->con_info[i].lst[k];
+					if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST_FREE_KEY)
+						free(tmp->key);
+					ptype_cleanup(tmp->value);
+					ce->con_info[i].lst[k] = tmp->next;
+					free(tmp);
+				}
+
+			}
+		} else {
+			ce->con_info[i].val[CT_DIR_FWD].set = 0;
+			ce->con_info[i].val[CT_DIR_REV].set = 0;
+
+		}
+
+	}
+
+	return POM_OK;
 }
 
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
@@ -711,6 +770,33 @@ int conntrack_cleanup(void *conntrack) {
 		ptype_cleanup(ce->rev_value);
 
 	pthread_mutex_destroy(&ce->lock);
+	
+	if (proto->info->ct_info.con_info) {
+		struct conntrack_con_info_reg *info_reg = proto->info->ct_info.con_info;
+
+		int i;
+		for (i = 0; info_reg[i].name; i++) {
+			int dir_tot = (info_reg[i].flags & CT_CONNTRACK_INFO_BIDIR ? 2 : 1);
+			int j;
+			for (j = 0; j < dir_tot; j++) {
+				if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST) {
+					while (ce->con_info[i].lst[j]) {
+						struct conntrack_con_info_lst * tmp = ce->con_info[i].lst[j];
+						ce->con_info[i].lst[j] = tmp->next;
+						if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST_FREE_KEY)
+							free(tmp->key);
+						ptype_cleanup(tmp->value);
+						free(tmp);
+					}
+
+				} else {
+					ptype_cleanup(ce->con_info[i].val[j].value);
+				}
+			}
+		}
+
+		free(ce->con_info);
+	}
 
 	free(ce);
 

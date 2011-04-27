@@ -847,6 +847,19 @@ int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *ploa
 	return POM_OK;
 }
 
+int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, unsigned int *len) {
+
+	if (!sp->pload)
+		return POM_OK;
+
+	*pload = sp->pload;
+	*len = sp->plen;
+	sp->pload = NULL;
+	sp->plen = 0;
+
+	return POM_OK;
+};
+
 
 int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len) {
 

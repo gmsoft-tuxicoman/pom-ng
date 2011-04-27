@@ -24,34 +24,38 @@
 #include <pom-ng/conntrack.h>
 #include <pom-ng/packet.h>
 
-#define HTTP_HEADER		1 ///< Looking for a header
+#define HTTP_QUERY_HEADER	1 ///< Looking for the query line
 #define HTTP_QUERY		2 ///< This is a query
-#define HTTP_RESPONSE		3 ///< This is a response
-#define HTTP_BODY_QUERY		4 ///< Handling the body
-#define HTTP_BODY_RESPONSE	5 ///< Handling the body of a response (e.g. POST)
+#define HTTP_BODY_QUERY		3 ///< Handling the body
+#define HTTP_RESPONSE_HEADER	4 ///< Looking for the response line
+#define HTTP_RESPONSE		5 ///< This is a response
+#define HTTP_BODY_RESPONSE	6 ///< Handling the body of a response (e.g. POST)
 #define HTTP_INVALID		9 ///< Invalid HTTP message, will discard the rest of the connection
+
+#define HTTP_FLAG_HAVE_CLEN	0x01
+#define HTTP_FLAG_CHUNKED	0x04
+#define HTTP_FLAG_GZIP		0x08
+#define HTTP_FLAG_DEFLATE	0x10
 
 #define HTTP_MAX_HEADER_LINE	4096
 
-#define PROTO_HTTP_FIELD_NUM	0
+#define PROTO_HTTP_FIELD_NUM	7
 
-struct http_header {
-	
-	char *name;
-	char *value;
-	int type; // either HTTP_QUERY or HTTP_RESPONSE
+enum proto_http_fields {
+	proto_http_field_host = 0,
+	proto_http_field_first_line,
+	proto_http_field_err_code,
+	proto_http_field_request_proto,
+	proto_http_field_request_method,
+	proto_http_field_url,
+	proto_http_field_headers,
 
 };
 
+
 struct http_info {
-	
-	struct http_header *header;
-	unsigned int headers_num;
-	unsigned int err_code;
-//	unsigned int content_len, content_pos;
+	unsigned int content_len, content_pos;
 	unsigned int flags;
-
-
 };
 
 struct proto_http_conntrack_priv {
@@ -64,9 +68,10 @@ struct proto_http_conntrack_priv {
 struct mod_reg_info* proto_http_reg_info();
 static int proto_http_mod_register(struct mod_reg *mod);
 static int proto_http_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_http_conntrack_reset(struct conntrack_entry *ce);
 static int proto_http_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_http_mod_unregister();
 
-int proto_http_parse_query_response(struct proto_http_conntrack_priv *priv, char *line, unsigned int len);
+int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsigned int len, int direction);
 
 #endif
