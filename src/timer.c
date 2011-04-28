@@ -132,12 +132,29 @@ int timer_cleanup(struct timer *t) {
 
 int timer_queue(struct timer *t, unsigned int expiry) {
 
-	if (t->prev || t->next) {
-		pomlog(POMLOG_WARN "Error, timer not dequeued correctly");
-		return POM_ERR;
+	pom_mutex_lock(&timer_main_lock);
+
+	// Timer is still queued, dequeue it
+	if (t->queue) {
+		if (t->prev) {
+			t->prev->next = t->next;
+		} else {
+			t->queue->head = t->next;
+			if (t->queue->head)
+				t->queue->head->prev = NULL;
+		}
+
+		if (t->next) {
+			t->next->prev = t->prev;
+		} else {
+			t->queue->tail = t->prev;
+			if (t->queue->tail)
+				t->queue->tail->next = NULL;
+			
+		}
+		t->queue = NULL;
 	}
 
-	pom_mutex_lock(&timer_main_lock);
 
 	struct timer_queue *tq = timer_queues;
 

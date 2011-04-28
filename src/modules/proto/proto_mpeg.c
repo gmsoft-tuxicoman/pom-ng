@@ -251,7 +251,6 @@ static int proto_mpeg_ts_process_docsis(void *priv, struct packet *p, struct pro
 		pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %u", missed, stream->input_id);
 
 	if (stream->multipart) {
-		timer_dequeue(stream->t);
 
 		if (!stream->pkt_tot_len) {
 			// Last packet was too short to know the size
@@ -293,6 +292,8 @@ static int proto_mpeg_ts_process_docsis(void *priv, struct packet *p, struct pro
 					return PROTO_ERR;
 
 			}
+
+			timer_dequeue(stream->t);
 
 			// Multipart will be released automatically
 			stream->multipart = NULL;
@@ -368,6 +369,7 @@ static int proto_mpeg_ts_process_docsis(void *priv, struct packet *p, struct pro
 
 	stream->pkt_cur_len += MPEG_TS_LEN - pos;
 	if (stream->pkt_tot_len && stream->pkt_cur_len >= stream->pkt_tot_len) {
+		timer_dequeue(stream->t);
 		// Process the multipart
 		if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR)
 			return PROTO_ERR;

@@ -637,8 +637,6 @@ int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
 		ce->cleanup_timer = timer_alloc(ce, conntrack_cleanup);
 		if (!ce->cleanup_timer)
 			return POM_ERR;
-	} else {
-		timer_dequeue(ce->cleanup_timer);
 	}
 
 	timer_queue(ce->cleanup_timer, delay);

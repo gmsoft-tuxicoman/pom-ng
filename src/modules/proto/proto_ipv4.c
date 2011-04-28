@@ -313,8 +313,6 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 		if (tmp->next)
 			tmp->next->prev = tmp;
 		s->ce->priv = tmp;
-	} else {
-		timer_dequeue(tmp->t);
 	}
 
 	// Fragment was already handled
