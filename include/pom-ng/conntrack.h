@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,7 +23,6 @@
 #define __POM_NG_CONNTRACK_H__
 
 #include <pom-ng/base.h>
-#include <pom-ng/proto.h>
 
 #define CT_DIR_FWD 0
 #define CT_DIR_REV 1
@@ -32,6 +31,8 @@
 #define CT_CONNTRACK_INFO_BIDIR			0x1
 #define CT_CONNTRACK_INFO_LIST			0x2
 #define CT_CONNTRACK_INFO_LIST_FREE_KEY		0x4
+
+struct proto_process_stack;
 
 struct conntrack_entry {
 
@@ -57,10 +58,18 @@ struct conntrack_list {
 	struct conntrack_list *rev; ///< Reverse connection
 };
 
+struct conntrack_analyzer_list {
+
+	struct analyzer_reg *analyzer;
+	int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index);
+	struct conntrack_analyzer_list *prev, *next;
+};
+
 struct conntrack_info {
 	unsigned int default_table_size;
 	int fwd_pkt_field_id, rev_pkt_field_id;
 	struct conntrack_con_info_reg *con_info;
+	struct conntrack_analyzer_list *analyzers;
 	int (*cleanup_handler) (struct conntrack_entry *ce);
 };
 
@@ -106,6 +115,8 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent);
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
 struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned int id, char *key, int direction);
+int conntrack_con_info_process(struct proto_process_stack *stack, unsigned int stack_index);
 int conntrack_con_info_reset(struct conntrack_entry *ce);
+int conntrack_con_register_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index));
 
 #endif

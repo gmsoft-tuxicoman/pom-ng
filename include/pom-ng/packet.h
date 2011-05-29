@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,10 +22,12 @@
 #ifndef __POM_NG_PACKET_H__
 #define __POM_NG_PACKET_H__
 
-#include <pthread.h>
+#include <pom-ng/base.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
 #define PACKET_FLAG_STREAM_BIDIR	0x2
+
+struct proto_process_stack;
 
 struct packet {
 
@@ -47,6 +49,11 @@ struct packet_info {
 	struct packet_info *pool_next, *pool_prev;
 };
 
+struct packet_info_pool {
+	pthread_mutex_t lock;
+	struct packet_info *used, *unused;
+	unsigned int pool_size, usage;
+};
 
 struct packet_multipart_pkt {
 

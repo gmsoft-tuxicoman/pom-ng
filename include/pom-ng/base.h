@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <errno.h>
+#include <string.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 

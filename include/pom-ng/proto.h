@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include <pom-ng/mod.h>
 #include <pom-ng/ptype.h>
 #include <pom-ng/conntrack.h>
+#include <pom-ng/packet.h>
 #include <pom-ng/registry.h>
 
 // Current proto API version
@@ -40,8 +41,24 @@
 #define PROTO_INVALID	-3
 
 
-// Full decl is private
-struct proto_reg;
+struct proto_reg {
+
+	struct proto_reg_info *info;
+	struct proto_dependency *dep; // Corresponding dependency
+	
+	/// Conntrack tables
+	struct conntrack_tables *ct;
+
+	// Packet info pool
+	struct packet_info_pool pkt_info_pool;
+
+	struct registry_instance *reg_instance;
+
+	void *priv;
+
+	struct proto_reg *next, *prev;
+
+};
 
 struct proto_dependency {
 	char *name;
@@ -61,9 +78,6 @@ struct proto_process_stack {
 	struct conntrack_entry *ce;
 
 };
-
-// Packet needs process_stack
-#include <pom-ng/packet.h>
 
 struct proto_pkt_field {
 	char *name;
