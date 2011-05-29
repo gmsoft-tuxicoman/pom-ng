@@ -23,6 +23,7 @@
 
 #include <pom-ng/conntrack.h>
 #include <pom-ng/packet.h>
+#include <pom-ng/proto_http.h>
 
 #define HTTP_QUERY_HEADER	1 ///< Looking for the query line
 #define HTTP_QUERY		2 ///< This is a query
@@ -38,19 +39,6 @@
 #define HTTP_FLAG_DEFLATE	0x10
 
 #define HTTP_MAX_HEADER_LINE	4096
-
-#define PROTO_HTTP_FIELD_NUM	7
-
-enum proto_http_fields {
-	proto_http_field_host = 0,
-	proto_http_field_first_line,
-	proto_http_field_err_code,
-	proto_http_field_request_proto,
-	proto_http_field_request_method,
-	proto_http_field_url,
-	proto_http_field_headers,
-
-};
 
 
 struct http_info {

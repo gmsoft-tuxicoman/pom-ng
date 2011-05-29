@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,12 +27,6 @@
 #include <pom-ng/packet.h>
 
 #define PACKET_HALF_SEQ (0x1 << 31)
-
-struct packet_info_pool {
-	pthread_mutex_t lock;
-	struct packet_info *used, *unused;
-	unsigned int pool_size, usage;
-};
 
 struct packet *packet_pool_get();
 int packet_pool_release(struct packet *p);

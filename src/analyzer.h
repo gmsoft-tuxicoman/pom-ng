@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,18 +19,12 @@
  */
 
 
-#ifndef __PROTO_H__
-#define __PROTO_H__
+#ifndef __ANALYZER_H__
+#define __ANALYZER_H__
 
-#include <pom-ng/proto.h>
-#include "packet.h"
-#include "conntrack.h"
-#include "registry.h"
+#include <pom-ng/analyzer.h>
 
-#define PROTO_REGISTRY "proto"
 
-int proto_init();
-void proto_dependency_refcount_inc(struct proto_dependency *proto_dep);
-int proto_cleanup();
+int analyzer_cleanup();
 
 #endif

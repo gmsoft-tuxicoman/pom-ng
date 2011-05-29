@@ -1,5 +1,5 @@
 # This file is part of pom-ng.
-# Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+# Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -28,6 +28,6 @@ pom_ng_CFLAGS = @libxml2_CFLAGS@ -DPOM_LIBDIR='"@POM_MOD_LIBDIR@"' -DDATAROOT='"
 pom_ng_LDFLAGS = @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@
 pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@
 
-libpom_ng_la_SOURCES = common.c common.h core.c core.h ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h timer.c timer.h registry.c registry.h
+libpom_ng_la_SOURCES = analyzer.c analyzer.h common.c common.h core.c core.h ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h output.c output.h timer.c timer.h registry.c registry.h
 
 lib_LTLIBRARIES = libpom-ng.la

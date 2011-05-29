@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,6 +44,12 @@ int proto_init() {
 }
 
 int proto_register(struct proto_reg_info *reg_info) {
+
+	if (reg_info->api_ver != PROTO_API_VER) {
+		pomlog(POMLOG_ERR "Cannot register proto as API version differ : expected %u got %u", PROTO_API_VER, reg_info->api_ver);
+		return POM_ERR;
+	}
+
 
 	if (input_server_is_current_process()) {
 		pomlog(POMLOG_DEBUG "Not loading protocol %s in the input process", reg_info->name);

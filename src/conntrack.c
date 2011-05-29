@@ -437,7 +437,8 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		goto err;
 
 	// Alloc the forward list
-	struct conntrack_list *lst_fwd = malloc(sizeof(struct conntrack_list));
+	struct conntrack_list *lst_fwd = NULL;
+	lst_fwd = malloc(sizeof(struct conntrack_list));
 	if (!lst_fwd) {
 		ptype_cleanup(res->fwd_value);
 		pom_oom(sizeof(struct conntrack_list));
@@ -590,6 +591,20 @@ struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned in
 	ce->con_info[id].lst[direction] = res;
 
 	return res->value;
+}
+
+int conntrack_con_info_process(struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct conntrack_analyzer_list *lst = stack[stack_index].ce->proto->info->ct_info.analyzers;
+	while (lst) {
+		if (lst->process(lst->analyzer, stack, stack_index) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while processing conntrack_info");
+			return POM_ERR;
+		}
+		lst = lst->next;
+	}
+	
+	return POM_OK;
 }
 
 int conntrack_con_info_reset(struct conntrack_entry *ce) {
@@ -797,6 +812,30 @@ int conntrack_cleanup(void *conntrack) {
 	}
 
 	free(ce);
+
+	return POM_OK;
+}
+
+int conntrack_con_register_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index)) {
+
+	if (!proto || !analyzer || !process)
+		return POM_ERR;
+
+	struct conntrack_analyzer_list *lst = malloc(sizeof(struct conntrack_analyzer_list));
+	if (!lst) {
+		pom_oom(sizeof(struct conntrack_analyzer_list));
+		return POM_ERR;
+	}
+	memset(lst, 0, sizeof(struct conntrack_analyzer_list));
+
+	lst->analyzer = analyzer;
+	lst->process = process;
+
+	// FIXME lock !
+	lst->next = proto->info->ct_info.analyzers;
+	if (lst->next)
+		lst->next->prev = lst;
+	proto->info->ct_info.analyzers = lst;
 
 	return POM_OK;
 }

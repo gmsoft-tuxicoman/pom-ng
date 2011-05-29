@@ -1,5 +1,5 @@
 # This file is part of pom-ng.
-# Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+# Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,20 +17,29 @@
 
 include $(top_srcdir)/Makefile.common
 
+ANALYZER_SRC = analyzer_http.la
 INPUT_SRC = @INPUT_OBJS@
+OUTPUT_SRC = output_log.la
 PROTO_SRC = proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la
 
-lib_LTLIBRARIES = $(INPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
+lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la
+
+analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h
+analyzer_http_la_LDFLAGS = -module -avoid-version
+analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
 input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
 input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
-
 input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
 input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+
+output_log_la_SOURCES = output/output_log.c output/output_log.h
+output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 proto_docsis_la_SOURCES = proto/proto_docsis.c proto/proto_docsis.h
 proto_docsis_la_LDFLAGS = -module -avoid-version

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,19 +18,29 @@
  *
  */
 
+#ifndef __ANALYZER_HTTP_H__
+#define __ANALYZER_HTTP_H__
 
-#ifndef __PROTO_H__
-#define __PROTO_H__
-
+#include <pom-ng/conntrack.h>
+#include <pom-ng/packet.h>
 #include <pom-ng/proto.h>
-#include "packet.h"
-#include "conntrack.h"
-#include "registry.h"
+#include <pom-ng/analyzer.h>
+#include <pom-ng/analyzer_http.h>
 
-#define PROTO_REGISTRY "proto"
+struct analyzer_http_priv {
+	struct analyzer_data_source *source;
+};
 
-int proto_init();
-void proto_dependency_refcount_inc(struct proto_dependency *proto_dep);
-int proto_cleanup();
+struct mod_reg_info* analyzer_http_reg_info();
+static int analyzer_http_mod_register(struct mod_reg *mod);
+static int analyzer_http_mod_unregister();
+
+static int analyzer_http_init(struct analyzer_reg *analyzer);
+static int analyzer_http_cleanup(struct analyzer_reg *analyzer);
+
+
+static int analyzer_http_conntrack_process(struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index);
+
 
 #endif
+

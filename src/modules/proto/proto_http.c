@@ -76,6 +76,9 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 	fields[proto_http_field_headers].value_template = ptype_string;
 	fields[proto_http_field_headers].flags = CT_CONNTRACK_INFO_BIDIR | CT_CONNTRACK_INFO_LIST | CT_CONNTRACK_INFO_LIST_FREE_KEY;
 	fields[proto_http_field_headers].description = "HTTP headers";
+	fields[proto_http_field_request_dir].name = "request_dir";
+	fields[proto_http_field_request_dir].value_template = ptype_uint16;
+	fields[proto_http_field_request_dir].description = "Request direction, indicates the drection of the server";
 	
 
 
@@ -161,7 +164,9 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 					priv->state = HTTP_INVALID;
 					return PROTO_INVALID;
 				}
-				
+
+				PTYPE_UINT16_SETVAL(s->ce->con_info[proto_http_field_request_dir].val[0].value, s->direction);
+				s->ce->con_info[proto_http_field_request_dir].val[0].set = 1;
 				break;
 			}
 
@@ -185,6 +190,8 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 					
 					priv->state++; // Switch to corresponding BODY state
 					printf("Done parsing query headers\n");
+					if (conntrack_con_info_process(stack, stack_index) != POM_OK)
+						return PROTO_ERR;
 					continue;
 				}
 

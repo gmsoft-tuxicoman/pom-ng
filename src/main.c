@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,6 +39,8 @@
 #include "proto.h"
 #include "packet.h"
 #include "timer.h"
+#include "analyzer.h"
+#include "output.h"
 
 #include <pom-ng/ptype.h>
 
@@ -243,6 +245,12 @@ int main(int argc, char *argv[]) {
 		goto err_registry;
 	}
 
+	if (output_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the outputs");
+		res = -1;
+		goto err_registry;
+	}
+
 	// Load all the available modules
 	if (mod_load_all() != POM_OK) { 
 		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
@@ -295,6 +303,8 @@ int main(int argc, char *argv[]) {
 
 	// Cleanup components
 
+	output_cleanup();
+	analyzer_cleanup();
 	proto_cleanup(); // Cleanup proto while input is still attached
 	packet_pool_cleanup();
 	input_client_cleanup(shutdown_in_error);
