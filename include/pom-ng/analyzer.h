@@ -103,7 +103,8 @@ struct analyzer_data_list {
 int analyzer_register(struct analyzer_reg_info *reg_info);
 int analyzer_unregister(char *name);
 struct analyzer_data_source *analyzer_register_data_conntrack_source(struct analyzer_reg *analyzer, char *name, struct analyzer_data_reg *datas, char *proto, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index));
-int analyzer_data_source_register_output(char *source, struct output *o);
+int analyzer_data_source_register_output(struct analyzer_data_source *src, struct output *o);
+int analyzer_data_source_unregister_output(struct analyzer_data_source *src, struct output *o);
 struct analyzer_data_source *analyzer_data_source_get(char *source);
 int analyzer_data_source_process(struct analyzer_data_source *src, struct analyzer_data *data);
 

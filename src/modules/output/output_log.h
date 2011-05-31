@@ -32,10 +32,12 @@ struct output_log_parsed_field {
 
 struct output_log_txt_priv {
 	int fd;
-	struct ptype *filename;
-	struct ptype *source;
-	struct ptype *format;
+	struct ptype *p_filename;
+	struct ptype *p_source;
+	struct ptype *p_format;
 	struct output_log_parsed_field *parsed_fields;
+
+	struct analyzer_data_source *src;
 	unsigned int field_count;
 };
 

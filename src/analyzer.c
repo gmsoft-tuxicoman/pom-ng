@@ -98,6 +98,8 @@ int analyzer_unregister(char *name) {
 	if (tmp->next)
 		tmp->next->prev = tmp->prev;
 
+	mod_refcount_dec(tmp->info->mod);
+	
 	free(tmp);
 
 	pom_mutex_unlock(&analyzer_lock);
@@ -109,6 +111,20 @@ int analyzer_cleanup() {
 	
 	pom_mutex_lock(&analyzer_lock);
 
+	while (analyzer_source_head)  {
+		struct analyzer_data_source *tmp = analyzer_source_head;
+		analyzer_source_head = tmp->next;
+		if (tmp->outs) {
+			pomlog(POMLOG_WARN "Warning, some output are still attached to this analyzer");
+			conntrack_con_unregister_analyzer(tmp->proto->proto, tmp->analyzer);
+		}
+
+		proto_remove_dependency(tmp->proto);
+		free(tmp->name);
+		free(tmp);
+
+	}
+
 	while (analyzer_head) {
 
 		struct analyzer_reg *tmp = analyzer_head;
@@ -119,16 +135,9 @@ int analyzer_cleanup() {
 				pomlog(POMLOG_WARN "Error while cleaning up analyzer %s", tmp->info->name);
 		}
 
-		free(tmp);
-	}
+		mod_refcount_dec(tmp->info->mod);
 
-	while (analyzer_source_head)  {
-		struct analyzer_data_source *tmp = analyzer_source_head;
-		analyzer_source_head = tmp->next;
-		proto_remove_dependency(tmp->proto);
-		free(tmp->name);
 		free(tmp);
-
 	}
 
 	pom_mutex_unlock(&analyzer_lock);
@@ -179,21 +188,12 @@ struct analyzer_data_source *analyzer_data_source_get(char *source) {
 
 }
 
-int analyzer_data_source_register_output(char *source, struct output *o) {
+int analyzer_data_source_register_output(struct analyzer_data_source *src, struct output *o) {
 
-
-	struct analyzer_data_source *tmp = analyzer_source_head;
-	for ( ;tmp && strcmp(tmp->name, source); tmp = tmp->next);
-
-	if (!tmp) {
-		pomlog(POMLOG_ERR "Cannot register output to source %s. This source doesn't exists.", source);
-		return POM_ERR;
-	}
-
-	if (!tmp->outs) {
+	if (!src->outs) {
 		// No output yet, we need to register the data source to the conntrack_con_info
-		if (conntrack_con_register_analyzer(tmp->proto->proto, tmp->analyzer, tmp->process) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while registering analyzer data source %s to conntrack connection info %s", source, tmp->proto->name);
+		if (conntrack_con_register_analyzer(src->proto->proto, src->analyzer, src->process) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while registering analyzer data source %s to conntrack connection info %s", src->name, src->proto->name);
 			return POM_ERR;
 		}
 
@@ -207,10 +207,39 @@ int analyzer_data_source_register_output(char *source, struct output *o) {
 	memset(output_list, 0, sizeof(struct analyzer_output_list));
 
 	output_list->o = o;
-	output_list->next = tmp->outs;
+	output_list->next = src->outs;
 	if (output_list->next)
 		output_list->next->prev = output_list;
-	tmp->outs = output_list;
+	src->outs = output_list;
+
+	return POM_OK;
+}
+
+int analyzer_data_source_unregister_output(struct analyzer_data_source *src, struct output *o) {
+
+	struct analyzer_output_list *tmp = src->outs;
+
+	for (; tmp && tmp->o != o; tmp = tmp->next);
+
+	if (!tmp) {
+		pomlog(POMLOG_ERR "Output %s is not registered to data source %s", o->name, src->name);
+		return POM_ERR;
+	}
+
+	if (tmp->next)
+		tmp->next->prev = tmp->prev;
+	if (tmp->prev)
+		tmp->prev->next = tmp->next;
+	else
+		src->outs = tmp->next;
+	
+	free(tmp);
+
+	if (!src->outs) {
+		// No output registered to this analyzer, unregister from the conntrack then
+		if (conntrack_con_unregister_analyzer(src->proto->proto, src->analyzer) != POM_OK)
+			return POM_ERR;
+	}
 
 	return POM_OK;
 }

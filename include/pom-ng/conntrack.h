@@ -118,5 +118,6 @@ struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned in
 int conntrack_con_info_process(struct proto_process_stack *stack, unsigned int stack_index);
 int conntrack_con_info_reset(struct conntrack_entry *ce);
 int conntrack_con_register_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index));
+int conntrack_con_unregister_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer);
 
 #endif

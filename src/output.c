@@ -44,10 +44,27 @@ int output_cleanup() {
 	
 	pom_mutex_lock(&output_lock);
 
+	while (output_head) {
+		struct output *o = output_head;
+		output_head = output_head->next;
+		if (o->running && o->info->reg_info->close && o->info->reg_info->close(o) != POM_OK)
+			pomlog(POMLOG_WARN "Error while closing the output");
+
+		o->running = 0;
+
+		if (o->info->reg_info->cleanup && o->info->reg_info->cleanup(o) != POM_OK)
+			pomlog(POMLOG_WARN "Error while cleaning up output");
+
+		free(o->name);
+		free(o);
+	}
+
 	while (output_reg_head) {
 
 		struct output_reg *tmp = output_reg_head;
 		output_reg_head = tmp->next;
+
+		mod_refcount_dec(tmp->reg_info->mod);
 
 		free(tmp);
 	}
@@ -153,6 +170,10 @@ int output_instance_add(char *info, char *name) {
 int output_instance_remove(struct registry_instance *ri) {
 
 	struct output *o = ri->priv;
+
+	if (o->running && output_instance_stop(ri))
+		return POM_ERR;
+
 	if (o->info->reg_info->cleanup) {
 		if (o->info->reg_info->cleanup(o) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while cleaning up output");
@@ -233,6 +254,8 @@ int output_unregister(char *name) {
 
 	if (tmp->next)
 		tmp->next->prev = tmp->prev;
+
+	mod_refcount_dec(tmp->reg_info->mod);
 
 	free(tmp);
 

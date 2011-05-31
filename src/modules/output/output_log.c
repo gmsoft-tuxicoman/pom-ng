@@ -73,22 +73,21 @@ static int output_log_txt_init(struct output *o) {
 	memset(priv, 0, sizeof(struct output_log_txt_priv));
 	priv->fd = -1;
 
-	priv->filename = ptype_alloc("string");
-	priv->source = ptype_alloc("string");
-	priv->format = ptype_alloc("string");
-	if (!priv->filename || !priv->source || !priv->format) {
+	priv->p_filename = ptype_alloc("string");
+	priv->p_source = ptype_alloc("string");
+	priv->p_format = ptype_alloc("string");
+	if (!priv->p_filename || !priv->p_source || !priv->p_format)
 		goto err;
-	}
 
-	struct registry_param *p = registry_new_param("filename", "log.txt", priv->filename, "Filename where to write the logs", 0);
+	struct registry_param *p = registry_new_param("filename", "log.txt", priv->p_filename, "Filename where to write the logs", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 	
-	p = registry_new_param("source", "http", priv->source, "Define the type of event being logged", 0);
+	p = registry_new_param("source", "http", priv->p_source, "Define the type of event being logged", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("format", "", priv->format, "Format of each log line", 0);
+	p = registry_new_param("format", "mouh", priv->p_format, "Format of each log line", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 
@@ -107,8 +106,12 @@ static int output_log_txt_cleanup(struct output *o) {
 	if (priv) {
 		if (priv->fd != -1)
 			close(priv->fd);
-		if (priv->filename)
-			ptype_cleanup(priv->filename);
+		if (priv->p_filename)
+			ptype_cleanup(priv->p_filename);
+		if (priv->p_source)
+			ptype_cleanup(priv->p_source);
+		if (priv->p_format)
+			ptype_cleanup(priv->p_format);
 		free(priv);
 	}
 
@@ -118,34 +121,34 @@ static int output_log_txt_cleanup(struct output *o) {
 static int output_log_txt_open(struct output *o) {
 
 	struct output_log_txt_priv *priv = o->priv;
+	struct output_log_parsed_field *fields = NULL;
 
 	if (priv->fd != -1) {
 		pomlog(POMLOG_ERR "Output already started");
 		return POM_ERR;
 	}
 
-	char *src_name; PTYPE_STRING_GETVAL(priv->source, src_name);
+	char *src_name; PTYPE_STRING_GETVAL(priv->p_source, src_name);
 	if (!strlen(src_name)) {
 		pomlog(POMLOG_ERR "You need to specify a source for this output");
 		return POM_ERR;
 	}
 
-	struct analyzer_data_source *source = analyzer_data_source_get(src_name);
+	priv->src = analyzer_data_source_get(src_name);
 
-	// Register to the source
-	if (analyzer_data_source_register_output(src_name, o) != POM_OK) {
+	if (!priv->src) {
+		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
 		return POM_ERR;
 	}
 
 	// Parse the format
-	char *format; PTYPE_STRING_GETVAL(priv->format, format);
+	char *format; PTYPE_STRING_GETVAL(priv->p_format, format);
 
 	if (!strlen(format)) {
 		pomlog(POMLOG_ERR "You must specify the format of the logs");
-		return POM_ERR;
+		goto err;
 	}
 
-	struct output_log_parsed_field *fields = NULL;
 	unsigned int field_count = 0;
 	char *sep = NULL, *cur = format;
 	while ((sep = strchr(cur, '$'))) {
@@ -159,7 +162,7 @@ static int output_log_txt_open(struct output *o) {
 		memset(name, 0, sizeof(name));
 		strncpy(name, sep, end_off - start_off - 1);
 		
-		struct analyzer_data_reg *dreg = source->data_reg;
+		struct analyzer_data_reg *dreg = priv->src->data_reg;
 		int i;
 		for (i = 0; dreg[i].name && strcmp(dreg[i].name, name); i++);
 
@@ -174,7 +177,7 @@ static int output_log_txt_open(struct output *o) {
 		fields = realloc(fields, sizeof(struct output_log_parsed_field) * (field_count + 1));
 		if (!fields) {
 			pom_oom(sizeof(struct output_log_parsed_field *) * (field_count + 1));
-			return POM_ERR;
+			goto err;
 		}
 		memset(&fields[field_count - 1], 0, sizeof(struct output_log_parsed_field) * 2);
 		struct output_log_parsed_field *field = &fields[field_count - 1];
@@ -186,27 +189,45 @@ static int output_log_txt_open(struct output *o) {
 
 	if (!fields) {
 		pomlog(POMLOG_ERR "No field found in format string : \"%s\"", format);
-		return POM_ERR;
+		goto err;
 	}
 
 	priv->field_count = field_count;
 	priv->parsed_fields = fields;
 
 
-	char *filename; PTYPE_STRING_GETVAL(priv->filename, filename);
+	char *filename; PTYPE_STRING_GETVAL(priv->p_filename, filename);
 	if (!strlen(filename)) {
 		pomlog(POMLOG_ERR "You must specify a filename where to log the output");
-		return POM_ERR;
+		goto err;
 	}
-
 
 	priv->fd = open(filename, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP);
 	if (priv->fd == -1) {
 		pomlog(POMLOG_ERR "Error while opening log file \"%s\" : %s", filename, pom_strerror(errno));
-		return POM_ERR;
+		goto err;
 	}
 
+	// Register to the source
+	if (analyzer_data_source_register_output(priv->src, o) != POM_OK)
+		goto err;
+
 	return POM_OK;
+
+err:
+	if (fields)
+		free(fields);
+
+	if (priv->fd != -1) {
+		close(priv->fd);
+		priv->fd = -1;
+	}
+
+	priv->field_count = 0;
+	priv->parsed_fields = NULL;
+	priv->src = NULL;
+
+	return POM_ERR;
 }
 
 static int output_log_txt_close(struct output *o) {
@@ -217,6 +238,13 @@ static int output_log_txt_close(struct output *o) {
 		pomlog(POMLOG_ERR "Output already stopped");
 		return POM_ERR;
 	}
+
+	if (priv->parsed_fields) {
+		free(priv->parsed_fields);
+		priv->field_count = 0;
+	}
+
+	analyzer_data_source_unregister_output(priv->src, o);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));

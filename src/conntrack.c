@@ -839,3 +839,31 @@ int conntrack_con_register_analyzer(struct proto_reg *proto, struct analyzer_reg
 
 	return POM_OK;
 }
+
+int conntrack_con_unregister_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer) {
+
+	if (!proto || !analyzer)
+		return POM_ERR;
+
+	struct conntrack_analyzer_list *lst = proto->info->ct_info.analyzers;
+
+	for (; lst && lst->analyzer != analyzer; lst = lst->next);
+
+	if (!lst) {
+		pomlog(POMLOG_ERR "Analyzer not registererd to the given protocol");
+		return POM_ERR;
+	}
+
+	if (lst->next)
+		lst->next->prev = lst->prev;
+	
+	if (lst->prev)
+		lst->prev->next = lst->next;
+	else
+		proto->info->ct_info.analyzers = lst->next;
+
+	free(lst);
+
+	return POM_OK;
+
+}
