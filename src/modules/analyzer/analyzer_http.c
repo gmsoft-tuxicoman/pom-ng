@@ -123,10 +123,8 @@ static int analyzer_http_conntrack_process(struct analyzer_reg *analyzer, struct
 	if (!con_info[proto_http_field_request_dir].val[0].set)
 		return POM_ERR; // shouldn't happen but we need to know the direction
 
-	uint16_t *dir;
-	PTYPE_UINT16_GETVAL(con_info[proto_http_field_request_dir].val[0].value, dir);
+	uint16_t *dir = PTYPE_UINT16_GETVAL(con_info[proto_http_field_request_dir].val[0].value);
 
-	
 	// analyzer_http_data_server_name
 	if (con_info[proto_http_field_host].val[0].set)
 		data[analyzer_http_data_server_name].value = con_info[proto_http_field_host].val[0].value;

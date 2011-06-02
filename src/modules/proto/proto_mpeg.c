@@ -210,7 +210,7 @@ static int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *s
 	}
 
 	if (!stream->stream) {
-		char *force_no_copy; PTYPE_BOOL_GETVAL(param_force_no_copy, force_no_copy);
+		char *force_no_copy = PTYPE_BOOL_GETVAL(param_force_no_copy);
 		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_docsis, stream);
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
@@ -312,7 +312,7 @@ static int proto_mpeg_ts_process_docsis(void *priv, struct packet *p, struct pro
 					return PROTO_STOP;
 			}
 		
-			char *force_no_copy; PTYPE_BOOL_GETVAL(param_force_no_copy, force_no_copy);
+			char *force_no_copy = PTYPE_BOOL_GETVAL(param_force_no_copy);
 			if (pos > (MPEG_TS_LEN - 1) - offsetof(struct docsis_hdr, hcs)) {
 				// Cannot fetch the complete packet size, will do later
 				stream->multipart = packet_multipart_alloc(proto_docsis, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
@@ -380,7 +380,7 @@ static int proto_mpeg_ts_process_docsis(void *priv, struct packet *p, struct pro
 	}
 
 	if (stream->multipart) {
-		uint16_t *stream_timeout; PTYPE_UINT16_GETVAL(param_mpeg_ts_stream_timeout, stream_timeout);
+		uint16_t *stream_timeout = PTYPE_UINT16_GETVAL(param_mpeg_ts_stream_timeout);
 		timer_queue(stream->t, *stream_timeout);
 	}
 

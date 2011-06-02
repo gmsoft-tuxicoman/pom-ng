@@ -128,7 +128,7 @@ static int output_log_txt_open(struct output *o) {
 		return POM_ERR;
 	}
 
-	char *src_name; PTYPE_STRING_GETVAL(priv->p_source, src_name);
+	char *src_name = PTYPE_STRING_GETVAL(priv->p_source);
 	if (!strlen(src_name)) {
 		pomlog(POMLOG_ERR "You need to specify a source for this output");
 		return POM_ERR;
@@ -142,7 +142,7 @@ static int output_log_txt_open(struct output *o) {
 	}
 
 	// Parse the format
-	char *format; PTYPE_STRING_GETVAL(priv->p_format, format);
+	char *format = PTYPE_STRING_GETVAL(priv->p_format);
 
 	if (!strlen(format)) {
 		pomlog(POMLOG_ERR "You must specify the format of the logs");
@@ -196,7 +196,7 @@ static int output_log_txt_open(struct output *o) {
 	priv->parsed_fields = fields;
 
 
-	char *filename; PTYPE_STRING_GETVAL(priv->p_filename, filename);
+	char *filename = PTYPE_STRING_GETVAL(priv->p_filename);
 	if (!strlen(filename)) {
 		pomlog(POMLOG_ERR "You must specify a filename where to log the output");
 		goto err;

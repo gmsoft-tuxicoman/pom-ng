@@ -217,7 +217,7 @@ static int input_dvb_file_open(struct input *i) {
 
 	struct input_dvb_priv *priv = i->priv;
 
-	char *filename; PTYPE_STRING_GETVAL(priv->tpriv.file.filename, filename);
+	char *filename = PTYPE_STRING_GETVAL(priv->tpriv.file.filename);
 	priv->dvr_fd = open(filename, O_RDONLY);
 	if (priv->dvr_fd == -1) {
 		pomlog(POMLOG_ERR "Unable to open file %s : %s", filename, pom_strerror(errno));
@@ -313,7 +313,7 @@ static int input_dvb_open(struct input *i) {
 	}
 
 	fe_modulation_t modulation;
-	char *mod_str; PTYPE_STRING_GETVAL(priv->tpriv.c.modulation, mod_str);
+	char *mod_str = PTYPE_STRING_GETVAL(priv->tpriv.c.modulation);
 	if (!strcmp(mod_str, "QAM64"))
 		modulation = QAM_64;
 	else if (!strcmp(mod_str, "QAM256"))
@@ -323,8 +323,8 @@ static int input_dvb_open(struct input *i) {
 		goto err;
 	}
 
-	uint32_t *frequency; PTYPE_UINT32_GETVAL(priv->freq, frequency);
-	uint32_t *symbol_rate; PTYPE_UINT32_GETVAL(priv->symbol_rate, symbol_rate);
+	uint32_t *frequency = PTYPE_UINT32_GETVAL(priv->freq);
+	uint32_t *symbol_rate = PTYPE_UINT32_GETVAL(priv->symbol_rate);
 	int res = input_dvb_tune(priv, *frequency, *symbol_rate, modulation);
 	if (res != 1) 
 		goto err;
@@ -389,7 +389,7 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 
 	struct timeval now;
 	gettimeofday(&now, NULL);
-	uint16_t *tuning_timeout; PTYPE_UINT16_GETVAL(p->tuning_timeout, tuning_timeout);
+	uint16_t *tuning_timeout = PTYPE_UINT16_GETVAL(p->tuning_timeout);
 	time_t timeout = now.tv_sec + *tuning_timeout;
 
 	while (now.tv_sec < timeout) {
@@ -478,7 +478,7 @@ static int input_dvb_read(struct input *i) {
 		}
 		len += r;
 
-		char *filter_null_pid; PTYPE_BOOL_GETVAL(p->filter_null_pid, filter_null_pid);
+		char *filter_null_pid = PTYPE_BOOL_GETVAL(p->filter_null_pid);
 		if (*filter_null_pid) {
 			uint16_t pid = ((pkt_data[1] & 0x1F) << 8) | pkt_data[2];
 			if (len > 3 && pid == 0x1FFF) // 0x1FFF is the NULL PID

@@ -331,7 +331,7 @@ static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stac
 	}
 
 	// Schedule the timeout for the fragment
-	uint32_t *frag_timeout; PTYPE_UINT32_GETVAL(param_frag_timeout, frag_timeout);
+	uint32_t *frag_timeout = PTYPE_UINT32_GETVAL(param_frag_timeout);
 	timer_queue(tmp->t, *frag_timeout);
 
 

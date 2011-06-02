@@ -119,8 +119,8 @@ static int input_pcap_interface_open(struct input *i) {
 	char errbuf[PCAP_ERRBUF_SIZE + 1];
 	memset(errbuf, 0, PCAP_ERRBUF_SIZE + 1);
 
-	char *interface; PTYPE_STRING_GETVAL(p->tpriv.iface.interface, interface);
-	char *promisc; PTYPE_BOOL_GETVAL(p->tpriv.iface.promisc, promisc);
+	char *interface = PTYPE_STRING_GETVAL(p->tpriv.iface.interface);
+	char *promisc = PTYPE_BOOL_GETVAL(p->tpriv.iface.promisc);
 
 	p->p = pcap_open_live(interface, INPUT_PCAP_SNAPLEN_MAX, *promisc, 0,errbuf);
 	if (!p->p) {
@@ -166,7 +166,7 @@ static int input_pcap_file_open(struct input *i) {
 	char errbuf[PCAP_ERRBUF_SIZE + 1];
 	memset(errbuf, 0, PCAP_ERRBUF_SIZE + 1);
 
-	char *filename; PTYPE_STRING_GETVAL(p->tpriv.file.file, filename);
+	char *filename = PTYPE_STRING_GETVAL(p->tpriv.file.file);
 	p->p = pcap_open_offline(filename, errbuf);
 	if (!p->p) {
 		pomlog(POMLOG_ERR "Error opening file %s for reading : %s", filename, errbuf);

@@ -280,43 +280,43 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 		// Set the correct state to the conntrack
 		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_SYN_RECV;
-			PTYPE_UINT16_GETVAL(param_tcp_syn_recv_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_recv_t);
 		} else if (hdr->th_flags & TH_SYN) {
 			priv->state = STATE_TCP_SYN_SENT;
-			PTYPE_UINT16_GETVAL(param_tcp_syn_sent_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_sent_t);
 		} else if (hdr->th_flags & TH_RST || hdr->th_flags & TH_FIN) {
 			priv->state = STATE_TCP_LAST_ACK;
-			PTYPE_UINT16_GETVAL(param_tcp_close_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_close_t);
 		} else {
 			priv->state = STATE_TCP_ESTABLISHED;
-			PTYPE_UINT16_GETVAL(param_tcp_established_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_established_t);
 		}
 	} else {
 
 		// Update conntrack timer
 		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_SYN_RECV;
-			PTYPE_UINT16_GETVAL(param_tcp_syn_recv_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_recv_t);
 		} else if (hdr->th_flags & TH_SYN) {
 			priv->state = STATE_TCP_SYN_SENT;
-			PTYPE_UINT16_GETVAL(param_tcp_syn_sent_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_sent_t);
 		} else if (hdr->th_flags & TH_RST || hdr->th_flags & TH_FIN) {
 			if (hdr->th_flags & TH_ACK) {
 				priv->state = STATE_TCP_TIME_WAIT;
-				PTYPE_UINT16_GETVAL(param_tcp_time_wait_t, delay);
+				delay = PTYPE_UINT16_GETVAL(param_tcp_time_wait_t);
 			} else {
 				priv->state = STATE_TCP_LAST_ACK;
-				PTYPE_UINT16_GETVAL(param_tcp_last_ack_t, delay);
+				delay = PTYPE_UINT16_GETVAL(param_tcp_last_ack_t);
 			}
 		} else if (priv->state == STATE_TCP_LAST_ACK && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_TIME_WAIT;
-			PTYPE_UINT16_GETVAL(param_tcp_time_wait_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_time_wait_t);
 		} else if (priv->state == STATE_TCP_TIME_WAIT) {
 			pom_mutex_unlock(&s->ce->lock);
 			return POM_OK;
 		} else {
 			priv->state = STATE_TCP_ESTABLISHED;
-			PTYPE_UINT16_GETVAL(param_tcp_established_t, delay);
+			delay = PTYPE_UINT16_GETVAL(param_tcp_established_t);
 		}
 	}
 

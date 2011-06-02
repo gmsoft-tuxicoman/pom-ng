@@ -131,12 +131,6 @@ struct ptype* ptype_alloc_from(struct ptype *pt) {
 	ret->type = pt->type;
 
 	ret->flags = pt->flags;
-	if (ret->flags & PTYPE_FLAG_HASLOCK)
-		if (pthread_mutex_init(&ret->lock, NULL)) {
-			free(ret);
-			pomlog(POMLOG_ERR "Error while initializing ptype lock");
-			goto err;
-		}
 
 	if (pt->type->info->alloc) {
 		if (pt->type->info->alloc(ret) != POM_OK) {
@@ -169,9 +163,6 @@ struct ptype* ptype_alloc_from(struct ptype *pt) {
 
 err:
 
-	if (ret->flags & PTYPE_FLAG_HASLOCK)
-		pthread_mutex_destroy(&ret->lock);
-
 	if (ret->type->info->cleanup)
 		ret->type->info->cleanup(ret);
 	
@@ -186,52 +177,33 @@ err:
 
 int ptype_parse_val(struct ptype *pt, char *val) {
 
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&pt->lock);
-
 	int res = POM_ERR;
 	if (pt->type->info->parse_val)
 		res = pt->type->info->parse_val(pt, val);
-
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&pt->lock);
 	
 	return res;
 }
 
 int ptype_print_val(struct ptype *pt, char *val, size_t size) {
 	
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&pt->lock);
-	int res = pt->type->info->print_val(pt, val, size);
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&pt->lock);
-	
-	return res;
+	return pt->type->info->print_val(pt, val, size);
 }
 
 char *ptype_print_val_alloc(struct ptype *pt) {
 
 	char *res = NULL;
 
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&pt->lock);
 	int size, new_size = DEFAULT_PRINT_VAL_ALLOC_BUFF;
 	do {
 		size = new_size;
 		res = realloc(res, size + 1);
 		if (!res) {
-			if (pt->flags & PTYPE_FLAG_HASLOCK)
-				pom_mutex_unlock(&pt->lock);
 			pom_oom(size + 1);
 			return NULL;
 		}
 		new_size = ptype_print_val(pt, res, size);
 		new_size = (new_size < 1) ? new_size * 2 : new_size + 1;
 	} while (new_size > size);
-
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&pt->lock);
 
 	return res;
 }
@@ -300,11 +272,6 @@ char *ptype_get_op_name(int op) {
 
 int ptype_compare_val(int op, struct ptype *a, struct ptype *b) {
 
-	if (a->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&a->lock);
-	if (b->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&b->lock);
-
 	int res = 0;
 
 	if (a->type != b->type) {
@@ -323,32 +290,18 @@ int ptype_compare_val(int op, struct ptype *a, struct ptype *b) {
 		res = (a->type->info->compare_val(op, a->value, b->value));
 
 err:
-	if (a->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&a->lock);
-	if (b->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&b->lock);
 
 	return res;
 }
 
 int ptype_serialize(struct ptype *pt, char *val, size_t size) {
 
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&pt->lock);
-	int res = pt->type->info->serialize(pt, val, size);
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&pt->lock);
-	return res;
+	return pt->type->info->serialize(pt, val, size);
 }
 
 int ptype_unserialize(struct ptype *pt, char *val) {
 
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&pt->lock);
-	int res = pt->type->info->unserialize(pt, val);
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&pt->lock);
-	return res;
+	return pt->type->info->unserialize(pt, val);
 }
 
 
@@ -359,20 +312,7 @@ int ptype_copy(struct ptype *dst, struct ptype *src) {
 		return POM_ERR;
 	}
 
-	if (src->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&src->lock);
-	if (dst->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&dst->lock);
-
-	int res = 0;
-	res = src->type->info->copy(dst, src);
-
-	if (src->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&src->lock);
-	if (dst->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&dst->lock);
-	
-	return res;
+	return  src->type->info->copy(dst, src);
 }
 
 int ptype_cleanup(struct ptype* pt) {
@@ -385,9 +325,6 @@ int ptype_cleanup(struct ptype* pt) {
 
 	if (pt->unit)
 		free(pt->unit);
-	
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pthread_mutex_destroy(&pt->lock);
 	
 	ptype_reg_lock(1);
 	pt->type->refcount--;
@@ -480,24 +417,6 @@ size_t ptype_get_value_size(struct ptype *pt) {
 
 	if (!pt->type->info->value_size)
 		return -1;
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_lock(&pt->lock);
-	int res = pt->type->info->value_size(pt);
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		pom_mutex_unlock(&pt->lock);
-
-	return res;
+	return pt->type->info->value_size(pt);
 }
 
-int ptype_make_atomic(struct ptype *pt) {
-
-	if (pt->flags & PTYPE_FLAG_HASLOCK)
-		return POM_OK;
-
-	if (pthread_mutex_init(&pt->lock, NULL))
-		return POM_ERR;
-
-	pt->flags |= PTYPE_FLAG_HASLOCK;
-
-	return POM_OK;
-}
