@@ -18,32 +18,22 @@
  *
  */
 
-#ifndef __POM_NG_PTYPE_IPV4_H__
-#define __POM_NG_PTYPE_IPV4_H__
+#ifndef __POM_NG_PTYPE_TIMESTAMP_H__
+#define __POM_NG_PTYPE_TIMESTAMP_H__
 
 #include <pom-ng/ptype.h>
 
-
-#define __USE_BSD 1 // We use BSD favor of the ip header
-#include <netinet/in_systm.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-
-
-struct ptype_ipv4_val {
-	struct in_addr addr;
-	unsigned char mask;
-};
+#include <sys/time.h>
 
 
 /// x is the struct ptype,
-#define PTYPE_IPV4_GETADDR(x) \
-	((struct ptype_ipv4_val*) x)->addr
+#define PTYPE_TIMESTAMP_GETVAL(x) \
+	((struct timeval*) x)->addr
 
 /// x is the struct ptype, y the value
-#define PTYPE_IPV4_SETADDR(x, y) {			\
-	struct ptype_ipv4_val *v = (x)->value;		\
-	memcpy(&v->addr, &y, sizeof(struct in_addr));	\
+#define PTYPE_TIMESTAMP_SETVAL(x, y) {		\
+	struct timeval *v = (x)->value;		\
+	memcpy(v, &y, sizeof(struct timeval));	\
 }
 
 #endif

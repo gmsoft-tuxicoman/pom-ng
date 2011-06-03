@@ -60,6 +60,6 @@ static int proto_http_conntrack_reset(struct conntrack_entry *ce);
 static int proto_http_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_http_mod_unregister();
 
-int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsigned int len, int direction);
+int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsigned int len, int direction, struct packet *p);
 
 #endif

@@ -21,7 +21,7 @@
 #ifndef __POM_NG_PROTO_HTTP_H__
 #define __POM_NG_PROTO_HTTP_H__
 
-#define PROTO_HTTP_FIELD_NUM	8
+#define PROTO_HTTP_FIELD_NUM	10
 
 enum proto_http_fields {
 	proto_http_field_host = 0,
@@ -32,6 +32,8 @@ enum proto_http_fields {
 	proto_http_field_url,
 	proto_http_field_headers,
 	proto_http_field_request_dir,
+	proto_http_field_query_time,
+	proto_http_field_response_time,
 };
 
 #endif

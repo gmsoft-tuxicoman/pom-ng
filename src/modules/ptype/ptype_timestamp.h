@@ -18,32 +18,24 @@
  *
  */
 
-#ifndef __POM_NG_PTYPE_IPV4_H__
-#define __POM_NG_PTYPE_IPV4_H__
+#ifndef __PTYPE_TIMESTAMP_H__
+#define __PTYPE_TIMESTAMP_H__
 
 #include <pom-ng/ptype.h>
+#include <pom-ng/ptype_timestamp.h>
 
+int ptype_timestamp_mod_register(struct mod_reg *mod);
+int ptype_timestamp_mod_unregister();
 
-#define __USE_BSD 1 // We use BSD favor of the ip header
-#include <netinet/in_systm.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
-
-
-struct ptype_ipv4_val {
-	struct in_addr addr;
-	unsigned char mask;
-};
-
-
-/// x is the struct ptype,
-#define PTYPE_IPV4_GETADDR(x) \
-	((struct ptype_ipv4_val*) x)->addr
-
-/// x is the struct ptype, y the value
-#define PTYPE_IPV4_SETADDR(x, y) {			\
-	struct ptype_ipv4_val *v = (x)->value;		\
-	memcpy(&v->addr, &y, sizeof(struct in_addr));	\
-}
+int ptype_timestamp_register(struct ptype_reg *r);
+int ptype_timestamp_alloc(struct ptype *p);
+int ptype_timestamp_cleanup(struct ptype *p);
+int ptype_timestamp_parse(struct ptype *p, char *val);
+int ptype_timestamp_print(struct ptype *pt, char *val, size_t size);
+int ptype_timestamp_serialize(struct ptype *pt, char *val, size_t size);
+int ptype_timestamp_unserialize(struct ptype *p, char *val);
+int ptype_timestamp_compare(int op, void *val_a, void* val_b);
+int ptype_timestamp_copy(struct ptype *dst, struct ptype *src);
+size_t ptype_timestamp_value_size(struct ptype *pt);
 
 #endif

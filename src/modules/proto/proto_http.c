@@ -22,6 +22,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_timestamp.h>
 
 #include "proto_http.h"
 
@@ -30,7 +31,7 @@
 
 
 // ptype for fields value template
-static struct ptype *ptype_string = NULL, *ptype_uint16 = NULL;
+static struct ptype *ptype_string = NULL, *ptype_uint16 = NULL, *ptype_timestamp = NULL;
 
 struct mod_reg_info* proto_http_reg_info() {
 	static struct mod_reg_info reg_info;
@@ -47,7 +48,8 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 
 	ptype_string = ptype_alloc("string");
 	ptype_uint16 = ptype_alloc("uint16");
-	if (!ptype_string || !ptype_uint16)
+	ptype_timestamp = ptype_alloc("timestamp");
+	if (!ptype_string || !ptype_uint16 || !ptype_timestamp)
 		return POM_ERR;
 
 	static struct conntrack_con_info_reg fields[PROTO_HTTP_FIELD_NUM + 1];
@@ -79,6 +81,13 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 	fields[proto_http_field_request_dir].name = "request_dir";
 	fields[proto_http_field_request_dir].value_template = ptype_uint16;
 	fields[proto_http_field_request_dir].description = "Request direction, indicates the drection of the server";
+	fields[proto_http_field_query_time].name = "query_time";
+	fields[proto_http_field_query_time].value_template = ptype_timestamp;
+	fields[proto_http_field_query_time].description = "Time of the query";
+	fields[proto_http_field_response_time].name = "query_time";
+	fields[proto_http_field_response_time].value_template = ptype_timestamp;
+	fields[proto_http_field_response_time].description = "Time of the response";
+
 	
 
 
@@ -159,7 +168,7 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 				if (!line) // No more full lines in this packet
 					return PROTO_OK;
 
-				int res = proto_http_parse_query_response(s->ce, line, len, s->direction);
+				int res = proto_http_parse_query_response(s->ce, line, len, s->direction, p);
 				if (res == PROTO_INVALID) {
 					priv->state = HTTP_INVALID;
 					return PROTO_INVALID;
@@ -322,13 +331,18 @@ static int proto_http_mod_unregister() {
 		ptype_cleanup(ptype_uint16);
 		ptype_uint16 = NULL;
 	}
+
+	if (ptype_timestamp) {
+		ptype_cleanup(ptype_timestamp);
+		ptype_timestamp = NULL;
+	}
 		
 
 	return res;
 }
 
 
-int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsigned int len, int direction) {
+int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsigned int len, int direction, struct packet *p) {
 
 	if (len < strlen("HTTP/"))
 		return PROTO_INVALID;
@@ -467,6 +481,13 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		PTYPE_STRING_SETVAL_P(ce->con_info[proto_http_field_first_line].val[0].value, first_line);
 		ce->con_info[proto_http_field_first_line].val[0].set = 1;
 
+		PTYPE_TIMESTAMP_SETVAL(ce->con_info[proto_http_field_query_time].val[0].value, p->ts);
+		ce->con_info[proto_http_field_query_time].val[0].set = 1;
+
+	} else {
+
+		PTYPE_TIMESTAMP_SETVAL(ce->con_info[proto_http_field_response_time].val[0].value, p->ts);
+		ce->con_info[proto_http_field_response_time].val[0].set = 1;
 	}
 
 	return PROTO_OK;

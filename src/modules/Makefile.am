@@ -21,7 +21,7 @@ ANALYZER_SRC = analyzer_http.la
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_log.la
 PROTO_SRC = proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
-PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la
+PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la
@@ -84,3 +84,6 @@ ptype_uint32_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_string_la_SOURCES = ptype/ptype_string.c ptype/ptype_string.h
 ptype_string_la_LDFLAGS = -module -avoid-version 
 ptype_string_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_timestamp_la_SOURCES = ptype/ptype_timestamp.c ptype/ptype_timestamp.h
+ptype_timestamp_la_LDFLAGS = -module -avoid-version 
+ptype_timestamp_la_LIBADD = $(top_builddir)/src/libpom-ng.la

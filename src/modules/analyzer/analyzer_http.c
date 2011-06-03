@@ -197,10 +197,12 @@ static int analyzer_http_conntrack_process(struct analyzer_reg *analyzer, struct
 		data[analyzer_http_data_url].value = con_info[proto_http_field_url].val[0].value;
 
 	// analyzer_http_data_query_time
-	// TODO
+	if (con_info[proto_http_field_query_time].val[0].set)
+		data[analyzer_http_data_query_time].value = con_info[proto_http_field_query_time].val[0].value;
 	
 	// analyzer_http_data_response_time
-	// TODO
+	if (con_info[proto_http_field_response_time].val[0].set)
+		data[analyzer_http_data_response_time].value = con_info[proto_http_field_response_time].val[0].value;
 	
 	// analyzer_http_data_status
 	if (con_info[proto_http_field_err_code].val[0].set)
