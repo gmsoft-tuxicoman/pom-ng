@@ -258,20 +258,42 @@ static int output_log_txt_process(struct output *o, struct analyzer_data *data) 
 
 	struct output_log_txt_priv *priv = o->priv;
 
+	char *format = PTYPE_STRING_GETVAL(priv->p_format);
+
 	int i;
-	unsigned int pos = 0;
+	unsigned int pos = 0, format_pos = 0;
 	char buff[4096];
 
 	for (i = 0; i < priv->field_count && pos < sizeof(buff) - 2; i++) {
-		
+	
 		struct output_log_parsed_field *field = &priv->parsed_fields[i];
+		if (format_pos < field->start_off) {
+			unsigned int len = field->start_off - format_pos;
+			if (len > sizeof(buff) - 2 - pos)
+				len = sizeof(buff) - 2 - pos;
+			strncpy(buff + pos, format + format_pos, len);
+			pos += len;
+		}
+
+		format_pos = field->end_off;
+
 		if (data[field->id].value) {
 			pos += ptype_print_val(data[field->id].value, buff + pos, sizeof(buff) - pos - 1);
 		} else {
 			buff[pos] = '-'; pos++;
 		}
-		buff[pos] = ' '; pos++;
 	}
+
+	if (i == priv->field_count && pos < sizeof(buff) - 2) {
+		if (format_pos < strlen(format)) {
+			unsigned int len = strlen(format) - format_pos;
+			if (len > sizeof(buff) - 2 - pos)
+				len = sizeof(buff) - 2 - pos;
+			strncpy(buff + pos, format + format_pos, len);
+			pos += len;
+		}
+	}
+
 	buff[pos] = '\n'; pos++;
 
 	unsigned int cur = 0;
