@@ -20,7 +20,7 @@ include $(top_srcdir)/Makefile.common
 ANALYZER_SRC = analyzer_http.la
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_log.la
-PROTO_SRC = proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
+PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
@@ -41,6 +41,9 @@ output_log_la_SOURCES = output/output_log.c output/output_log.h
 output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
+proto_arp_la_SOURCES = proto/proto_arp.c proto/proto_arp.h
+proto_arp_la_LDFLAGS = -module -avoid-version
+proto_arp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_docsis_la_SOURCES = proto/proto_docsis.c proto/proto_docsis.h
 proto_docsis_la_LDFLAGS = -module -avoid-version
 proto_docsis_la_LIBADD = $(top_builddir)/src/libpom-ng.la
