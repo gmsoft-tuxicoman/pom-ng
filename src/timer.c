@@ -51,11 +51,13 @@ int timers_process() {
 				tq->head = tq->head->next;
 				if (tq->head)
 					tq->head->prev = NULL;
-				pom_mutex_unlock(&timer_main_lock);
+				else
+					tq->tail = NULL;
 
 				tmp->next = NULL;
 				tmp->prev = NULL;
 				tmp->queue = NULL;
+				pom_mutex_unlock(&timer_main_lock);
 
 				// Process it
 				timer_tshoot( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
@@ -153,8 +155,9 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 			
 		}
 		t->queue = NULL;
+		t->prev = NULL;
+		t->next = NULL;
 	}
-
 
 	struct timer_queue *tq = timer_queues;
 
