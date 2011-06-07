@@ -97,7 +97,6 @@ struct conntrack_con_info_val {
 struct conntrack_con_info_lst {
 	char *key;
 	struct ptype *value;
-	uint32_t hash;
 
 	struct conntrack_con_info_lst *next;
 };

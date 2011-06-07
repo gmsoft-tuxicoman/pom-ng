@@ -196,7 +196,6 @@ int analyzer_data_source_register_output(struct analyzer_data_source *src, struc
 			pomlog(POMLOG_ERR "Error while registering analyzer data source %s to conntrack connection info %s", src->name, src->proto->name);
 			return POM_ERR;
 		}
-
 	}
 
 	struct analyzer_output_list *output_list = malloc(sizeof(struct analyzer_output_list));

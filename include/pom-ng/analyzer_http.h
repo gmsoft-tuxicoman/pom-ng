@@ -21,7 +21,7 @@
 #ifndef __POM_NG_ANALYZER_HTTP_H__
 #define __POM_NG_ANALYZER_HTTP_H__
 
-#define ANALYZER_HTTP_DATA_FIELDS_COUNT 14
+#define ANALYZER_HTTP_DATA_FIELDS_COUNT 16
 
 enum analyzer_http_fields {
 	analyzer_http_data_server_name = 0,
@@ -38,6 +38,8 @@ enum analyzer_http_fields {
 	analyzer_http_data_status,
 	analyzer_http_data_username,
 	analyzer_http_data_password,
+	analyzer_http_data_query_headers,
+	analyzer_http_data_response_headers,
 };
 
 

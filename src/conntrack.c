@@ -585,7 +585,6 @@ struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned in
 	}
 
 	res->key = key;
-	res->hash = jhash(key, strlen(key), INITVAL);
 
 	res->next = ce->con_info[id].lst[direction];
 	ce->con_info[id].lst[direction] = res;

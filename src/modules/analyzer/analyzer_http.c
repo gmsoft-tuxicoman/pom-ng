@@ -74,6 +74,8 @@ static int analyzer_http_init(struct analyzer_reg *analyzer) {
 	http_data_fields[analyzer_http_data_username].name = "username";
 	http_data_fields[analyzer_http_data_password].name = "password";
 	http_data_fields[analyzer_http_data_status].name = "status";
+	http_data_fields[analyzer_http_data_query_headers].name = "query_headers";
+	http_data_fields[analyzer_http_data_response_headers].name = "response_headers";
 
 	struct analyzer_http_priv *priv = malloc(sizeof(struct analyzer_http_priv));
 	if (!priv) {
@@ -81,9 +83,6 @@ static int analyzer_http_init(struct analyzer_reg *analyzer) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct analyzer_http_priv));
-
-	// Parse the format
-
 
 	priv->source = analyzer_register_data_conntrack_source(analyzer, "http", http_data_fields, "http", analyzer_http_conntrack_process);
 	if (!priv->source) {
@@ -208,13 +207,25 @@ static int analyzer_http_conntrack_process(struct analyzer_reg *analyzer, struct
 	if (con_info[proto_http_field_err_code].val[0].set)
 		data[analyzer_http_data_status].value = con_info[proto_http_field_err_code].val[0].value;
 
-	// analyzer_http_data_username
-	// TODO
 
-	// analyzer_http_data_password
-	// TODO
+	// analyzer_http_data_query_headers, analyzer_http_data_response_headers
+	if (*dir) {
+		data[analyzer_http_data_query_headers].lst = con_info[proto_http_field_headers].lst[CT_DIR_FWD];
+		data[analyzer_http_data_response_headers].lst = con_info[proto_http_field_headers].lst[CT_DIR_REV];
+	} else {
+		data[analyzer_http_data_query_headers].lst = con_info[proto_http_field_headers].lst[CT_DIR_REV];
+		data[analyzer_http_data_response_headers].lst = con_info[proto_http_field_headers].lst[CT_DIR_FWD];
+	}
 
-	// TODO headers
+	// analyzer_http_data_username, analyzer_http_data_password, analyzer_http_data_server_name
+	struct conntrack_con_info_lst *query_hdrs = data[analyzer_http_data_query_headers].lst;
+	while (query_hdrs) {
+		if (!data[analyzer_http_data_server_name].value && !strcasecmp("Host", query_hdrs->key)) 
+			data[analyzer_http_data_server_name].value = query_hdrs->value;
+		// TODO analyzer_http_data_username, analyzer_http_data_password
+
+		query_hdrs = query_hdrs->next;
+	}
 
 	struct analyzer_http_priv *priv = analyzer->priv;
 

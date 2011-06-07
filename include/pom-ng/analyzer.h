@@ -77,7 +77,7 @@ struct analyzer_data {
 	
 	union {
 		struct ptype *value;
-		struct analyzer_data_list *lst;
+		struct conntrack_con_info_lst *lst;
 	};
 };
 
@@ -90,14 +90,6 @@ struct analyzer_output_list {
 struct analyzer_data_reg {
 	int flags;
 	char *name;
-};
-
-struct analyzer_data_list {
-	char *key;
-	struct ptype *value;
-	uint32_t hash;
-
-	struct analyzer_data_list *next;
 };
 
 int analyzer_register(struct analyzer_reg_info *reg_info);
