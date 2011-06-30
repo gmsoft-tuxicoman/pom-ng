@@ -21,25 +21,31 @@
 #ifndef __POM_NG_ANALYZER_HTTP_H__
 #define __POM_NG_ANALYZER_HTTP_H__
 
-#define ANALYZER_HTTP_DATA_FIELDS_COUNT 16
+#define ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT 16
 
-enum analyzer_http_fields {
-	analyzer_http_data_server_name = 0,
-	analyzer_http_data_server_addr,
-	analyzer_http_data_server_port,
-	analyzer_http_data_client_addr,
-	analyzer_http_data_client_port,
-	analyzer_http_data_request_proto,
-	analyzer_http_data_request_method,
-	analyzer_http_data_first_line,
-	analyzer_http_data_url,
-	analyzer_http_data_query_time,
-	analyzer_http_data_response_time,
-	analyzer_http_data_status,
-	analyzer_http_data_username,
-	analyzer_http_data_password,
-	analyzer_http_data_query_headers,
-	analyzer_http_data_response_headers,
+enum analyzer_http_evt_request_data {
+	analyzer_http_request_server_name = 0,
+	analyzer_http_request_server_addr,
+	analyzer_http_request_server_port,
+	analyzer_http_request_client_addr,
+	analyzer_http_request_client_port,
+	analyzer_http_request_request_proto,
+	analyzer_http_request_request_method,
+	analyzer_http_request_first_line,
+	analyzer_http_request_url,
+	analyzer_http_request_query_time,
+	analyzer_http_request_response_time,
+	analyzer_http_request_status,
+	analyzer_http_request_username,
+	analyzer_http_request_password,
+	analyzer_http_request_query_headers,
+	analyzer_http_request_response_headers,
+};
+
+#define ANALYZER_HTTP_EVT_COUNT 1
+
+enum analyzer_http_events {
+	analyzer_http_evt_request = 0,
 };
 
 

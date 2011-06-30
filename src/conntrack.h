@@ -25,6 +25,14 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/conntrack.h>
 
+struct conntrack_priv_list {
+	void *obj;
+	void *priv;
+	int (*cleanup) (void *obj, void *priv);
+
+	struct conntrack_priv_list *prev, *next;
+};
+
 struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev);
 int conntrack_tables_free(struct conntrack_tables *ct);
 int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);

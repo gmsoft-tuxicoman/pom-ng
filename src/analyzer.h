@@ -24,6 +24,12 @@
 
 #include <pom-ng/analyzer.h>
 
+struct analyzer_event_listener_list {
+
+	struct analyzer_event_listener *listener;
+	struct analyzer_event_listener_list *prev, *next;
+
+};
 
 int analyzer_cleanup();
 

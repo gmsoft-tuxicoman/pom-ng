@@ -21,19 +21,34 @@
 #ifndef __POM_NG_PROTO_HTTP_H__
 #define __POM_NG_PROTO_HTTP_H__
 
-#define PROTO_HTTP_FIELD_NUM	10
+#define PROTO_HTTP_EVT_COUNT 2
 
-enum proto_http_fields {
-	proto_http_field_host = 0,
-	proto_http_field_first_line,
-	proto_http_field_err_code,
-	proto_http_field_request_proto,
-	proto_http_field_request_method,
-	proto_http_field_url,
-	proto_http_field_headers,
-	proto_http_field_request_dir,
-	proto_http_field_query_time,
-	proto_http_field_response_time,
+enum {
+	proto_http_evt_query,
+	proto_http_evt_response,
+};
+
+#define PROTO_HTTP_EVT_QUERY_DATA_COUNT 7
+
+enum {
+	proto_http_query_first_line,
+	proto_http_query_proto,
+	proto_http_query_method,
+	proto_http_query_url,
+	proto_http_query_start_time,
+	proto_http_query_end_time,
+	proto_http_query_headers,
+};
+
+#define PROTO_HTTP_EVT_RESPONSE_DATA_COUNT 5
+
+
+enum {
+	proto_http_response_status,
+	proto_http_response_proto,
+	proto_http_response_start_time,
+	proto_http_response_end_time,
+	proto_http_response_headers,
 };
 
 #endif

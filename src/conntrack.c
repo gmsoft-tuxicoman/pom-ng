@@ -210,15 +210,6 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto
 		memset(res, 0, sizeof(struct conntrack_entry));
 		res->proto = proto;
 
-		if (proto->info->ct_info.con_info) {
-			res->con_info = conntrack_con_info_alloc(proto);
-			if (!res->con_info) {
-				pom_mutex_unlock(&parent->lock);
-				free(res);
-				return NULL;
-			}
-		}
-
 		pthread_mutexattr_t attr;
 		if (pthread_mutexattr_init(&attr)) {
 			pomlog(POMLOG_ERR "Error while initializing conntrack mutex attribute");
@@ -375,15 +366,6 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 	}
 	memset(res, 0, sizeof(struct conntrack_entry));
 
-	if (proto->info->ct_info.con_info) {
-		res->con_info = conntrack_con_info_alloc(proto);
-		if (!res->con_info) {
-			pom_mutex_unlock(&ct->lock);
-			free(res);
-			return NULL;
-		}
-	}
-
 	pthread_mutexattr_t attr;
 	if (pthread_mutexattr_init(&attr)) {
 		pom_mutex_unlock(&ct->lock);
@@ -410,7 +392,7 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		pomlog(POMLOG_WARN "Error while destroying conntrack mutex attribute");
 	}
 
-	 struct conntrack_child_list *child = NULL;
+	struct conntrack_child_list *child = NULL;
 	if (parent) {
 
 		child = malloc(sizeof(struct conntrack_child_list));
@@ -505,6 +487,7 @@ struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd
 		parent->children = child;
 		pom_mutex_unlock(&parent->lock);
 	}
+
 	// Unlock the tables
 	pom_mutex_unlock(&ct->lock);
 	
@@ -531,109 +514,35 @@ err:
 	return NULL;
 }
 
-struct conntrack_con_info *conntrack_con_info_alloc(struct proto_reg *proto) {
+int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv)) {
 
-	if (!proto || !proto->info->ct_info.con_info)
-		return NULL;
-
-	struct conntrack_con_info_reg *con_info = proto->info->ct_info.con_info;
-
-	// FIXME optimize this by using pools of conntracks
-	int i;
-	for (i = 0; con_info[i].name; i++);
-		
-	struct conntrack_con_info *infos = malloc(sizeof(struct conntrack_con_info) * i);
-	if (!infos) {
-		pom_oom(sizeof(struct conntrack_con_info) * i);
-		return NULL;
+	struct conntrack_priv_list *priv_lst = malloc(sizeof(struct conntrack_priv_list));
+	if (!priv_lst) {
+		pom_oom(sizeof(struct conntrack_priv_list));
+		return POM_ERR;
 	}
-	memset(infos, 0, sizeof(struct conntrack_con_info) * i);
+	memset(priv_lst, 0, sizeof(struct conntrack_priv_list));
+	priv_lst->obj = obj;
+	priv_lst->priv = priv;
+	priv_lst->cleanup = cleanup;
 
-	for (i = 0; con_info[i].name; i++) {
-		if (!(con_info[i].flags & CT_CONNTRACK_INFO_LIST)) {
-			int j;
-			for (j = 0; j < (con_info[i].flags & CT_CONNTRACK_INFO_BIDIR ? 2 : 1); j++) {
-				infos[i].val[j].value = ptype_alloc_from(con_info[i].value_template);
-				if (!infos[i].val[j].value)
-					goto err;
-			}
-		}
-	}
-	
-	return infos;
+	priv_lst->next = ce->priv_list;
+	if (priv_lst->next)
+		priv_lst->next->prev = priv_lst;
+	ce->priv_list = priv_lst;
 
-err:
-	// FIXME do the cleanup in case of error
-
-	return NULL;
-}
-
-
-struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned int id, char *key, int direction) {
-
-	struct conntrack_con_info_lst *res = malloc(sizeof(struct conntrack_con_info_lst));
-	if (!res) {
-		pom_oom(sizeof(struct conntrack_con_info_lst));
-		return NULL;
-	}
-	memset(res, 0, sizeof(struct conntrack_con_info_lst));
-
-	res->value = ptype_alloc_from(ce->proto->info->ct_info.con_info[id].value_template);
-	if (!res->value) {
-		free(res);
-		return NULL;
-	}
-
-	res->key = key;
-
-	res->next = ce->con_info[id].lst[direction];
-	ce->con_info[id].lst[direction] = res;
-
-	return res->value;
-}
-
-int conntrack_con_info_process(struct proto_process_stack *stack, unsigned int stack_index) {
-
-	struct conntrack_analyzer_list *lst = stack[stack_index].ce->proto->info->ct_info.analyzers;
-	while (lst) {
-		if (lst->process(lst->analyzer, stack, stack_index) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while processing conntrack_info");
-			return POM_ERR;
-		}
-		lst = lst->next;
-	}
-	
 	return POM_OK;
 }
 
-int conntrack_con_info_reset(struct conntrack_entry *ce) {
+void *conntrack_get_priv(struct conntrack_entry *ce, void *obj) {
 
-	struct conntrack_con_info_reg *info_reg = ce->proto->info->ct_info.con_info;
-	
-	int i;
-	for (i = 0; info_reg[i].name; i++) {
-		if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST) {
-			int k;
-			for (k = 0; k < CT_DIR_TOT; k++) {
-				while (ce->con_info[i].lst[k]) {
-					struct conntrack_con_info_lst *tmp = ce->con_info[i].lst[k];
-					if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST_FREE_KEY)
-						free(tmp->key);
-					ptype_cleanup(tmp->value);
-					ce->con_info[i].lst[k] = tmp->next;
-					free(tmp);
-				}
+	struct conntrack_priv_list *priv_lst = ce->priv_list;
+	for (; priv_lst && priv_lst->obj != obj; priv_lst = priv_lst->next);
 
-			}
-		} else {
-			ce->con_info[i].val[CT_DIR_FWD].set = 0;
-			ce->con_info[i].val[CT_DIR_REV].set = 0;
+	if (!priv_lst)
+		return NULL;
 
-		}
-
-	}
-
-	return POM_OK;
+	return priv_lst->priv;
 }
 
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
@@ -773,6 +682,19 @@ int conntrack_cleanup(void *conntrack) {
 		free(lst_rev);
 	}
 
+	// Cleanup the priv_list
+	struct conntrack_priv_list *priv_lst = ce->priv_list;
+	while (priv_lst) {
+		if (priv_lst->cleanup) {
+			if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
+				pomlog(POMLOG_WARN "Error while cleaning up private objects in conntrack_entry");
+		}
+		ce->priv_list = priv_lst->next;
+		free(priv_lst);
+		priv_lst = ce->priv_list;
+
+	}
+
 	pom_mutex_unlock(&ct->lock);
 
 	
@@ -782,87 +704,10 @@ int conntrack_cleanup(void *conntrack) {
 		ptype_cleanup(ce->rev_value);
 
 	pthread_mutex_destroy(&ce->lock);
-	
-	if (proto->info->ct_info.con_info) {
-		struct conntrack_con_info_reg *info_reg = proto->info->ct_info.con_info;
-
-		int i;
-		for (i = 0; info_reg[i].name; i++) {
-			int dir_tot = (info_reg[i].flags & CT_CONNTRACK_INFO_BIDIR ? 2 : 1);
-			int j;
-			for (j = 0; j < dir_tot; j++) {
-				if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST) {
-					while (ce->con_info[i].lst[j]) {
-						struct conntrack_con_info_lst * tmp = ce->con_info[i].lst[j];
-						ce->con_info[i].lst[j] = tmp->next;
-						if (info_reg[i].flags & CT_CONNTRACK_INFO_LIST_FREE_KEY)
-							free(tmp->key);
-						ptype_cleanup(tmp->value);
-						free(tmp);
-					}
-
-				} else {
-					ptype_cleanup(ce->con_info[i].val[j].value);
-				}
-			}
-		}
-
-		free(ce->con_info);
-	}
 
 	free(ce);
 
 	return POM_OK;
 }
 
-int conntrack_con_register_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index)) {
 
-	if (!proto || !analyzer || !process)
-		return POM_ERR;
-
-	struct conntrack_analyzer_list *lst = malloc(sizeof(struct conntrack_analyzer_list));
-	if (!lst) {
-		pom_oom(sizeof(struct conntrack_analyzer_list));
-		return POM_ERR;
-	}
-	memset(lst, 0, sizeof(struct conntrack_analyzer_list));
-
-	lst->analyzer = analyzer;
-	lst->process = process;
-
-	// FIXME lock !
-	lst->next = proto->info->ct_info.analyzers;
-	if (lst->next)
-		lst->next->prev = lst;
-	proto->info->ct_info.analyzers = lst;
-
-	return POM_OK;
-}
-
-int conntrack_con_unregister_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer) {
-
-	if (!proto || !analyzer)
-		return POM_ERR;
-
-	struct conntrack_analyzer_list *lst = proto->info->ct_info.analyzers;
-
-	for (; lst && lst->analyzer != analyzer; lst = lst->next);
-
-	if (!lst) {
-		pomlog(POMLOG_ERR "Analyzer not registererd to the given protocol");
-		return POM_ERR;
-	}
-
-	if (lst->next)
-		lst->next->prev = lst->prev;
-	
-	if (lst->prev)
-		lst->prev->next = lst->next;
-	else
-		proto->info->ct_info.analyzers = lst->next;
-
-	free(lst);
-
-	return POM_OK;
-
-}

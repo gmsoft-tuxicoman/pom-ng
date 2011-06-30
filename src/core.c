@@ -371,47 +371,6 @@ int core_process_dump_info(struct proto_process_stack *s, int res) {
 			}
 		}
 
-		if (s[i].ce && s[i].proto->info->ct_info.con_info) {
-			int j;
-			struct conntrack_con_info_reg *info_reg = s[i].proto->info->ct_info.con_info;
-			for (j = 0; info_reg[j].name; j++) {
-				if (info_reg[j].flags & CT_CONNTRACK_INFO_LIST) {
-					if (!s[i].ce->con_info[j].lst[CT_DIR_FWD] && !s[i].ce->con_info[j].lst[CT_DIR_REV])
-						continue;
-
-					printf("%s [", info_reg[j].name);
-
-					int k;
-					for (k = 0; k < CT_DIR_TOT; k++) {
-						struct conntrack_con_info_lst *tmp = s[i].ce->con_info[j].lst[k];
-						for (; tmp; tmp = tmp->next) {
-							ptype_print_val(tmp->value, buff, sizeof(buff) - 1);
-							printf("%s[%u]: \"%s\"; ", tmp->key, k, buff);
-						}
-					}
-					printf("]; ");
-					
-				} else {
-					if(info_reg[j].flags & CT_CONNTRACK_INFO_BIDIR) {
-						int k = 0;
-						for (k = 0; k < CT_DIR_TOT; k++) {
-							if (!s[i].ce->con_info[j].val[k].set)
-								continue;
-							ptype_print_val(s[i].ce->con_info[j].val[k].value, buff, sizeof(buff) - 1);
-							printf("%s[%u]: \"%s\"; ", info_reg[j].name, k, buff);
-						}
-
-					} else {
-						if (!s[i].ce->con_info[j].val[0].set)
-							continue;
-						ptype_print_val(s[i].ce->con_info[j].val[0].value, buff, sizeof(buff) - 1);
-						printf("%s: \"%s\"; ", info_reg[j].name, buff);
-					}
-				}
-			}
-		}
-
-
 		printf("}; ");
 	}
 	printf(": %s\n", res_str);

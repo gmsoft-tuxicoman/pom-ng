@@ -52,54 +52,60 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 	if (!ptype_string || !ptype_uint16 || !ptype_timestamp)
 		return POM_ERR;
 
-	static struct conntrack_con_info_reg fields[PROTO_HTTP_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct conntrack_con_info_reg) * (PROTO_HTTP_FIELD_NUM + 1));
-	fields[proto_http_field_host].name = "host";
-	fields[proto_http_field_host].value_template = ptype_string;
-	fields[proto_http_field_host].flags = CT_CONNTRACK_INFO_BIDIR;
-	fields[proto_http_field_host].description = "Client and server host";
-	fields[proto_http_field_first_line].name = "first_line";
-	fields[proto_http_field_first_line].value_template = ptype_string;
-	fields[proto_http_field_first_line].description = "First line of the request";
-	fields[proto_http_field_err_code].name = "error_code";
-	fields[proto_http_field_err_code].value_template = ptype_uint16;
-	fields[proto_http_field_err_code].description = "Error code returned by the server";
-	fields[proto_http_field_request_proto].name = "http_protocol";
-	fields[proto_http_field_request_proto].flags = CT_CONNTRACK_INFO_BIDIR;
-	fields[proto_http_field_request_proto].value_template = ptype_string;
-	fields[proto_http_field_request_proto].description = "HTTP protocol version of the request (1.0 or 1.1)";
-	fields[proto_http_field_request_method].name = "http_method";
-	fields[proto_http_field_request_method].value_template = ptype_string;
-	fields[proto_http_field_request_method].description = "HTTP method of the request (e.g. GET, POST, PROPFIND)";
-	fields[proto_http_field_url].name = "url";
-	fields[proto_http_field_url].value_template = ptype_string;
-	fields[proto_http_field_url].description = "Requested URL";
-	fields[proto_http_field_headers].name = "headers";
-	fields[proto_http_field_headers].value_template = ptype_string;
-	fields[proto_http_field_headers].flags = CT_CONNTRACK_INFO_BIDIR | CT_CONNTRACK_INFO_LIST | CT_CONNTRACK_INFO_LIST_FREE_KEY;
-	fields[proto_http_field_headers].description = "HTTP headers";
-	fields[proto_http_field_request_dir].name = "request_dir";
-	fields[proto_http_field_request_dir].value_template = ptype_uint16;
-	fields[proto_http_field_request_dir].description = "Request direction, indicates the drection of the server";
-	fields[proto_http_field_query_time].name = "query_time";
-	fields[proto_http_field_query_time].value_template = ptype_timestamp;
-	fields[proto_http_field_query_time].description = "Time of the query";
-	fields[proto_http_field_response_time].name = "query_time";
-	fields[proto_http_field_response_time].value_template = ptype_timestamp;
-	fields[proto_http_field_response_time].description = "Time of the response";
+
+	static struct proto_event_data_reg evt_query_data[PROTO_HTTP_EVT_QUERY_DATA_COUNT];
+	memset(evt_query_data, 0, sizeof(struct proto_event_data_reg) * PROTO_HTTP_EVT_QUERY_DATA_COUNT);
+	evt_query_data[proto_http_query_first_line].name = "first_line";
+	evt_query_data[proto_http_query_first_line].value_template = ptype_string;
+	evt_query_data[proto_http_query_proto].name = "proto_version";
+	evt_query_data[proto_http_query_proto].value_template = ptype_string;
+	evt_query_data[proto_http_query_method].name = "method";
+	evt_query_data[proto_http_query_method].value_template = ptype_string;
+	evt_query_data[proto_http_query_url].name = "url";
+	evt_query_data[proto_http_query_url].value_template = ptype_string;
+	evt_query_data[proto_http_query_start_time].name = "start_time";
+	evt_query_data[proto_http_query_start_time].value_template = ptype_timestamp;
+	evt_query_data[proto_http_query_end_time].name = "end_time";
+	evt_query_data[proto_http_query_end_time].value_template = ptype_timestamp;
+	evt_query_data[proto_http_query_headers].name = "headers";
+	evt_query_data[proto_http_query_headers].value_template = ptype_string;
+	evt_query_data[proto_http_query_headers].flags = PROTO_EVENT_DATA_FLAG_LIST;
 
 	
+	static struct proto_event_data_reg evt_response_data[PROTO_HTTP_EVT_RESPONSE_DATA_COUNT];
+	memset(evt_response_data, 0, sizeof(struct proto_event_data_reg) * PROTO_HTTP_EVT_RESPONSE_DATA_COUNT);
+	evt_response_data[proto_http_response_status].name = "status";
+	evt_response_data[proto_http_response_status].value_template = ptype_uint16;
+	evt_response_data[proto_http_response_proto].name = "proto_version";
+	evt_response_data[proto_http_response_proto].value_template = ptype_string;
+	evt_response_data[proto_http_response_start_time].name = "start_time";
+	evt_response_data[proto_http_response_start_time].value_template = ptype_timestamp;
+	evt_response_data[proto_http_response_end_time].name = "end_time";
+	evt_response_data[proto_http_response_end_time].value_template = ptype_timestamp;
+	evt_response_data[proto_http_response_headers].name = "headers";
+	evt_response_data[proto_http_response_headers].value_template = ptype_string;
+	evt_response_data[proto_http_response_headers].flags = PROTO_EVENT_DATA_FLAG_LIST;
 
+	static struct proto_event_reg proto_http_events[PROTO_HTTP_EVT_COUNT + 1];
+	memset(proto_http_events, 0, sizeof(struct proto_event_reg) * (PROTO_HTTP_EVT_COUNT + 1));
+	proto_http_events[proto_http_evt_query].name = "query";
+	proto_http_events[proto_http_evt_query].id = proto_http_evt_query;
+	proto_http_events[proto_http_evt_query].data = evt_query_data;
+	proto_http_events[proto_http_evt_query].data_count = PROTO_HTTP_EVT_QUERY_DATA_COUNT;
+	proto_http_events[proto_http_evt_response].name = "response";
+	proto_http_events[proto_http_evt_response].id = proto_http_evt_response;
+	proto_http_events[proto_http_evt_response].data = evt_response_data;
+	proto_http_events[proto_http_evt_response].data_count = PROTO_HTTP_EVT_RESPONSE_DATA_COUNT;
 
 	static struct proto_reg_info proto_http;
 	memset(&proto_http, 0, sizeof(struct proto_reg_info));
 	proto_http.name = "http";
 	proto_http.api_ver = PROTO_API_VER;
 	proto_http.mod = mod;
+	proto_http.events = proto_http_events;
 
 	proto_http.ct_info.default_table_size = 1; // No hashing done here
 	proto_http.ct_info.cleanup_handler = proto_http_conntrack_cleanup;
-	proto_http.ct_info.con_info = fields;
 
 	proto_http.process = proto_http_process;
 
@@ -115,6 +121,7 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	s->ce = conntrack_get_unique_from_parent(s->proto, s_prev->ce);
 	if (!s->ce) {
@@ -173,9 +180,6 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 					priv->state = HTTP_INVALID;
 					return PROTO_INVALID;
 				}
-
-				PTYPE_UINT16_SETVAL(s->ce->con_info[proto_http_field_request_dir].val[0].value, s->direction);
-				s->ce->con_info[proto_http_field_request_dir].val[0].set = 1;
 				break;
 			}
 
@@ -187,20 +191,22 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 				if (!line) // No more full lines in this packet
 					return PROTO_OK;
 
+				struct proto_event *evt = (priv->state == HTTP_QUERY ? priv->query_event : priv->response_event);
+
 				if (!len) {
 					//parsed headers
 			
 					if ((priv->state == HTTP_QUERY && !(priv->info.flags & HTTP_FLAG_HAVE_CLEN)) ||
 						((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !priv->info.content_len)) {
 						// Request without body
+						proto_event_process(evt, stack, stack_index);
 						priv->state = (priv->state == HTTP_QUERY ? HTTP_RESPONSE_HEADER : HTTP_QUERY_HEADER); // Switch to the corresponding expected header
 						return PROTO_OK;
 					}
-					
+
+					evt->flags |= PROTO_EVENT_FLAG_HAS_PAYLOAD;
+					proto_event_process(evt, stack, stack_index);
 					priv->state++; // Switch to corresponding BODY state
-					printf("Done parsing query headers\n");
-					if (conntrack_con_info_process(stack, stack_index) != POM_OK)
-						return PROTO_ERR;
 					continue;
 				}
 
@@ -235,14 +241,15 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 				strncpy(value, colon, value_len);
 				value[value_len] = 0;
 
-				struct ptype *info_val = conntrack_con_info_lst_add(s->ce, proto_http_field_headers, name, s->direction);
-				if (!info_val) {
+
+				struct ptype *data_val = proto_event_data_item_add(evt, (priv->state == HTTP_QUERY ? proto_http_query_headers : proto_http_response_headers), name);
+				if (!data_val) {
 					free(name);
 					free(value);
 					return PROTO_ERR;
 				}
 
-				PTYPE_STRING_SETVAL_P(info_val, value);
+				PTYPE_STRING_SETVAL_P(data_val, value);
 
 				
 				// Parse a few useful headers
@@ -267,13 +274,9 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 			case HTTP_BODY_QUERY: 
 			case HTTP_BODY_RESPONSE : {
 
-				// Add the remaining buffer if any
-				unsigned int len = 0;
-				void *pload = NULL;
-				packet_stream_parser_get_remaining(parser, &pload, &len);
-				if (len) {
-					priv->info.content_pos += len;
-				}
+				// Set the right payload in the next stack index
+				packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
+				priv->info.content_pos += s_next->plen;
 
 				if ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) {
 					// Payload done
@@ -297,7 +300,12 @@ static int proto_http_conntrack_reset(struct conntrack_entry *ce) {
 
 	priv->state = HTTP_QUERY_HEADER;
 	memset(&priv->info, 0, sizeof(struct http_info));
-	return conntrack_con_info_reset(ce);
+
+	if (priv->query_event)
+		proto_event_reset(priv->query_event, ce);
+	if (priv->response_event)
+		proto_event_reset(priv->response_event, ce);
+	return POM_OK;
 }
 
 static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
@@ -311,6 +319,11 @@ static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
 		if (priv->parser[i])
 			packet_stream_parser_cleanup(priv->parser[i]);
 	}
+
+	if (priv->query_event) 
+		proto_event_cleanup(priv->query_event);
+	if (priv->response_event)
+		proto_event_cleanup(priv->response_event);
 	
 	free(priv);
 
@@ -366,6 +379,13 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 			case 0:
 				if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
 					priv->state = HTTP_RESPONSE;
+
+					if (!priv->response_event) {
+						priv->response_event = proto_event_alloc(ce->proto, proto_http_evt_response);
+						if (!priv->response_event)
+							return PROTO_ERR;
+					}
+
 					char *request_proto = malloc(tok_len + 1);
 					if (!request_proto) {
 						pom_oom(tok_len + 1);
@@ -373,9 +393,15 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(ce->con_info[proto_http_field_request_proto].val[direction].value, request_proto);
-					ce->con_info[proto_http_field_request_proto].val[direction].set = 1;
+					PTYPE_STRING_SETVAL_P(priv->response_event->data[proto_http_response_proto].value, request_proto);
+					priv->response_event->data[proto_http_response_proto].set = 1;
 				} else {
+					if (!priv->query_event) {
+						priv->query_event = proto_event_alloc(ce->proto, proto_http_evt_query);
+						if (!priv->query_event)
+							return POM_ERR;
+					}
+
 					int i;
 					for (i = 0; i < tok_len; i++) {
 						if ((token[i]) < 'A' || (token[i] > 'Z' && token[i] < 'a') || (token[i] > 'z')) {
@@ -390,8 +416,8 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_method, token, tok_len);
 					request_method[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(ce->con_info[proto_http_field_request_method].val[0].value, request_method);
-					ce->con_info[proto_http_field_request_method].val[0].set = 1;
+					PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_method].value, request_method);
+					priv->query_event->data[proto_http_query_method].set = 1;
 					priv->state = HTTP_QUERY;
 				}
 				break;
@@ -407,8 +433,8 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 						return PROTO_INVALID;
 					}
 
-					PTYPE_UINT16_SETVAL(ce->con_info[proto_http_field_err_code].val[0].value, err_code);
-					ce->con_info[proto_http_field_err_code].val[0].set = 1;
+					PTYPE_UINT16_SETVAL(priv->response_event->data[proto_http_response_status].value, err_code);
+					priv->response_event->data[proto_http_response_status].set = 1;
 
 				} else if (priv->state == HTTP_QUERY) {
 					char *url = malloc(tok_len + 1);
@@ -418,8 +444,8 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(url, token, tok_len);
 					url[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(ce->con_info[proto_http_field_url].val[0].value, url);
-					ce->con_info[proto_http_field_url].val[0].set = 1;
+					PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_url].value, url);
+					priv->query_event->data[proto_http_query_url].set = 1;
 
 				}
 				break;
@@ -440,9 +466,8 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(ce->con_info[proto_http_field_request_proto].val[direction].value, request_proto);
-					ce->con_info[proto_http_field_request_proto].val[direction].set = 1;
-
+					PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_proto].value, request_proto);
+					priv->query_event->data[proto_http_query_proto].set = 1;
 
 				}
 				break;
@@ -478,16 +503,16 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		}
 		memcpy(first_line, line, line_len);
 		first_line[line_len] = 0;
-		PTYPE_STRING_SETVAL_P(ce->con_info[proto_http_field_first_line].val[0].value, first_line);
-		ce->con_info[proto_http_field_first_line].val[0].set = 1;
+		PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_first_line].value, first_line);
+		priv->query_event->data[proto_http_query_first_line].set = 1;
 
-		PTYPE_TIMESTAMP_SETVAL(ce->con_info[proto_http_field_query_time].val[0].value, p->ts);
-		ce->con_info[proto_http_field_query_time].val[0].set = 1;
+		PTYPE_TIMESTAMP_SETVAL(priv->query_event->data[proto_http_query_start_time].value, p->ts);
+		priv->query_event->data[proto_http_query_start_time].set = 1;
 
 	} else {
 
-		PTYPE_TIMESTAMP_SETVAL(ce->con_info[proto_http_field_response_time].val[0].value, p->ts);
-		ce->con_info[proto_http_field_response_time].val[0].set = 1;
+		PTYPE_TIMESTAMP_SETVAL(priv->response_event->data[proto_http_response_start_time].value, p->ts);
+		priv->response_event->data[proto_http_response_start_time].set = 1;
 	}
 
 	return PROTO_OK;

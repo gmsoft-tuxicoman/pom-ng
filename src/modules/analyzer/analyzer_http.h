@@ -28,8 +28,18 @@
 #include <pom-ng/analyzer_http.h>
 
 struct analyzer_http_priv {
-	struct analyzer_data_source *source;
+	struct proto_dependency *proto_http;
 };
+
+#define ANALYZER_HTTP_GOT_QUERY_EVT	0x1
+#define ANALYZER_HTTP_GOT_RESPONSE_EVT	0x2
+
+
+struct analyzer_http_ce_priv {
+	unsigned int flags;
+	struct analyzer_event evt;
+};
+
 
 struct mod_reg_info* analyzer_http_reg_info();
 static int analyzer_http_mod_register(struct mod_reg *mod);
@@ -38,8 +48,11 @@ static int analyzer_http_mod_unregister();
 static int analyzer_http_init(struct analyzer_reg *analyzer);
 static int analyzer_http_cleanup(struct analyzer_reg *analyzer);
 
-
-static int analyzer_http_conntrack_process(struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index);
+static int analyzer_http_event_listeners_notify(struct analyzer_reg *analyzer, struct analyzer_event_reg *event, int has_listeners);
+static int analyzer_http_event_reset(struct analyzer_event *evt);
+static int analyzer_http_ce_priv_cleanup(void *obj, void *priv);
+static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
+static int analyzer_http_proto_event_expire(struct analyzer_reg *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
 
 
 #endif

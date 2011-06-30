@@ -39,6 +39,20 @@ struct analyzer_reg {
 
 };
 
+struct analyzer_event_reg {
+
+	char *name;
+	struct analyzer_data_reg *data;
+	unsigned int data_count;
+
+
+	struct analyzer_reg *analyzer;
+	int (*listeners_notify) (struct analyzer_reg *analyzer, struct analyzer_event_reg *event, int has_listeners);
+
+	struct analyzer_event_listener_list *listeners;
+
+};
+
 struct analyzer_reg_info {
 
 	unsigned int api_ver;
@@ -48,44 +62,32 @@ struct analyzer_reg_info {
 	int (*init) (struct analyzer_reg *analyzer);
 	int (*cleanup) (struct analyzer_reg *analyzer);
 
-};
-
-struct analyzer_conntrack_reg_info {
-
-	char *proto;
-//	int (*conntrack_process) (struct proto_process_stack *s, unsigned int stack_index);
+	struct analyzer_event_reg *events;
 
 };
 
-struct analyzer_data_source {
 
+struct analyzer_event {
+	struct analyzer_event_reg *info;
+	struct analyzer_data *data;
+};
+
+struct analyzer_event_listener {
+	void *obj;
 	char *name;
-	struct analyzer_reg *analyzer;
-	struct analyzer_data_reg *data_reg;
-	struct analyzer_output_list *outs;
-
-	struct proto_dependency *proto;
-	
-	// Process function of the analyzer
-	int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index);
-
-	struct analyzer_data_source *next;
-
+	int (*process) (void *listener_obj, struct analyzer_event *evt);
 };
+
+typedef struct proto_event_data_item analyzer_data_item_t;
 
 struct analyzer_data {
 	
 	union {
 		struct ptype *value;
-		struct conntrack_con_info_lst *lst;
+		analyzer_data_item_t *items;
 	};
 };
 
-struct analyzer_output_list {
-	struct output *o;
-	int (*process) (struct output *output, struct analyzer_data *data);
-	struct analyzer_output_list *prev, *next;
-};
 
 struct analyzer_data_reg {
 	int flags;
@@ -94,10 +96,10 @@ struct analyzer_data_reg {
 
 int analyzer_register(struct analyzer_reg_info *reg_info);
 int analyzer_unregister(char *name);
-struct analyzer_data_source *analyzer_register_data_conntrack_source(struct analyzer_reg *analyzer, char *name, struct analyzer_data_reg *datas, char *proto, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index));
-int analyzer_data_source_register_output(struct analyzer_data_source *src, struct output *o);
-int analyzer_data_source_unregister_output(struct analyzer_data_source *src, struct output *o);
-struct analyzer_data_source *analyzer_data_source_get(char *source);
-int analyzer_data_source_process(struct analyzer_data_source *src, struct analyzer_data *data);
+struct analyzer_event_reg *analyzer_event_get(char *name);
+int analyzer_event_process(struct analyzer_event *evt);
+
+int analyzer_event_register_listener(struct analyzer_event_reg *evt, struct analyzer_event_listener *listener);
+int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *listener_name);
 
 #endif

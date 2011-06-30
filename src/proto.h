@@ -29,6 +29,13 @@
 
 #define PROTO_REGISTRY "proto"
 
+struct proto_event_analyzer_list {
+
+	struct proto_event_analyzer_reg *analyzer_reg;
+	struct proto_event_analyzer_list *next, *prev;
+
+};
+
 int proto_init();
 void proto_dependency_refcount_inc(struct proto_dependency *proto_dep);
 int proto_cleanup();

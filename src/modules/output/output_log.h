@@ -37,7 +37,7 @@ struct output_log_txt_priv {
 	struct ptype *p_format;
 	struct output_log_parsed_field *parsed_fields;
 
-	struct analyzer_data_source *src;
+	struct analyzer_event_reg *evt;
 	unsigned int field_count;
 };
 
@@ -50,6 +50,6 @@ static int output_log_txt_init(struct output *o);
 static int output_log_txt_open(struct output *o);
 static int output_log_txt_close(struct output *o);
 static int output_log_txt_cleanup(struct output *o);
-static int output_log_txt_process(struct output *o, struct analyzer_data *src);
+static int output_log_txt_process(void *obj, struct analyzer_event *evt);
 
 #endif

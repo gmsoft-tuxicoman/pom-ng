@@ -368,3 +368,196 @@ int proto_cleanup() {
 
 	return POM_OK;
 }
+
+
+struct proto_event *proto_event_alloc(struct proto_reg *proto, unsigned int evt_id) {
+
+	struct proto_event *evt = malloc(sizeof(struct proto_event));
+	if (!evt) {
+		pom_oom(sizeof(struct proto_event));
+		return NULL;
+	}
+	memset(evt, 0, sizeof(struct proto_event));
+
+	struct proto_event_reg *evt_reg = &proto->info->events[evt_id];
+	evt->evt_reg = evt_reg;
+
+	struct proto_event_data *data = malloc(sizeof(struct proto_event_data) * evt_reg->data_count);
+	if (!data) {
+		pom_oom(sizeof(struct proto_event_data) * evt_reg->data_count);
+		free(evt);
+		return NULL;
+	}
+	memset(data, 0, sizeof(struct proto_event_data) * evt_reg->data_count);
+	
+	int i;
+	for (i = 0; i < evt_reg->data_count; i++) {
+		// Allocate a ptype for each non list items
+		if (!(evt_reg->data[i].flags & PROTO_EVENT_DATA_FLAG_LIST)) {
+			data[i].value = ptype_alloc_from(evt_reg->data[i].value_template);
+			if (!data[i].value)
+				goto err;
+		}
+	}
+	evt->data = data;
+	evt->proto = proto;
+
+	return evt;
+err:
+
+	for (i = 0; i < evt_reg->data_count; i++) {
+		if (data[i].value)
+			ptype_cleanup(data[i].value);
+	}
+
+	free(data);
+	free(evt);
+
+	return NULL;
+}
+
+struct ptype *proto_event_data_item_add(struct proto_event *evt, unsigned int data_id, char *key) {
+
+	struct proto_event_data_item *itm = malloc(sizeof(struct proto_event_data_item));
+	if (!itm) {
+		pom_oom(sizeof(struct proto_event_data_item));
+		return NULL;
+	}
+	memset(itm, 0, sizeof(struct proto_event_data_item));
+	
+	itm->key = key;
+
+	itm->value = ptype_alloc_from(evt->evt_reg->data[data_id].value_template);
+	if (!itm->value) {
+		free(itm);
+		return NULL;
+	}
+
+	itm->next = evt->data[data_id].items;
+	evt->data[data_id].items = itm;
+	return itm->value;
+}
+
+int proto_event_process(struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	if (evt->flags & PROTO_EVENT_FLAG_PROCESSED) {
+		pomlog(POMLOG_ERR "Internal error, proto event already processed");
+		return POM_ERR;
+	}
+
+	struct proto_event_analyzer_list *lst = evt->proto->event_analyzers;
+	for (; lst; lst = lst->next) {
+		if (lst->analyzer_reg->process(lst->analyzer_reg->analyzer, evt, stack, stack_index) != POM_OK) {
+			pomlog(POMLOG_WARN "An analyzer returned an error when processing event %s", evt->evt_reg->name);
+			// FIXME : remove the analyzer from the list ?
+		}
+	}
+
+	evt->flags |= PROTO_EVENT_FLAG_PROCESSED;
+
+	return POM_OK;
+}
+
+int proto_event_reset(struct proto_event *evt, struct conntrack_entry *ce) {
+
+	struct proto_event_analyzer_list *lst = evt->proto->event_analyzers;
+	for (; lst; lst = lst->next) {
+		if (lst->analyzer_reg->expire) {
+			if (lst->analyzer_reg->expire(lst->analyzer_reg->analyzer, evt, ce) != POM_OK) {
+				pomlog(POMLOG_WARN "An analyzer returned an error when processing event %s", evt->evt_reg->name);
+				// FIXME : remove the analyzer from the list ?
+			}
+		}
+	}
+
+	int i;
+	for (i = 0; i < evt->evt_reg->data_count; i++) {
+		if (evt->evt_reg->data[i].flags & PROTO_EVENT_DATA_FLAG_LIST) {
+			struct proto_event_data_item *itm = evt->data[i].items;
+			while (itm) {
+				struct proto_event_data_item *next = itm->next;
+				free(itm->key);
+				ptype_cleanup(itm->value);
+				free(itm);
+				itm = next;
+			}
+			evt->data[i].items = NULL;
+
+		} else {
+			evt->data[i].set = 0;
+		}
+
+	}
+
+	evt->flags &= ~PROTO_EVENT_FLAG_PROCESSED;
+
+	return POM_OK;
+}
+
+
+int proto_event_cleanup(struct proto_event *evt) {
+
+	int i;
+	for (i = 0; i < evt->evt_reg->data_count; i++) {
+		if (evt->evt_reg->data[i].flags & PROTO_EVENT_DATA_FLAG_LIST) {
+			struct proto_event_data_item *itm = evt->data[i].items;
+			while (itm) {
+				struct proto_event_data_item *next = itm->next;
+				free(itm->key);
+				ptype_cleanup(itm->value);
+				free(itm);
+				itm = next;
+			}
+
+		} else {
+			ptype_cleanup(evt->data[i].value);
+		}
+
+	}
+
+	free(evt->data);
+	free(evt);
+	return POM_OK;
+}
+
+
+int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_analyzer_reg *analyzer_reg) {
+
+	struct proto_event_analyzer_list *lst = malloc(sizeof(struct proto_event_analyzer_list));
+	if (!lst) {
+		pom_oom(sizeof(struct proto_event_analyzer_list));
+		return POM_ERR;
+	}
+	memset(lst, 0, sizeof(struct proto_event_analyzer_list));
+
+	lst->analyzer_reg = analyzer_reg;
+	lst->next = proto->event_analyzers;
+	if (lst->next)
+		lst->next->prev = lst;
+	proto->event_analyzers = lst;
+
+	return POM_OK;
+}
+
+int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer_reg *analyzer) {
+
+	struct proto_event_analyzer_list *lst = proto->event_analyzers;
+	for (; lst && lst->analyzer_reg->analyzer != analyzer; lst = lst->next);
+
+	if (!lst) {
+		pomlog(POMLOG_ERR "Cannot unregister event analyzer from proto %s, analyzer not found", proto->info->name);
+		return POM_ERR;
+	}
+
+	if (lst->next)
+		lst->next->prev = lst->prev;
+
+	if (lst->prev)
+		lst->prev->next = lst->next;
+	else
+		proto->event_analyzers = lst->next;
+
+	free(lst);
+
+	return POM_OK;
+}

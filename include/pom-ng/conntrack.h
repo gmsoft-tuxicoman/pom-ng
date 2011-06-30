@@ -41,10 +41,10 @@ struct conntrack_entry {
 	struct conntrack_entry *parent; ///< Parent conntrack
 	struct conntrack_child_list *children; ///< Children of this conntrack
 	void *priv; ///< Private data of the protocol
+	struct conntrack_priv_list *priv_list; ///< Private data coming from other objects
 	pthread_mutex_t lock;
 	struct timer *cleanup_timer; ///< Cleanup the conntrack when this timer is reached
 	struct proto_reg *proto; ///< Proto of this conntrack
-	struct conntrack_con_info *con_info; ///< Conntrack informations
 };
 
 struct conntrack_child_list {
@@ -58,18 +58,16 @@ struct conntrack_list {
 	struct conntrack_list *rev; ///< Reverse connection
 };
 
-struct conntrack_analyzer_list {
+struct conntrack_con_info_analyzer_list {
 
 	struct analyzer_reg *analyzer;
 	int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index);
-	struct conntrack_analyzer_list *prev, *next;
+	struct conntrack_con_info_analyzer_list *prev, *next;
 };
 
 struct conntrack_info {
 	unsigned int default_table_size;
 	int fwd_pkt_field_id, rev_pkt_field_id;
-	struct conntrack_con_info_reg *con_info;
-	struct conntrack_analyzer_list *analyzers;
 	int (*cleanup_handler) (struct conntrack_entry *ce);
 };
 
@@ -80,43 +78,12 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
-struct conntrack_con_info_reg {
-	char *name;
-	unsigned int flags;
-	struct ptype *value_template;
-	char *description;
-};
-
-struct conntrack_con_info_val {
-
-	unsigned int set; ///< Indicate that the variable is actually set
-	struct ptype *value;
-
-};
-
-struct conntrack_con_info_lst {
-	char *key;
-	struct ptype *value;
-
-	struct conntrack_con_info_lst *next;
-};
-
-struct conntrack_con_info {
-	union {
-		struct conntrack_con_info_val val[CT_DIR_TOT];
-		struct conntrack_con_info_lst *lst[CT_DIR_TOT];
-	};
-};
-
-
-
 struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction);
 struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent);
+
+int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv));
+void *conntrack_get_priv(struct conntrack_entry *ce, void *obj);
+
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
-struct ptype *conntrack_con_info_lst_add(struct conntrack_entry *ce, unsigned int id, char *key, int direction);
-int conntrack_con_info_process(struct proto_process_stack *stack, unsigned int stack_index);
-int conntrack_con_info_reset(struct conntrack_entry *ce);
-int conntrack_con_register_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer, int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index));
-int conntrack_con_unregister_analyzer(struct proto_reg *proto, struct analyzer_reg *analyzer);
 
 #endif

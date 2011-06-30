@@ -53,7 +53,6 @@ static int output_log_mod_register(struct mod_reg *mod) {
 	output_log_txt.open = output_log_txt_open;
 	output_log_txt.close = output_log_txt_close;
 	output_log_txt.cleanup = output_log_txt_cleanup;
-	output_log_txt.process = output_log_txt_process;
 
 	return output_register(&output_log_txt);
 }
@@ -83,11 +82,11 @@ static int output_log_txt_init(struct output *o) {
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 	
-	p = registry_new_param("source", "http", priv->p_source, "Define the type of event being logged", 0);
+	p = registry_new_param("source", "", priv->p_source, "Define the type of event being logged", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("format", "mouh", priv->p_format, "Format of each log line", 0);
+	p = registry_new_param("format", "", priv->p_format, "Format of each log line", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 
@@ -134,9 +133,9 @@ static int output_log_txt_open(struct output *o) {
 		return POM_ERR;
 	}
 
-	priv->src = analyzer_data_source_get(src_name);
+	priv->evt = analyzer_event_get(src_name);
 
-	if (!priv->src) {
+	if (!priv->evt) {
 		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
 		return POM_ERR;
 	}
@@ -162,7 +161,7 @@ static int output_log_txt_open(struct output *o) {
 		memset(name, 0, sizeof(name));
 		strncpy(name, sep, end_off - start_off - 1);
 		
-		struct analyzer_data_reg *dreg = priv->src->data_reg;
+		struct analyzer_data_reg *dreg = priv->evt->data;
 		int i;
 		for (i = 0; dreg[i].name && strcmp(dreg[i].name, name); i++);
 
@@ -208,8 +207,13 @@ static int output_log_txt_open(struct output *o) {
 		goto err;
 	}
 
-	// Register to the source
-	if (analyzer_data_source_register_output(priv->src, o) != POM_OK)
+	// Register this input as a listener for the right event
+	static struct analyzer_event_listener listener;
+	listener.name = o->name;
+	listener.obj = o;
+	listener.process = output_log_txt_process;
+		
+	if (analyzer_event_register_listener(priv->evt, &listener) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -225,7 +229,7 @@ err:
 
 	priv->field_count = 0;
 	priv->parsed_fields = NULL;
-	priv->src = NULL;
+	priv->evt = NULL;
 
 	return POM_ERR;
 }
@@ -244,7 +248,7 @@ static int output_log_txt_close(struct output *o) {
 		priv->field_count = 0;
 	}
 
-	analyzer_data_source_unregister_output(priv->src, o);
+	analyzer_event_unregister_listener(priv->evt, o->name);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));
@@ -254,8 +258,9 @@ static int output_log_txt_close(struct output *o) {
 	return POM_OK;
 }	
 
-static int output_log_txt_process(struct output *o, struct analyzer_data *data) {
+static int output_log_txt_process(void *obj, struct analyzer_event *evt) {
 
+	struct output *o = obj;
 	struct output_log_txt_priv *priv = o->priv;
 
 	char *format = PTYPE_STRING_GETVAL(priv->p_format);
@@ -277,8 +282,8 @@ static int output_log_txt_process(struct output *o, struct analyzer_data *data) 
 
 		format_pos = field->end_off;
 
-		if (data[field->id].value) {
-			pos += ptype_print_val(data[field->id].value, buff + pos, sizeof(buff) - pos - 1);
+		if (evt->data[field->id].value) {
+			pos += ptype_print_val(evt->data[field->id].value, buff + pos, sizeof(buff) - pos - 1);
 		} else {
 			buff[pos] = '-'; pos++;
 		}

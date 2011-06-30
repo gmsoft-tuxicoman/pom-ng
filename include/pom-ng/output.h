@@ -54,7 +54,6 @@ struct output_reg_info {
 	int (*open) (struct output *o);
 	int (*close) (struct output *o);
 	int (*cleanup) (struct output *o);
-	int (*process) (struct output *o, struct analyzer_data *data);
 
 };
 
