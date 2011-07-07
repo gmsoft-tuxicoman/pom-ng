@@ -29,6 +29,7 @@
 
 struct analyzer_http_priv {
 	struct proto_dependency *proto_http;
+	struct proto_packet_listener *http_packet_listener;
 };
 
 #define ANALYZER_HTTP_GOT_QUERY_EVT	0x1
@@ -38,6 +39,14 @@ struct analyzer_http_priv {
 struct analyzer_http_ce_priv {
 	unsigned int flags;
 	struct analyzer_event evt;
+
+	// Used to tag the payloads
+	int query_dir;
+
+	// Payload information
+	struct analyzer_pload_buffer *pload[2];
+	char *content_type[2];
+	size_t content_len[2];
 };
 
 
@@ -54,6 +63,7 @@ static int analyzer_http_ce_priv_cleanup(void *obj, void *priv);
 static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
 static int analyzer_http_proto_event_expire(struct analyzer_reg *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
 
+static int analyzer_http_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif
 

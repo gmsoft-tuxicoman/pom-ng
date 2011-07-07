@@ -245,16 +245,22 @@ int main(int argc, char *argv[]) {
 		goto err_registry;
 	}
 
+	if (analyzer_init(DATAROOT "/mime_types.xml") != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the analyzers");
+		res = -1;
+		goto err_proto;
+	}
+
 	if (output_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the outputs");
 		res = -1;
-		goto err_registry;
+		goto err_proto;
 	}
 
 	// Load all the available modules
 	if (mod_load_all() != POM_OK) { 
 		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
-		goto err_registry;
+		goto err_proto;
 	}
 
 	if (input_client_init() != POM_OK) {

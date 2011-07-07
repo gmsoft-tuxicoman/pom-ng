@@ -94,6 +94,66 @@ struct analyzer_data_reg {
 	char *name;
 };
 
+
+struct analyzer_pload_class {
+
+	char *name;
+	char *description;
+
+};
+
+#define ANALYZER_PLOAD_CLASS_COUNT 6
+enum analyzer_pload_class_id {
+	analyzer_pload_class_unknown,
+	analyzer_pload_class_application,
+	analyzer_pload_class_audio,
+	analyzer_pload_class_image,
+	analyzer_pload_class_video,
+	analyzer_pload_class_document,
+};
+
+struct analyzer_pload_type {
+
+	enum analyzer_pload_class_id cls;
+	char *name;
+	char *description;
+	char *extension;
+	struct analyzer_pload *analyzers;
+
+	struct analyzer_pload_type *prev, *next;
+
+};
+
+
+struct analyzer_pload_mime_type {
+
+	struct analyzer_pload_type *type;
+	char *name;
+	struct analyzer_pload_mime_type *prev, *next;
+};
+
+struct analyzer_pload_reg {
+
+	char *payload_type;
+
+};
+
+struct analyzer_pload {
+
+	struct analyzer_pload_reg *reg_info;
+
+	struct analyzer_pload *prev, *next;
+};
+
+struct analyzer_pload_buffer {
+	
+	size_t expected_size, buff_size;
+	size_t buff_pos;
+
+	void *buff;
+
+};
+
 int analyzer_register(struct analyzer_reg_info *reg_info);
 int analyzer_unregister(char *name);
 struct analyzer_event_reg *analyzer_event_get(char *name);
@@ -101,5 +161,10 @@ int analyzer_event_process(struct analyzer_event *evt);
 
 int analyzer_event_register_listener(struct analyzer_event_reg *evt, struct analyzer_event_listener *listener);
 int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *listener_name);
+
+struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(char *content_type, size_t expected_size);
+int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size);
+int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
+
 
 #endif

@@ -103,13 +103,11 @@ static int analyzer_http_init(struct analyzer_reg *analyzer) {
 	analyzer->priv = priv;
 
 	return POM_OK;
-
 }
 
 static int analyzer_http_cleanup(struct analyzer_reg *analyzer) {
 
 	struct analyzer_http_priv *priv = analyzer->priv;
-	
 	proto_remove_dependency(priv->proto_http);
 
 	free(priv);
@@ -122,6 +120,15 @@ static int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
 	struct analyzer_http_ce_priv *p = priv;
 	analyzer_http_event_reset(&p->evt);
 	free(p->evt.data);
+
+	int i;
+	for (i = 0; i < 2; i++) {
+		if (p->pload[i]) {
+			analyzer_pload_buffer_cleanup(p->pload[i]);
+			p->pload[i] = NULL;
+		}
+	}
+
 	free(p);
 
 	return POM_OK;
@@ -136,9 +143,18 @@ static int analyzer_http_event_listeners_notify(struct analyzer_reg *analyzer, s
 		analyzer_reg.analyzer = analyzer;
 		analyzer_reg.process = analyzer_http_proto_event_process;
 		analyzer_reg.expire = analyzer_http_proto_event_expire;
-		return proto_event_analyzer_register(priv->proto_http->proto, &analyzer_reg);
+		if (proto_event_analyzer_register(priv->proto_http->proto, &analyzer_reg) != POM_OK)
+			return POM_ERR;
+
+		priv->http_packet_listener = proto_packet_listener_register(priv->proto_http->proto, PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_http_proto_packet_process);
+		if (!priv->http_packet_listener) {
+			proto_event_analyzer_unregister(priv->proto_http->proto, analyzer);
+			return POM_ERR;
+		}
 
 	} else {
+		if (proto_packet_listener_unregister(priv->http_packet_listener) != POM_OK)
+			return POM_ERR;
 		return proto_event_analyzer_unregister(priv->proto_http->proto, analyzer);
 	}
 
@@ -199,9 +215,13 @@ static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, stru
 	struct proto_event_data *src_data = evt->data;
 	struct analyzer_data *dst_data = priv->evt.data;
 
+	analyzer_data_item_t *headers = NULL;
+
 	if (evt->evt_reg->id == proto_http_evt_query) {
 
 		priv->flags |= ANALYZER_HTTP_GOT_QUERY_EVT;
+
+		priv->query_dir = s->direction;
 
 		// Copy data contained into the query event
 		if (src_data[proto_http_query_first_line].set)
@@ -217,19 +237,13 @@ static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, stru
 
 		dst_data[analyzer_http_request_query_headers].items = src_data[proto_http_query_headers].items;
 
-		analyzer_data_item_t *headers = src_data[proto_http_query_headers].items;
-		while (headers) {
-			if (!dst_data[analyzer_http_request_server_name].value && !strcasecmp(headers->key, "Host"))
-				dst_data[analyzer_http_request_server_name].value = headers->value;
-	
-			// TODO username and password
-			headers = headers->next;
-		}
+		headers = src_data[proto_http_query_headers].items;
 
 
 	} else if (evt->evt_reg->id == proto_http_evt_response) {
 
 		priv->flags |= ANALYZER_HTTP_GOT_RESPONSE_EVT;
+		priv->query_dir = (s->direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
 
 		if (src_data[proto_http_response_status].set)
 			dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
@@ -240,12 +254,41 @@ static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, stru
 
 		dst_data[analyzer_http_request_response_headers].items = src_data[proto_http_response_headers].items;
 
+		headers = src_data[proto_http_response_headers].items;
+
 
 	} else {
 		pomlog(POMLOG_ERR "Unknown event ID %u", evt->evt_reg->id);
 		return POM_ERR;
 	}
 
+	// Parse the info we need from the header
+	for (; headers; headers = headers->next) {
+		if (evt->evt_reg->id == proto_http_evt_query) {
+
+			if (!dst_data[analyzer_http_request_server_name].value && !strcasecmp(headers->key, "Host")) {
+				dst_data[analyzer_http_request_server_name].value = headers->value;
+				continue;
+			}
+	
+			// TODO username and password
+		}
+
+
+		if (!strcasecmp(headers->key, "Content-Length")) {
+			size_t content_len = 0;
+			if (sscanf(PTYPE_STRING_GETVAL(headers->value), "%zu", &content_len) != 1) {
+				pomlog(POMLOG_DEBUG "Could not parse Content-Length \"%s\"", PTYPE_STRING_GETVAL(headers->value));
+				continue;
+			}
+			priv->content_len[s->direction] = content_len;
+		} else if (!strcasecmp(headers->key, "Content-Type")) {
+			priv->content_type[s->direction] = PTYPE_STRING_GETVAL(headers->value);
+		}
+		
+
+
+	}
 
 	// Get client/server ports if not fetched yet
 	if (stack_index > 1 && (!dst_data[analyzer_http_request_client_port].value || !dst_data[analyzer_http_request_server_port].value)) {
@@ -329,6 +372,49 @@ static int analyzer_http_proto_event_expire(struct analyzer_reg *analyzer, struc
 		return result;
 	}
 
+	int i;
+	for (i = 0; i < 2; i++) {
+		if (priv->pload[i]) {
+			analyzer_pload_buffer_cleanup(priv->pload[i]);
+			priv->pload[i] = NULL;
+		}
+		priv->content_len[i] = 0;
+		priv->content_type[i] = NULL;
+	}
+
+
+	return POM_OK;
+}
+
+static int analyzer_http_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct analyzer_reg *analyzer = object;
+
+	struct proto_process_stack *pload_stack = &stack[stack_index];
+
+	struct proto_process_stack *s = &stack[stack_index - 1];
+	if (!s->ce)
+		return POM_ERR;
+
+	struct analyzer_http_ce_priv *priv = conntrack_get_priv(s->ce, analyzer);
+	if (!priv) {
+		pomlog(POMLOG_ERR "No private data attached to this connection. Ignoring payload.");
+		return POM_ERR;
+	}
+
+	int dir = s->direction;
+
+	if (!priv->pload[dir]) {
+		priv->pload[dir] = analyzer_pload_buffer_alloc(priv->content_type[dir], priv->content_len[dir]);
+		if (!priv->pload[dir])
+			return POM_ERR;
+
+	}
+
+	pomlog("Got %u of HTTP payload", s->plen);
+
+	if (analyzer_pload_buffer_append(priv->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
+		return POM_ERR;
 
 	return POM_OK;
 }

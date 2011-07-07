@@ -23,4 +23,5 @@ EXTRA_DIST = README
 
 doc_DATA = README
 
+dist_pkgdata_DATA = mime_types.xml
 

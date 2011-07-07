@@ -254,7 +254,7 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 				
 				// Parse a few useful headers
 				if (!(priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !strcasecmp(name, "Content-Length")) {
-					if (sscanf(value, "%u", &priv->info.content_len) != 1)
+					if (sscanf(value, "%zu", &priv->info.content_len) != 1)
 						return PROTO_INVALID;
 					priv->info.flags |= HTTP_FLAG_HAVE_CLEN;
 				} else if (!(priv->info.flags & (HTTP_FLAG_GZIP|HTTP_FLAG_DEFLATE)) && !strcasecmp(name, "Content-Encoding")) {

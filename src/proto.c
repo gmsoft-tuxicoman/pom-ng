@@ -155,7 +155,29 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 
 	if (!proto || !proto->info->process)
 		return PROTO_ERR;
-	return proto->info->process(p, s, stack_index);
+	int result = proto->info->process(p, s, stack_index);
+
+	if (result == PROTO_OK) {
+		struct proto_packet_listener *l = proto->packet_listeners;
+		while (l) {
+			int listener_res = POM_OK;
+			if (l->flags & PROTO_PACKET_LISTENER_PLOAD_ONLY) {
+				if (s[stack_index + 1].plen)
+					listener_res = l->process(l->object, p, s, stack_index + 1);
+
+			} else {
+				listener_res = l->process(l->object, p, s, stack_index);
+			}
+			if (listener_res != POM_OK) {
+				pomlog(POMLOG_WARN "Warning listener failed");
+				// FIXME remove listener from the list ?
+			}
+
+			l = l->next;
+		}
+	}
+
+	return result;
 }
 
 int proto_unregister(char *name) {
@@ -558,6 +580,48 @@ int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer_reg
 		proto->event_analyzers = lst->next;
 
 	free(lst);
+
+	return POM_OK;
+}
+
+
+struct proto_packet_listener *proto_packet_listener_register(struct proto_reg *proto, unsigned int flags, void *object, int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index)) {
+
+	struct proto_packet_listener *l = malloc(sizeof(struct proto_packet_listener));
+	if (!l) {
+		pom_oom(sizeof(struct proto_packet_listener));
+		return NULL;
+	}
+	memset(l, 0, sizeof(struct proto_packet_listener));
+
+	l->flags = flags;
+	l->process = process;
+	l->proto = proto;
+	l->object = object;
+
+	l->next = proto->packet_listeners;
+	if (l->next)
+		l->next->prev = l;
+	
+	proto->packet_listeners = l;
+
+	return l;
+}
+
+int proto_packet_listener_unregister(struct proto_packet_listener *l) {
+
+	if (!l)
+		return POM_ERR;
+
+	if (l->next)
+		l->next->prev = l->prev;
+
+	if (l->prev)
+		l->prev->next = l->next;
+	else
+		l->proto->packet_listeners = l->next;
+
+	free(l);
 
 	return POM_OK;
 }

@@ -42,7 +42,7 @@
 
 
 struct http_info {
-	unsigned int content_len, content_pos;
+	size_t content_len, content_pos;
 	unsigned int flags;
 };
 

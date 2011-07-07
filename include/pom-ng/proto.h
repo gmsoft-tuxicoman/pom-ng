@@ -41,6 +41,12 @@
 // Indicates the event has been processed and should be reset before reuse
 #define PROTO_EVENT_FLAG_PROCESSED	0x2
 
+
+// The listener needs the payload of the specified protocol
+#define PROTO_PACKET_LISTENER_PLOAD_ONLY	0x2
+
+
+// Error code definition
 #define PROTO_OK	0
 #define PROTO_ERR	-1
 #define PROTO_STOP	-2
@@ -62,6 +68,7 @@ struct proto_reg {
 	void *priv;
 
 	struct proto_event_analyzer_list *event_analyzers;
+	struct proto_packet_listener *packet_listeners;
 
 	struct proto_reg *next, *prev;
 
@@ -157,6 +164,15 @@ struct proto_reg_info {
 
 };
 
+struct proto_packet_listener {
+
+	int flags;
+	struct proto_reg *proto;
+	void *object;
+	int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	struct proto_packet_listener *prev, *next;
+};
+
 /// Register a new protocol
 int proto_register(struct proto_reg_info *reg);
 
@@ -193,5 +209,12 @@ int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_an
 
 /// Unregister an analyzer from a protocol
 int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer_reg *analyzer);
+
+
+// Register a packet listener
+struct proto_packet_listener *proto_packet_listener_register(struct proto_reg *proto, unsigned int flags, void *object,  int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index));
+
+// Unregister a packet listener
+int proto_packet_listener_unregister(struct proto_packet_listener *l);
 
 #endif
