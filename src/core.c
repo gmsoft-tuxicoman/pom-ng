@@ -400,7 +400,10 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 }
 
 int core_process_packet_stack(struct proto_process_stack *stack, unsigned int stack_index, struct packet *p) {
-	
+
+	if (!stack[stack_index].proto)
+		return PROTO_OK;
+
 	unsigned int i;
 
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {

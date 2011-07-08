@@ -18,11 +18,17 @@
  *
  */
 
-#ifndef __PROTO_MPEG_H__
-#define __PROTO_MPEG_H__
+#ifndef __PROTO_MPEG_SECT_H__
+#define __PROTO_MPEG_SECT_H__
 
-struct mod_reg_info* proto_mpeg_reg_info();
-static int proto_mpeg_mod_register(struct mod_reg *mod);
-static int proto_mpeg_mod_unregister();
+#define PROTO_MPEG_SECT_FIELD_NUM 1
+
+enum proto_mpeg_sect_fields {
+	proto_mpeg_sect_field_table_id,
+};
+
+int proto_mpeg_sect_init(struct registry_instance *i);
+int proto_mpeg_sect_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int proto_mpeg_sect_cleanup();
 
 #endif
