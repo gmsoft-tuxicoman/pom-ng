@@ -26,9 +26,10 @@
 #include "proto_mpeg.h"
 #include "proto_mpeg_ts.h"
 #include "proto_mpeg_sect.h"
+#include "proto_mpeg_dvb_mpe.h"
 
 // ptype for fields value template
-static struct ptype *ptype_uint8 = NULL, *ptype_uint16 = NULL;
+static struct ptype *ptype_mac = NULL, *ptype_uint8 = NULL, *ptype_uint16 = NULL;
 
 
 struct mod_reg_info* proto_mpeg_reg_info() {
@@ -45,9 +46,10 @@ struct mod_reg_info* proto_mpeg_reg_info() {
 
 static int proto_mpeg_mod_register(struct mod_reg *mod) {
 
+	ptype_mac = ptype_alloc("mac");
 	ptype_uint8 = ptype_alloc("uint8");
 	ptype_uint16 = ptype_alloc("uint16");
-	if (!ptype_uint8 || !ptype_uint16) {
+	if (!ptype_mac || !ptype_uint8 || !ptype_uint16) {
 		proto_mpeg_mod_unregister();
 		return POM_ERR;
 	}
@@ -101,6 +103,28 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 		return POM_ERR;
 	}
 
+	static struct proto_pkt_field proto_mpeg_dvb_mpe_fields[PROTO_MPEG_DVB_MPE_FIELD_NUM + 1];
+	memset(proto_mpeg_dvb_mpe_fields, 0, sizeof(struct proto_pkt_field) * (PROTO_MPEG_DVB_MPE_FIELD_NUM + 1));
+	proto_mpeg_dvb_mpe_fields[0].name = "dst";
+	proto_mpeg_dvb_mpe_fields[0].value_template = ptype_mac;
+	proto_mpeg_dvb_mpe_fields[0].description = "Destination MAC address";
+
+	static struct proto_reg_info proto_mpeg_dvb_mpe;
+	memset(&proto_mpeg_dvb_mpe, 0, sizeof(struct proto_reg_info));
+	proto_mpeg_dvb_mpe.name = "mpeg_dvb_mpe";
+	proto_mpeg_dvb_mpe.api_ver = PROTO_API_VER;
+	proto_mpeg_dvb_mpe.mod = mod;
+	proto_mpeg_dvb_mpe.pkt_fields = proto_mpeg_dvb_mpe_fields;
+
+	proto_mpeg_dvb_mpe.init = proto_mpeg_dvb_mpe_init;
+	proto_mpeg_dvb_mpe.process = proto_mpeg_dvb_mpe_process;
+	proto_mpeg_dvb_mpe.cleanup = proto_mpeg_dvb_mpe_cleanup;
+
+	if (proto_register(&proto_mpeg_dvb_mpe) != POM_OK) {
+		proto_mpeg_mod_unregister();
+		return POM_ERR;
+	}
+
 
 	return POM_OK;
 
@@ -113,6 +137,7 @@ static int proto_mpeg_mod_unregister() {
 	
 	res += proto_unregister("mpeg_ts");
 	res += proto_unregister("mpeg_sect");
+	res += proto_unregister("mpeg_dvb_mpe");
 
 	if (ptype_uint8) {
 		res += ptype_cleanup(ptype_uint8);
@@ -122,6 +147,11 @@ static int proto_mpeg_mod_unregister() {
 	if (ptype_uint16) {
 		res += ptype_cleanup(ptype_uint16);
 		ptype_uint16 = NULL;
+	}
+
+	if (ptype_mac) {
+		res += ptype_cleanup(ptype_mac);
+		ptype_mac = NULL;
 	}
 
 
