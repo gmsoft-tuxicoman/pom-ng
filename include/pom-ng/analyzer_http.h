@@ -40,6 +40,7 @@ enum analyzer_http_evt_request_data {
 	analyzer_http_request_password,
 	analyzer_http_request_query_headers,
 	analyzer_http_request_response_headers,
+	analyzer_http_request_post_data,
 };
 
 #define ANALYZER_HTTP_EVT_COUNT 1

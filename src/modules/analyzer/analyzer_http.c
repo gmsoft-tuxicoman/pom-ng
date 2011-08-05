@@ -21,9 +21,12 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include "analyzer_http.h"
+#include "analyzer_http_post.h"
 #include <pom-ng/proto_http.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_string.h>
+
+static struct ptype *ptype_string = NULL;
 
 struct mod_reg_info* analyzer_http_reg_info() {
 
@@ -37,10 +40,45 @@ struct mod_reg_info* analyzer_http_reg_info() {
 }
 
 
-static int analyzer_http_mod_register(struct mod_reg *mod) {
+int analyzer_http_mod_register(struct mod_reg *mod) {
 
-	static struct analyzer_data_reg evt_request_data[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT];
-	memset(&evt_request_data, 0, sizeof(struct analyzer_data_reg) * ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT);
+	static struct analyzer_reg analyzer_http;
+	memset(&analyzer_http, 0, sizeof(struct analyzer_reg));
+	analyzer_http.name = "http";
+	analyzer_http.api_ver = ANALYZER_API_VER;
+	analyzer_http.mod = mod;
+	analyzer_http.init = analyzer_http_init;
+	analyzer_http.cleanup = analyzer_http_cleanup;
+
+	return analyzer_register(&analyzer_http);
+
+}
+
+int analyzer_http_mod_unregister() {
+
+	int res = analyzer_unregister("http");
+
+	return res;
+}
+
+
+int analyzer_http_init(struct analyzer *analyzer) {
+
+
+	ptype_string = ptype_alloc("string");
+	if (!ptype_string)
+		return POM_ERR;
+
+	
+	struct analyzer_http_priv *priv = malloc(sizeof(struct analyzer_http_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct analyzer_http_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct analyzer_http_priv));
+
+	static struct analyzer_data_reg evt_request_data[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1];
+	memset(&evt_request_data, 0, sizeof(struct analyzer_data_reg) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
 	evt_request_data[analyzer_http_request_server_name].name = "server_name";
 	evt_request_data[analyzer_http_request_server_addr].name = "server_addr";
 	evt_request_data[analyzer_http_request_server_port].name = "server_port";
@@ -56,44 +94,20 @@ static int analyzer_http_mod_register(struct mod_reg *mod) {
 	evt_request_data[analyzer_http_request_password].name = "password";
 	evt_request_data[analyzer_http_request_status].name = "status";
 	evt_request_data[analyzer_http_request_query_headers].name = "query_headers";
+	evt_request_data[analyzer_http_request_query_headers].flags = ANALYZER_DATA_FLAG_LIST;
+	evt_request_data[analyzer_http_request_query_headers].value_template = ptype_string;
 	evt_request_data[analyzer_http_request_response_headers].name = "response_headers";
-
-	static struct analyzer_event_reg analyzer_http_events[ANALYZER_HTTP_EVT_COUNT + 1];
-	memset(&analyzer_http_events, 0, sizeof(struct proto_event_reg) * (ANALYZER_HTTP_EVT_COUNT + 1));
-	analyzer_http_events[analyzer_http_evt_request].name = "http_request";
-	analyzer_http_events[analyzer_http_evt_request].data = evt_request_data;
-	analyzer_http_events[analyzer_http_evt_request].data_count = ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT;
-	analyzer_http_events[analyzer_http_evt_request].listeners_notify = analyzer_http_event_listeners_notify;
-
-	static struct analyzer_reg_info analyzer_http;
-	memset(&analyzer_http, 0, sizeof(struct analyzer_reg_info));
-	analyzer_http.name = "http";
-	analyzer_http.api_ver = ANALYZER_API_VER;
-	analyzer_http.mod = mod;
-	analyzer_http.events = analyzer_http_events;
-	analyzer_http.init = analyzer_http_init;
-	analyzer_http.cleanup = analyzer_http_cleanup;
-
-	return analyzer_register(&analyzer_http);
-
-}
-
-static int analyzer_http_mod_unregister() {
-
-	int res = analyzer_unregister("http");
-
-	return res;
-}
+	evt_request_data[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
+	evt_request_data[analyzer_http_request_response_headers].value_template = ptype_string;
+	evt_request_data[analyzer_http_request_post_data].name = "post_data";
+	evt_request_data[analyzer_http_request_post_data].flags = ANALYZER_DATA_FLAG_LIST;
+	evt_request_data[analyzer_http_request_post_data].value_template = ptype_string;
 
 
-static int analyzer_http_init(struct analyzer_reg *analyzer) {
-
-	struct analyzer_http_priv *priv = malloc(sizeof(struct analyzer_http_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct analyzer_http_priv));
+	if (analyzer_event_register(analyzer, "http_request", evt_request_data, analyzer_http_event_listeners_notify) == NULL) {
+		free(priv);
 		return POM_ERR;
 	}
-	memset(priv, 0, sizeof(struct analyzer_http_priv));
 
 	priv->proto_http = proto_add_dependency("http");
 	if (!priv->proto_http) {
@@ -102,20 +116,25 @@ static int analyzer_http_init(struct analyzer_reg *analyzer) {
 	}
 	analyzer->priv = priv;
 
-	return POM_OK;
+	return analyzer_http_post_init(analyzer);
 }
 
-static int analyzer_http_cleanup(struct analyzer_reg *analyzer) {
+int analyzer_http_cleanup(struct analyzer *analyzer) {
 
 	struct analyzer_http_priv *priv = analyzer->priv;
 	proto_remove_dependency(priv->proto_http);
 
 	free(priv);
 
+	if (ptype_string) {
+		ptype_cleanup(ptype_string);
+		ptype_string = NULL;
+	}
+
 	return POM_OK;
 }
 
-static int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
+int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
 
 	struct analyzer_http_ce_priv *p = priv;
 	analyzer_http_event_reset(&p->evt);
@@ -134,7 +153,7 @@ static int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
 	return POM_OK;
 }
 
-static int analyzer_http_event_listeners_notify(struct analyzer_reg *analyzer, struct analyzer_event_reg *event, int has_listeners) {
+int analyzer_http_event_listeners_notify(struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners) {
 
 	struct analyzer_http_priv *priv = analyzer->priv;
 
@@ -161,7 +180,7 @@ static int analyzer_http_event_listeners_notify(struct analyzer_reg *analyzer, s
 	return POM_OK;
 }
 
-static int analyzer_http_event_reset(struct analyzer_event *evt) {
+int analyzer_http_event_reset(struct analyzer_event *evt) {
 
 	// Free possibly allocated stuff
 	struct analyzer_data *data = evt->data;
@@ -174,12 +193,21 @@ static int analyzer_http_event_reset(struct analyzer_event *evt) {
 	if (data[analyzer_http_request_client_port].value)
 		ptype_cleanup(data[analyzer_http_request_client_port].value);
 
+	while (data[analyzer_http_request_post_data].items) {
+		analyzer_data_item_t *tmp = data[analyzer_http_request_post_data].items;
+		data[analyzer_http_request_post_data].items = tmp->next;
+
+		free(tmp->key);
+		ptype_cleanup(tmp->value);
+		free(tmp);
+	}
+
 	memset(data, 0, sizeof(struct analyzer_data) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
 
 	return POM_OK;
 }
 
-static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index) {
+int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	if (!s->ce)
@@ -194,7 +222,7 @@ static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, stru
 		}
 		memset(priv, 0, sizeof(struct analyzer_http_ce_priv));
 
-		priv->evt.info = &analyzer->info->events[analyzer_http_evt_request];
+		priv->evt.info = analyzer->events;
 
 		struct analyzer_data *data = malloc(sizeof(struct analyzer_data) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
 		if (!data) {
@@ -357,7 +385,7 @@ static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, stru
 	return POM_OK;
 }
 
-static int analyzer_http_proto_event_expire(struct analyzer_reg *analyzer, struct proto_event *evt, struct conntrack_entry *ce) {
+int analyzer_http_proto_event_expire(struct analyzer *analyzer, struct proto_event *evt, struct conntrack_entry *ce) {
 
 
 	struct analyzer_http_ce_priv *priv = conntrack_get_priv(ce, analyzer);
@@ -386,9 +414,9 @@ static int analyzer_http_proto_event_expire(struct analyzer_reg *analyzer, struc
 	return POM_OK;
 }
 
-static int analyzer_http_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+int analyzer_http_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	struct analyzer_reg *analyzer = object;
+	struct analyzer *analyzer = object;
 
 	struct proto_process_stack *pload_stack = &stack[stack_index];
 
@@ -404,10 +432,14 @@ static int analyzer_http_proto_packet_process(void *object, struct packet *p, st
 
 	int dir = s->direction;
 
+	struct analyzer_pload_type *type = analyzer_pload_type_get_by_mime_type(priv->content_type[dir]);
+
 	if (!priv->pload[dir]) {
-		priv->pload[dir] = analyzer_pload_buffer_alloc(priv->content_type[dir], priv->content_len[dir]);
+		priv->pload[dir] = analyzer_pload_buffer_alloc(type, priv->content_len[dir]);
 		if (!priv->pload[dir])
 			return POM_ERR;
+
+		priv->pload[dir]->rel_event = &priv->evt;
 
 	}
 

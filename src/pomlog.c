@@ -111,10 +111,8 @@ void pomlog_internal(char *file, const char *format, ...) {
 
 	}
 
-	if (len >= POMLOG_FILENAME_SIZE) {
+	if (len >= POMLOG_FILENAME_SIZE)
 		len = POMLOG_FILENAME_SIZE - 1;
-		file[POMLOG_FILENAME_SIZE] = 0;
-	}
 
 
 	char filename[POMLOG_FILENAME_SIZE];

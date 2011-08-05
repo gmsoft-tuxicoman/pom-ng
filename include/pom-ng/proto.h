@@ -143,9 +143,9 @@ struct proto_event {
 
 struct proto_event_analyzer_reg {
 
-	struct analyzer_reg *analyzer;
-	int (*process) (struct analyzer_reg *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
-	int (*expire) (struct analyzer_reg *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
+	struct analyzer *analyzer;
+	int (*process) (struct analyzer *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
+	int (*expire) (struct analyzer *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
 
 };
 
@@ -208,7 +208,7 @@ int proto_event_cleanup(struct proto_event *evt);
 int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_analyzer_reg *analyzer_reg);
 
 /// Unregister an analyzer from a protocol
-int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer_reg *analyzer);
+int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer *analyzer);
 
 
 // Register a packet listener

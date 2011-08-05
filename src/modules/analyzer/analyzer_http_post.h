@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,24 +19,17 @@
  */
 
 
+#ifndef __ANALYZER_HTTP_POST_H__
+#define __ANALYZER_HTTP_POST_H__
 
-#ifndef __POM_NG_POMLOG_H__
-#define __POM_NG_POMLOG_H__
+#include "analyzer_http.h"
 
-/// Prepend value to log string to indicate log level
-#define POMLOG_ERR	"\1"
-#define POMLOG_WARN	"\2"
-#define POMLOG_INFO	"\3"
-#define POMLOG_DEBUG	"\4"
+#define ANALYZER_HTTP_POST_PLOAD_TYPE "form-urlencoded"
 
-/// Size of the log buffer
-#define POMLOG_BUFFER_SIZE	500
-#define POMLOG_LINE_SIZE	2048
-#define POMLOG_FILENAME_SIZE	32
-/// Log entry
+int analyzer_http_post_init(struct analyzer *analyzer);
 
-#define pomlog(args ...) pomlog_internal(__FILE__, args)
+int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
-void pomlog_internal(char *file, const char *format, ...);
+size_t analyzer_http_post_percent_decode(char *dst, char *src, size_t length);
 
 #endif

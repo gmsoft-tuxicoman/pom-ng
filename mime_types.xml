@@ -6,12 +6,12 @@
 		<def name="javascript" description="Javascript" extension="js" class="application" />
 		<def name="json" description="Javascript Object Notation" extension="json" class="application" />
 		<def name="msword" description="Microsoft Word" extension="doc" class="document" />
-		<def name="binary" description="Binary file" extension="bin" class="unknown" />
+		<def name="binary" description="Binary file" extension="bin" class="other" />
 		<def name="pdf" description="Portable Document Format" extension="pdf" class="document" />
 		<def name="excel" description="Excel Sheet" extension="xls" class="document" />
 		<def name="rar" description="RAR file" extension="rar" class="application" />
 		<def name="swf" description="Adobe Flash file" extension="swf" class="application" />
-		<def name="urlform" description="URL form encoded data" extension="txt" class="application" />
+		<def name="form-urlencoded" description="URL encoded data" extension="txt" class="other" />
 		<def name="jpeg" description="JPEG image" extension="jpg" class="image" />
 
 	</definitions>
@@ -29,7 +29,7 @@
 		<type def="json">application/x-json</type>
 		<type def="rar">application/x-rar-compressed</type>
 		<type def="swf">application/x-shockwave-flash</type>
-		<type def="urlform">application/x-www-urlform-encoded</type>
+		<type def="form-urlencoded">application/x-www-form-urlencoded</type>
 		<type def="jpeg">image/jpeg</type>
 		<type def="jpeg">image/jpg</type>
 	</types>

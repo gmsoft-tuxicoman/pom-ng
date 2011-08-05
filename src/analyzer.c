@@ -25,14 +25,14 @@
 
 #include <libxml/parser.h>
 
-static struct analyzer_reg *analyzer_head = NULL;
+static struct analyzer *analyzer_head = NULL;
 static pthread_mutex_t analyzer_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct analyzer_pload_type *analyzer_pload_types = NULL;
 static struct analyzer_pload_mime_type *analyzer_pload_mime_types = NULL;
 
 static struct analyzer_pload_class pload_class_def[ANALYZER_PLOAD_CLASS_COUNT] = {
-	{ "unknown", "Unknown payload class" },
+	{ "other", "Unclassified payload class" },
 	{ "application", "Application files" },
 	{ "audio", "Audio files and streams" },
 	{ "image", "Images files" },
@@ -242,7 +242,7 @@ int analyzer_init(char *mime_type_database) {
 
 }
 
-int analyzer_register(struct analyzer_reg_info *reg_info) {
+int analyzer_register(struct analyzer_reg *reg_info) {
 
 	if (reg_info->api_ver != ANALYZER_API_VER) {
 		pomlog(POMLOG_ERR "Cannot register analyzer as API version differ : expected %u got %u", ANALYZER_API_VER, reg_info->api_ver);
@@ -257,23 +257,24 @@ int analyzer_register(struct analyzer_reg_info *reg_info) {
 	pom_mutex_lock(&analyzer_lock);
 
 	// Allocate the analyzer
-	struct analyzer_reg *analyzer = malloc(sizeof(struct analyzer_reg));
+	struct analyzer *analyzer = malloc(sizeof(struct analyzer));
 	if (!analyzer) {
 		pom_mutex_unlock(&analyzer_lock);
-		pom_oom(sizeof(struct analyzer_reg));
+		pom_oom(sizeof(struct analyzer));
 		return POM_ERR;
 	}
-	memset(analyzer, 0, sizeof(struct analyzer_reg));
+	memset(analyzer, 0, sizeof(struct analyzer));
 	analyzer->info = reg_info;
-
-	// Update the analyzer pointer for the events
-	int i;
-	for (i = 0; reg_info->events[i].name; i++)
-		reg_info->events[i].analyzer = analyzer;
 
 	if (reg_info->init) {
 		if (reg_info->init(analyzer) != POM_OK) {
 			pom_mutex_unlock(&analyzer_lock);
+			// Free any event that might have been registered
+			while (analyzer->events) {
+				struct analyzer_event_reg *tmp = analyzer->events;
+				analyzer->events = tmp->next;
+				free(tmp);
+			}
 			free(analyzer);
 			pomlog(POMLOG_ERR "Error while initializing analyzer %s", reg_info->name);
 			return POM_ERR;
@@ -294,7 +295,7 @@ int analyzer_register(struct analyzer_reg_info *reg_info) {
 int analyzer_unregister(char *name) {
 
 	pom_mutex_lock(&analyzer_lock);
-	struct analyzer_reg *tmp;
+	struct analyzer *tmp;
 	for (tmp = analyzer_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
 
 	if (!tmp) {
@@ -308,6 +309,13 @@ int analyzer_unregister(char *name) {
 			pomlog(POMLOG_ERR "Error while cleaning up analyzer %s", name);
 			return POM_ERR;
 		}
+	}
+
+	struct analyzer_event_reg *evt = tmp->events;
+	while (tmp->events) {
+		tmp->events = evt->next;
+		free(evt);
+		evt = tmp->events;
 	}
 
 	if (tmp->prev)
@@ -333,7 +341,7 @@ int analyzer_cleanup() {
 
 	while (analyzer_head) {
 
-		struct analyzer_reg *tmp = analyzer_head;
+		struct analyzer *tmp = analyzer_head;
 		analyzer_head = tmp->next;
 
 		if (tmp->info->cleanup) {
@@ -343,6 +351,13 @@ int analyzer_cleanup() {
 
 		mod_refcount_dec(tmp->info->mod);
 
+		struct analyzer_event_reg *evt = tmp->events;
+		while (tmp->events) {
+			tmp->events = evt->next;
+			free(evt);
+			evt = tmp->events;
+		}
+
 		free(tmp);
 	}
 
@@ -351,6 +366,12 @@ int analyzer_cleanup() {
 	while (analyzer_pload_types) {
 		struct analyzer_pload_type *tmp = analyzer_pload_types;
 		analyzer_pload_types = tmp->next;
+
+		while (tmp->analyzers) {
+			struct analyzer_pload_reg *del = tmp->analyzers;
+			tmp->analyzers = del->next;
+			free(del);
+		}
 		free(tmp->name);
 		free(tmp->description);
 		free(tmp->extension);
@@ -369,17 +390,39 @@ int analyzer_cleanup() {
 
 }
 
+struct analyzer_event_reg *analyzer_event_register(struct analyzer *analyzer, char *name, struct analyzer_data_reg *data, int (*listeners_notify) (struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners)) {
+
+	struct analyzer_event_reg *evt_reg = malloc(sizeof(struct analyzer_event_reg));
+	if (!evt_reg) {
+		pom_oom(sizeof(struct analyzer_event_reg));
+		return NULL;
+	}
+	memset(evt_reg, 0, sizeof(struct analyzer_event_reg));
+
+	evt_reg->data = data;
+
+	evt_reg->name = name;
+	evt_reg->analyzer = analyzer;
+	evt_reg->listeners_notify = listeners_notify;
+
+	evt_reg->next = analyzer->events;
+	if (evt_reg->next)
+		evt_reg->next->prev = evt_reg;
+	analyzer->events = evt_reg;
+
+	return evt_reg;
+}
+
 
 struct analyzer_event_reg *analyzer_event_get(char *name) {
 
-	struct analyzer_reg *tmp;
+	struct analyzer *tmp;
 	for (tmp = analyzer_head; tmp; tmp = tmp->next) {
 
-		struct analyzer_event_reg *evt = tmp->info->events;
-		unsigned int i;
-		for (i = 0; evt[i].name; i++) {
-			if (!strcmp(name, evt[i].name))
-				return &evt[i];
+		struct analyzer_event_reg *evt = tmp->events;
+		for (; evt; evt = evt->next) {
+			if (!strcmp(name, evt->name))
+				return evt;
 		}
 	}
 
@@ -445,6 +488,28 @@ int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *lis
 	return POM_OK;
 }
 
+struct ptype *analyzer_event_data_item_add(struct analyzer_event *evt, unsigned int data_id, char *key) {
+
+	analyzer_data_item_t *itm = malloc(sizeof(analyzer_data_item_t));
+	if (!itm) {
+		pom_oom(sizeof(analyzer_data_item_t));
+		return NULL;
+	}
+	memset(itm, 0, sizeof(analyzer_data_item_t));
+	
+	itm->key = key;
+
+	itm->value = ptype_alloc_from(evt->info->data[data_id].value_template);
+	if (!itm->value) {
+		free(itm);
+		return NULL;
+	}
+
+	itm->next = evt->data[data_id].items;
+	evt->data[data_id].items = itm;
+	return itm->value;
+}
+
 
 int analyzer_event_process(struct analyzer_event *evt) {
 
@@ -461,8 +526,33 @@ int analyzer_event_process(struct analyzer_event *evt) {
 
 }
 
+struct analyzer_pload_reg *analyzer_pload_register(struct analyzer *analyzer, struct analyzer_pload_type *pt, struct analyzer_data_reg *data, int (*process_full) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload)) {
 
-struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(char *content_type, size_t expected_size) {
+	if (!pt)
+		return NULL;
+
+	struct analyzer_pload_reg *res = malloc(sizeof(struct analyzer_pload_reg));
+	if (!res) {
+		pom_oom(sizeof(struct analyzer_pload_reg));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct analyzer_pload_reg));
+	res->payload_type = pt;
+	res->analyzer = analyzer;
+	res->data = data;
+	res->process_full = process_full;
+
+	res->next = pt->analyzers;
+	if (res->next)
+		res->next->prev = res;
+
+	pt->analyzers = res;
+
+	return res;
+}
+
+
+struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size) {
 
 	struct analyzer_pload_buffer *pload = malloc(sizeof(struct analyzer_pload_buffer));
 	if (!pload) {
@@ -470,24 +560,12 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(char *content_type, si
 		return NULL;
 	}
 	memset(pload, 0, sizeof(struct analyzer_pload_buffer));
-
-	pomlog(POMLOG_DEBUG "Got new pload of type %s", content_type);
-
-	if (expected_size > 0) {
-
-		pload->expected_size = expected_size;
-
-		// FIXME improve this if size if bigger than a page or so
 	
-		pload->buff = malloc(expected_size);
-		if (!pload->buff) {
-			pom_oom(expected_size);
-			free(pload);
-			return NULL;
-		}
+	char *type_str = (type ? type->name : "unknown");
+	pomlog(POMLOG_DEBUG "Got new pload of type %s", type_str);
 
-		pload->buff_size = expected_size;
-	}
+	pload->expected_size = expected_size;
+	pload->type = type;
 
 	return pload;
 
@@ -496,31 +574,63 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(char *content_type, si
 
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size) {
 
-	if (pload->expected_size && (pload->expected_size < pload->buff_pos + size)) {
-		pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
+	if (!pload->type) {
+		// Don't save the pload of type unknown
 		return POM_OK;
 	}
 
-	if (pload->buff_size < pload->buff_pos + size) {
-		// Buffer is too small, add a page
-		long pagesize = sysconf(_SC_PAGESIZE);
-		if (!pagesize)
-			pagesize = 4096;
-
-		size_t new_size = (size_t) (pload->buff + pagesize);
-
-		void *new_buff = realloc(pload->buff, new_size);
-		if (!new_buff) {
-			pom_oom(new_size);
-			pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
-			return POM_ERR;
+	if (pload->expected_size)
+	
+		if (pload->expected_size < pload->buff_pos + size) {
+			pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
+			return POM_OK;
 		}
+		if (!pload->buff) {
+			if (pload->expected_size > 0) {
+				pload->buff_size = pload->expected_size;
+				pload->buff = malloc(pload->expected_size);
+				if (!pload->buff) {
+					pom_oom(pload->expected_size);
+					free(pload);
+					return POM_ERR;
+				}
+		}
+	} else {
 
-		pload->buff = new_buff;
-		pload->buff_size = new_size;
+		if (pload->buff_size < pload->buff_pos + size) {
+			// Buffer is too small, add a page
+			long pagesize = sysconf(_SC_PAGESIZE);
+			if (!pagesize)
+				pagesize = 4096;
+
+			size_t new_size = (size_t) (pload->buff + pagesize);
+
+			void *new_buff = realloc(pload->buff, new_size);
+			if (!new_buff) {
+				pom_oom(new_size);
+				pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
+				return POM_ERR;
+			}
+
+			pload->buff = new_buff;
+			pload->buff_size = new_size;
+		}
 	}
 	
 	memcpy(pload->buff + pload->buff_pos, data, size);
+	pload->buff_pos += size;
+
+	if (pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
+		// Got a full payload, process it
+		struct analyzer_pload_reg *a;
+		for (a = pload->type->analyzers; a; a = a->next) {
+			if (a->process_full) {
+				if (a->process_full(a->analyzer, pload) != POM_OK) {
+					pomlog(POMLOG_WARN "Error while processing full payload");
+				}
+			}
+		}
+	}
 
 	return POM_OK;
 
@@ -534,4 +644,37 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 	free(pload);
 
 	return POM_OK;
+}
+
+struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name) {
+
+	struct analyzer_pload_type *tmp;
+	for (tmp = analyzer_pload_types; tmp && strcmp(tmp->name, name); tmp = tmp->next);
+	
+	return tmp;
+
+}
+
+struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type) {
+
+
+	size_t len;
+	char *end = strchr(mime_type, ';');
+	if (end)
+		len = end - mime_type;
+	else
+		len = strlen(mime_type);
+	while (*mime_type == ' ')
+		mime_type++;
+	while (*(mime_type + len - 1) == ' ' && len >= 0)
+		len--;
+
+
+	struct analyzer_pload_mime_type *tmp;
+	for (tmp = analyzer_pload_mime_types; tmp && strncmp(tmp->name, mime_type, len); tmp = tmp->next);
+
+	if (tmp)
+		return tmp->type;
+
+	return NULL;
 }

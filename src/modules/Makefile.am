@@ -27,7 +27,7 @@ lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYP
 
 EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la
 
-analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h
+analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
 analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
@@ -38,9 +38,6 @@ input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
 input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
-output_file_la_SOURCES = output/output_file.c output/output_file.h
-output_file_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
-output_file_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_log_la_SOURCES = output/output_log.c output/output_log.h
 output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la

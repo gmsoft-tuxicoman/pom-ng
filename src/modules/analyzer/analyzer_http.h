@@ -22,7 +22,6 @@
 #define __ANALYZER_HTTP_H__
 
 #include <pom-ng/conntrack.h>
-#include <pom-ng/packet.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/analyzer.h>
 #include <pom-ng/analyzer_http.h>
@@ -38,6 +37,7 @@ struct analyzer_http_priv {
 
 struct analyzer_http_ce_priv {
 	unsigned int flags;
+
 	struct analyzer_event evt;
 
 	// Used to tag the payloads
@@ -51,19 +51,19 @@ struct analyzer_http_ce_priv {
 
 
 struct mod_reg_info* analyzer_http_reg_info();
-static int analyzer_http_mod_register(struct mod_reg *mod);
-static int analyzer_http_mod_unregister();
+int analyzer_http_mod_register(struct mod_reg *mod);
+int analyzer_http_mod_unregister();
 
-static int analyzer_http_init(struct analyzer_reg *analyzer);
-static int analyzer_http_cleanup(struct analyzer_reg *analyzer);
+int analyzer_http_init(struct analyzer *analyzer);
+int analyzer_http_cleanup(struct analyzer *analyzer);
 
-static int analyzer_http_event_listeners_notify(struct analyzer_reg *analyzer, struct analyzer_event_reg *event, int has_listeners);
-static int analyzer_http_event_reset(struct analyzer_event *evt);
-static int analyzer_http_ce_priv_cleanup(void *obj, void *priv);
-static int analyzer_http_proto_event_process(struct analyzer_reg *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
-static int analyzer_http_proto_event_expire(struct analyzer_reg *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
+int analyzer_http_event_reset(struct analyzer_event *evt);
+int analyzer_http_event_listeners_notify(struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners);
+int analyzer_http_ce_priv_cleanup(void *obj, void *priv);
+int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
+int analyzer_http_proto_event_expire(struct analyzer *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
 
-static int analyzer_http_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int analyzer_http_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif
 

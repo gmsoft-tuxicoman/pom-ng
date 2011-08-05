@@ -30,12 +30,18 @@
 // Current analyzer API version
 #define ANALYZER_API_VER 1
 
-struct analyzer_reg {
 
-	struct analyzer_reg_info *info;
+// Data flags
+#define ANALYZER_DATA_FLAG_LIST 1
+
+struct analyzer {
+
+	struct analyzer_reg *info;
 	void *priv;
 
-	struct analyzer_reg *prev, *next;
+	struct analyzer_event_reg *events;
+
+	struct analyzer *prev, *next;
 
 };
 
@@ -43,26 +49,22 @@ struct analyzer_event_reg {
 
 	char *name;
 	struct analyzer_data_reg *data;
-	unsigned int data_count;
-
-
-	struct analyzer_reg *analyzer;
-	int (*listeners_notify) (struct analyzer_reg *analyzer, struct analyzer_event_reg *event, int has_listeners);
-
+	struct analyzer *analyzer;
 	struct analyzer_event_listener_list *listeners;
+	int (*listeners_notify) (struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners);
+
+	struct analyzer_event_reg *prev, *next;
 
 };
 
-struct analyzer_reg_info {
+struct analyzer_reg {
 
 	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
 
-	int (*init) (struct analyzer_reg *analyzer);
-	int (*cleanup) (struct analyzer_reg *analyzer);
-
-	struct analyzer_event_reg *events;
+	int (*init) (struct analyzer *analyzer);
+	int (*cleanup) (struct analyzer *analyzer);
 
 };
 
@@ -92,6 +94,8 @@ struct analyzer_data {
 struct analyzer_data_reg {
 	int flags;
 	char *name;
+	struct ptype *value_template;
+
 };
 
 
@@ -118,7 +122,7 @@ struct analyzer_pload_type {
 	char *name;
 	char *description;
 	char *extension;
-	struct analyzer_pload *analyzers;
+	struct analyzer_pload_reg *analyzers;
 
 	struct analyzer_pload_type *prev, *next;
 
@@ -132,39 +136,47 @@ struct analyzer_pload_mime_type {
 	struct analyzer_pload_mime_type *prev, *next;
 };
 
-struct analyzer_pload_reg {
-
-	char *payload_type;
-
-};
-
-struct analyzer_pload {
-
-	struct analyzer_pload_reg *reg_info;
-
-	struct analyzer_pload *prev, *next;
-};
-
 struct analyzer_pload_buffer {
-	
+
+	struct analyzer_pload_type *type;
 	size_t expected_size, buff_size;
 	size_t buff_pos;
 
 	void *buff;
 
+	struct analyzer_event *rel_event;
+
 };
 
-int analyzer_register(struct analyzer_reg_info *reg_info);
+struct analyzer_pload_reg {
+
+	struct analyzer_pload_type *payload_type;
+	struct analyzer *analyzer;
+	struct analyzer_data_reg *data;
+	unsigned int data_count;
+
+	int (*process_full) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+
+	struct analyzer_pload_reg *prev, *next;
+};
+
+int analyzer_register(struct analyzer_reg *reg_info);
 int analyzer_unregister(char *name);
+
+struct analyzer_event_reg *analyzer_event_register(struct analyzer *analyzer, char *name, struct analyzer_data_reg *data, int (*listeners_notify) (struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners));
 struct analyzer_event_reg *analyzer_event_get(char *name);
 int analyzer_event_process(struct analyzer_event *evt);
-
 int analyzer_event_register_listener(struct analyzer_event_reg *evt, struct analyzer_event_listener *listener);
 int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *listener_name);
+struct ptype *analyzer_event_data_item_add(struct analyzer_event *evt, unsigned int data_id, char *key);
 
-struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(char *content_type, size_t expected_size);
+struct analyzer_pload_reg *analyzer_pload_register(struct analyzer *analyzer, struct analyzer_pload_type *pt, struct analyzer_data_reg *data, int (*process_full) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload));
+struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size);
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size);
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
+
+struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name);
+struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type);
 
 
 #endif

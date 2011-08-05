@@ -561,7 +561,7 @@ int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_an
 	return POM_OK;
 }
 
-int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer_reg *analyzer) {
+int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer *analyzer) {
 
 	struct proto_event_analyzer_list *lst = proto->event_analyzers;
 	for (; lst && lst->analyzer_reg->analyzer != analyzer; lst = lst->next);
