@@ -489,12 +489,17 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		tok_num++;
 	}
 
-	if (tok_num < 3) {
+	if (tok_num < 2) {
 		pomlog(POMLOG_DEBUG "Unable to parse the query/response");
 		return PROTO_INVALID;
 	}
 
 	if (priv->state == HTTP_QUERY) {
+		
+		if (tok_num < 3) {
+			pomlog(POMLOG_DEBUG "Missing token for query");
+			return PROTO_INVALID;
+		}
 		
 		char *first_line = malloc(line_len + 1);
 		if (!first_line) {
