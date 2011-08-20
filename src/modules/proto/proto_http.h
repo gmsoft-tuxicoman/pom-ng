@@ -51,6 +51,7 @@ struct proto_http_conntrack_priv {
 	struct packet_stream_parser *parser[CT_DIR_TOT];
 	struct http_info info;
 	unsigned int state;
+	unsigned int last_err_code;
 	struct proto_event *query_event, *response_event;
 };
 

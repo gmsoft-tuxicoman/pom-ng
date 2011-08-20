@@ -202,11 +202,16 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 						proto_event_process(evt, stack, stack_index);
 						priv->state = (priv->state == HTTP_QUERY ? HTTP_RESPONSE_HEADER : HTTP_QUERY_HEADER); // Switch to the corresponding expected header
 						return PROTO_OK;
-					}
+					} else if (priv->state == HTTP_RESPONSE && ((priv->last_err_code >= 100 && priv->last_err_code < 200) || priv->last_err_code == 204 || priv->last_err_code == 304)) {
+							// HTTP RFC specified that those reply don't have a body
+							priv->state = HTTP_QUERY_HEADER;
+							return PROTO_OK;
+					} else {
 
-					evt->flags |= PROTO_EVENT_FLAG_HAS_PAYLOAD;
+						evt->flags |= PROTO_EVENT_FLAG_HAS_PAYLOAD;
+						priv->state++; // Switch to corresponding BODY state
+					}
 					proto_event_process(evt, stack, stack_index);
-					priv->state++; // Switch to corresponding BODY state
 					continue;
 				}
 
@@ -435,6 +440,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 					PTYPE_UINT16_SETVAL(priv->response_event->data[proto_http_response_status].value, err_code);
 					priv->response_event->data[proto_http_response_status].set = 1;
+					priv->last_err_code = err_code;
 
 				} else if (priv->state == HTTP_QUERY) {
 					char *url = malloc(tok_len + 1);
