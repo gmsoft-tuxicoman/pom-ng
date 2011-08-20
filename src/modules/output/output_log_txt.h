@@ -18,23 +18,27 @@
  *
  */
 
-#ifndef __OUTPUT_LOG_H__
-#define __OUTPUT_LOG_H__
+#ifndef __OUTPUT_LOG_TXT_H__
+#define __OUTPUT_LOG_TXT_H__
 
-#include <pom-ng/analyzer.h>
-#include <pom-ng/output.h>
+#include "output_log.h"
 
-struct output_log_parsed_field {
-	int id;
-	uint32_t hash;
-	char *key;
-	unsigned int start_off, end_off;
+struct output_log_txt_priv {
+	int fd;
+	struct ptype *p_filename;
+	struct ptype *p_source;
+	struct ptype *p_format;
+	struct output_log_parsed_field *parsed_fields;
+
+	struct analyzer_event_reg *evt;
+	unsigned int field_count;
 };
 
-
-struct mod_reg_info* output_log_reg_info();
-int output_log_mod_register(struct mod_reg *mod);
-int output_log_mod_unregister();
+int output_log_txt_init(struct output *o);
+int output_log_txt_open(struct output *o);
+int output_log_txt_close(struct output *o);
+int output_log_txt_cleanup(struct output *o);
+int output_log_txt_process(void *obj, struct analyzer_event *evt);
 
 
 #endif

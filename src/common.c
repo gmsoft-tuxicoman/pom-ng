@@ -36,3 +36,19 @@ void pom_oom_internal(size_t size, char *file, unsigned int line) {
 	pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes at %s:%u", size, file, line);
 }
 
+
+
+int pom_write(int fd, const void *buf, size_t count) {
+
+	size_t pos = 0;
+	while (pos < count) {
+		size_t len = write(fd, buf + pos, count - pos);
+		if (len < 0) {
+			pomlog(POMLOG_ERR "Write error : %s", pom_strerror(errno));
+			return POM_ERR;
+		}
+		pos += len;
+	}
+
+	return POM_OK;
+}

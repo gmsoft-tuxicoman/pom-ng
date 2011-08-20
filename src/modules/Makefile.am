@@ -38,7 +38,7 @@ input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
 input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
-output_log_la_SOURCES = output/output_log.c output/output_log.h
+output_log_la_SOURCES = output/output_log.c output/output_log.h output/output_log_txt.c output/output_log_txt.h output/output_log_xml.c output/output_log_xml.h
 output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 

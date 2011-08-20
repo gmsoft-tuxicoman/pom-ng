@@ -21,7 +21,7 @@
 #ifndef __POM_NG_ANALYZER_HTTP_H__
 #define __POM_NG_ANALYZER_HTTP_H__
 
-#define ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT 16
+#define ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT 17
 
 enum analyzer_http_evt_request_data {
 	analyzer_http_request_server_name = 0,
