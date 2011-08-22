@@ -145,7 +145,7 @@ AC_CHECK_LIB([pcap], [pcap_open_offline, pcap_open_dead, pcap_close, pcap_breakl
 if test "x$pcap_headers" = "xyes" -a "x$want_pcap" = "xyes"
 then
 	INPUT_OBJS="$INPUT_OBJS input_pcap.la"
-	TARGET_OBJS="$TARGET_OBJS target_pcap.la target_inject.la target_tcpkill.la"
+	OUTPUT_OBJS="$OUTPUT_OBJS output_pcap.la"
 fi
 
 # Check for Linux' raw socket iface
@@ -153,7 +153,7 @@ AC_CHECK_HEADERS([linux/socket.h netpacket/packet.h], [want_netpacket=yes], [wan
 
 if test "x$want_netpacket" = "xyes"
 then
-	AC_DEFINE(HAVE_LINUX_IP_SOCKET, , [Linux' raw socket iface])
+	AC_DEFINE(HAVE_LINUX_IP_SOCKET, , [Linux raw socket iface])
 fi
 
 # Check for DVB
@@ -168,14 +168,6 @@ if test "x$INPUT_OBJS" = "x"
 then
 	AC_MSG_ERROR([No input could be compiled.])
 fi
-
-# Check for Linux' tun header
-AC_CHECK_HEADERS([linux/if_tun.h], [want_tun=yes], [want_tun=no])
-if test "x$want_tun" = "xyes"
-then
-	TARGET_OBJS="$TARGET_OBJS target_tap.la"
-fi
-
 
 # Check for xmlrpc-c
 
@@ -221,8 +213,7 @@ fi
 
 
 AC_SUBST(INPUT_OBJS)
-AC_SUBST(TARGET_OBJS)
-AC_SUBST(DATASTORE_OBJS)
+AC_SUBST(OUTPUT_OBJS)
 
 AC_OUTPUT
 
@@ -241,7 +232,6 @@ echo " * libpcap          : $want_pcap"
 echo " * XMLRPC-C         : $want_xmlrpc"
 echo " * Linux raw socket : $want_netpacket"
 echo " * Linux DVB        : $want_dvb"
-echo " * Linux TUN        : $want_tun"
 echo " * Zlib             : $want_zlib"
 echo ""
 echo "Author : Guy Martin <gmsoft@tuxicoman.be>"

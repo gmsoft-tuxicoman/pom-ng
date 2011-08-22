@@ -19,13 +19,13 @@ include $(top_srcdir)/Makefile.common
 
 ANALYZER_SRC = analyzer_http.la
 INPUT_SRC = @INPUT_OBJS@
-OUTPUT_SRC = output_log.la
+OUTPUT_SRC = output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la
+EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la output_pcap.la
 
 analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
@@ -41,6 +41,9 @@ input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_log_la_SOURCES = output/output_log.c output/output_log.h output/output_log_txt.c output/output_log_txt.h output/output_log_xml.c output/output_log_xml.h
 output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+output_pcap_la_SOURCES = output/output_pcap.c output/output_pcap.h
+output_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
+output_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 proto_arp_la_SOURCES = proto/proto_arp.c proto/proto_arp.h
 proto_arp_la_LDFLAGS = -module -avoid-version
