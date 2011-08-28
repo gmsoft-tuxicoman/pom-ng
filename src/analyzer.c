@@ -367,11 +367,6 @@ int analyzer_cleanup() {
 		struct analyzer_pload_type *tmp = analyzer_pload_types;
 		analyzer_pload_types = tmp->next;
 
-		while (tmp->analyzers) {
-			struct analyzer_pload_reg *del = tmp->analyzers;
-			tmp->analyzers = del->next;
-			free(del);
-		}
 		free(tmp->name);
 		free(tmp->description);
 		free(tmp->extension);
@@ -526,29 +521,19 @@ int analyzer_event_process(struct analyzer_event *evt) {
 
 }
 
-struct analyzer_pload_reg *analyzer_pload_register(struct analyzer *analyzer, struct analyzer_pload_type *pt, struct analyzer_data_reg *data, int (*process_full) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload)) {
+int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_pload_reg *pload_analyzer) {
 
-	if (!pt)
-		return NULL;
+	if (!pt || !pload_analyzer)
+		return POM_ERR;
 
-	struct analyzer_pload_reg *res = malloc(sizeof(struct analyzer_pload_reg));
-	if (!res) {
-		pom_oom(sizeof(struct analyzer_pload_reg));
-		return NULL;
+	if (pt->analyzer) {
+		pomlog(POMLOG_ERR "Payload %s already has an analyzer registered", pt->name);
+		return POM_ERR;
 	}
-	memset(res, 0, sizeof(struct analyzer_pload_reg));
-	res->payload_type = pt;
-	res->analyzer = analyzer;
-	res->data = data;
-	res->process_full = process_full;
 
-	res->next = pt->analyzers;
-	if (res->next)
-		res->next->prev = res;
+	pt->analyzer = pload_analyzer;
 
-	pt->analyzers = res;
-
-	return res;
+	return POM_OK;
 }
 
 
@@ -622,12 +607,9 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 	if (pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
 		// Got a full payload, process it
-		struct analyzer_pload_reg *a;
-		for (a = pload->type->analyzers; a; a = a->next) {
-			if (a->process_full) {
-				if (a->process_full(a->analyzer, pload) != POM_OK) {
-					pomlog(POMLOG_WARN "Error while processing full payload");
-				}
+		if (pload->type->analyzer->process) {
+			if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
+				pomlog(POMLOG_WARN "Error while processing payload");
 			}
 		}
 	}

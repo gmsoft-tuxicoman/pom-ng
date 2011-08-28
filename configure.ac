@@ -211,9 +211,16 @@ then
 	AC_SUBST(zlib_LIBS)
 fi
 
+# Check for JPEG
+AC_CHECK_HEADERS([jpeglib.h], [want_jpeg=yes], [want_jpeg=no])
+if test "x$want_jpeg" = "xyes"
+then
+	ANALYZER_OBJS="analyzer_jpeg.la"
+fi
 
 AC_SUBST(INPUT_OBJS)
 AC_SUBST(OUTPUT_OBJS)
+AC_SUBST(ANALYZER_OBJS)
 
 AC_OUTPUT
 
@@ -233,6 +240,7 @@ echo " * XMLRPC-C         : $want_xmlrpc"
 echo " * Linux raw socket : $want_netpacket"
 echo " * Linux DVB        : $want_dvb"
 echo " * Zlib             : $want_zlib"
+echo " * JPEG             : $want_jpeg"
 echo ""
 echo "Author : Guy Martin <gmsoft@tuxicoman.be>"
 

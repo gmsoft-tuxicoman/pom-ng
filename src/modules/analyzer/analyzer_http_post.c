@@ -31,11 +31,12 @@ int analyzer_http_post_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
-	if (!analyzer_pload_register(analyzer, pload_type, NULL, analyzer_http_post_pload_process_full)) {
-		return POM_ERR;
-	}
+	static struct analyzer_pload_reg pload_reg;
+	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
+	pload_reg.analyzer = analyzer;
+	pload_reg.process = analyzer_http_post_pload_process_full;
 
-	return POM_OK;
+	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
 

@@ -34,6 +34,9 @@
 // Data flags
 #define ANALYZER_DATA_FLAG_LIST 1
 
+// Payload analyzer flags
+#define ANALYZER_PLOAD_PROCESS_PARTIAL 0x1
+
 struct analyzer {
 
 	struct analyzer_reg *info;
@@ -122,7 +125,7 @@ struct analyzer_pload_type {
 	char *name;
 	char *description;
 	char *extension;
-	struct analyzer_pload_reg *analyzers;
+	struct analyzer_pload_reg *analyzer;
 
 	struct analyzer_pload_type *prev, *next;
 
@@ -144,20 +147,28 @@ struct analyzer_pload_buffer {
 
 	void *buff;
 
+	struct analyzer_data *data;
 	struct analyzer_event *rel_event;
 
 };
 
 struct analyzer_pload_reg {
 
-	struct analyzer_pload_type *payload_type;
 	struct analyzer *analyzer;
 	struct analyzer_data_reg *data;
-	unsigned int data_count;
+	unsigned int flags;
 
-	int (*process_full) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+	int (*process) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
-	struct analyzer_pload_reg *prev, *next;
+};
+
+enum analyzer_pload_state {
+	
+	analyzer_pload_state_empty = 0,
+	analyzer_pload_state_magic,
+	analyzer_pload_state_partial,
+	analyzer_pload_state_full,
+
 };
 
 int analyzer_register(struct analyzer_reg *reg_info);
@@ -170,7 +181,7 @@ int analyzer_event_register_listener(struct analyzer_event_reg *evt, struct anal
 int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *listener_name);
 struct ptype *analyzer_event_data_item_add(struct analyzer_event *evt, unsigned int data_id, char *key);
 
-struct analyzer_pload_reg *analyzer_pload_register(struct analyzer *analyzer, struct analyzer_pload_type *pt, struct analyzer_data_reg *data, int (*process_full) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload));
+int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_pload_reg *pload_analyzer);
 struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size);
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size);
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);

@@ -17,7 +17,7 @@
 
 include $(top_srcdir)/Makefile.common
 
-ANALYZER_SRC = analyzer_http.la
+ANALYZER_SRC = analyzer_http.la @ANALYZER_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
@@ -25,8 +25,12 @@ PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la output_pcap.la
+EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la output_pcap.la analyzer_jpeg.la
 
+
+analyzer_jpeg_la_SOURCES = analyzer/analyzer_jpeg.c analyzer/analyzer_jpeg.h
+analyzer_jpeg_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -ljpeg
+analyzer_jpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
 analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
