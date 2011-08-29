@@ -37,6 +37,9 @@
 // Payload analyzer flags
 #define ANALYZER_PLOAD_PROCESS_PARTIAL 0x1
 
+// Payload buffer flags
+#define ANALYZER_PLOAD_BUFFER_NEED_MAGIC 0x1
+
 struct analyzer {
 
 	struct analyzer_reg *info;
@@ -139,6 +142,16 @@ struct analyzer_pload_mime_type {
 	struct analyzer_pload_mime_type *prev, *next;
 };
 
+enum analyzer_pload_buffer_state {
+	
+	analyzer_pload_buffer_state_empty = 0,
+	analyzer_pload_buffer_state_magic,
+	analyzer_pload_buffer_state_partial,
+	analyzer_pload_buffer_state_full,
+	analyzer_pload_buffer_state_error,
+
+};
+
 struct analyzer_pload_buffer {
 
 	struct analyzer_pload_type *type;
@@ -146,6 +159,9 @@ struct analyzer_pload_buffer {
 	size_t buff_pos;
 
 	void *buff;
+
+	enum analyzer_pload_buffer_state state;
+	unsigned int flags;
 
 	struct analyzer_data *data;
 	struct analyzer_event *rel_event;
@@ -162,15 +178,6 @@ struct analyzer_pload_reg {
 
 };
 
-enum analyzer_pload_state {
-	
-	analyzer_pload_state_empty = 0,
-	analyzer_pload_state_magic,
-	analyzer_pload_state_partial,
-	analyzer_pload_state_full,
-
-};
-
 int analyzer_register(struct analyzer_reg *reg_info);
 int analyzer_unregister(char *name);
 
@@ -182,7 +189,7 @@ int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *lis
 struct ptype *analyzer_event_data_item_add(struct analyzer_event *evt, unsigned int data_id, char *key);
 
 int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_pload_reg *pload_analyzer);
-struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size);
+struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size, unsigned int flags);
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size);
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
 

@@ -135,6 +135,15 @@ AC_CONFIG_FILES([Makefile
 PKG_CHECK_MODULES(libmicrohttpd, [libmicrohttpd], [], [AC_MSG_ERROR([libmicrohttpd is required to build this program])])
 AC_SUBST(libmicrohttpd_LIBS)
 
+# Check for libmagic
+AC_CHECK_HEADERS([magic.h], [want_magic=yes], [want_magic=no])
+if test "x$want_magic" = "xyes"
+then
+	AC_DEFINE(HAVE_LIBMAGIC, , [Lib magic])
+	magic_LIBS="-lmagic"
+	AC_SUBST(magic_LIBS)
+fi
+
 # update libdir
 POM_MOD_LIBDIR="${libdir}/${PACKAGE_NAME}"
 AC_SUBST(POM_MOD_LIBDIR)
@@ -239,6 +248,7 @@ echo " * libpcap          : $want_pcap"
 echo " * XMLRPC-C         : $want_xmlrpc"
 echo " * Linux raw socket : $want_netpacket"
 echo " * Linux DVB        : $want_dvb"
+echo " * Libmagic         : $want_magic"
 echo " * Zlib             : $want_zlib"
 echo " * JPEG             : $want_jpeg"
 echo ""

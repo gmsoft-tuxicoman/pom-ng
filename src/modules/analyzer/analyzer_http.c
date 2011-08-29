@@ -435,7 +435,7 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 	struct analyzer_pload_type *type = analyzer_pload_type_get_by_mime_type(priv->content_type[dir]);
 
 	if (!priv->pload[dir]) {
-		priv->pload[dir] = analyzer_pload_buffer_alloc(type, priv->content_len[dir]);
+		priv->pload[dir] = analyzer_pload_buffer_alloc(type, priv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
 		if (!priv->pload[dir])
 			return POM_ERR;
 

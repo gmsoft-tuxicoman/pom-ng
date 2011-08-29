@@ -24,6 +24,9 @@
 
 #include <pom-ng/analyzer.h>
 
+// We require at least that ammount of bytes before passing the buffer to libmagic
+#define ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE 64
+
 struct analyzer_event_listener_list {
 
 	struct analyzer_event_listener *listener;

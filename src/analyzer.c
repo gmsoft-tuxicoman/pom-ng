@@ -22,8 +22,16 @@
 #include "output.h"
 #include "mod.h"
 #include "input_server.h"
+#include "common.h"
 
 #include <libxml/parser.h>
+
+#ifdef HAVE_LIBMAGIC
+#include <magic.h>
+
+static magic_t magic_cookie = NULL;
+
+#endif
 
 static struct analyzer *analyzer_head = NULL;
 static pthread_mutex_t analyzer_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -43,6 +51,19 @@ static struct analyzer_pload_class pload_class_def[ANALYZER_PLOAD_CLASS_COUNT] =
 
 
 int analyzer_init(char *mime_type_database) {
+
+#ifdef HAVE_LIBMAGIC
+	magic_cookie = magic_open(MAGIC_MIME);
+	if (!magic_cookie) {
+		pomlog(POMLOG_ERR "Error while allocating the magic cookie");
+		return POM_ERR;
+	}
+
+	if (magic_load(magic_cookie, NULL)) {
+		pomlog(POMLOG_ERR "Error while loading the magic database : %s", magic_error(magic_cookie));
+		return POM_ERR;
+	}
+#endif
 
 	xmlDocPtr doc;
 	xmlNodePtr root, cur;
@@ -380,6 +401,9 @@ int analyzer_cleanup() {
 		free(tmp);
 	}
 
+#ifdef HAVE_LIBMAGIC
+	magic_close(magic_cookie);
+#endif
 
 	return POM_OK;
 
@@ -537,7 +561,7 @@ int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_ploa
 }
 
 
-struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size) {
+struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size, unsigned int flags) {
 
 	struct analyzer_pload_buffer *pload = malloc(sizeof(struct analyzer_pload_buffer));
 	if (!pload) {
@@ -551,6 +575,7 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_
 
 	pload->expected_size = expected_size;
 	pload->type = type;
+	pload->flags = flags;
 
 	return pload;
 
@@ -559,26 +584,54 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_
 
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size) {
 
-	if (!pload->type) {
-		// Don't save the pload of type unknown
+	if (!pload->type && !(pload->flags & ANALYZER_PLOAD_BUFFER_NEED_MAGIC)) {
+		// Don't process payloads we won't do anything with
 		return POM_OK;
 	}
 
-	if (pload->expected_size)
-	
+	if (pload->state == analyzer_pload_buffer_state_error || pload->state == analyzer_pload_buffer_state_full) {
+		// Don't process payload which had an error or already full
+		return POM_OK;
+	}
+
+	if (pload->state == analyzer_pload_buffer_state_empty) {
+		// We need to allocate the buffer for this payload
+		if (pload->expected_size) {
+			// Easy enough, we know what size it will be in total
+			pload->buff_size = pload->expected_size;
+			pload->buff = malloc(pload->expected_size);
+			if (!pload->buff) {
+				pom_oom(pload->expected_size);
+				pload->state = analyzer_pload_buffer_state_error;
+				return POM_ERR;
+			}
+		} else {
+			// We don't know how big it will be, allocate a page
+			long pagesize = sysconf(_SC_PAGESIZE);
+			if (!pagesize)
+				pagesize = 4096;
+			pload->buff = malloc(pagesize);
+			if (!pload->buff) {
+				pom_oom(pagesize);
+				pload->state = analyzer_pload_buffer_state_error;
+				return POM_ERR;
+			}
+		}
+#ifdef HAVE_LIBMAGIC
+		pload->state = analyzer_pload_buffer_state_magic;
+#else
+		pload->state = analyzer_pload_buffer_state_partial;
+#endif
+
+	}
+
+
+	// Add the data to the buffer
+	if (pload->expected_size) {
 		if (pload->expected_size < pload->buff_pos + size) {
 			pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
+			pload->state = analyzer_pload_buffer_state_error;
 			return POM_OK;
-		}
-		if (!pload->buff) {
-			if (pload->expected_size > 0) {
-				pload->buff_size = pload->expected_size;
-				pload->buff = malloc(pload->expected_size);
-				if (!pload->buff) {
-					pom_oom(pload->expected_size);
-					free(pload);
-					return POM_ERR;
-				}
 		}
 	} else {
 
@@ -605,7 +658,42 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	memcpy(pload->buff + pload->buff_pos, data, size);
 	pload->buff_pos += size;
 
-	if (pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
+#ifdef HAVE_LIBMAGIC
+	if (pload->state == analyzer_pload_buffer_state_magic) {
+		// We need to perform some magic
+		if (pload->buff_pos > ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE || (pload->expected_size && pload->expected_size < ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE)) {
+			// We have enough to perform some magic
+			char *magic_mime_type = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
+			if (!magic_mime_type) {
+				pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
+				pload->state = analyzer_pload_buffer_state_error;
+				return POM_ERR;
+			}
+			struct analyzer_pload_type *magic_pload_type = analyzer_pload_type_get_by_mime_type(magic_mime_type);
+
+			// If magic found something different, use that instead
+			if (magic_pload_type && (magic_pload_type != pload->type)) {
+				pomlog(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_pload_type);
+				pload->type = magic_pload_type;
+			}
+
+			// If we can't determine the type (because we don't support it), free the buffer and remove need magic flag
+			if (!pload->type && !magic_pload_type) {
+				pload->flags &= ~ANALYZER_PLOAD_BUFFER_NEED_MAGIC;
+				free(pload->buff);
+				pload->buff = NULL;
+				return POM_OK;
+			}
+
+			pload->state = analyzer_pload_buffer_state_partial;
+		}
+	}
+
+
+#endif
+
+	if (pload->state == analyzer_pload_buffer_state_partial && pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
+		pload->state = analyzer_pload_buffer_state_full;
 		// Got a full payload, process it
 		if (pload->type->analyzer->process) {
 			if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
