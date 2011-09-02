@@ -69,7 +69,8 @@ struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev)
 	return ct;
 }
 
-int conntrack_tables_free(struct conntrack_tables *ct) {
+
+int conntrack_tables_empty(struct conntrack_tables *ct) {
 
 	if (!ct)
 		return POM_OK;
@@ -81,8 +82,6 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 			}
 
 		}
-		free(ct->fwd_table);
-
 	}
 
 	if (ct->rev_table) {
@@ -92,8 +91,23 @@ int conntrack_tables_free(struct conntrack_tables *ct) {
 				conntrack_cleanup(ct->rev_table[i]->ce);
 			}
 		}
-		free(ct->rev_table);
 	}
+
+	return POM_OK;
+}
+
+int conntrack_tables_cleanup(struct conntrack_tables *ct) {
+
+	if (!ct)
+		return POM_OK;
+
+	conntrack_tables_empty(ct);
+
+	if (ct->fwd_table) 
+		free(ct->fwd_table);
+
+	if (ct->rev_table)
+		free(ct->rev_table);
 
 	pthread_mutex_destroy(&ct->lock);
 

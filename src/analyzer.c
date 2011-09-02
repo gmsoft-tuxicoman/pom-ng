@@ -641,7 +641,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			if (!pagesize)
 				pagesize = 4096;
 
-			size_t new_size = (size_t) (pload->buff + pagesize);
+			size_t new_size = pload->buff_size + pagesize;
 
 			void *new_buff = realloc(pload->buff, new_size);
 			if (!new_buff) {
@@ -673,7 +673,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 			// If magic found something different, use that instead
 			if (magic_pload_type && (magic_pload_type != pload->type)) {
-				pomlog(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_pload_type);
+				pomlog(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_mime_type);
 				pload->type = magic_pload_type;
 			}
 

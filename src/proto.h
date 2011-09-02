@@ -38,6 +38,7 @@ struct proto_event_analyzer_list {
 
 int proto_init();
 void proto_dependency_refcount_inc(struct proto_dependency *proto_dep);
+int proto_empty_conntracks();
 int proto_cleanup();
 
 #endif

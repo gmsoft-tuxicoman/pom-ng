@@ -245,8 +245,11 @@ void *core_processing_thread_func(void *priv) {
 		while (!core_pkt_queue_head) {
 			enum core_state state = core_get_state();
 			if (core_thread_active == 0) {
-				if (state == core_state_finishing)
+				if (state == core_state_finishing) {
+					// Free the conntrack tables
+					proto_empty_conntracks();
 					core_set_state(core_state_idle);
+				}
 			}
 
 			if (!core_run) {

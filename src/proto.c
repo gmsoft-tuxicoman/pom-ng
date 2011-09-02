@@ -134,7 +134,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 err_registry:
 	registry_remove_instance(proto->reg_instance);
 err_conntrack:
-	conntrack_tables_free(proto->ct);
+	conntrack_tables_cleanup(proto->ct);
 err_packet_info:
 	packet_info_pool_cleanup(&proto->pkt_info_pool);
 err_proto:
@@ -202,7 +202,7 @@ int proto_unregister(char *name) {
 	if (proto->dep)
 		proto->dep->proto = NULL;
 
-	conntrack_tables_free(proto->ct);
+	conntrack_tables_cleanup(proto->ct);
 
 	packet_info_pool_cleanup(&proto->pkt_info_pool);
 	
@@ -313,6 +313,18 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 	return POM_OK;
 }
 
+int proto_empty_conntracks() {
+
+	pom_mutex_lock(&proto_list_lock);
+	struct proto_reg *proto;
+	for (proto = proto_head; proto; proto = proto->next) {
+		conntrack_tables_empty(proto->ct);
+	}
+	pom_mutex_unlock(&proto_list_lock);
+
+	return POM_OK;
+}
+
 int proto_cleanup() {
 
 	pom_mutex_lock(&proto_list_lock);
@@ -336,7 +348,7 @@ int proto_cleanup() {
 			
 		if (proto->info->cleanup && proto->info->cleanup() == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
-		conntrack_tables_free(proto->ct);
+		conntrack_tables_cleanup(proto->ct);
 
 		mod_refcount_dec(proto->info->mod);
 		packet_info_pool_cleanup(&proto->pkt_info_pool);
