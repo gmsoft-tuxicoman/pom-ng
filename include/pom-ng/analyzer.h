@@ -38,7 +38,7 @@
 #define ANALYZER_PLOAD_PROCESS_PARTIAL 0x1
 
 // Payload buffer flags
-#define ANALYZER_PLOAD_BUFFER_NEED_MAGIC 0x1
+#define ANALYZER_PLOAD_BUFFER_NEED_MAGIC	0x1
 
 struct analyzer {
 
@@ -147,8 +147,7 @@ enum analyzer_pload_buffer_state {
 	analyzer_pload_buffer_state_empty = 0,
 	analyzer_pload_buffer_state_magic,
 	analyzer_pload_buffer_state_partial,
-	analyzer_pload_buffer_state_full,
-	analyzer_pload_buffer_state_error,
+	analyzer_pload_buffer_state_done,
 
 };
 
@@ -165,6 +164,7 @@ struct analyzer_pload_buffer {
 
 	struct analyzer_data *data;
 	struct analyzer_event *rel_event;
+	void *analyzer_priv;
 
 };
 

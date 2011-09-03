@@ -589,8 +589,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		return POM_OK;
 	}
 
-	if (pload->state == analyzer_pload_buffer_state_error || pload->state == analyzer_pload_buffer_state_full) {
-		// Don't process payload which had an error or already full
+	if (pload->state == analyzer_pload_buffer_state_done) {
+		// Don't process pload already processed (or in error)
 		return POM_OK;
 	}
 
@@ -602,7 +602,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			pload->buff = malloc(pload->expected_size);
 			if (!pload->buff) {
 				pom_oom(pload->expected_size);
-				pload->state = analyzer_pload_buffer_state_error;
+				pload->state = analyzer_pload_buffer_state_done;
 				return POM_ERR;
 			}
 		} else {
@@ -613,7 +613,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			pload->buff = malloc(pagesize);
 			if (!pload->buff) {
 				pom_oom(pagesize);
-				pload->state = analyzer_pload_buffer_state_error;
+				pload->state = analyzer_pload_buffer_state_done;
 				return POM_ERR;
 			}
 		}
@@ -630,7 +630,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	if (pload->expected_size) {
 		if (pload->expected_size < pload->buff_pos + size) {
 			pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
-			pload->state = analyzer_pload_buffer_state_error;
+			pload->state = analyzer_pload_buffer_state_done;
 			return POM_OK;
 		}
 	} else {
@@ -666,7 +666,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			char *magic_mime_type = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
 			if (!magic_mime_type) {
 				pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
-				pload->state = analyzer_pload_buffer_state_error;
+				pload->state = analyzer_pload_buffer_state_done;
 				return POM_ERR;
 			}
 			struct analyzer_pload_type *magic_pload_type = analyzer_pload_type_get_by_mime_type(magic_mime_type);
@@ -679,7 +679,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 			// If we can't determine the type (because we don't support it), free the buffer and remove need magic flag
 			if (!pload->type && !magic_pload_type) {
-				pload->flags &= ~ANALYZER_PLOAD_BUFFER_NEED_MAGIC;
+				pload->state = analyzer_pload_buffer_state_done;
 				free(pload->buff);
 				pload->buff = NULL;
 				return POM_OK;
@@ -692,14 +692,28 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 #endif
 
-	if (pload->state == analyzer_pload_buffer_state_partial && pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
-		pload->state = analyzer_pload_buffer_state_full;
-		// Got a full payload, process it
-		if (pload->type->analyzer->process) {
+	if (pload->state == analyzer_pload_buffer_state_partial) {
+
+		struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
+
+		if (pload_analyzer->flags & ANALYZER_PLOAD_PROCESS_PARTIAL) {
 			if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
-				pomlog(POMLOG_WARN "Error while processing payload");
+				pload->state = analyzer_pload_buffer_state_done;
+				pomlog(POMLOG_WARN "Error while processing partial pload of type %s", pload->type->name);
+				return POM_OK;
 			}
 		}
+
+		if (pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
+			// Got a full payload, process it
+			if (!(pload_analyzer->flags & ANALYZER_PLOAD_PROCESS_PARTIAL)) {
+				if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
+					pomlog(POMLOG_WARN "Error while processing full payload of type %s", pload->type->name);
+				}
+			}
+			pload->state = analyzer_pload_buffer_state_done;
+		}
+
 	}
 
 	return POM_OK;
