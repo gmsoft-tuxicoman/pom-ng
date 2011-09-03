@@ -723,6 +723,12 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 
+	struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
+	if (pload_analyzer->cleanup) {
+		if (pload_analyzer->cleanup(pload_analyzer->analyzer, pload) != POM_OK)
+			pomlog(POMLOG_WARN "Error while cleaning up payload buffer of type %s", pload->type->name);
+	}
+
 	if (pload->buff)
 		free(pload->buff);
 	free(pload);

@@ -23,6 +23,8 @@
 #define __ANALYZER_JPEG_H__
 
 #include <pom-ng/analyzer.h>
+#include <stdio.h>
+#include <jpeglib.h>
 
 #define ANALYZER_JPEG_PLOAD_TYPE "jpeg"
 
@@ -33,12 +35,28 @@ enum analyzer_jpeg_pload_data {
 	analyzer_jpeg_pload_height,
 };
 
+struct analyzer_jpeg_pload_priv {
+
+	struct jpeg_decompress_struct cinfo;
+	size_t jpeg_lib_pos;
+
+	int done;
+
+};
+
+
 struct mod_reg_info* analyzer_jpeg_reg_info();
 static int analyzer_jpeg_mod_register(struct mod_reg *mod);
 static int analyzer_jpeg_mod_unregister();
 
 static int analyzer_jpeg_init(struct analyzer *analyzer);
-static int analyzer_jpeg_cleanup(struct analyzer *analyzer);
-static int analyzer_jpeg_pload_process_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+
+static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo);
+static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_bytes);
+static boolean analyzer_jpeg_lib_fill_input_buffer(j_decompress_ptr cinfo);
+static void analyzer_jpeg_lib_term_source(j_decompress_ptr cinfo);
+
 
 #endif

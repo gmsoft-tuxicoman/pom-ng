@@ -20,9 +20,6 @@
 
 #include "analyzer_jpeg.h"
 
-#include <stdio.h>
-#include <jpeglib.h>
-
 struct mod_reg_info* analyzer_jpeg_reg_info() {
 
 	static struct mod_reg_info reg_info;
@@ -42,7 +39,6 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod) {
 	analyzer_jpeg.api_ver = ANALYZER_API_VER;
 	analyzer_jpeg.mod = mod;
 	analyzer_jpeg.init = analyzer_jpeg_init;
-	analyzer_jpeg.cleanup = analyzer_jpeg_cleanup;
 
 	return analyzer_register(&analyzer_jpeg);
 
@@ -71,43 +67,156 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
-	pload_reg.process = analyzer_jpeg_pload_process_full;
+	pload_reg.process = analyzer_jpeg_pload_process;
+	pload_reg.cleanup = analyzer_jpeg_pload_cleanup;
 	pload_reg.data = pload_jpeg_data;
+	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
 
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
+static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
-static int analyzer_jpeg_cleanup(struct analyzer *analyzer) {
 
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
+	if (!priv) {
+		priv = malloc(sizeof(struct analyzer_jpeg_pload_priv));
+		if (!priv) {
+			pom_oom(sizeof(struct analyzer_jpeg_pload_priv));
+			return POM_ERR;
+		}
+		memset(priv, 0, sizeof(struct analyzer_jpeg_pload_priv));
+		
+		// Setup error handler
+		static struct jpeg_error_mgr jerr;
+		priv->cinfo.err = jpeg_std_error(&jerr);
+
+		// Allocate the decompressor
+		jpeg_create_decompress(&priv->cinfo);
+
+		priv->cinfo.client_data = pload;
+
+		// Allocate the source
+		
+		struct jpeg_source_mgr *src = malloc(sizeof(struct jpeg_source_mgr));
+		if (!src) {
+			pom_oom(sizeof(struct jpeg_source_mgr));
+			jpeg_destroy_decompress(&priv->cinfo);
+			free(priv);
+			return POM_ERR;
+		}
+		memset(src, 0, sizeof(struct jpeg_source_mgr));
+
+		src->init_source = analyzer_jpeg_lib_init_source;
+		src->fill_input_buffer = analyzer_jpeg_lib_fill_input_buffer;
+		src->skip_input_data = analyzer_jpeg_lib_skip_input_data;
+		src->resync_to_restart = jpeg_resync_to_restart;
+		src->term_source = analyzer_jpeg_lib_term_source;
+		priv->cinfo.src = src;
+
+
+		pload->analyzer_priv = priv;
+
+	}
+
+	if (priv->done) // We already analyzed this image
+		return POM_OK;
+
+	if (priv->jpeg_lib_pos < pload->buff_pos) {
+
+		int res = jpeg_read_header(&priv->cinfo, TRUE);
+
+		if (res == JPEG_SUSPENDED) // Headers are incomplete
+			return POM_OK;
+
+		pomlog("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
+
+		free(priv->cinfo.src);
+		jpeg_destroy_decompress(&priv->cinfo);
+
+		priv->done = 1;
+	}
+
+	return POM_OK;
+}
+
+static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
+	if (!priv)
+		return POM_OK;
+
+	if (!priv->done) {
+		free(priv->cinfo.src);
+		jpeg_destroy_decompress(&priv->cinfo);
+	}
+
+	free(priv);
 
 	return POM_OK;
 }
 
 
-static int analyzer_jpeg_pload_process_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo) {
+
+	struct analyzer_pload_buffer *pload = cinfo->client_data;
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
+	cinfo->src->next_input_byte = pload->buff;
+	cinfo->src->bytes_in_buffer = pload->buff_pos;
+
+	priv->jpeg_lib_pos = pload->buff_pos;
+
+}
+
+static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
+
+	if (num_bytes <= 0)
+		return;
+
+	struct analyzer_pload_buffer *pload = cinfo->client_data;
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
+	// Remove whatever wasn't used
+	priv->jpeg_lib_pos -= cinfo->src->bytes_in_buffer;
+
+	size_t remaining = pload->buff_pos - priv->jpeg_lib_pos;
+
+	if (num_bytes >= remaining) {
+		cinfo->src->bytes_in_buffer = 0;
+	} else {
+		cinfo->src->next_input_byte += num_bytes;
+		cinfo->src->bytes_in_buffer -= num_bytes;
+	}
+	priv->jpeg_lib_pos += num_bytes;
+
+}
+
+static boolean analyzer_jpeg_lib_fill_input_buffer(j_decompress_ptr cinfo) {
+
+	struct analyzer_pload_buffer *pload = cinfo->client_data;
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
+	// Remove whatever wasn't used
+	priv->jpeg_lib_pos -= cinfo->src->bytes_in_buffer;
+
+	if (priv->jpeg_lib_pos >= pload->buff_pos)
+		return FALSE;
+
+	cinfo->src->next_input_byte = pload->buff + priv->jpeg_lib_pos;
+	cinfo->src->bytes_in_buffer = pload->buff_pos - priv->jpeg_lib_pos;
+
+	priv->jpeg_lib_pos = pload->buff_pos;
 
 
-	unsigned char *data = pload->buff;
-	unsigned long len = pload->buff_pos;
+	return TRUE;
+}
 
+static void analyzer_jpeg_lib_term_source(j_decompress_ptr cinfo) {
 
-	struct jpeg_decompress_struct cinfo;
-
-	struct jpeg_error_mgr jerr;
-	cinfo.err = jpeg_std_error(&jerr);
-
-	jpeg_create_decompress(&cinfo);
-
-	jpeg_mem_src(&cinfo, data, len);
-
-	int res = jpeg_read_header(&cinfo, FALSE);
-
-	pomlog("JPEG read header returned %u, image is %ux%u", res, cinfo.image_width, cinfo.image_height);
-
-	jpeg_destroy_decompress(&cinfo);
-
-
-	return POM_OK;
+	// Never called according to documentation
+	pomlog(POMLOG_ERR "analyzer_jpeg_lib_term_source() called while not supposed to !");
 }
