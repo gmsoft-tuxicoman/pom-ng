@@ -17,7 +17,7 @@
 
 include $(top_srcdir)/Makefile.common
 
-ANALYZER_SRC = analyzer_http.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_gif.la analyzer_http.la @ANALYZER_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
@@ -28,6 +28,9 @@ lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYP
 EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la output_pcap.la analyzer_jpeg.la
 
 
+analyzer_gif_la_SOURCES = analyzer/analyzer_gif.c analyzer/analyzer_gif.h
+analyzer_gif_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lgif
+analyzer_gif_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_jpeg_la_SOURCES = analyzer/analyzer_jpeg.c analyzer/analyzer_jpeg.h
 analyzer_jpeg_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -ljpeg
 analyzer_jpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la
