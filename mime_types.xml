@@ -14,6 +14,7 @@
 		<def name="form-urlencoded" description="URL encoded data" extension="txt" class="other" />
 		<def name="jpeg" description="JPEG image" extension="jpg" class="image" />
 		<def name="gif" description="GIF image" extension="gif" class="image" />
+		<def name="png" description="PNG image" extension="png" class="image" />
 
 	</definitions>
 
@@ -34,6 +35,7 @@
 		<type def="jpeg">image/jpeg</type>
 		<type def="jpeg">image/jpg</type>
 		<type def="gif">image/gif</type>
+		<type def="png">image/png</type>
 
 	</types>
 

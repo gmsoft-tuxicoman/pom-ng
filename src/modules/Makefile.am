@@ -17,7 +17,7 @@
 
 include $(top_srcdir)/Makefile.common
 
-ANALYZER_SRC = analyzer_gif.la analyzer_http.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
@@ -29,7 +29,7 @@ EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la output_pcap.la analyzer_jpeg.la
 
 
 analyzer_gif_la_SOURCES = analyzer/analyzer_gif.c analyzer/analyzer_gif.h
-analyzer_gif_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lgif
+analyzer_gif_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_gif_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_jpeg_la_SOURCES = analyzer/analyzer_jpeg.c analyzer/analyzer_jpeg.h
 analyzer_jpeg_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -ljpeg
@@ -37,6 +37,9 @@ analyzer_jpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
 analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_png_la_SOURCES = analyzer/analyzer_png.c analyzer/analyzer_png.h
+analyzer_png_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_png_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
 input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap

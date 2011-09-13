@@ -46,7 +46,7 @@ static int analyzer_gif_mod_register(struct mod_reg *mod) {
 
 static int analyzer_gif_mod_unregister() {
 
-	return analyzer_unregister("http");
+	return analyzer_unregister("gif");
 }
 
 static int analyzer_gif_init(struct analyzer *analyzer) {
@@ -87,7 +87,7 @@ static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer
 
 	unsigned char *buff = pload->buff;
 
-	if (!strncmp(pload->buff, ANALYZER_GIF_VERSION_87A, strlen(ANALYZER_GIF_VERSION_87A)) || !strncmp(pload->buff, ANALYZER_GIF_VERSION_89A, strlen(ANALYZER_GIF_VERSION_89A))) {
+	if (!memcmp(pload->buff, ANALYZER_GIF_VERSION_87A, strlen(ANALYZER_GIF_VERSION_87A)) || !memcmp(pload->buff, ANALYZER_GIF_VERSION_89A, strlen(ANALYZER_GIF_VERSION_89A))) {
 		// We got a GIF file
 		uint16_t height, width;
 		width = (buff[7] << 8) + buff[8];

@@ -46,7 +46,7 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod) {
 
 static int analyzer_jpeg_mod_unregister() {
 
-	return analyzer_unregister("http");
+	return analyzer_unregister("jpeg");
 }
 
 static int analyzer_jpeg_init(struct analyzer *analyzer) {
