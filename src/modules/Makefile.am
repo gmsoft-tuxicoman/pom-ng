@@ -49,7 +49,8 @@ input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 output_log_la_SOURCES = output/output_log.c output/output_log.h output/output_log_txt.c output/output_log_txt.h output/output_log_xml.c output/output_log_xml.h
-output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+output_log_la_CFLAGS = @libxml2_CFLAGS@
+output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' @libxml2_LIBS@
 output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_pcap_la_SOURCES = output/output_pcap.c output/output_pcap.h
 output_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap

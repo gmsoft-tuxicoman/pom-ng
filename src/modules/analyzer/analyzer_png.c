@@ -20,6 +20,8 @@
 
 #include "analyzer_png.h"
 
+#include <arpa/inet.h>
+
 struct mod_reg_info* analyzer_png_reg_info() {
 
 	static struct mod_reg_info reg_info;

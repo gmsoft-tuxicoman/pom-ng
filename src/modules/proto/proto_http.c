@@ -204,6 +204,7 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 						return PROTO_OK;
 					} else if (priv->state == HTTP_RESPONSE && ((priv->last_err_code >= 100 && priv->last_err_code < 200) || priv->last_err_code == 204 || priv->last_err_code == 304)) {
 							// HTTP RFC specified that those reply don't have a body
+							proto_event_process(evt, stack, stack_index);
 							priv->state = HTTP_QUERY_HEADER;
 							return PROTO_OK;
 					} else {

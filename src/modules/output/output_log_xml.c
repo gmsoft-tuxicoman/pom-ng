@@ -27,6 +27,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include <libxml/xmlwriter.h>
+
 int output_log_xml_init(struct output *o) {
 
 
@@ -166,15 +168,25 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 	struct output *o = obj;
 	struct output_log_xml_priv *priv = o->priv;
 
-	const unsigned int buff_size = 4096;
-	char buffer[buff_size + 1];
-
-	// <event name="event_name">\n
-	strcpy(buffer, "<event name=\"");
-	strncat(buffer, evt->info->name, buff_size - strlen(buffer));
-	strncat(buffer, "\">\n", buff_size - strlen(buffer));
-	if (pom_write(priv->fd, buffer, strlen(buffer)) != POM_OK)
+	xmlBufferPtr buff = xmlBufferCreate();
+	if (!buff) {
+		pomlog(POMLOG_ERR "Error while creating the xml buffer");
 		return POM_ERR;
+	}
+
+	xmlTextWriterPtr writer = xmlNewTextWriterMemory(buff, 0);
+	if (!writer) {
+		pomlog(POMLOG_ERR "Error while creating the xmlTextWriter");
+		xmlBufferFree(buff);
+		return POM_ERR;
+	}
+
+	// <event name="event_name">
+	
+	if (xmlTextWriterWriteString(writer, BAD_CAST "\n\n") < 0 ||
+		xmlTextWriterStartElement(writer, BAD_CAST "event") < 0 ||
+		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->info->name) < 0)
+		goto err;
 
 	unsigned int i;
 	for (i = 0; evt->info->data[i].name; i++) {
@@ -185,37 +197,41 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 				continue;
 
 			// <param_list name="param_name">
-			strcpy(buffer, "\t<param_list name=\"");
-			strncat(buffer, evt->info->data[i].name, buff_size - strlen(buffer));
-			strncat(buffer, "\">\n", buff_size - strlen(buffer));
+			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
+				xmlTextWriterStartElement(writer, BAD_CAST "param_list") < 0 ||
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->info->data[i].name) < 0)
+				goto err;
 
-			if (pom_write(priv->fd, buffer, strlen(buffer)) != POM_OK)
-				return POM_ERR;
-
-			// <value key="key1">value1</value>
+			// <value key="key1">
 			analyzer_data_item_t *itm = evt->data[i].items;
 			for (; itm; itm = itm->next) {
-				strcpy(buffer, "\t\t<value key=\"");
-				strncat(buffer, itm->key, buff_size - strlen(buffer));
-				strncat(buffer, "\">", buff_size - strlen(buffer));
+				if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t\t") < 0 ||
+					xmlTextWriterStartElement(writer, BAD_CAST "value") < 0 ||
+					xmlTextWriterWriteAttribute(writer, BAD_CAST "key", BAD_CAST itm->key) < 0)
+					goto err;
 
-				if (pom_write(priv->fd, buffer, strlen(buffer)) != POM_OK)
-					return POM_ERR;
+				char *value = ptype_print_val_alloc(itm->value);
+				if (!value)
+					goto err;
 
-				if (ptype_print_val(itm->value, buffer, buff_size) < 0)
-					return POM_ERR;
+				if (xmlTextWriterWriteString(writer, BAD_CAST value) < 0) {
+					free(value);
+					goto err;
+				}
 
-				if (pom_write(priv->fd, buffer, strlen(buffer)) != POM_OK)
-					return POM_ERR;
+				free(value);
 
-				if (pom_write(priv->fd, "</value>\n", strlen("</value>\n")) != POM_OK)
-					return POM_ERR;
+				// </value>
+				if (xmlTextWriterEndElement(writer) < 0)
+					goto err;
 
 			}
 
-			if (pom_write(priv->fd, "\t</param_list>\n", strlen("\t</param_list>\n")) != POM_OK)
-				return POM_ERR;
 
+			// </param_list>
+			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
+				xmlTextWriterEndElement(writer) < 0)
+				goto err;
 
 		} else {
 
@@ -225,27 +241,50 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 				continue;
 
 			
-			// <param name="param_name">value</param>
-			strcpy(buffer, "\t<param name=\"");
-			strncat(buffer, evt->info->data[i].name, buff_size - strlen(buffer));
-			strncat(buffer, "\">", buff_size - strlen(buffer));
-			if (pom_write(priv->fd, buffer, strlen(buffer)) != POM_OK)
-				return POM_ERR;
+			// <param name="param_name">
 
-			if (ptype_print_val(evt->data[i].value, buffer, buff_size) < 0)
-				return POM_ERR;
+			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
+				xmlTextWriterStartElement(writer, BAD_CAST "param") < 0 ||
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->info->data[i].name) < 0)
+				goto err;
 
-			if (pom_write(priv->fd, buffer, strlen(buffer)) != POM_OK)
-				return POM_ERR;
+			char *value = ptype_print_val_alloc(evt->data[i].value);
+			if (!value)
+				goto err;
 
-			if (pom_write(priv->fd, "</param>\n", strlen("</param>\n")) != POM_OK)
-				return POM_ERR;
+			if (xmlTextWriterWriteString(writer, BAD_CAST value) < 0) {
+				free(value);
+				goto err;
+			}
+
+			// </param>
+			
+			if (xmlTextWriterEndElement(writer) < 0)
+				goto err;
 		}
 	}
 
-	if (pom_write(priv->fd, "</event>\n\n", strlen("</event>\n\n")) != POM_OK)
+	// </event>
+	if (xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0 ||
+		xmlTextWriterEndElement(writer) < 0)
+		goto err;
+
+	xmlFreeTextWriter(writer);
+	
+	if (pom_write(priv->fd, buff->content, buff->use) != POM_OK) {
+		pomlog(POMLOG_ERR "Error while writing to the log file");
+		xmlBufferFree(buff);
 		return POM_ERR;
+	}
+
+	xmlBufferFree(buff);
 
 	return POM_OK;
+err:
+	pomlog(POMLOG_ERR "An error occured while processing the event");
+	xmlFreeTextWriter(writer);
+	xmlBufferFree(buff);
+	
+	return POM_ERR;
 
 }
