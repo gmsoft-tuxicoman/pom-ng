@@ -40,8 +40,6 @@ struct analyzer_jpeg_pload_priv {
 	struct jpeg_decompress_struct cinfo;
 	size_t jpeg_lib_pos;
 
-	int done;
-
 };
 
 

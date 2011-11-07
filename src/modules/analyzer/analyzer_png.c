@@ -79,13 +79,8 @@ static int analyzer_png_init(struct analyzer *analyzer) {
 
 static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
-	if (pload->analyzer_priv) // We've already processed the header
-		return POM_OK;
-
 	if (pload->buff_pos < ANALYZER_PNG_HEADER_MIN_SIZE)
 		return POM_OK;
-
-	pload->analyzer_priv = (void*)1;
 
 	if (!memcmp(pload->buff, ANALYZER_PNG_SIGNATURE, strlen(ANALYZER_PNG_SIGNATURE))) {
 		// We got a PNG file
@@ -94,13 +89,19 @@ static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer
 			uint16_t height, width;
 			width = ntohl(*(unsigned int*)(pload->buff + 16));
 			height = ntohl(*(unsigned int*)(pload->buff + 20));
+
+			pload->state = analyzer_pload_buffer_state_analyzed;
 		
 			pomlog(POMLOG_DEBUG "Got PNG image with height %u and width %u", height, width);
 
 		} else {
 			pomlog(POMLOG_DEBUG "IHDR not found where it was supposed to be");
+			pload->type = NULL;
 		}
 
+	} else {
+		pomlog(POMLOG_DEBUG "PNG signature not found");
+		pload->type = NULL;
 	}
 
 	return POM_OK;

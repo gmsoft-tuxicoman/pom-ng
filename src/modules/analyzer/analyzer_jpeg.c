@@ -121,22 +121,24 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 
 	}
 
-	if (priv->done) // We already analyzed this image
-		return POM_OK;
-
 	if (priv->jpeg_lib_pos < pload->buff_pos) {
 
 		int res = jpeg_read_header(&priv->cinfo, TRUE);
 
 		if (res == JPEG_SUSPENDED) // Headers are incomplete
 			return POM_OK;
+		
+		// TODO add error handlers
 
 		pomlog("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
 		free(priv->cinfo.src);
 		jpeg_destroy_decompress(&priv->cinfo);
+		free(priv);
+		pload->analyzer_priv = NULL;
 
-		priv->done = 1;
+		pload->state = analyzer_pload_buffer_state_analyzed;
+
 	}
 
 	return POM_OK;
@@ -149,11 +151,8 @@ static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyze
 	if (!priv)
 		return POM_OK;
 
-	if (!priv->done) {
-		free(priv->cinfo.src);
-		jpeg_destroy_decompress(&priv->cinfo);
-	}
-
+	free(priv->cinfo.src);
+	jpeg_destroy_decompress(&priv->cinfo);
 	free(priv);
 
 	return POM_OK;

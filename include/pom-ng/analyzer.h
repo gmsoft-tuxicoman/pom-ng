@@ -147,6 +147,8 @@ enum analyzer_pload_buffer_state {
 	analyzer_pload_buffer_state_empty = 0,
 	analyzer_pload_buffer_state_magic,
 	analyzer_pload_buffer_state_partial,
+	analyzer_pload_buffer_state_analyzed,
+	analyzer_pload_buffer_state_error,
 	analyzer_pload_buffer_state_done,
 
 };
@@ -164,6 +166,7 @@ struct analyzer_pload_buffer {
 
 	struct analyzer_data *data;
 	struct analyzer_event *rel_event;
+	struct analyzer_pload_output_list *output_list;
 	void *analyzer_priv;
 
 };
@@ -177,6 +180,36 @@ struct analyzer_pload_reg {
 	int (*process) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 	int (*cleanup) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
+};
+
+struct analyzer_pload_output_reg {
+
+
+	int (*open) (struct analyzer_pload_output_list *po);
+	ssize_t (*write) (struct analyzer_pload_output_list *po, void *data, size_t len);
+	int (*close) (struct analyzer_pload_output_list *po); 
+
+};
+
+struct analyzer_pload_output {
+
+	struct output *output;
+	struct analyzer_pload_output_reg *reg_info;
+
+	struct analyzer_pload_output *prev, *next;
+
+};
+
+struct analyzer_pload_output_list {
+
+	struct analyzer_pload_output *o;
+	struct analyzer_pload_buffer *pload;
+	size_t cur_pos;
+
+	void *priv;
+
+	struct analyzer_pload_output_list *prev, *next;
+	
 };
 
 int analyzer_register(struct analyzer_reg *reg_info);
@@ -197,5 +230,8 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
 struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name);
 struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type);
 
+
+int analyzer_pload_output_register(struct output *o, struct analyzer_pload_output_reg *reg_info);
+int analyzer_pload_output_unregister(struct output *o);
 
 #endif

@@ -19,7 +19,7 @@ include $(top_srcdir)/Makefile.common
 
 ANALYZER_SRC = analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
 INPUT_SRC = @INPUT_OBJS@
-OUTPUT_SRC = output_log.la @OUTPUT_OBJS@
+OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la ptype_timestamp.la
 
@@ -48,6 +48,9 @@ input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
 input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
+output_file_la_SOURCES = output/output_file.c output/output_file.h
+output_file_la_LDFLAGS = -module -avoid-version
+output_file_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_log_la_SOURCES = output/output_log.c output/output_log.h output/output_log_txt.c output/output_log_txt.h output/output_log_xml.c output/output_log_xml.h
 output_log_la_CFLAGS = @libxml2_CFLAGS@
 output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' @libxml2_LIBS@

@@ -18,24 +18,37 @@
  *
  */
 
-
-#ifndef __ANALYZER_H__
-#define __ANALYZER_H__
+#ifndef __OUTPUT_FILE_H__
+#define __OUTPUT_FILE_H__
 
 #include <pom-ng/analyzer.h>
+#include <pom-ng/output.h>
 
-// We require at least that ammount of bytes before passing the buffer to libmagic
-#define ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE 64
 
-struct analyzer_event_listener_list {
+struct output_file_priv {
 
-	struct analyzer_event_listener *listener;
-	struct analyzer_event_listener_list *prev, *next;
+	struct ptype *p_path;
+	struct ptype *p_filter;
 
 };
 
-int analyzer_init(char *mime_type_database);
-int analyzer_cleanup();
-int analyzer_pload_output(struct analyzer_pload_buffer *pload);
+struct output_file_pload_priv {
+	int fd;
+	char *filename;
+};
+
+struct mod_reg_info* output_file_reg_info();
+int output_file_mod_register(struct mod_reg *mod);
+int output_file_mod_unregister();
+
+int output_file_init(struct output *o);
+int output_file_cleanup(struct output *o);
+int output_file_close(struct output *o);
+
+int output_file_pload_open(struct analyzer_pload_output_list *po);
+ssize_t output_file_pload_write(struct analyzer_pload_output_list *po, void *data, size_t len);
+int output_file_pload_close(struct analyzer_pload_output_list *po);
+
+
 
 #endif

@@ -77,13 +77,8 @@ static int analyzer_gif_init(struct analyzer *analyzer) {
 
 static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
-	if (pload->analyzer_priv) // We've already processed the header
-		return POM_OK;
-
 	if (pload->buff_pos < ANALYZER_GIF_HEADER_MIN_SIZE)
 		return POM_OK;
-
-	pload->analyzer_priv = (void*)1;
 
 	unsigned char *buff = pload->buff;
 
@@ -93,7 +88,12 @@ static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer
 		width = (buff[7] << 8) + buff[8];
 		height = (buff[9] << 8) + buff[10];
 
+		pload->state = analyzer_pload_buffer_state_analyzed;
+
 		pomlog(POMLOG_DEBUG "Got GIF image with height %u and width %u", height, width);
+	} else {
+		pomlog(POMLOG_DEBUG "GIF signature not found");
+		pload->type = NULL;
 	}
 
 	return POM_OK;

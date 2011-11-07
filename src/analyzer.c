@@ -39,6 +39,9 @@ static pthread_mutex_t analyzer_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct analyzer_pload_type *analyzer_pload_types = NULL;
 static struct analyzer_pload_mime_type *analyzer_pload_mime_types = NULL;
 
+static struct analyzer_pload_output *analyzer_pload_outputs = NULL;
+
+
 static struct analyzer_pload_class pload_class_def[ANALYZER_PLOAD_CLASS_COUNT] = {
 	{ "other", "Unclassified payload class" },
 	{ "application", "Application files" },
@@ -584,15 +587,11 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_
 
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size) {
 
-	if (!pload->type && !(pload->flags & ANALYZER_PLOAD_BUFFER_NEED_MAGIC)) {
-		// Don't process payloads we won't do anything with
+	if (pload->state == analyzer_pload_buffer_state_error || pload->state == analyzer_pload_buffer_state_done) {
+		// Don't process payloads which encountered an error or which do not need additional processing
 		return POM_OK;
 	}
 
-	if (pload->state == analyzer_pload_buffer_state_done) {
-		// Don't process pload already processed (or in error)
-		return POM_OK;
-	}
 
 	if (pload->state == analyzer_pload_buffer_state_empty) {
 		// We need to allocate the buffer for this payload
@@ -602,7 +601,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			pload->buff = malloc(pload->expected_size);
 			if (!pload->buff) {
 				pom_oom(pload->expected_size);
-				pload->state = analyzer_pload_buffer_state_done;
+				pload->state = analyzer_pload_buffer_state_error;
 				return POM_ERR;
 			}
 		} else {
@@ -613,7 +612,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			pload->buff = malloc(pagesize);
 			if (!pload->buff) {
 				pom_oom(pagesize);
-				pload->state = analyzer_pload_buffer_state_done;
+				pload->state = analyzer_pload_buffer_state_error;
 				return POM_ERR;
 			}
 		}
@@ -630,7 +629,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	if (pload->expected_size) {
 		if (pload->expected_size < pload->buff_pos + size) {
 			pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
-			pload->state = analyzer_pload_buffer_state_done;
+			pload->state = analyzer_pload_buffer_state_error;
 			return POM_OK;
 		}
 	} else {
@@ -647,6 +646,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			if (!new_buff) {
 				pom_oom(new_size);
 				pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
+				pload->state = analyzer_pload_buffer_state_error;
 				return POM_ERR;
 			}
 
@@ -658,6 +658,11 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	memcpy(pload->buff + pload->buff_pos, data, size);
 	pload->buff_pos += size;
 
+	if (pload->state == analyzer_pload_buffer_state_analyzed) {
+		// Send the payload to the output
+		return analyzer_pload_output(pload);
+	}
+
 #ifdef HAVE_LIBMAGIC
 	if (pload->state == analyzer_pload_buffer_state_magic) {
 		// We need to perform some magic
@@ -666,7 +671,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			char *magic_mime_type = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
 			if (!magic_mime_type) {
 				pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
-				pload->state = analyzer_pload_buffer_state_done;
+				pload->state = analyzer_pload_buffer_state_error;
 				return POM_ERR;
 			}
 			struct analyzer_pload_type *magic_pload_type = analyzer_pload_type_get_by_mime_type(magic_mime_type);
@@ -677,14 +682,6 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				pload->type = magic_pload_type;
 			}
 
-			// If we can't determine the type (because we don't support it), free the buffer and remove need magic flag
-			if (!pload->type && !magic_pload_type) {
-				pload->state = analyzer_pload_buffer_state_done;
-				free(pload->buff);
-				pload->buff = NULL;
-				return POM_OK;
-			}
-
 			pload->state = analyzer_pload_buffer_state_partial;
 		}
 	}
@@ -693,25 +690,36 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 #endif
 
 	if (pload->state == analyzer_pload_buffer_state_partial) {
+		// If we know what type of payload we are dealing with, try to analyze it
+		if (pload->type) {
 
-		struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
+			struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
 
-		if (pload_analyzer->flags & ANALYZER_PLOAD_PROCESS_PARTIAL) {
-			if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
-				pload->state = analyzer_pload_buffer_state_done;
-				pomlog(POMLOG_WARN "Error while processing partial pload of type %s", pload->type->name);
-				return POM_OK;
-			}
-		}
 
-		if (pload->expected_size && (pload->buff_pos >= pload->expected_size)) {
-			// Got a full payload, process it
-			if (!(pload_analyzer->flags & ANALYZER_PLOAD_PROCESS_PARTIAL)) {
+			// Have the analyzer look at the payload
+			// The analyzer will either leave the state as it is or change it to error or analyzed
+			if ((pload_analyzer->flags & ANALYZER_PLOAD_PROCESS_PARTIAL) || (pload->expected_size && (pload->buff_pos >= pload->expected_size))) {
 				if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
-					pomlog(POMLOG_WARN "Error while processing full payload of type %s", pload->type->name);
+					// The analyzer enountered an error. Not sure what is the best course of action here.
+					pomlog(POMLOG_DEBUG "Error while analyzing pload of type %s", pload->type->name);
+					// For now, remove the type from the payload
+					pload->type = NULL;
 				}
 			}
-			pload->state = analyzer_pload_buffer_state_done;
+		
+			if (!pload->type) {
+				// The analyzer did not recognize the payload, nothing more to do
+				pload->state = analyzer_pload_buffer_state_analyzed;
+			} 
+
+		} else {
+			// Nothing to analyze
+			pload->state = analyzer_pload_buffer_state_analyzed;
+		}
+
+		if (pload->state == analyzer_pload_buffer_state_analyzed) {
+			// Process the payload to the ouptut
+			return analyzer_pload_output(pload);
 		}
 
 	}
@@ -720,6 +728,66 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 }
 
+int analyzer_pload_output(struct analyzer_pload_buffer *pload) {
+
+
+	if (!pload->output_list) {
+		// Try to send this payload to all the outputs
+		// TODO filtering
+		struct analyzer_pload_output *tmp;
+		for (tmp = analyzer_pload_outputs; tmp; tmp = tmp->next) {
+
+			struct analyzer_pload_output_list *lst = malloc(sizeof(struct analyzer_pload_output_list));
+			if (!lst) {
+				pom_oom(sizeof(struct analyzer_pload_output_list));
+				// Error is not fatal
+				return POM_OK;
+			}
+			memset(lst, 0, sizeof(struct analyzer_pload_output_list));
+			lst->o = tmp;
+			lst->pload = pload;
+
+			if (tmp->reg_info->open(lst)) {
+				pomlog(POMLOG_ERR "Error while opending output %s for a payload", tmp->output->name);
+				free(lst);
+				continue;
+			}
+
+			lst->next = pload->output_list;
+			if (lst->next)
+				lst->next->prev = lst;
+
+			pload->output_list = lst;
+
+		}
+
+	}
+
+	struct analyzer_pload_output_list *lst;
+	for (lst = pload->output_list; lst; lst = lst->next) {
+		ssize_t res = lst->o->reg_info->write(lst, pload->buff + lst->cur_pos, pload->buff_pos - lst->cur_pos);
+		if (res < 0) {
+			pomlog(POMLOG_ERR "Error while writing to output %s", lst->o->output->name);
+			lst->o->reg_info->close(lst);
+			// Remove this input from the list
+			if (lst->next)
+				lst->next->prev = lst->prev;
+			if (lst->prev)
+				lst->prev->next = lst->next;
+			else
+				pload->output_list = lst->next;
+			continue;
+		}
+
+		lst->cur_pos += res;
+
+	}
+
+	if (!pload->output_list)
+		pload->state = analyzer_pload_buffer_state_done;
+
+	return POM_OK;
+}
 
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 
@@ -730,6 +798,16 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 			if (pload_analyzer->cleanup(pload_analyzer->analyzer, pload) != POM_OK)
 				pomlog(POMLOG_WARN "Error while cleaning up payload buffer of type %s", pload->type->name);
 		}
+	}
+
+	while (pload->output_list) {
+		struct analyzer_pload_output_list *lst = pload->output_list;
+		if (lst->o->reg_info->close(lst) != POM_OK)
+			pomlog(POMLOG_WARN "Error while closing payload with output %s", lst->o->output->name);
+		
+		pload->output_list = lst->next;
+		free(lst);
+
 	}
 
 	if (pload->buff)
@@ -770,4 +848,52 @@ struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type
 		return tmp->type;
 
 	return NULL;
+}
+
+
+int analyzer_pload_output_register(struct output *o, struct analyzer_pload_output_reg *reg_info) {
+
+
+	struct analyzer_pload_output *po = malloc(sizeof(struct analyzer_pload_output));
+	if (!po) {
+		pom_oom(sizeof(struct analyzer_pload_output));
+		return POM_ERR;
+	}
+	memset(po, 0, sizeof(struct analyzer_pload_output));
+
+	po->reg_info = reg_info;
+	po->output = o;
+
+	po->next = analyzer_pload_outputs;
+	if (po->next)
+		po->next->prev = po;
+
+	analyzer_pload_outputs = po;
+
+	return POM_OK;
+
+}
+
+
+int analyzer_pload_output_unregister(struct output *o) {
+
+	struct analyzer_pload_output *po = analyzer_pload_outputs;
+	for (; po && po->output != o; po = po->next);
+
+	if (!po) {
+		pomlog(POMLOG_ERR "Payload output not found in the list of registered outputs");
+		return POM_ERR;
+	}
+
+	if (po->prev)
+		po->prev->next = po->next;
+	else
+		analyzer_pload_outputs = po->next;
+	
+	if (po->next)
+		po->next->prev = po->prev;
+
+	free(po);
+
+	return POM_OK;
 }
