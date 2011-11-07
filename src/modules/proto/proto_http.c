@@ -30,6 +30,12 @@
 #include <stdio.h>
 
 
+#if 0
+#define debug_http(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_http(x ...)
+#endif
+
 // ptype for fields value template
 static struct ptype *ptype_string = NULL, *ptype_uint16 = NULL, *ptype_timestamp = NULL;
 
@@ -131,6 +137,7 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 
 	// There should be no need to lock here since we are in the packet_stream lock from proto_tcp
 
+	
 	struct proto_http_conntrack_priv *priv = s->ce->priv;
 	if (!priv) {
 		priv = malloc(sizeof(struct proto_http_conntrack_priv));
@@ -144,6 +151,8 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 		s->ce->priv = priv;
 
 	}
+
+	debug_http("entry %p, current state %u, packet %u.%u", s->ce, priv->state, (int)p->ts.tv_sec, (int)p->ts.tv_usec);
 
 	if (priv->state == HTTP_INVALID)
 		return PROTO_INVALID;
@@ -284,6 +293,8 @@ static int proto_http_process(struct packet *p, struct proto_process_stack *stac
 				packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
 				priv->info.content_pos += s_next->plen;
 
+				debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
+
 				if ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) {
 					// Payload done
 					priv->state = (priv->state == HTTP_BODY_QUERY ? HTTP_RESPONSE_HEADER : HTTP_QUERY_HEADER);
@@ -304,6 +315,8 @@ static int proto_http_conntrack_reset(struct conntrack_entry *ce) {
 
 	struct proto_http_conntrack_priv *priv = ce->priv;
 
+	debug_http("entry %p, reset", ce);
+	
 	priv->state = HTTP_QUERY_HEADER;
 	memset(&priv->info, 0, sizeof(struct http_info));
 
@@ -513,6 +526,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 			pom_oom(line_len + 1);
 			return PROTO_ERR;
 		}
+
 		memcpy(first_line, line, line_len);
 		first_line[line_len] = 0;
 		PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_first_line].value, first_line);
@@ -521,7 +535,10 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		PTYPE_TIMESTAMP_SETVAL(priv->query_event->data[proto_http_query_start_time].value, p->ts);
 		priv->query_event->data[proto_http_query_start_time].set = 1;
 
+		debug_http("entry %p, found query : \"%s\"", ce, first_line);
+
 	} else {
+		debug_http("entry %p, response with status %u", ce, priv->last_err_code);
 
 		PTYPE_TIMESTAMP_SETVAL(priv->response_event->data[proto_http_response_start_time].value, p->ts);
 		priv->response_event->data[proto_http_response_start_time].set = 1;
