@@ -350,14 +350,14 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 	}
 	pom_mutex_unlock(&s->ce->lock);
 
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	s_next->pload = s->pload + hdr_len;
-	s_next->plen = s->plen - hdr_len;
-	s_next->direction = s->direction;
 
 	if (plen) {
-		// only queue the packet if there is some payload
-		if (packet_stream_process_packet(priv->stream, p, stack, stack_index, ntohl(hdr->th_seq), ntohl(hdr->th_ack)) != POM_OK)
+		// Queue the payload
+		struct proto_process_stack *s_next = &stack[stack_index + 1];
+		s_next->pload = s->pload + hdr_len;
+		s_next->plen = s->plen - hdr_len;
+		s_next->direction = s->direction;
+		if (packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack)) != POM_OK)
 			return PROTO_ERR;
 		return PROTO_STOP;
 	}
@@ -370,8 +370,8 @@ static int proto_tcp_process_payload(void *priv, struct packet *p, struct proto_
 	struct proto_tcp_conntrack_priv *cp = priv;
 
 	if (cp->proto) {
-		stack[stack_index + 1].proto = cp->proto->proto;
-		return core_process_multi_packet(stack, stack_index + 1, p);
+		stack[stack_index].proto = cp->proto->proto;
+		return core_process_multi_packet(stack, stack_index, p);
 	}
 	return PROTO_OK;
 }
