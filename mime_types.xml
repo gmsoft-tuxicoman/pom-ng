@@ -9,6 +9,7 @@
 		<def name="binary" description="Binary file" extension="bin" class="other" />
 		<def name="pdf" description="Portable Document Format" extension="pdf" class="document" />
 		<def name="excel" description="Excel Sheet" extension="xls" class="document" />
+		<def name="powerpoint" description="Powerpoint presentation" extension="ppt" class="document" />
 		<def name="rar" description="RAR file" extension="rar" class="application" />
 		<def name="swf" description="Adobe Flash file" extension="swf" class="application" />
 		<def name="form-urlencoded" description="URL encoded data" extension="txt" class="other" />
