@@ -234,18 +234,14 @@ int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 
 void *core_processing_thread_func(void *priv) {
 
+
 	pom_mutex_lock(&core_pkt_queue_mutex);
-	core_thread_active++;
-	pom_mutex_unlock(&core_pkt_queue_mutex);
 
 	while (core_run) {
 		
-		pom_mutex_lock(&core_pkt_queue_mutex);
-		core_thread_active--;
 		while (!core_pkt_queue_head) {
-			enum core_state state = core_get_state();
 			if (core_thread_active == 0) {
-				if (state == core_state_finishing) {
+				if (core_get_state() == core_state_finishing) {
 					// Free the conntrack tables
 					proto_empty_conntracks();
 					core_set_state(core_state_idle);
@@ -334,15 +330,16 @@ void *core_processing_thread_func(void *priv) {
 			break;
 
 		}
-		pom_mutex_unlock(&core_pkt_queue_mutex);
+		core_thread_active--;
 
 	}
+	pom_mutex_unlock(&core_pkt_queue_mutex);
 
 	halt("Processing thread encountered an error");
 	return NULL;
 }
 
-int core_process_dump_info(struct proto_process_stack *s, int res) {
+int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int res) {
 
 	char *res_str = "unknown result code";
 	switch (res) {
@@ -357,7 +354,10 @@ int core_process_dump_info(struct proto_process_stack *s, int res) {
 			break;
 	}
 
-	printf("thread %u | ", (unsigned int)pthread_self());
+	static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
+
+	pthread_mutex_lock(&debug_lock);
+	printf("thread %u | %u.%u | ", (unsigned int)pthread_self(), (int)p->ts.tv_sec, (int)p->ts.tv_usec);
 
 	// Dump packet info
 	int i;	
@@ -377,6 +377,7 @@ int core_process_dump_info(struct proto_process_stack *s, int res) {
 		printf("}; ");
 	}
 	printf(": %s\n", res_str);
+	pthread_mutex_unlock(&debug_lock);
 
 	return POM_OK;
 }
@@ -387,7 +388,7 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	int res = core_process_packet_stack(s, stack_index, p);
 
 	if (res != PROTO_ERR) {
-		core_process_dump_info(s, res);
+		core_process_dump_info(s, p, res);
 	}
 	
 	int i;
@@ -456,7 +457,7 @@ int core_process_packet(struct packet *p) {
 	int res = core_process_packet_stack(s, 1, p);
 
 	if (res == PROTO_OK)
-		core_process_dump_info(s, res);
+		core_process_dump_info(s, p, res);
 
 	// Cleanup pkt_info
 	int i;
@@ -521,14 +522,14 @@ int core_set_state(enum core_state state) {
 	} else if (state == core_state_running) {
 		gettimeofday(&core_start_time, NULL);
 	} else if (state == core_state_finishing) {
-		pom_mutex_lock(&core_pkt_queue_mutex);
+		//pom_mutex_lock(&core_pkt_queue_mutex);
 		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
 			pom_mutex_unlock(&core_pkt_queue_mutex);
 			pom_mutex_unlock(&core_state_lock);
 			pomlog(POMLOG_ERR "Error while broadcasting restart condition after set state");
 			return POM_ERR;
 		}
-		pom_mutex_unlock(&core_pkt_queue_mutex);
+		//pom_mutex_unlock(&core_pkt_queue_mutex);
 	}
 	pom_mutex_unlock(&core_state_lock);
 	return POM_OK;
