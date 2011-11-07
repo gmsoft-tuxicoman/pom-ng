@@ -257,6 +257,8 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 				goto err;
 			}
 
+			free(value);
+
 			// </param>
 			
 			if (xmlTextWriterEndElement(writer) < 0)
