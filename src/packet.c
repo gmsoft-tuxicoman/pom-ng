@@ -29,6 +29,18 @@
 
 #include <pom-ng/ptype.h>
 
+#if 0
+#define debug_stream_parser(x ...) pomlog(POMLOG_DEBUG "stream_parser: " x)
+#else
+#define debug_stream_parser(x ...)
+#endif
+
+#if 0
+#define debug_stream(x ...) pomlog(POMLOG_DEBUG "stream: " x)
+#else
+#define debug_stream(x ...)
+#endif
+
 static struct packet *packet_head, *packet_unused_head;
 static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 unsigned int num = 0;
@@ -520,6 +532,8 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 
 	res->flags = flags;
 
+	debug_stream("entry %p, allocated, start_seq %u, start_ack %u, direction %u", start_seq, start_ack, direction);
+
 	return res;
 }
 
@@ -541,6 +555,8 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 
 	free(stream);
 
+	debug_stream("entry %p, released");
+
 	return POM_OK;
 }
 
@@ -552,6 +568,8 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	pom_mutex_lock(&stream->lock);
 
+	debug_stream("entry %p, new packet with seq %u and ack %u", stream, seq, ack);
+
 	// Check if the packet is worth processing
 	struct proto_process_stack *cur_stack = &stack[stack_index];
 	int direction = cur_stack->direction;
@@ -560,6 +578,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		if ((cur_seq > (seq + cur_stack->plen) && cur_seq - (seq + cur_stack->plen) < PACKET_HALF_SEQ)
 			|| (cur_seq < (seq + cur_stack->plen) && (seq + cur_stack->plen) - cur_seq > PACKET_HALF_SEQ)) {
 			// cur_seq is after the end of the packet, discard it
+			debug_stream("entry %p, packet with seq %u discarded", stream, seq);
 			pom_mutex_unlock(&stream->lock);
 			return POM_OK;
 		}
@@ -589,6 +608,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	if (cur_seq == seq) {
 		// Process it
 		stream->cur_seq[direction] += cur_stack->plen;
+		debug_stream("entry %p, processing packet with seq %u", stream, seq);
 		int res = stream->handler(stream->priv, pkt, stack, stack_index);
 		if (res == POM_ERR) {
 			pom_mutex_unlock(&stream->lock);
@@ -608,6 +628,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			cur_stack->pkt_info = p->pkt_info;
 			cur_stack->proto = p->proto;
 			cur_stack->direction = direction;
+			debug_stream("entry %p, processing additional packet with seq %u", stream, seq);
 			if (stream->handler(stream->priv, p->pkt, stack, stack_index) == POM_ERR) {
 				pom_mutex_unlock(&stream->lock);
 				return POM_ERR;
@@ -620,7 +641,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			packet_pool_release(p->pkt);
 			free(p);
 		}
-		
+		debug_stream("entry %p, processing done", stream);	
 		pom_mutex_unlock(&stream->lock);
 		return POM_OK;
 	}
@@ -641,7 +662,8 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		free(p);
 		return PROTO_ERR;
 	}
-		
+	
+	debug_stream("entry %p, queuing packet with seq %u", stream, seq);
 	p->seq = seq;
 	p->len = cur_stack->plen;
 	p->pkt_info = cur_stack->pkt_info;
@@ -706,6 +728,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			cur_stack->pkt_info = p->pkt_info;
 			cur_stack->proto = p->proto;
 			cur_stack->direction = direction;
+			debug_stream("entry %p, processing unblocked packet with seq %u", stream, seq);
 			if (stream->handler(stream->priv, p->pkt, stack, stack_index) == POM_ERR) {
 				pom_mutex_unlock(&stream->lock);
 				return POM_ERR;
@@ -721,6 +744,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		}
 	}
 
+	debug_stream("entry %p, processing done", stream);
 	pom_mutex_unlock(&stream->lock);
 	return POM_OK;
 }
@@ -832,6 +856,8 @@ struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_si
 
 	res->max_line_size = max_line_size;
 
+	debug_stream_parser("entry %p, allocated with max_line_size %u", res, max_line_size);
+
 	return res;
 }
 
@@ -844,6 +870,8 @@ int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *ploa
 	sp->pload = pload;
 	sp->plen = len;
 
+	debug_stream_parser("entry %p, added pload %p with len %u", sp, pload, len);
+
 	return POM_OK;
 }
 
@@ -851,6 +879,8 @@ int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **p
 
 	if (!sp->pload)
 		return POM_OK;
+
+	debug_stream_parser("entry %p, providing remaining pload %p with len %u", sp, sp->pload, sp->plen);
 
 	*pload = sp->pload;
 	*len = sp->plen;
@@ -895,7 +925,7 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 		sp->buffpos += tmp_len;
 
 		if (sp->buffpos > sp->max_line_size) {
-			// What to do ? discard it and sned new partial line ?
+			// What to do ? discard it and send new partial line ?
 			// Send it as is and send a new line afterwards ?
 			// I'll take option two
 			pomlog(POMLOG_DEBUG "Line longer than max size : %u , max %u", sp->buffpos, sp->max_line_size);
@@ -908,6 +938,7 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 		*len = 0;
 		sp->pload = NULL;
 		sp->plen = 0;
+		debug_stream_parser("entry %p, no line found", sp);
 		return POM_OK;
 	}
 
@@ -935,6 +966,8 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 
 	*line = pload;
 	*len = tmp_len;
+
+	debug_stream_parser("entry %p, got line of %u bytes", sp, tmp_len);
 
 	return POM_OK;
 }
