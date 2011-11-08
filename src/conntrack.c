@@ -232,11 +232,13 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto
 
 		if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
 			pomlog(POMLOG_ERR "Error while setting conntrack mutex attribute to recursive");
+			pthread_mutexattr_destroy(&attr);
 			goto err;
 		}
 
 		if(pthread_mutex_init(&res->lock, &attr)) {
 			pomlog(POMLOG_ERR "Error while initializing a conntrack lock : %s", pom_strerror(errno));
+			pthread_mutexattr_destroy(&attr);
 			goto err;
 		}
 
@@ -292,8 +294,10 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto
 
 err:
 	pom_mutex_unlock(&parent->lock);
-	if (res)
+	if (res) {
+		pthread_mutex_destroy(&res->lock);
 		free(res);
+	}
 
 	if (child)
 		free(child);
