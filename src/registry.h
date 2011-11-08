@@ -39,7 +39,6 @@ struct registry_class {
 	char *name;
 	struct registry_instance *instances;
 	struct registry_param *global_params;
-	pthread_mutex_t lock;
 	int (*instance_add) (char *type, char *name);
 	int (*instance_remove) (struct registry_instance *i);
 	struct registry_class *next, *prev;
@@ -47,6 +46,9 @@ struct registry_class {
 
 int registry_init();
 int registry_cleanup();
+
+void registry_lock();
+void registry_unlock();
 
 struct registry_class* registry_add_class(char *name);
 int registry_remove_class(struct registry_class *c);

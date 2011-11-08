@@ -45,7 +45,6 @@ struct registry_instance {
 	char *name;
 	struct registry_param *params;
 	struct registry_function *funcs;
-	pthread_mutex_t lock;
 	void *priv;
 	struct registry_instance *next, *prev;
 	struct registry_class *parent;

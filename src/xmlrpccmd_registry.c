@@ -87,6 +87,8 @@ xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_va
 	if (envP->fault_occurred)
 		goto err;
 
+	registry_lock();
+
 	if (registry_find_instance(cls, name)) {
 		xmlrpc_faultf(envP, "Instance already exists");
 		goto err;
@@ -110,12 +112,16 @@ xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_va
 		goto err;
 	}
 
+	registry_unlock();
+
 	free(type);
 	free(name);
 
 	return xmlrpc_int_new(envP, 0);
 
 err:
+	registry_unlock();
+
 	if (cls)
 		free(cls);
 	free(type);
@@ -132,8 +138,11 @@ xmlrpc_value *xmlrpccmd_registry_remove_instance(xmlrpc_env * const envP, xmlrpc
 	if (envP->fault_occurred)
 		goto err;
 
+	registry_lock();
+
 	struct registry_instance *i = registry_find_instance(cls, instance);
 	if (!i) {
+		registry_unlock();
 		xmlrpc_faultf(envP, "Class or instance not found");
 		goto err;
 	}
@@ -141,15 +150,18 @@ xmlrpc_value *xmlrpccmd_registry_remove_instance(xmlrpc_env * const envP, xmlrpc
 	free(instance);
 	
 	if (!i->parent->instance_remove) {
+		registry_unlock();
 		xmlrpc_faultf(envP, "This class doesn't support removing instances");
 		return NULL;
 	}
 
 	if (i->parent->instance_remove(i) != POM_OK) {
+		registry_unlock();
 		xmlrpc_faultf(envP, "Error while adding the instance");
 		return NULL;
 	}
-
+	
+	registry_unlock();
 
 	return xmlrpc_int_new(envP, 0);
 
@@ -170,23 +182,23 @@ xmlrpc_value *xmlrpccmd_registry_get_instance_param(xmlrpc_env * const envP, xml
 
 	xmlrpc_value *result = NULL;
 
+	registry_lock();
+
 	struct registry_instance *i = registry_find_instance(cls, instance);
 	if (!i) {
 		xmlrpc_faultf(envP, "Class or instance not found");
 		goto err;
 	}
 
-	pom_mutex_lock(&i->lock);
 
 	struct registry_param *p = i->params;
 	for (; p && strcmp(p->name, param); p = p->next);
 
 	if (!p) {
-		pom_mutex_unlock(&i->lock);
 		xmlrpc_faultf(envP, "Parameter %s not found", param);
 		goto err;
 	}
-	pom_mutex_unlock(&i->lock);
+
 	
 
 	char *value = ptype_print_val_alloc(p->value);
@@ -198,7 +210,10 @@ xmlrpc_value *xmlrpccmd_registry_get_instance_param(xmlrpc_env * const envP, xml
 	result = xmlrpc_build_value(envP, "{s:s,s:s}",
 					"name", p->name,
 					"value", value);
+
 err:
+	registry_unlock();
+
 	free(cls);
 	free(instance);
 	free(param);
@@ -216,24 +231,22 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 	if (envP->fault_occurred)
 		return NULL;
 
+	registry_lock();
+
 	struct registry_instance *i = registry_find_instance(cls, instance);
 	if (!i) {
 		xmlrpc_faultf(envP, "Class or instance not found");
 		goto err;
 	}
 
-	pom_mutex_lock(&i->lock);
-
 	struct registry_param *p = i->params;
 	for (; p && strcmp(p->name, param); p = p->next);
 
 	if (!p) {
-		pom_mutex_unlock(&i->lock);
 		xmlrpc_faultf(envP, "Parameter %s not found", param);
 		goto err;
 	}
-	pom_mutex_unlock(&i->lock);
-	
+
 
 
 	free(cls);
@@ -242,15 +255,19 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 
 
 	if (registry_set_param_value(p, value) != POM_OK) {
-		xmlrpc_faultf(envP, "Unable to set parameter value to \"%s\"", value);
+		registry_unlock();
 		free(value);
+		xmlrpc_faultf(envP, "Unable to set parameter value to \"%s\"", value);
 		return NULL;
 	}
 	free(value);
+	
+	registry_unlock();
 
 	return xmlrpc_int_new(envP, 0);
 
 err:
+	registry_unlock();
 
 	free(cls);
 	free(instance);
@@ -267,6 +284,7 @@ xmlrpc_value *xmlrpccmd_registry_instance_action(xmlrpc_env * const envP, xmlrpc
 	if (envP->fault_occurred)
 		goto err;
 
+	registry_lock();
 	struct registry_instance *i = registry_find_instance(cls, instance);
 
 	if (!i) {
@@ -279,31 +297,30 @@ xmlrpc_value *xmlrpccmd_registry_instance_action(xmlrpc_env * const envP, xmlrpc
 	free(instance);
 	instance = NULL;
 
-	pom_mutex_lock(&i->lock);
-
 	struct registry_function *f = i->funcs;
 
 	for (; f && strcmp(f->name, action); f = f->next);
 
 	if (!f) {
-		pom_mutex_unlock(&i->lock);
 		xmlrpc_faultf(envP, "Action not found");
 		goto err;
 	}
 
 	if (f->handler(i) != POM_OK) {
-		pom_mutex_unlock(&i->lock);
 		xmlrpc_faultf(envP, "An error occurred");
 		goto err;
 	}
 
-	pom_mutex_unlock(&i->lock);
+	registry_unlock();
 
 	free(action);
 
 	return xmlrpc_int_new(envP, 0);
 
 err:
+	
+	registry_unlock();
+
 	if (cls)
 		free(cls);
 	if (instance)

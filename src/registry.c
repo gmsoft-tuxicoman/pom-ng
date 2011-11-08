@@ -23,10 +23,31 @@
 #include "core.h"
 #include <pom-ng/ptype.h>
 
-static pthread_mutex_t registry_class_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t registry_global_lock;
 static struct registry_class *registry_head = NULL;
 
 int registry_init() {
+
+	pthread_mutexattr_t attr;
+
+	if (pthread_mutexattr_init(&attr)) {
+		pomlog(POMLOG_ERR "Error while initializing conntrack mutex attribute");
+		return POM_ERR;
+	}
+
+	if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
+		pomlog(POMLOG_ERR "Error while setting registry mutex attribute to recursive");
+		return POM_ERR;
+	}
+
+	if (pthread_mutex_init(&registry_global_lock, &attr)) {
+		pthread_mutexattr_destroy(&attr);
+		pomlog(POMLOG_ERR "Error while initializing the registry lock : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	pthread_mutexattr_destroy(&attr);
+		
 
 	return POM_OK;
 }
@@ -38,8 +59,17 @@ int registry_cleanup() {
 			return POM_ERR;
 	}
 
-
+	pthread_mutex_destroy(&registry_global_lock);
+	
 	return POM_OK;
+}
+
+void registry_lock() {
+	pom_mutex_lock(&registry_global_lock);
+}
+
+void registry_unlock() {
+	pom_mutex_unlock(&registry_global_lock);
 }
 
 struct registry_class* registry_add_class(char *name) {
@@ -47,34 +77,28 @@ struct registry_class* registry_add_class(char *name) {
 	if (!name)
 		return NULL;
 
-	pom_mutex_lock(&registry_class_lock);
+	registry_lock();
 
 	struct registry_class *c = registry_head;
 	for (;c && strcmp(c->name, name); c = c->next);
 	if (c) {
 		pomlog(POMLOG_WARN "Cannot add class %s as it already exists", name);
-		pom_mutex_unlock(&registry_class_lock);
+		registry_unlock();
 		return NULL;
 	}
 
 	c = malloc(sizeof(struct registry_class));
 	if (!c) {
 		pom_oom(sizeof(struct registry_class));
-		pom_mutex_unlock(&registry_class_lock);
+		registry_unlock();
 		return NULL;
 	}
 
 	memset(c, 0, sizeof(struct registry_class));
 
-	if (pthread_mutex_init(&c->lock, NULL)) {
-		pomlog(POMLOG_ERR "Unable to initialize the class lock : %s", pom_strerror(errno));
-		free(c);
-		return NULL;
-	}
-	
 	c->name = strdup(name);
 	if (!c->name) {
-		pom_mutex_unlock(&registry_class_lock);
+		registry_unlock();
 		free(c);
 		pom_oom(strlen(name));
 		return NULL;
@@ -84,7 +108,7 @@ struct registry_class* registry_add_class(char *name) {
 	if (c->next)
 		registry_head->prev = c;
 	registry_head = c;
-	pom_mutex_unlock(&registry_class_lock);
+	registry_unlock();
 
 	return c;
 }
@@ -94,7 +118,7 @@ int registry_remove_class(struct registry_class *c) {
 	if (!c)
 		return POM_OK;
 
-	pom_mutex_lock(&registry_class_lock);
+	registry_lock();
 
 	if (c->prev)
 		c->prev->next = c->next;
@@ -104,7 +128,6 @@ int registry_remove_class(struct registry_class *c) {
 	if (c->next)
 		c->next->prev = c->prev;
 	
-	pom_mutex_unlock(&registry_class_lock);
 
 
 	while (c->instances) {
@@ -113,6 +136,8 @@ int registry_remove_class(struct registry_class *c) {
 			break;
 		}
 	}
+
+	registry_unlock();
 
 	while (c->global_params) {
 		struct registry_param *p = c->global_params;
@@ -128,7 +153,6 @@ int registry_remove_class(struct registry_class *c) {
 		free(p);
 	}
 
-	pthread_mutex_destroy(&c->lock);
 
 	free(c->name);
 
@@ -150,11 +174,6 @@ struct registry_instance *registry_add_instance(struct registry_class *c, char *
 
 	memset(i, 0, sizeof(struct registry_instance));
 
-	if (pthread_mutex_init(&i->lock, NULL)) {
-		free(i);
-		pomlog(POMLOG_ERR "Error while initializing instance lock");
-		return NULL;
-	}
 	
 	i->name = strdup(name);
 	if (!i->name) {
@@ -164,18 +183,17 @@ struct registry_instance *registry_add_instance(struct registry_class *c, char *
 	}
 
 
-
-	pom_mutex_lock(&c->lock);
-
 	i->parent = c;
 
+	registry_lock();
 
 	i->next = c->instances;
 	if (i->next)
 		i->next->prev = i;
 	c->instances = i;
 
-	pom_mutex_unlock(&c->lock);
+	registry_unlock();
+
 
 	return i;
 
@@ -187,9 +205,9 @@ int registry_remove_instance(struct registry_instance *i) {
 		return POM_ERR;
 
 
-	struct registry_class *c = i->parent;
+	registry_lock();
 
-	pom_mutex_lock(&c->lock);
+	struct registry_class *c = i->parent;
 
 	free(i->name);
 	
@@ -223,9 +241,7 @@ int registry_remove_instance(struct registry_instance *i) {
 	if (i->next)
 		i->next->prev = i->prev;
 
-	pom_mutex_unlock(&c->lock);
-
-	pthread_mutex_destroy(&i->lock);
+	registry_unlock();
 
 	free(i);
 
@@ -236,9 +252,6 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 
 	if (!name || !default_value || !value || !description)
 		return NULL;
-
-//	if (ptype_make_atomic(value) != POM_OK)
-//		return NULL;
 
 	struct registry_param *p = malloc(sizeof(struct registry_param));
 	if (!p) {
@@ -302,7 +315,7 @@ int registry_class_add_param(struct registry_class *c, struct registry_param *p)
 	if (!c || !p)
 		return POM_ERR;
 
-	pom_mutex_lock(&c->lock);
+	registry_lock();
 
 	if (c->global_params) {
 		// Add at the end
@@ -317,7 +330,7 @@ int registry_class_add_param(struct registry_class *c, struct registry_param *p)
 	}
 	p->next = NULL;
 
-	pom_mutex_unlock(&c->lock);
+	registry_unlock();
 
 	return POM_OK;
 }
@@ -327,7 +340,7 @@ int registry_instance_add_param(struct registry_instance *i, struct registry_par
 	if (!i || !p)
 		return POM_ERR;
 
-	pom_mutex_lock(&i->lock);
+	registry_lock();
 
 	if (i->params) {
 		// Add at the end
@@ -342,7 +355,7 @@ int registry_instance_add_param(struct registry_instance *i, struct registry_par
 	}
 	p->next = NULL;
 
-	pom_mutex_unlock(&i->lock);
+	registry_unlock();
 
 	return POM_OK;
 }
@@ -374,12 +387,13 @@ int registry_instance_add_function(struct registry_instance *i, char *name, int 
 
 	f->handler = handler;
 
-	pom_mutex_lock(&i->lock);
+	registry_lock();
 
 	f->next = i->funcs;
 	i->funcs = f;
 
-	pom_mutex_unlock(&i->lock);
+
+	registry_unlock();
 
 	return POM_OK;
 
@@ -416,8 +430,8 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 	if (p->set_post_check && p->set_post_check(p->check_priv, p->value) != POM_OK) {
 		// Revert the old value
 		ptype_copy(p->value, old_value);
-		ptype_cleanup(old_value);
 		core_resume_processing();
+		ptype_cleanup(old_value);
 		return POM_ERR;
 	}
 
@@ -429,15 +443,15 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 
 }
 
+
 struct registry_class *registry_find_class(char *cls) {
 
-
-	pom_mutex_lock(&registry_class_lock);
+//	registry_lock();	
 
 	struct registry_class *res = registry_head;
 	for (; res && strcmp(res->name, cls); res = res->next);
 
-	pom_mutex_unlock(&registry_class_lock);
+//	registry_unlock();
 
 	return res;
 }
@@ -445,24 +459,19 @@ struct registry_class *registry_find_class(char *cls) {
 struct registry_instance *registry_find_instance(char *cls, char *instance) {
 
 	struct registry_instance *res = NULL;
-
-	pom_mutex_lock(&registry_class_lock);
 	struct registry_class *c = registry_head;
+
+//	registry_lock();
 
 	for (; c && strcmp(c->name, cls); c = c->next);
 	if (!c) {
-		pom_mutex_unlock(&registry_class_lock);
+//		registry_unlock();
 		return NULL;
 	}
 
-	// Lock the class so the instance doesn't get removed
-	pom_mutex_lock(&c->lock);
-
-	pom_mutex_unlock(&registry_class_lock);
-	
 	for (res = c->instances; res && strcmp(res->name, instance); res = res->next);
 
-	pom_mutex_unlock(&c->lock);
+//	registry_unlock();
 
 	return res;
 }
