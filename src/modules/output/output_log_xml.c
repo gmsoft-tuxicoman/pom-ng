@@ -163,8 +163,6 @@ int output_log_xml_close(struct output *o) {
 
 int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 
-	// TODO/FIXME MUST HTML ENCODE THE VALUES !!!!
-
 	struct output *o = obj;
 	struct output_log_xml_priv *priv = o->priv;
 
