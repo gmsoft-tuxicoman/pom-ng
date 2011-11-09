@@ -25,7 +25,8 @@
 
 #include <pom-ng/ptype.h>
 
-#define REGISTRY_FLAG_CLEANUP_VAL	1
+#define REGISTRY_PARAM_FLAG_CLEANUP_VAL	1
+#define REGISTRY_PARAM_FLAG_IMMUTABLE	2
 
 struct registry_param {
 	char *name;

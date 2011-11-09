@@ -72,6 +72,10 @@ void registry_unlock() {
 	pom_mutex_unlock(&registry_global_lock);
 }
 
+struct registry_class *registry_get() {
+	return registry_head;
+}
+
 struct registry_class* registry_add_class(char *name) {
 
 	if (!name)
@@ -147,7 +151,7 @@ int registry_remove_class(struct registry_class *c) {
 		free(p->default_value);
 		free(p->description);
 
-		if (p->flags & REGISTRY_FLAG_CLEANUP_VAL)
+		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
 			ptype_cleanup(p->value);
 
 		free(p);
@@ -219,7 +223,7 @@ int registry_remove_instance(struct registry_instance *i) {
 		free(p->default_value);
 		free(p->description);
 
-		if (p->flags & REGISTRY_FLAG_CLEANUP_VAL)
+		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
 			ptype_cleanup(p->value);
 
 		free(p);
@@ -274,7 +278,7 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 	}
 
 	if (ptype_parse_val(value, default_value) != POM_OK) {
-		pomlog(POMLOG_ERR "Error whiel parsing default parameter \"%s\" of type \"%s\"", default_value, value->type);
+		pomlog(POMLOG_ERR "Error while parsing default parameter \"%s\" of type \"%s\"", default_value, value->type);
 		goto err_description;
 	}
 
@@ -411,6 +415,9 @@ err:
 int registry_set_param_value(struct registry_param *p, char *value) {
 
 	if (!p || !value)
+		return POM_ERR;
+
+	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE)
 		return POM_ERR;
 	
 	if (p->set_pre_check && p->set_pre_check(p->check_priv, value) != POM_OK) {

@@ -328,7 +328,6 @@ int input_client_cmd_add(char *type, char *name) {
 		pom_oom(sizeof(struct input_client_entry));
 		goto err;
 	}
-
 	memset(entry, 0, sizeof(struct input_client_entry));
 
 	entry->id = input_id;
@@ -357,6 +356,16 @@ int input_client_cmd_add(char *type, char *name) {
 	if (registry_instance_add_function(entry->reg_instance, "start", input_client_cmd_start , "Start the input") != POM_OK ||
 		registry_instance_add_function(entry->reg_instance, "stop", input_client_cmd_stop, "Stop the input") != POM_OK)
 		goto err;
+
+	// Add the type as a parameter
+	struct ptype *input_type = ptype_alloc("string");
+	if (!input_type)
+		goto err;
+	if (registry_instance_add_param(entry->reg_instance, registry_new_param("type", entry->type, input_type, "Type of the input", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE)) != POM_OK) {
+		ptype_cleanup(input_type);
+		goto err;
+	}
+		
 
 	// Fetch the input parameters
 
@@ -424,27 +433,58 @@ int input_client_cmd_add(char *type, char *name) {
 
 err:
 
-	if (entry) {
-		if (entry->type)
-			free(entry->type);
-		free(entry);
-	}
 
+	// Make sure the buffer is not attached
 	if (buff) {
 		pom_mutex_lock(&buff->lock);
 		buff->flags &= ~INPUT_FLAG_ATTACHED;
 		pom_mutex_unlock(&buff->lock);
 		shmdt(buff);
 	}
-	
-	// Remove the input on the other side
-	input_client_cmd_remove(entry->reg_instance);
 
-	// TODO remove registry branch
+	// Remove the input on the other side
+	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
+	msg.subtype = input_ipc_cmd_type_remove;
+	msg.data.remove.id = input_id;
+
+	id = input_ipc_send_request(input_ipc_get_queue(), &msg);
+	if (id == POM_ERR)
+		return POM_ERR;
+	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
+		return POM_ERR;
+	input_ipc_destroy_request(id);
+
+	if (entry) {
+
+		// Remove the entry from the list
+		if (entry->next)
+			entry->next->prev = entry->prev;
+		if (entry->prev)
+			entry->prev->next = entry->next;
+		else
+			input_client_head = entry->next;
+
+		// Remove it from the registry
+		if (entry->reg_instance)
+			registry_remove_instance(entry->reg_instance);
+
+		// Cleanup various stuff
+		if (entry->type)
+			free(entry->type);
+
+		// Cleanup params
+		while (entry->params) {
+			struct input_client_param *p = entry->params;
+			entry->params = p->next;
+			ptype_cleanup(p->value);
+			free(p);
+		}
+
+		free(entry);
+
+	}
 
 	return POM_ERR;
-
-
 }
 
 int input_client_cmd_remove(struct registry_instance *ri) {
@@ -492,7 +532,9 @@ int input_client_cmd_remove(struct registry_instance *ri) {
 
 	if (i->datalink_dep)
 		proto_remove_dependency(i->datalink_dep);
-	free(i->type);
+
+	if (i->type)
+		free(i->type);
 
 	if (i->next)
 		i->next->prev = i->prev;

@@ -50,6 +50,8 @@ int registry_cleanup();
 void registry_lock();
 void registry_unlock();
 
+struct registry_class *registry_get();
+
 struct registry_class* registry_add_class(char *name);
 int registry_remove_class(struct registry_class *c);
 
