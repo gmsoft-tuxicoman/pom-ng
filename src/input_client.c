@@ -361,10 +361,19 @@ int input_client_cmd_add(char *type, char *name) {
 	struct ptype *input_type = ptype_alloc("string");
 	if (!input_type)
 		goto err;
-	if (registry_instance_add_param(entry->reg_instance, registry_new_param("type", entry->type, input_type, "Type of the input", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE)) != POM_OK) {
+	
+	struct registry_param *type_param = registry_new_param("type", entry->type, input_type, "Type of the input", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+	if (!type_param) {
 		ptype_cleanup(input_type);
 		goto err;
 	}
+
+	if (registry_instance_add_param(entry->reg_instance, type_param) != POM_OK) {
+		ptype_cleanup(input_type);
+		goto err;
+	}
+	if (registry_uid_create(entry->reg_instance) != POM_OK)
+		goto err;
 		
 
 	// Fetch the input parameters
