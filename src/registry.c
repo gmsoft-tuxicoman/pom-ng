@@ -22,9 +22,14 @@
 #include "registry.h"
 #include "core.h"
 #include <pom-ng/ptype.h>
+#include <pom-ng/ptype_uint32.h>
 
 static pthread_mutex_t registry_global_lock;
 static struct registry_class *registry_head = NULL;
+
+static uint32_t *registry_uid_table = NULL;
+static size_t registry_uid_table_size = 0;
+static unsigned int registry_uid_seedp = 0;
 
 int registry_init() {
 
@@ -47,6 +52,10 @@ int registry_init() {
 	}
 
 	pthread_mutexattr_destroy(&attr);
+
+
+	// Init random numbers for UIDs
+	registry_uid_seedp = (unsigned int) time(NULL) + (unsigned int) pthread_self();
 		
 
 	return POM_OK;
@@ -60,6 +69,8 @@ int registry_cleanup() {
 	}
 
 	pthread_mutex_destroy(&registry_global_lock);
+
+	free(registry_uid_table);
 	
 	return POM_OK;
 }
@@ -148,7 +159,8 @@ int registry_remove_class(struct registry_class *c) {
 		c->global_params = p->next;
 
 		free(p->name);
-		free(p->default_value);
+		if (p->default_value)
+			free(p->default_value);
 		free(p->description);
 
 		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
@@ -220,7 +232,8 @@ int registry_remove_instance(struct registry_instance *i) {
 		i->params = p->next;
 
 		free(p->name);
-		free(p->default_value);
+		if (p->default_value)
+			free(p->default_value);
 		free(p->description);
 
 		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
@@ -254,7 +267,7 @@ int registry_remove_instance(struct registry_instance *i) {
 
 struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags) {
 
-	if (!name || !default_value || !value || !description)
+	if (!name || !value || !description)
 		return NULL;
 
 	struct registry_param *p = malloc(sizeof(struct registry_param));
@@ -268,24 +281,29 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 	p->name = strdup(name);
 	if (!p->name) {
 		pom_oom(strlen(name));
-		goto err_name;
+		goto err;
 	}
 
-	p->default_value = strdup(default_value);
-	if (!p->default_value) {
-		pom_oom(strlen(default_value));
-		goto err_defval;
-	}
+	if (default_value) {
+		p->default_value = strdup(default_value);
+		if (!p->default_value) {
+			pom_oom(strlen(default_value));
+			goto err;
+		}
 
-	if (ptype_parse_val(value, default_value) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while parsing default parameter \"%s\" of type \"%s\"", default_value, value->type);
-		goto err_description;
+		if (ptype_parse_val(value, default_value) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while parsing default parameter \"%s\" of type \"%s\"", default_value, value->type);
+			goto err;
+		}
+	} else if (! (flags & REGISTRY_PARAM_FLAG_IMMUTABLE) ) {
+		pomlog(POMLOG_ERR "default value is required when adding non immutable parameter");
+		goto err;
 	}
 
 	p->description = strdup(description);
 	if (!p->description) {
 		pom_oom(strlen(description));
-		goto err_description;
+		goto err;
 	}
 	
 	p->flags = flags;
@@ -293,15 +311,34 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 
 	return p;
 
-err_description:
-	free(p->default_value);
-err_defval:
-	free(p->name);
-err_name:
+err:
+	if (p->default_value)
+		free(p->default_value);
+	
+	if (p->name)
+		free(p->name);
 	free(p);
 
 
 	return NULL;
+}
+
+int registry_cleanup_param(struct registry_param *p) {
+
+	if (!p)
+		return POM_ERR;
+	
+	if (p->name)
+		free(p->name);
+
+	if (p->default_value)
+		free(p->default_value);
+	
+	if (p->description)
+		free(p->description);
+
+	free(p);
+
 }
 
 
@@ -483,4 +520,100 @@ struct registry_instance *registry_find_instance(char *cls, char *instance) {
 	return res;
 }
 
+static int registry_uid_check(uint32_t uid) {
+
+	if (!uid) // 0 is not allowed
+		return POM_ERR;
+
+	size_t i;
+	for (i = 0; i < registry_uid_table_size; i++) {
+		if (registry_uid_table[i] == uid)
+			return POM_ERR;
+	}
+
+	return POM_OK;
+
+}
+
+static int registry_uid_add(struct registry_instance *instance, uint32_t uid) {
+
+	// Add the uid to the instance
+	struct ptype *uid_ptype = ptype_alloc("uint32");
+	if (!uid_ptype) 
+		return POM_ERR;
+
+	PTYPE_UINT32_SETVAL(uid_ptype, uid);
+	struct registry_param* uid_param = registry_new_param("uid", NULL, uid_ptype, "Unique ID", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+
+	if (!uid_param) {
+		ptype_cleanup(uid_ptype);
+		return POM_ERR;
+	}
+
+	// Add the new uid to the table
+
+	registry_uid_table_size++;
+	uint32_t *new_uid_table = realloc(registry_uid_table, sizeof(uint32_t) * registry_uid_table_size);
+	if (!new_uid_table) {
+		pom_oom(sizeof(uint32_t) * registry_uid_table_size);
+		ptype_cleanup(uid_ptype);
+		return POM_ERR;
+	}
+	registry_uid_table = new_uid_table;
+	registry_uid_table[registry_uid_table_size - 1] = uid;
+
+
+	if (registry_instance_add_param(instance, uid_param) != POM_OK) {
+		registry_cleanup_param(uid_param);
+		ptype_cleanup(uid_ptype);
+		registry_uid_table_size--;
+		return POM_ERR;
+	}
+
+	return POM_OK;
+
+}
+
+int registry_uid_create(struct registry_instance *instance) {
+
+
+	registry_lock();
+
+	// Find a good uid
+	uint32_t new_uid;
+	do {
+		new_uid = rand_r(&registry_uid_seedp);
+			
+	} while (registry_uid_check(new_uid));
+
+	if (registry_uid_add(instance, new_uid) != POM_OK) {
+		registry_unlock();
+		return POM_ERR;
+	}
+
+	registry_unlock();
+
+	return POM_OK;
+
+}
+
+int registry_uid_assign(struct registry_instance *instance, uint32_t uid) {
+
+
+	registry_lock();
+	
+	if (registry_uid_check(uid) != POM_OK) {
+		registry_unlock();
+		return POM_ERR;
+	}
+
+	if (registry_uid_add(instance, uid) != POM_OK) {
+		registry_unlock();
+		return POM_ERR;
+	}
+
+	registry_unlock();
+
+	return POM_OK;
+}
 
