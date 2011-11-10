@@ -112,13 +112,13 @@ int output_register(struct output_reg_info *reg_info) {
 	return POM_OK;
 }
 
-int output_instance_add(char *info, char *name) {
+int output_instance_add(char *type, char *name) {
 
 	struct output_reg *reg;
-	for (reg = output_reg_head; reg && strcmp(reg->reg_info->name, info); reg = reg->next);
+	for (reg = output_reg_head; reg && strcmp(reg->reg_info->name, type); reg = reg->next);
 
 	if (!reg) {
-		pomlog(POMLOG_ERR "Output info %s does not exists", info);
+		pomlog(POMLOG_ERR "Output type %s does not exists", type);
 		return POM_ERR;
 	}
 
@@ -136,26 +136,37 @@ int output_instance_add(char *info, char *name) {
 	}
 
 	res->reg_instance = registry_add_instance(output_registry_class, name);
-	if (!res->reg_instance) {
-		free(res);
-		return POM_ERR;
-	}
+	if (!res->reg_instance)
+		goto err;
 
 	if (registry_instance_add_function(res->reg_instance, "start", output_instance_start, "Start the output") != POM_OK ||
-		registry_instance_add_function(res->reg_instance, "stop", output_instance_stop, "Stop the output") != POM_OK) {
-		free(res);
-		return POM_ERR;
+		registry_instance_add_function(res->reg_instance, "stop", output_instance_stop, "Stop the output") != POM_OK)
+		goto err;
+
+	struct ptype *output_type = ptype_alloc("string");
+	if (!output_type)
+		goto err;
+
+	struct registry_param *type_param = registry_new_param("type", type, output_type, "Type of the output", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+	if (!type_param) {
+		ptype_cleanup(output_type);
+		goto err;
 	}
+
+	if (registry_instance_add_param(res->reg_instance, type_param) != POM_OK) {
+		ptype_cleanup(output_type);
+		goto err;
+	}
+
+	if (registry_uid_create(res->reg_instance) != POM_OK)
+		goto err;
 
 	res->reg_instance->priv = res;
 
 	if (reg->reg_info->init) {
 		if (reg->reg_info->init(res) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while initializing the output %s", name);
-			registry_remove_instance(res->reg_instance);
-			free(res->name);
-			free(res);
-			return POM_ERR;
+			goto err;
 		}
 	}
 
@@ -165,6 +176,17 @@ int output_instance_add(char *info, char *name) {
 	output_head = res;
 
 	return POM_OK;
+
+err:
+	if (res->name)
+		free(res->name);
+
+	if (res->reg_instance)
+		registry_remove_instance(res->reg_instance);
+
+	free(res);
+
+	return POM_ERR;
 }
 
 int output_instance_remove(struct registry_instance *ri) {
