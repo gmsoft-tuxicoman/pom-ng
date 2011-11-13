@@ -31,7 +31,7 @@ static uint32_t xmlrpccmd_serial = 0;
 static pthread_mutex_t xmlrpccmd_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t xmlrpccmd_serial_cond = PTHREAD_COND_INITIALIZER;
 
-#define XMLRPCCMD_NUM 2
+#define XMLRPCCMD_NUM 3
 static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 
 	{
@@ -46,6 +46,13 @@ static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 		.callback_func = xmlrpccmd_core_serial_poll,
 		.signature = "S:i",
 		.help = "Poll the serial numbers",
+	},
+
+	{
+		.name = "core.getLog",
+		.callback_func = xmlrpccmd_core_get_log,
+		.signature = "A:i",
+		.help = "Get the logs",
 	},
 
 };
@@ -113,12 +120,57 @@ xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value *
 	
 	}
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:i}",
+	registry_lock();
+	pomlog_rlock();
+
+	struct pomlog_entry *last_log = pomlog_get_tail();
+	
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:i,s:i}",
 						"main", xmlrpccmd_serial,
-						"registry", registry_serial_get());
+						"registry", registry_serial_get(),
+						"log", last_log->id);
+
+	pomlog_unlock();
+	registry_unlock();
 
 	pom_mutex_unlock(&xmlrpccmd_serial_lock);
 
 	return res;
 
 }
+
+xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	uint32_t last_id;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(i)", &last_id);
+	if (envP->fault_occurred)
+		return NULL;
+
+	xmlrpc_value *res = xmlrpc_array_new(envP);
+	if (envP->fault_occurred)
+		return NULL;
+
+	pomlog_rlock();
+
+	struct pomlog_entry *log = pomlog_get_tail();
+
+	while (log && log->id > last_id)
+		log = log->prev;
+
+	while (log) {
+		xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:i,s:i,s:s,s:s}",
+								"id", log->id,
+								"level", log->level,
+								"file", log->file,
+								"data", log->data);
+		xmlrpc_array_append_item(envP, res, entry);
+		xmlrpc_DECREF(entry);
+		log = log->next;
+
+	}
+	pomlog_unlock();
+
+	return res;
+}
+

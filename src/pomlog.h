@@ -52,8 +52,13 @@ int pomlog_ipc_thread_init(int *ipc_queue);
 int pomlog_cleanup();
 int pomlog_set_debug_level(unsigned int debug_level);
 
+void pomlog_rlock();
+void pomlog_unlock();
+struct pomlog_entry *pomlog_get_tail();
+
 // Declared in <pom-ng/pomlog.h>
 // void pomlog_internal(char *file, const char *format, ...);
 // int pomlog_ipc_internal(int queue_id, char *filename, const char *format, ...);
+
 
 #endif

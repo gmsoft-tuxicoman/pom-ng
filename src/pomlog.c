@@ -242,3 +242,25 @@ int pomlog_set_debug_level(unsigned int debug_level) {
 
 	return POM_OK;
 }
+
+void pomlog_rlock() {
+
+	if (pthread_rwlock_rdlock(&pomlog_buffer_lock)) {
+		printf("Error while locking the log lock.");
+		abort();
+	}
+}
+
+void pomlog_unlock() {
+	if (pthread_rwlock_unlock(&pomlog_buffer_lock)) {
+		printf("Error while unlocking the log lock.");
+		abort();
+	}
+}
+
+struct pomlog_entry *pomlog_get_tail() {
+	return pomlog_tail;
+}
+
+
+
