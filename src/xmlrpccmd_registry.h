@@ -24,8 +24,7 @@
 
 
 int xmlrpccmd_registry_register_all();
-xmlrpc_value *xmlrpccmd_registry_list_class(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
-xmlrpc_value *xmlrpccmd_registry_list_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_registry_remove_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);

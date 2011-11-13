@@ -39,6 +39,7 @@ struct registry_class {
 	char *name;
 	struct registry_instance *instances;
 	struct registry_param *global_params;
+	uint32_t serial;
 	int (*instance_add) (char *type, char *name);
 	int (*instance_remove) (struct registry_instance *i);
 	struct registry_class *next, *prev;
@@ -64,4 +65,6 @@ int registry_set_param_value(struct registry_param *p, char *value);
 struct registry_class *registry_find_class(char *cls);
 struct registry_instance *registry_find_instance(char *cls, char *instance);
 
+void registry_serial_inc();
+uint32_t registry_serial_get();
 #endif

@@ -30,6 +30,7 @@ static struct registry_class *registry_head = NULL;
 static uint32_t *registry_uid_table = NULL;
 static size_t registry_uid_table_size = 0;
 static unsigned int registry_uid_seedp = 0;
+static uint32_t registry_serial = 0;
 
 int registry_init() {
 
@@ -207,6 +208,9 @@ struct registry_instance *registry_add_instance(struct registry_class *c, char *
 	if (i->next)
 		i->next->prev = i;
 	c->instances = i;
+	
+	i->parent->serial++;
+	registry_serial_inc();
 
 	registry_unlock();
 
@@ -257,6 +261,9 @@ int registry_remove_instance(struct registry_instance *i) {
 
 	if (i->next)
 		i->next->prev = i->prev;
+
+	c->serial++;
+	registry_serial_inc();
 
 	registry_unlock();
 
@@ -617,3 +624,12 @@ int registry_uid_assign(struct registry_instance *instance, uint32_t uid) {
 	return POM_OK;
 }
 
+
+void registry_serial_inc() {
+	registry_serial++;
+	xmlrcpcmd_serial_inc();
+}
+
+uint32_t registry_serial_get() {
+	return registry_serial;
+}

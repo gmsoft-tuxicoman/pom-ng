@@ -24,19 +24,41 @@
 
 #include "xmlrpccmd_registry.h"
 
-#define XMLRPCCMD_NUM 1
+#include "registry.h"
+
+
+static uint32_t xmlrpccmd_serial = 0;
+static pthread_mutex_t xmlrpccmd_serial_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t xmlrpccmd_serial_cond = PTHREAD_COND_INITIALIZER;
+
+#define XMLRPCCMD_NUM 2
 static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 
 	{
 		.name = "core.getVersion",
-		.callback_func = xmlrpccmd_get_version,
+		.callback_func = xmlrpccmd_core_get_version,
 		.signature = "s:",
 		.help = "Get " PACKAGE_NAME " version",
-	}
+	},
+
+	{
+		.name = "core.serialPoll",
+		.callback_func = xmlrpccmd_core_serial_poll,
+		.signature = "S:i",
+		.help = "Poll the serial numbers",
+	},
 
 };
 
 
+int xmlrpccmd_cleanup() {
+
+	pom_mutex_lock(&xmlrpccmd_serial_lock);
+	pthread_cond_broadcast(&xmlrpccmd_serial_cond);
+	pom_mutex_unlock(&xmlrpccmd_serial_lock);
+
+	return POM_OK;
+}
 
 int xmlrpccmd_register_all() {
 
@@ -55,7 +77,48 @@ int xmlrpccmd_register_all() {
 }
 
 
-xmlrpc_value *xmlrpccmd_get_version(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+void xmlrcpcmd_serial_inc() {
+	pom_mutex_lock(&xmlrpccmd_serial_lock);
+	xmlrpccmd_serial++;
+	if (pthread_cond_broadcast(&xmlrpccmd_serial_cond)) {
+		pomlog(POMLOG_ERR "Error while signaling the serial condition. Aborting");
+		abort();
+	}
+	pom_mutex_unlock(&xmlrpccmd_serial_lock);
+
+}
+
+xmlrpc_value *xmlrpccmd_core_get_version(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
 	return xmlrpc_string_new(envP, "WIP");
+}
+
+xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+
+	uint32_t last_serial = 0;
+	xmlrpc_decompose_value(envP, paramArrayP, "(i)", &last_serial);
+	if (envP->fault_occurred)
+		return NULL;
+	
+
+	pom_mutex_lock(&xmlrpccmd_serial_lock);
+	if (last_serial == xmlrpccmd_serial) {
+		// Wait for update
+		if (pthread_cond_wait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock)) {
+			xmlrpc_faultf(envP, "Error while waiting for serial condition : %s", pom_strerror(errno));
+			abort();
+			return NULL;
+		}
+	
+	}
+
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:i}",
+						"main", xmlrpccmd_serial,
+						"registry", registry_serial_get());
+
+	pom_mutex_unlock(&xmlrpccmd_serial_lock);
+
+	return res;
+
 }

@@ -25,23 +25,16 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 7
+#define XMLRPCCMD_REGISTRY_NUM 6
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
-		.name = "registry.listClass",
-		.callback_func = xmlrpccmd_registry_list_class,
-		.signature = "A:",
-		.help = "List all the classes",
+		.name = "registry.list",
+		.callback_func = xmlrpccmd_registry_list,
+		.signature = "S:",
+		.help = "List all the classes and their instances",
 	},
 
-	{
-		.name = "registry.listInstance",
-		.callback_func = xmlrpccmd_registry_list_instance,
-		.signature = "A:s",
-		.help = "List the instances of a class",
-	},
-	
 	{
 		.name = "registry.addInstance",
 		.callback_func = xmlrpccmd_registry_add_instance,
@@ -94,72 +87,55 @@ int xmlrpccmd_registry_register_all() {
 }
 
 
-xmlrpc_value *xmlrpccmd_registry_list_class(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
-	xmlrpc_value *res = xmlrpc_array_new(envP);
+	xmlrpc_value *classes = xmlrpc_array_new(envP);
 	if (envP->fault_occurred)
 		return NULL;
 
 	registry_lock();
 
-	struct registry_class *r;
+	struct registry_class *c;
 
-	for (r = registry_get(); r; r = r->next) {
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s}",
-							"name", r->name);
-		xmlrpc_array_append_item(envP, res, cls);
+	for (c = registry_get(); c; c = c->next) {
+
+		
+		xmlrpc_value *instances = xmlrpc_array_new(envP);
+		if (envP->fault_occurred) {
+			registry_unlock();
+			return NULL;
+		}
+		
+		struct registry_instance *i;
+
+		for (i = c->instances; i; i = i->next) {
+			xmlrpc_value *inst = xmlrpc_build_value(envP, "{s:s,s:i}",
+								"name", i->name,
+								"serial", i->serial);
+			xmlrpc_array_append_item(envP, instances, inst);
+			xmlrpc_DECREF(inst);
+		}
+
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A}",
+							"name", c->name,
+							"serial", c->serial,
+							"instances", instances);
+		xmlrpc_DECREF(instances);
+		xmlrpc_array_append_item(envP, classes, cls);
 		xmlrpc_DECREF(cls);
 
 	}
 
-	
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A}",
+					"serial", registry_serial_get(),
+					"classes", classes);
+	xmlrpc_DECREF(classes);
 	registry_unlock();
 
 	return res;
-}
-
-xmlrpc_value *xmlrpccmd_registry_list_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
-
-	char *cls = NULL;
-	xmlrpc_decompose_value(envP, paramArrayP, "(s)", &cls);
-
-	if (envP->fault_occurred)
-		return NULL;
-
-	registry_lock();
-
-	struct registry_class *c = registry_find_class(cls);
-	if (!c) {
-		xmlrpc_faultf(envP, "Class not found");
-		goto err;
-	}
-
-	xmlrpc_value *res = xmlrpc_array_new(envP);
-	if (envP->fault_occurred)
-		goto err;
-
-	struct registry_instance *i;
-
-	for (i = c->instances; i; i = i->next) {
-		xmlrpc_value *inst = xmlrpc_build_value(envP, "{s:s}",
-							"name", i->name);
-		xmlrpc_array_append_item(envP, res, inst);
-		xmlrpc_DECREF(inst);
-	}
-
-	registry_unlock();
-
-	free(cls);
-
-	return res;
-
-err:
-	registry_unlock();
-
-	free(cls);
-	return NULL;
 
 }
+
 
 xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
@@ -289,14 +265,16 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 		
 		if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
 			// Don't provide a default value for immutable parameters
-			param = xmlrpc_build_value(envP, "{s:s,s:s}",
-							"name", p->name,
-							"value", value);
-		} else {
 			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s}",
 							"name", p->name,
 							"value", value,
-							"default_value", p->default_value);
+							"description", p->description);
+		} else {
+			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s}",
+							"name", p->name,
+							"value", value,
+							"default_value", p->default_value,
+							"description", p->description);
 		}
 		free(value);
 
@@ -319,7 +297,8 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 
 	registry_unlock();
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:A,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A,s:A}",
+				"serial", i->serial,
 				"parameters", params,
 				"functions", funcs);
 
@@ -367,7 +346,7 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
 		registry_unlock();
 		free(value);
-		xmlrpc_faultf(envP, "Parameter %s cannot be modified as it is immutable");
+		xmlrpc_faultf(envP, "Parameter %s cannot be modified as it is immutable", p->name);
 		return NULL;
 	}
 
@@ -379,6 +358,10 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 		return NULL;
 	}
 	free(value);
+	
+	i->serial++;
+	i->parent->serial++;
+	registry_serial_inc();
 	
 	registry_unlock();
 
@@ -428,6 +411,10 @@ xmlrpc_value *xmlrpccmd_registry_instance_function(xmlrpc_env * const envP, xmlr
 		xmlrpc_faultf(envP, "An error occurred");
 		goto err;
 	}
+
+	i->serial++;
+	i->parent->serial++;
+	registry_serial_inc();
 
 	registry_unlock();
 

@@ -46,6 +46,7 @@ struct registry_instance {
 	char *name;
 	struct registry_param *params;
 	struct registry_function *funcs;
+	uint32_t serial;
 	void *priv;
 	struct registry_instance *next, *prev;
 	struct registry_class *parent;

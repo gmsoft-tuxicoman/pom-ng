@@ -81,6 +81,8 @@ int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen) 
 
 int xmlrpcsrv_cleanup() {
 
+	xmlrpccmd_cleanup();
+
 	if (xmlrpcsrv_registry) {
 		xmlrpc_registry_free(xmlrpcsrv_registry);
 		xmlrpcsrv_registry = NULL;
