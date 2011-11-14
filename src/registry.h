@@ -35,9 +35,17 @@ struct registry_function {
 
 };
 
+// Available types for instances
+struct registry_instance_type {
+	char *name;
+	struct registry_instance_type *prev, *next;
+	
+};
+
 struct registry_class {
 	char *name;
 	struct registry_instance *instances;
+	struct registry_instance_type *types;
 	struct registry_param *global_params;
 	uint32_t serial;
 	int (*instance_add) (char *type, char *name);
@@ -55,6 +63,9 @@ struct registry_class *registry_get();
 
 struct registry_class* registry_add_class(char *name);
 int registry_remove_class(struct registry_class *c);
+
+int registry_add_instance_type(struct registry_class *c, char *name);
+int registry_remove_instance_type(struct registry_class *c, char *name);
 
 struct registry_instance *registry_add_instance(struct registry_class *c, char *name);
 int registry_remove_instance(struct registry_instance *i);

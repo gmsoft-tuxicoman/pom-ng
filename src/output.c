@@ -101,6 +101,12 @@ int output_register(struct output_reg_info *reg_info) {
 	memset(output, 0, sizeof(struct output_reg));
 	output->reg_info = reg_info;
 
+	if (registry_add_instance_type(output_registry_class, reg_info->name) != POM_OK) {
+		pom_mutex_unlock(&output_lock);
+		free(output);
+		return POM_ERR;
+	}
+
 	output->next = output_reg_head;
 	if (output->next)
 		output->next->prev = output;
@@ -268,6 +274,8 @@ int output_unregister(char *name) {
 		pomlog(POMLOG_DEBUG "Output %s is not registered, cannot unregister it", name);
 		return POM_OK;
 	}
+
+	registry_remove_instance_type(output_registry_class, name);
 
 	if (tmp->prev)
 		tmp->prev->next = tmp->next;

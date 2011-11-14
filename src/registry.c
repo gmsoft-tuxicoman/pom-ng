@@ -143,7 +143,13 @@ int registry_remove_class(struct registry_class *c) {
 	
 	if (c->next)
 		c->next->prev = c->prev;
-	
+
+	while (c->types) {
+		struct registry_instance_type *t = c->types;
+		c->types = c->types->next;
+		free(t->name);
+		free(t);
+	}
 
 
 	while (c->instances) {
@@ -174,6 +180,64 @@ int registry_remove_class(struct registry_class *c) {
 	free(c->name);
 
 	free(c);
+
+	return POM_OK;
+}
+
+int registry_add_instance_type(struct registry_class *c, char *name) {
+
+	struct registry_instance_type *type = malloc(sizeof(struct registry_instance_type));
+	if (!type) {
+		pom_oom(sizeof(struct registry_instance_type));
+		return POM_ERR;
+	}
+	memset(type, 0, sizeof(struct registry_instance_type));
+	
+	type->name = strdup(name);
+	if (!type->name) {
+		free(type);
+		pom_oom(strlen(name) + 1);
+		return POM_ERR;
+	}
+
+	registry_lock();
+
+	type->next = c->types;
+	if (type->next)
+		type->next->prev = type;
+	c->types = type;
+
+	registry_unlock();
+
+	return POM_OK;
+}
+
+int registry_remove_instance_type(struct registry_class *c, char *name) {
+
+	struct registry_instance_type *type;
+
+	registry_lock();
+
+	for (type = c->types; type && strcmp(type->name, name); type = type->next);
+
+	if (!type) {
+		registry_unlock();
+		pomlog(POMLOG_ERR "Registry instance type %s not found in class %s", name, c->name);
+		return POM_ERR;
+	}
+
+	if (type->next)
+		type->next->prev = type->prev;
+	
+	if (type->prev)
+		type->prev->next = type->next;
+	else
+		c->types = type->next;
+
+	registry_unlock();
+
+	free(type->name);
+	free(type);
 
 	return POM_OK;
 }

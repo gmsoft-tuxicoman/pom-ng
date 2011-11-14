@@ -99,15 +99,19 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 	for (c = registry_get(); c; c = c->next) {
 
-		
-		xmlrpc_value *instances = xmlrpc_array_new(envP);
-		if (envP->fault_occurred) {
-			registry_unlock();
-			return NULL;
+		xmlrpc_value *types = xmlrpc_array_new(envP);
+		struct registry_instance_type *t;
+		for (t = c->types; t; t = t->next) {
+			xmlrpc_value *type = xmlrpc_build_value(envP, "{s:s}",
+								"name", t->name);
+			xmlrpc_array_append_item(envP, types, type);
+			xmlrpc_DECREF(type);
+
 		}
+
+		xmlrpc_value *instances = xmlrpc_array_new(envP);
 		
 		struct registry_instance *i;
-
 		for (i = c->instances; i; i = i->next) {
 			xmlrpc_value *inst = xmlrpc_build_value(envP, "{s:s,s:i}",
 								"name", i->name,
@@ -116,10 +120,13 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 			xmlrpc_DECREF(inst);
 		}
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A}",
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A}",
 							"name", c->name,
 							"serial", c->serial,
+							"available_types", types,
 							"instances", instances);
+
+		xmlrpc_DECREF(types);
 		xmlrpc_DECREF(instances);
 		xmlrpc_array_append_item(envP, classes, cls);
 		xmlrpc_DECREF(cls);
