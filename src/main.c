@@ -236,55 +236,55 @@ int main(int argc, char *argv[]) {
 	if (registry_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the registry");
 		res = -1;
-		goto err_early;
+		goto err_registry;
 	}
 
 	if (proto_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the protocols");
 		res = -1;
-		goto err_registry;
+		goto err_proto;
 	}
 
 	if (analyzer_init(DATAROOT "/mime_types.xml") != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the analyzers");
 		res = -1;
-		goto err_proto;
+		goto err_analyzer;
 	}
 
 	if (output_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the outputs");
 		res = -1;
-		goto err_proto;
-	}
-
-	// Load all the available modules
-	if (mod_load_all() != POM_OK) { 
-		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
-		goto err_proto;
+		goto err_output;
 	}
 
 	if (input_client_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the input_client module");
 		res = -1;
-		goto err_proto;
+		goto err_input_client;
+	}
+
+	// Load all the available modules
+	if (mod_load_all() != POM_OK) { 
+		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
+		goto err_mod;
 	}
 
 	if (xmlrpcsrv_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting XML-RPC server");
 		res = -1;
-		goto err_proto;
+		goto err_xmlrpcsrv;
 	}
 
 	if (httpd_init(8080) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting HTTP server");
 		res = -1;
-		goto err_xmlrpcsrv;
+		goto err_httpd;
 	}
 
 	if (core_init(num_threads) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing core");
 		res = -1;
-		goto err_httpd;
+		goto err_core;
 	}
 
 	// Main loop
@@ -309,13 +309,6 @@ int main(int argc, char *argv[]) {
 
 	// Cleanup components
 
-	output_cleanup();
-	analyzer_cleanup();
-	proto_cleanup(); // Cleanup proto while input is still attached
-	packet_pool_cleanup();
-	input_client_cleanup(shutdown_in_error);
-	input_ipc_cleanup();
-
 	if (kill(input_process_pid, SIGINT) == -1) {
 		pomlog(POMLOG_ERR "Error while sending SIGINT to input process");
 	} else {
@@ -323,17 +316,29 @@ int main(int argc, char *argv[]) {
 		waitpid(input_process_pid, NULL, 0);
 	}
 
+	packet_pool_cleanup();
+
+
 	core_cleanup(shutdown_in_error);
-err_httpd:
+err_core:
 	httpd_cleanup();
-err_xmlrpcsrv:
+err_httpd:
 	xmlrpcsrv_cleanup();
-err_proto:
-	proto_cleanup();
-err_registry:
-	registry_cleanup();
-err_early:
+err_xmlrpcsrv:
 	mod_unload_all();
+err_mod:
+	input_client_cleanup(shutdown_in_error);
+err_input_client:
+	output_cleanup();
+err_output:
+	analyzer_cleanup();
+err_analyzer:
+	proto_cleanup();
+err_proto:
+	registry_cleanup();
+err_registry:
+	input_ipc_cleanup();
+err_early:
 	timers_cleanup();
 	pomlog_cleanup();
 
