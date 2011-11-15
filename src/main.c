@@ -47,6 +47,7 @@
 static char* shutdown_reason = NULL;
 static pid_t input_process_pid = 0;
 static int running = 1, shutdown_in_error = 0;
+static pthread_t input_ipc_thread;
 
 void signal_handler(int signal) {
 
@@ -263,6 +264,12 @@ int main(int argc, char *argv[]) {
 		goto err_input_client;
 	}
 
+	int input_ipc_thread_joined = 0;
+	if (input_ipc_create_processing_thread(&input_ipc_thread, &input_queue_id, &running) != POM_OK) {
+		res = -1;
+		goto err_input_ipc_thread;
+	}
+
 	// Load all the available modules
 	if (mod_load_all() != POM_OK) { 
 		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
@@ -291,14 +298,10 @@ int main(int argc, char *argv[]) {
 	
 	pomlog(PACKAGE_NAME " started !");
 
-
-	while (running) {
-
-		if (input_ipc_process_reply(input_queue_id) != POM_OK) {
-			pomlog("Error while processing input reply. Aborting");
-			break;
-		}
+	if (pthread_join(input_ipc_thread, NULL)) {
+		pomlog(POMLOG_ERR "Error while joining input ipc thread");
 	}
+	input_ipc_thread_joined = 1;
 
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
 	free(shutdown_reason);
@@ -327,6 +330,10 @@ err_httpd:
 err_xmlrpcsrv:
 	mod_unload_all();
 err_mod:
+	// Make sure the thread is dead
+	if (!input_ipc_thread_joined)
+		pthread_cancel(input_ipc_thread);
+err_input_ipc_thread:
 	input_client_cleanup(shutdown_in_error);
 err_input_client:
 	output_cleanup();
@@ -358,18 +365,20 @@ int halt(char *reason) {
 
 	shutdown_in_error = 1;
 
-	if (kill(getpid(), SIGINT) == -1) {
-		pomlog(POMLOG_ERR "Unable to send SIGINT to self : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
-	
 	return POM_OK;
 }
 
 int halt_signal(char *reason) {
 	// Can be called from a signal handler, don't use pomlog()
 	shutdown_reason = strdup(reason);
+
 	running = 0;
+
+	if (pthread_cancel(input_ipc_thread)) {
+		pomlog(POMLOG_ERR "Unable to cancel the input ipc thread : %s", pom_strerror(errno));
+			return POM_ERR;
+	}
+	
 	return POM_OK;
 }
 

@@ -131,11 +131,20 @@ struct input_ipc_request {
 
 };
 
+struct input_ipc_processing_thread_priv {
+	int *input_ipc_queue;
+	int *running;
+};
+
 int input_ipc_create_queue(key_t input_ipc_key);
 int input_ipc_open_queue(key_t input_ipc_key);
 int input_ipc_get_queue();
 int input_ipc_set_uid_gid(int queue_id, uid_t uid, gid_t gid);
 void *input_ipc_log_thread_func(void *params);
+
+int input_ipc_create_processing_thread(pthread_t *thread, int *input_ipc_queue, int *running);
+void *input_ipc_processing_thread_func(void *priv);
+
 int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg);
 int input_ipc_destroy_request(int req_id);
 int input_ipc_cleanup();

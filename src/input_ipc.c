@@ -179,6 +179,33 @@ int input_ipc_process_reply(int queue_id) {
 
 }
 
+int input_ipc_create_processing_thread(pthread_t *thread, int *input_ipc_queue, int *running) {
+
+	static struct input_ipc_processing_thread_priv priv;
+	priv.input_ipc_queue = input_ipc_queue;
+	priv.running = running;
+
+	if (pthread_create(thread, NULL, input_ipc_processing_thread_func, &priv)) {
+		pomlog(POMLOG_ERR "Could not create the input IPC processing thread");
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+void *input_ipc_processing_thread_func(void *priv) {
+
+	struct input_ipc_processing_thread_priv *p = priv;
+	while (p->running) {
+		if (input_ipc_process_reply(*p->input_ipc_queue) != POM_OK) {
+			pomlog("Error while processing input reply. Aborting");
+			break;
+		}
+	}
+
+	return NULL;
+}
+
 int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg) {
 
 	pom_mutex_lock(&input_ipc_req_mutex);
