@@ -41,6 +41,7 @@ struct mod_reg_info* proto_docsis_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_docsis_mod_register;
 	reg_info.unregister_func = proto_docsis_mod_unregister;
+	reg_info.dependencies = "ptype_bool, ptype_uint8";
 
 	return &reg_info;
 }

@@ -35,6 +35,7 @@ struct mod_reg_info* analyzer_http_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_http_mod_register;
 	reg_info.unregister_func = analyzer_http_mod_unregister;
+	reg_info.dependencies = "proto_http, ptype_uint16, ptype_string";
 
 	return &reg_info;
 }

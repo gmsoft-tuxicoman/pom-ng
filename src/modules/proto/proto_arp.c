@@ -36,6 +36,7 @@ struct mod_reg_info* proto_arp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_arp_mod_register;
 	reg_info.unregister_func = proto_arp_mod_unregister;
+	reg_info.dependencies = "ptype_uint16, ptype_mac, ptype_ipv4";
 
 	return &reg_info;
 }

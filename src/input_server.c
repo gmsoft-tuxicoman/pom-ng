@@ -71,9 +71,6 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 		return -1;
 	}
 
-	// Load relevant modules
-	mod_load_all();
-
 	// Main input process loop
 	while (input_server_running) {
 

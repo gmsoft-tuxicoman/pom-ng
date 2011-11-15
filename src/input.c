@@ -31,6 +31,7 @@
 #include "ipc.h"
 #include "input_ipc.h"
 #include "input_server.h"
+#include "input_client.h"
 #include "mod.h"
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
@@ -41,10 +42,8 @@ static struct input_reg *input_reg_head = NULL;
 
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
-	if (!input_server_is_current_process()) {
-		pomlog(POMLOG_DEBUG "Not loading input in another process than the input process");
-		return POM_OK;
-	}
+	if (!input_server_is_current_process())
+		return input_client_cmd_mod_load(mod->name);
 
 	pomlog(POMLOG_DEBUG "Registering input %s", reg_info->name);
 

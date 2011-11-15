@@ -32,6 +32,7 @@ struct mod_reg_info* output_log_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = output_log_mod_register;
 	reg_info.unregister_func = output_log_mod_unregister;
+	reg_info.dependencies = "ptype_string";
 
 	return &reg_info;
 

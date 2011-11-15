@@ -41,7 +41,6 @@ int mod_load_all() {
 		return POM_ERR;
 	}
 
-	int ptype_pass = 1;
 	struct dirent tmp, *dp;
 	while (1) {
 		if (readdir_r(d, &tmp, &dp) < 0) {
@@ -49,29 +48,15 @@ int mod_load_all() {
 			closedir(d);
 			return POM_ERR;
 		}
-		if (!dp) { // EOF
-			if (ptype_pass) {
-				// Reopen and load non ptype modules
-				closedir(d);
-				d = opendir(path);
-				ptype_pass = 0;
-				continue;
-			}
+		if (!dp) // EOF
 			break;
-		}
 
 
 		size_t len = strlen(dp->d_name);
 		if (len < strlen(POM_LIB_EXT) + 1)
 			continue;
 		if (!strcmp(dp->d_name + strlen(dp->d_name) - strlen(POM_LIB_EXT), POM_LIB_EXT)) {
-
-			int is_ptype = 0;
-			if (!strncmp(dp->d_name, "ptype", strlen("ptype")))
-				is_ptype = 1;
-
-			if (ptype_pass ^ is_ptype)
-				continue;
+			
 
 			char *name = strdup(dp->d_name);
 			if (!name) {
@@ -79,6 +64,18 @@ int mod_load_all() {
 				return POM_ERR;
 			}
 			*(name + strlen(dp->d_name) - strlen(POM_LIB_EXT)) = 0;
+
+			// Check if a dependency already loaded this module
+			pom_mutex_lock(&mod_reg_lock);
+			struct mod_reg *tmp;
+			for (tmp = mod_reg_head; tmp && strcmp(name, tmp->name); tmp = tmp->next);
+			if (tmp) {
+				pom_mutex_unlock(&mod_reg_lock);
+				free(name);
+				continue;
+			}
+			pom_mutex_unlock(&mod_reg_lock);
+
 			mod_load(name);
 			free(name);
 		}
@@ -91,15 +88,12 @@ int mod_load_all() {
 
 struct mod_reg *mod_load(char *name) {
 
-	
-	pomlog(POMLOG_DEBUG "Opening module %s", name);
-
 	pom_mutex_lock(&mod_reg_lock);
 	struct mod_reg *tmp;
 	for (tmp = mod_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 	if (tmp) {
 		pom_mutex_unlock(&mod_reg_lock);
-		pomlog(POMLOG_WARN "Module %s is already registered");
+		pomlog(POMLOG_WARN "Module %s is already registered", name);
 		return NULL;
 	}
 	pom_mutex_unlock(&mod_reg_lock);
@@ -137,27 +131,58 @@ struct mod_reg *mod_load(char *name) {
 	struct mod_reg_info* (*mod_reg_func) () = NULL;
 	mod_reg_func = dlsym(dl_handle, func_name);
 	if (!mod_reg_func) {
+		dlclose(dl_handle);
 		pomlog(POMLOG_ERR "Function %s not found in module %s", func_name, filename);
 		return NULL;
 	}
 
-
-
 	struct mod_reg_info *reg_info = mod_reg_func();
 	if (!reg_info) {
-		pomlog(POMLOG_ERR "Function %s returned NULL", func_name);
 		dlclose(dl_handle);
+		pomlog(POMLOG_ERR "Function %s returned NULL", func_name);
 		return NULL;
 	}
 
 	if (reg_info->api_ver != MOD_API_VER) {
-		pomlog(POMLOG_ERR "API version of module %s does not match : expected %u got %u", name, MOD_API_VER, reg_info->api_ver);
 		dlclose(dl_handle);
+		pomlog(POMLOG_ERR "API version of module %s does not match : expected %u got %u", name, MOD_API_VER, reg_info->api_ver);
 		return NULL;
+	}
+
+	// Check dependencies
+	if (reg_info->dependencies) {
+		char *dupped_str = strdup(reg_info->dependencies);
+		char *str = dupped_str;
+		if (!str) {
+			dlclose(dl_handle);
+			pom_oom(strlen(reg_info->dependencies));
+			return NULL;
+		}
+		char *token, *saveptr;
+		for (; ; str = NULL) {
+			token = strtok_r(str, ", ", &saveptr);
+
+			if (!token)
+				break;
+
+			for (tmp = mod_reg_head; tmp && strcmp(token, tmp->name); tmp = tmp->next);
+			if (tmp) {
+				// Already loaded, skip
+				continue;
+			}
+			if (!mod_load(token)) {
+				dlclose(dl_handle);
+				pomlog(POMLOG_ERR "Failed to load dependency %s for module %s", token, name);
+				free(dupped_str);
+				return NULL;
+			}
+		}
+		free(dupped_str);
 	}
 
 	struct mod_reg *reg = malloc(sizeof(struct mod_reg));
 	if (!reg) {
+		dlclose(dl_handle);
 		pomlog(POMLOG_ERR "Not enough memory to allocate struct mod_reg");
 		return NULL;
 	}
@@ -175,7 +200,8 @@ struct mod_reg *mod_load(char *name) {
 		if (reg->name)
 			free(reg->name);
 		free(reg);
-		
+		dlclose(dl_handle);
+
 		pomlog(POMLOG_ERR "Not enough memory to allocate name and filename of struct mod_reg or failed to initialize the lock");
 
 		return NULL;
@@ -292,6 +318,9 @@ int mod_unload_all() {
 	while (mod_reg_head) {
 		mod = mod_reg_head;
 		mod_reg_head = mod->next;
+
+		pomlog(POMLOG_DEBUG "Unloading module %s", mod->name);
+
 		if (mod->info->unregister_func) {
 			if (mod->info->unregister_func() != POM_OK) {
 				pomlog(POMLOG_ERR "Unable to unregister module %s", mod->name);

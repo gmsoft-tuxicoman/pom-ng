@@ -31,6 +31,7 @@ struct mod_reg_info* input_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_pcap_mod_register;
 	reg_info.unregister_func = input_pcap_mod_unregister;
+	reg_info.dependencies = "ptype_string, ptype_bool";
 
 	return &reg_info;
 }

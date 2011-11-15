@@ -54,6 +54,7 @@ struct mod_reg_info* proto_tcp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_tcp_mod_register;
 	reg_info.unregister_func = proto_tcp_mod_unregister;
+	reg_info.dependencies = "ptype_bool, ptype_uint8, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 }
@@ -138,6 +139,8 @@ static int proto_tcp_init(struct registry_instance *i) {
 	param_tcp_time_wait_t = ptype_alloc_unit("uint16", "seconds");
 	param_tcp_established_t = ptype_alloc_unit("uint16", "seconds");
 	param_tcp_reuse_handling = ptype_alloc("bool");
+
+	// FIXME actually use param_tcp_reuse_handling !
 	
 	if (!param_tcp_syn_sent_t
 		|| !param_tcp_syn_recv_t

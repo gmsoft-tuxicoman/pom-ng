@@ -54,6 +54,7 @@ struct mod_reg_info* input_dvb_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_dvb_mod_register;
 	reg_info.unregister_func = input_dvb_mod_unregister;
+	reg_info.dependencies = "ptype_bool, ptype_string, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 

@@ -34,6 +34,7 @@ struct mod_reg_info {
 	unsigned int api_ver;
 	int (*register_func) ();
 	int (*unregister_func) ();
+	char *dependencies;
 
 };
 
