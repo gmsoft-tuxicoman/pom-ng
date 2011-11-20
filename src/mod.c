@@ -86,6 +86,16 @@ int mod_load_all() {
 
 }
 
+struct mod_reg *mod_get_by_name(char *name) {
+
+	pom_mutex_lock(&mod_reg_lock);
+	struct mod_reg *tmp;
+	for (tmp = mod_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
+	pom_mutex_unlock(&mod_reg_lock);
+
+	return tmp;
+}
+
 struct mod_reg *mod_load(char *name) {
 
 	pom_mutex_lock(&mod_reg_lock);
@@ -121,7 +131,6 @@ struct mod_reg *mod_load(char *name) {
 		return NULL;
 	}
 
-	// Empty error buff
 	dlerror();
 
 	char func_name[FILENAME_MAX];

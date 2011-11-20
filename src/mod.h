@@ -48,8 +48,9 @@ struct mod_reg {
 };
 
 int mod_load_all();
-struct mod_reg *mod_load(char *name);
 
+struct mod_reg *mod_get_by_name(char *name);
+struct mod_reg *mod_load(char *name);
 int mod_unload(struct mod_reg *mod);
 int mod_unload_all();
 

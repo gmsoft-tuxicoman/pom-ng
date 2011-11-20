@@ -196,7 +196,7 @@ int input_ipc_create_processing_thread(pthread_t *thread, int *input_ipc_queue, 
 void *input_ipc_processing_thread_func(void *priv) {
 
 	struct input_ipc_processing_thread_priv *p = priv;
-	while (p->running) {
+	while (1) {
 		if (input_ipc_process_reply(*p->input_ipc_queue) != POM_OK) {
 			pomlog("Error while processing input reply. Aborting");
 			break;
@@ -275,6 +275,29 @@ int input_ipc_destroy_request(int req_id) {
 
 	return POM_OK;
 }
+
+int input_ipc_server_halt() {
+	
+	struct input_ipc_raw_cmd msg;
+	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
+	msg.subtype = input_ipc_cmd_type_halt;
+
+	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
+	if (id == POM_ERR)
+		return POM_ERR;
+
+	// Do not wait for the reply	
+	/*struct input_ipc_raw_cmd_reply *reply;
+	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
+		return POM_ERR;
+
+	int status = reply->status;
+	*/
+	input_ipc_destroy_request(id);
+	return POM_OK;
+
+}
+
 
 int input_ipc_cleanup() {
 

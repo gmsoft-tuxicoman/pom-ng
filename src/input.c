@@ -43,7 +43,7 @@ static struct input_reg *input_reg_head = NULL;
 int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
 	if (!input_server_is_current_process())
-		return input_client_cmd_mod_load(mod->name);
+		return input_client_register_input(reg_info, mod);
 
 	pomlog(POMLOG_DEBUG "Registering input %s", reg_info->name);
 
@@ -622,6 +622,8 @@ int input_cleanup(struct input *i) {
 
 int input_unregister(char *name) {
 
+	if (!input_server_is_current_process())
+		return input_client_unregister_input(name);
 
 	input_reg_lock(1);
 	struct input_reg *reg;

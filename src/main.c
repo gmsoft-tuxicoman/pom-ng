@@ -264,7 +264,6 @@ int main(int argc, char *argv[]) {
 		goto err_input_client;
 	}
 
-	int input_ipc_thread_joined = 0;
 	if (input_ipc_create_processing_thread(&input_ipc_thread, &input_queue_id, &running) != POM_OK) {
 		res = -1;
 		goto err_input_ipc_thread;
@@ -298,10 +297,8 @@ int main(int argc, char *argv[]) {
 	
 	pomlog(PACKAGE_NAME " started !");
 
-	if (pthread_join(input_ipc_thread, NULL)) {
-		pomlog(POMLOG_ERR "Error while joining input ipc thread");
-	}
-	input_ipc_thread_joined = 1;
+	while (running)
+		sleep(10);
 
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
 	free(shutdown_reason);
@@ -311,13 +308,6 @@ int main(int argc, char *argv[]) {
 		core_wait_state(core_state_idle);
 
 	// Cleanup components
-
-	if (kill(input_process_pid, SIGINT) == -1) {
-		pomlog(POMLOG_ERR "Error while sending SIGINT to input process");
-	} else {
-		pomlog("Waiting for input process to terminate ...");
-		waitpid(input_process_pid, NULL, 0);
-	}
 
 	packet_pool_cleanup();
 
@@ -330,9 +320,8 @@ err_httpd:
 err_xmlrpcsrv:
 	mod_unload_all();
 err_mod:
-	// Make sure the thread is dead
-	if (!input_ipc_thread_joined)
-		pthread_cancel(input_ipc_thread);
+	pthread_cancel(input_ipc_thread);
+	pthread_join(input_ipc_thread, NULL);
 err_input_ipc_thread:
 	input_client_cleanup(shutdown_in_error);
 err_input_client:
@@ -344,6 +333,9 @@ err_analyzer:
 err_proto:
 	registry_cleanup();
 err_registry:
+	input_ipc_server_halt();
+	pomlog("Waiting for input process to terminate ...");
+	waitpid(input_process_pid, NULL, 0);
 	input_ipc_cleanup();
 err_early:
 	timers_cleanup();
@@ -374,11 +366,6 @@ int halt_signal(char *reason) {
 
 	running = 0;
 
-	if (pthread_cancel(input_ipc_thread)) {
-		pomlog(POMLOG_ERR "Unable to cancel the input ipc thread : %s", pom_strerror(errno));
-			return POM_ERR;
-	}
-	
 	return POM_OK;
 }
 

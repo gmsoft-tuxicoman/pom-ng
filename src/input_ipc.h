@@ -45,6 +45,7 @@ enum input_ipc_msg_type {
 	input_ipc_cmd_type_remove,
 	input_ipc_cmd_type_start,
 	input_ipc_cmd_type_stop,
+	input_ipc_cmd_type_halt,
 };
 
 union input_ipc_cmd_msg {
@@ -52,6 +53,10 @@ union input_ipc_cmd_msg {
 	struct mod_load {
 		char name[INPUT_IPC_MOD_FILE_NAME_SIZE + 1];
 	} mod_load;
+
+	struct mod_unload {
+		char name[INPUT_IPC_MOD_FILE_NAME_SIZE + 1];
+	} mod_unload;
 
 	struct add {
 		char name[INPUT_NAME_MAX + 1];
@@ -147,6 +152,7 @@ void *input_ipc_processing_thread_func(void *priv);
 
 int input_ipc_reply_wait(int req_id, struct input_ipc_raw_cmd_reply **msg);
 int input_ipc_destroy_request(int req_id);
+int input_ipc_server_halt();
 int input_ipc_cleanup();
 
 int input_ipc_send_request(int queue_id, struct input_ipc_raw_cmd *msg);

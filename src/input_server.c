@@ -39,12 +39,6 @@ static int input_server_current_process = 0;
 static pthread_rwlock_t input_server_list_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static struct input_list *input_server_list_head = NULL;
 
-static void input_server_sighandler(int signal) {
-
-	input_server_running = 0;
-	printf("Input process received signal %u. Shutting down ...\n", signal);
-}
-
 int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 
 	input_server_current_process = 1;
@@ -59,7 +53,8 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 	struct sigaction mysigaction;
 	sigemptyset(&mysigaction.sa_mask);
 	mysigaction.sa_flags = 0;
-	mysigaction.sa_handler = input_server_sighandler;
+	mysigaction.sa_handler = SIG_IGN;
+	// Ignore SIGINT and SIGTERM
 	sigaction(SIGINT, &mysigaction, NULL);
 	sigaction(SIGTERM, &mysigaction, NULL);
 
@@ -102,6 +97,10 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 				res = input_server_cmd_mod_load(&cmd);
 				break;
 
+			case input_ipc_cmd_type_mod_unload:
+				res = input_server_cmd_mod_unload(&cmd);
+				break;
+
 			case input_ipc_cmd_type_add: 
 				res = input_server_cmd_add(&cmd, main_uid, main_gid);
 				break;
@@ -124,6 +123,10 @@ int input_server_main(key_t ipc_key, uid_t main_uid, gid_t main_gid) {
 
 			case input_ipc_cmd_type_stop: 
 				res = input_server_cmd_stop(&cmd);
+				break;
+
+			case input_ipc_cmd_type_halt:
+				res = input_server_cmd_halt(&cmd);
 				break;
 
 			default:
@@ -173,11 +176,25 @@ int input_server_cmd_mod_load(struct input_ipc_raw_cmd *cmd) {
 	memset(&cmd_reply, 0, sizeof(struct input_ipc_raw_cmd_reply));
 	cmd_reply.type = IPC_TYPE_INPUT_CMD_REPLY;
 	cmd_reply.id = cmd->id;
+	cmd_reply.status = POM_ERR;
 	if (mod_load(cmd->data.mod_load.name))
 		cmd_reply.status = POM_OK;
 
 	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));
+}
 
+int input_server_cmd_mod_unload(struct input_ipc_raw_cmd *cmd) {
+
+	struct input_ipc_raw_cmd_reply cmd_reply;
+	memset(&cmd_reply, 0, sizeof(struct input_ipc_raw_cmd_reply));
+	cmd_reply.type = IPC_TYPE_INPUT_CMD_REPLY;
+	cmd_reply.id = cmd->id;
+	cmd_reply.status = POM_ERR;
+	struct mod_reg *mod = mod_get_by_name(cmd->data.mod_unload.name);
+	if (mod && mod_unload(mod) == POM_OK)
+		cmd_reply.status = POM_OK;
+
+	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));
 }
 
 int input_server_cmd_add(struct input_ipc_raw_cmd *cmd, uid_t uid, gid_t gid) {
@@ -439,10 +456,21 @@ int input_server_cmd_stop(struct input_ipc_raw_cmd *cmd) {
 	}
 	cmd_reply.status = input_close(l->i);
 
-
 err:
 	input_server_list_unlock();
 	return ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));
+}
+
+int input_server_cmd_halt(struct input_ipc_raw_cmd *cmd) {
+
+	struct input_ipc_raw_cmd_reply cmd_reply;
+	memset(&cmd_reply, 0, sizeof(struct input_ipc_raw_cmd_reply));
+	cmd_reply.type = IPC_TYPE_INPUT_CMD_REPLY;
+	cmd_reply.id = cmd->id;
+	cmd_reply.status = POM_OK;
+
+	input_server_running = 0;
+	return  ipc_send_msg(input_ipc_get_queue(), &cmd_reply, sizeof(struct input_ipc_raw_cmd_reply));
 }
 
 

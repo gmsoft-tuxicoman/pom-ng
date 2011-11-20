@@ -49,14 +49,24 @@ struct input_client_reader_thread {
 	struct packet *pkt;
 };
 
+struct input_client_registered_list {
+	struct mod_reg *mod;
+	char *input_name;
+	struct input_client_registered_list *prev, *next;
+};
+
 int input_client_init();
 int input_client_cleanup(int emergency_cleanup);
+
+int input_client_register_input(struct input_reg_info *reg_info, struct mod_reg *mod);
+int input_client_unregister_input(char *name);
 
 void *input_client_reader_thread_func(void *input);
 int input_client_get_packet(struct input_client_entry *input, struct packet *p);
 int input_client_release_packet(struct input_client_entry *i, struct input_packet *pkt);
 
 int input_client_cmd_mod_load(char *mod_name);
+int input_client_cmd_mod_unload(char *mod_name);
 int input_client_cmd_add(char *type, char *name);
 int input_client_cmd_remove(struct registry_instance *ri);
 int input_client_cmd_start(struct registry_instance *ri);
