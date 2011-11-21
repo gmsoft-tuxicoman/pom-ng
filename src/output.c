@@ -22,6 +22,7 @@
 #include "input_server.h"
 #include "registry.h"
 #include "mod.h"
+#include <pom-ng/ptype_bool.h>
 
 static struct output_reg *output_reg_head = NULL;
 static struct output *output_head = NULL;
@@ -145,9 +146,28 @@ int output_instance_add(char *type, char *name) {
 	if (!res->reg_instance)
 		goto err;
 
-	if (registry_instance_add_function(res->reg_instance, "start", output_instance_start, "Start the output") != POM_OK ||
-		registry_instance_add_function(res->reg_instance, "stop", output_instance_stop, "Stop the output") != POM_OK)
+	struct ptype *param_running_val = ptype_alloc("bool");
+	if (!param_running_val)
 		goto err;
+
+	struct registry_param *param_running = registry_new_param("running", "no", param_running_val, "Running state of the output",  REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (!param_running) {
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+
+	if (registry_param_set_callbacks(param_running, res, NULL, output_instance_run_handler) != POM_OK) {
+		registry_cleanup_param(param_running);
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+	
+	if (registry_instance_add_param(res->reg_instance, param_running) != POM_OK) {
+		registry_cleanup_param(param_running);
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+
 
 	struct ptype *output_type = ptype_alloc("string");
 	if (!output_type)
@@ -160,6 +180,7 @@ int output_instance_add(char *type, char *name) {
 	}
 
 	if (registry_instance_add_param(res->reg_instance, type_param) != POM_OK) {
+		registry_cleanup_param(type_param);
 		ptype_cleanup(output_type);
 		goto err;
 	}
@@ -199,8 +220,12 @@ int output_instance_remove(struct registry_instance *ri) {
 
 	struct output *o = ri->priv;
 
-	if (o->running && output_instance_stop(ri))
-		return POM_ERR;
+	if (o->running && o->info->reg_info->close) {
+		if (o->info->reg_info->close(o) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while stopping the output");
+			return POM_ERR;
+		}
+	}
 
 	if (o->info->reg_info->cleanup) {
 		if (o->info->reg_info->cleanup(o) != POM_OK) {
@@ -224,44 +249,39 @@ int output_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
-int output_instance_start(struct registry_instance *ri) {
+int output_instance_run_handler(void *priv, struct ptype *run) {
 	
-	struct output *o = ri->priv;
+	struct output *o = priv;
 
-	if (o->running) {
-		pomlog(POMLOG_ERR "Error, output already opened");
+	char *new_state = PTYPE_BOOL_GETVAL(run);
+
+	if (o->running == *new_state) {
+		pomlog(POMLOG_ERR "Error, output is already %s", (*new_state ? "running" : "stopped"));
 		return POM_ERR;
 	}
 
-	if (o->info->reg_info->open) {
-		if (o->info->reg_info->open(o) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while opening the output");
-			return POM_ERR;
+	if (*new_state) {
+		if (o->info->reg_info->open) {
+			if (o->info->reg_info->open(o) != POM_OK) {
+				pomlog(POMLOG_ERR "Error while starting the output");
+				return POM_ERR;
+			}
 		}
+		pomlog("Output %s started", o->info->reg_info->name);
+	} else {
+		if (o->info->reg_info->close) {
+			if (o->info->reg_info->close(o) != POM_OK) {
+				pomlog(POMLOG_ERR "Error while stopping the output");
+				return POM_ERR;
+			}
+		}
+		pomlog("Output %s stopped", o->info->reg_info->name);
 	}
-	o->running = 1;
 
+	o->running = *new_state;
 	return POM_OK;
 }
 
-int output_instance_stop(struct registry_instance *ri) {
-
-	struct output *o = ri->priv;
-	if (!o->running) {
-		pomlog(POMLOG_ERR "Error, output already closed");
-		return POM_ERR;
-	}
-
-	if (o->info->reg_info->close) {
-		if (o->info->reg_info->close(o) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while closing the output");
-			return POM_ERR;
-		}
-	}
-	o->running = 0;
-
-	return POM_OK;
-}
 
 int output_unregister(char *name) {
 
@@ -271,7 +291,6 @@ int output_unregister(char *name) {
 
 	if (!tmp) {
 		pom_mutex_unlock(&output_lock);
-		pomlog(POMLOG_DEBUG "Output %s is not registered, cannot unregister it", name);
 		return POM_OK;
 	}
 

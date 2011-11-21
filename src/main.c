@@ -223,8 +223,6 @@ int main(int argc, char *argv[]) {
 
 	// Initialize components
 	
-	int res = 0;
-
 	// Wait for the IPC queue to be created
 	int input_queue_id = input_ipc_get_queue(input_ipc_key);
 	if (input_queue_id == -1)
@@ -236,36 +234,30 @@ int main(int argc, char *argv[]) {
 
 	if (registry_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the registry");
-		res = -1;
 		goto err_registry;
 	}
 
 	if (proto_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the protocols");
-		res = -1;
 		goto err_proto;
 	}
 
 	if (analyzer_init(DATAROOT "/mime_types.xml") != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the analyzers");
-		res = -1;
 		goto err_analyzer;
 	}
 
 	if (output_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the outputs");
-		res = -1;
 		goto err_output;
 	}
 
 	if (input_client_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the input_client module");
-		res = -1;
 		goto err_input_client;
 	}
 
 	if (input_ipc_create_processing_thread(&input_ipc_thread, &input_queue_id, &running) != POM_OK) {
-		res = -1;
 		goto err_input_ipc_thread;
 	}
 
@@ -277,19 +269,16 @@ int main(int argc, char *argv[]) {
 
 	if (xmlrpcsrv_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting XML-RPC server");
-		res = -1;
 		goto err_xmlrpcsrv;
 	}
 
 	if (httpd_init(8080) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting HTTP server");
-		res = -1;
 		goto err_httpd;
 	}
 
 	if (core_init(num_threads) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing core");
-		res = -1;
 		goto err_core;
 	}
 
@@ -313,6 +302,42 @@ int main(int argc, char *argv[]) {
 
 
 	core_cleanup(shutdown_in_error);
+
+
+	
+	httpd_cleanup();
+	xmlrpcsrv_cleanup();
+	timers_cleanup();
+	input_client_cleanup(shutdown_in_error);
+	output_cleanup();
+	analyzer_cleanup();
+	proto_cleanup();
+	registry_cleanup();
+
+	input_ipc_server_halt();
+	pomlog("Waiting for input process to terminate ...");
+	waitpid(input_process_pid, NULL, 0);
+	input_ipc_cleanup();
+
+	pthread_cancel(input_ipc_thread);
+	pthread_join(input_ipc_thread, NULL);
+
+	mod_unload_all();
+
+
+	pomlog_cleanup();
+	// Delete the IPC queue
+	if (msgctl(input_ipc_queue, IPC_RMID, 0)) {
+		printf("Unable to remove the IPC msg queue while terminating\n");
+	}
+	printf(PACKAGE_NAME " shutted down\n");
+
+
+
+	return 0;
+	
+	// Error path below
+
 err_core:
 	httpd_cleanup();
 err_httpd:
@@ -347,8 +372,8 @@ err_early:
 	}
 
 
-	printf(PACKAGE_NAME " shutted down\n");
-	return res;
+	printf(PACKAGE_NAME " failed to initialize\n");
+	return -1; 
 }
 
 int halt(char *reason) {

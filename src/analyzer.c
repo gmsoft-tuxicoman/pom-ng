@@ -324,7 +324,6 @@ int analyzer_unregister(char *name) {
 
 	if (!tmp) {
 		pom_mutex_unlock(&analyzer_lock);
-		pomlog(POMLOG_DEBUG "Analyzer %s is not registered, cannot unregister it", name);
 		return POM_OK;
 	}
 

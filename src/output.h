@@ -38,6 +38,5 @@ struct output_reg {
 int output_init();
 int output_cleanup();
 int output_instance_add(char *type, char *name);
-int output_instance_start(struct registry_instance *ri);
-int output_instance_stop(struct registry_instance *ri);
+int output_instance_run_handler(void *priv, struct ptype *run);
 #endif

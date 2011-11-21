@@ -96,6 +96,17 @@ int input_client_cleanup(int emergency_cleanup) {
 
 	}
 
+	while (input_client_registered_input) {
+		struct input_client_registered_list *tmp = input_client_registered_input;
+		input_client_registered_input = tmp->next;
+		registry_remove_instance_type(input_registry_class, tmp->input_name);
+
+		mod_refcount_dec(tmp->mod);
+		
+		free(tmp);
+
+	}
+
 	if (input_registry_class)
 		registry_remove_class(input_registry_class);
 	input_registry_class = NULL;
@@ -170,8 +181,7 @@ int input_client_unregister_input(char *name) {
 	for (lst = input_client_registered_input; lst && strcmp(lst->input_name, name); lst = lst->next);
 	if (!lst) {
 		pom_mutex_unlock(&input_lock);
-		pomlog(POMLOG_ERR "Input %s is not registered", name);
-		return POM_ERR;
+		return POM_OK;
 	}
 
 	// Check if the input is still in use

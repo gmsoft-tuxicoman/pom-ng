@@ -27,6 +27,7 @@
 #include "proto.h"
 #include "registry.h"
 
+#include <pom-ng/input.h>
 #include <pom-ng/input_client.h>
 
 #define INPUT_CLIENT_REGISTRY "input"

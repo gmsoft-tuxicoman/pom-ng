@@ -21,6 +21,7 @@
 #include "common.h"
 #include "registry.h"
 #include "core.h"
+#include "xmlrpccmd.h"
 #include <pom-ng/ptype.h>
 #include <pom-ng/ptype_uint32.h>
 
@@ -409,7 +410,8 @@ int registry_cleanup_param(struct registry_param *p) {
 		free(p->description);
 
 	free(p);
-
+	
+	return POM_OK;
 }
 
 
