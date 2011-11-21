@@ -560,7 +560,7 @@ int input_client_cmd_add(char *type, char *name) {
 			goto err;
 		}
 
-		registry_param_set_check_callbacks(reg_p, p, NULL, input_client_registry_param_apply);
+		registry_param_set_callbacks(reg_p, p, NULL, input_client_registry_param_apply);
 
 		registry_instance_add_param(entry->reg_instance, reg_p);
 		

@@ -413,11 +413,11 @@ int registry_cleanup_param(struct registry_param *p) {
 }
 
 
-int registry_param_set_check_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value)) {
+int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_callback) (void *priv, char *value), int (*post_callback) (void *priv, struct ptype* value)) {
 	
-	p->check_priv = priv;
-	p->set_pre_check = pre_check;
-	p->set_post_check = post_check;
+	p->callback_priv = priv;
+	p->set_pre_callback = pre_callback;
+	p->set_post_callback = post_callback;
 
 	return POM_OK;
 }
@@ -528,7 +528,7 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE)
 		return POM_ERR;
 	
-	if (p->set_pre_check && p->set_pre_check(p->check_priv, value) != POM_OK) {
+	if (p->set_pre_callback && p->set_pre_callback(p->callback_priv, value) != POM_OK) {
 		return POM_ERR;
 	}
 
@@ -542,7 +542,7 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 		return POM_ERR;
 	}
 
-	if (p->set_post_check && p->set_post_check(p->check_priv, p->value) != POM_OK) {
+	if (p->set_post_callback && p->set_post_callback(p->callback_priv, p->value) != POM_OK) {
 		// Revert the old value
 		ptype_copy(p->value, old_value);
 		core_resume_processing();
