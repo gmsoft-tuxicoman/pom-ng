@@ -68,10 +68,9 @@ int input_client_release_packet(struct input_client_entry *i, struct input_packe
 
 int input_client_cmd_mod_load(char *mod_name);
 int input_client_cmd_mod_unload(char *mod_name);
+int input_client_start_stop_handler(void *priv, struct ptype *run);
 int input_client_cmd_add(char *type, char *name);
 int input_client_cmd_remove(struct registry_instance *ri);
-int input_client_cmd_start(struct registry_instance *ri);
-int input_client_cmd_stop(struct registry_instance *ri);
 
 int input_client_registry_param_apply(void *param, struct ptype *value);
 

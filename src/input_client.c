@@ -32,6 +32,7 @@
 #include <sys/shm.h>
 
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_bool.h>
 
 static struct input_client_entry *input_client_head = NULL;
 static struct registry_class *input_registry_class = NULL;
@@ -501,9 +502,29 @@ int input_client_cmd_add(char *type, char *name) {
 
 	entry->reg_instance->priv = entry;
 
-	if (registry_instance_add_function(entry->reg_instance, "start", input_client_cmd_start , "Start the input") != POM_OK ||
-		registry_instance_add_function(entry->reg_instance, "stop", input_client_cmd_stop, "Stop the input") != POM_OK)
+	// Add the running parameter
+	struct ptype *param_running_val = ptype_alloc("bool");
+	if (!param_running_val)
 		goto err;
+
+	struct registry_param *param_running = registry_new_param("running", "no", param_running_val, "Running state of the input", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (!param_running) {
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+
+	if (registry_param_set_callbacks(param_running, entry, NULL, input_client_start_stop_handler) != POM_OK) {
+		registry_cleanup_param(param_running);
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+
+	if (registry_instance_add_param(entry->reg_instance, param_running) != POM_OK) {
+		registry_cleanup_param(param_running);
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+
 
 	// Add the type as a parameter
 	struct ptype *input_type = ptype_alloc("string");
@@ -517,6 +538,7 @@ int input_client_cmd_add(char *type, char *name) {
 	}
 
 	if (registry_instance_add_param(entry->reg_instance, type_param) != POM_OK) {
+		registry_cleanup_param(type_param);
 		ptype_cleanup(input_type);
 		goto err;
 	}
@@ -709,28 +731,30 @@ err:
 	return status;
 }
 
-int input_client_cmd_start(struct registry_instance *ri) {
+int input_client_start_stop_handler(void *priv, struct ptype *run) {
 
 	enum core_state state = core_get_state();
 	if (state != core_state_idle && state != core_state_running) {
-		pomlog(POMLOG_WARN "Cannot start input, core is not ready");
+		pomlog(POMLOG_WARN "Cannot start/stop input, core is not ready");
 		return POM_ERR;
 	}
 
-	struct input_client_entry *i = ri->priv;
+	struct input_client_entry *i = priv;
 
 	pom_mutex_lock(&i->shm_buff->lock);
 	int running = i->shm_buff->flags & INPUT_FLAG_RUNNING;
 	pom_mutex_unlock(&i->shm_buff->lock);
 
-	if (running) {
-		pomlog(POMLOG_ERR "Input is already running");
+	char *new_state = PTYPE_BOOL_GETVAL(run);
+
+	if (running == *new_state) {
+		pomlog(POMLOG_ERR "Input is already %s", (*new_state ? "running" : "stopped"));
 		return POM_ERR;
 	}
 
 	struct input_ipc_raw_cmd msg;
 	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_start;
+	msg.subtype =  (*new_state ? input_ipc_cmd_type_start : input_ipc_cmd_type_stop);
 	msg.data.start.id = i->id; 
 
 	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
@@ -748,79 +772,49 @@ int input_client_cmd_start(struct registry_instance *ri) {
 		return POM_ERR;
 	}
 
-	i->datalink_dep = proto_add_dependency(reply->data.start_reply.datalink);
-	if (!i->datalink_dep)
-		return POM_ERR;
-	
-	input_ipc_destroy_request(id);
+	if (*new_state) {
 
-	// Start the reader thread
-	struct input_client_reader_thread *t = malloc(sizeof(struct input_client_reader_thread));
-	if (!t) {
-		pom_oom(sizeof(struct input_client_reader_thread));
-		return POM_ERR;
-	}
-	memset(t, 0, sizeof(struct input_client_reader_thread));
+		i->datalink_dep = proto_add_dependency(reply->data.start_reply.datalink);
+		if (!i->datalink_dep)
+			return POM_ERR;
+		
+		input_ipc_destroy_request(id);
 
-	t->input = i;
-	i->thread = t;
+		// Start the reader thread
+		struct input_client_reader_thread *t = malloc(sizeof(struct input_client_reader_thread));
+		if (!t) {
+			pom_oom(sizeof(struct input_client_reader_thread));
+			return POM_ERR;
+		}
+		memset(t, 0, sizeof(struct input_client_reader_thread));
 
-	if (pthread_create(&t->thread, NULL, input_client_reader_thread_func, t)) {
-		pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
-		free(t);
-		return POM_ERR;
+		t->input = i;
+		i->thread = t;
+
+		if (pthread_create(&t->thread, NULL, input_client_reader_thread_func, t)) {
+			pomlog(POMLOG_ERR "Error while creating the reader thread : %s", pom_strerror(errno));
+			free(t);
+			return POM_ERR;
+		}
+	} else {
+		input_ipc_destroy_request(id);
+
+		pthread_t thread = 0;
+		pom_mutex_lock(&input_lock);
+		if (i->thread) {
+			thread = i->thread->thread;
+			i->thread = NULL;
+		}
+		pom_mutex_unlock(&input_lock);
+
+		if (thread)
+			pthread_join(thread, NULL);
+
+		proto_remove_dependency(i->datalink_dep);
+		i->datalink_dep = NULL;
 	}
 
 	return POM_OK;
-}
-
-int input_client_cmd_stop(struct registry_instance *ri) {
-	
-	struct input_client_entry *i = ri->priv;
-
-	pom_mutex_lock(&i->shm_buff->lock);
-	int running = i->shm_buff->flags & INPUT_FLAG_RUNNING;
-	pom_mutex_unlock(&i->shm_buff->lock);
-
-	if (!running) {
-		pomlog(POMLOG_ERR "Input is already stopped");
-		return POM_ERR;
-	}
-	struct input_ipc_raw_cmd msg;
-	memset(&msg, 0, sizeof(struct input_ipc_raw_cmd));
-	msg.subtype = input_ipc_cmd_type_stop;
-	msg.data.stop.id = i->id;
-
-	uint32_t id = input_ipc_send_request(input_ipc_get_queue(), &msg);
-
-	if (id == POM_ERR)
-		return POM_ERR;
-
-	struct input_ipc_raw_cmd_reply *reply;
-
-	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
-		return POM_ERR;
-
-	int status = reply->status;
-	
-	input_ipc_destroy_request(id);
-
-	pthread_t thread = 0;
-	pom_mutex_lock(&input_lock);
-	if (i->thread) {
-		thread = i->thread->thread;
-		i->thread = NULL;
-	}
-	pom_mutex_unlock(&input_lock);
-
-	if (thread)
-		pthread_join(thread, NULL);
-
-	proto_remove_dependency(i->datalink_dep);
-	i->datalink_dep = NULL;
-
-
-	return status;
 }
 
 int input_client_registry_param_apply(void *priv, struct ptype *value) {
