@@ -156,7 +156,7 @@ int output_instance_add(char *type, char *name) {
 		goto err;
 	}
 
-	if (registry_param_set_callbacks(param_running, res, NULL, output_instance_run_handler) != POM_OK) {
+	if (registry_param_set_callbacks(param_running, res, NULL, output_instance_start_stop_handler) != POM_OK) {
 		registry_cleanup_param(param_running);
 		ptype_cleanup(param_running_val);
 		goto err;
@@ -249,7 +249,7 @@ int output_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
-int output_instance_run_handler(void *priv, struct ptype *run) {
+int output_instance_start_stop_handler(void *priv, struct ptype *run) {
 	
 	struct output *o = priv;
 
