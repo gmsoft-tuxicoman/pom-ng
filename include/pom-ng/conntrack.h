@@ -44,7 +44,7 @@ struct conntrack_entry {
 	struct conntrack_priv_list *priv_list; ///< Private data coming from other objects
 	pthread_mutex_t lock;
 	struct timer *cleanup_timer; ///< Cleanup the conntrack when this timer is reached
-	struct proto_reg *proto; ///< Proto of this conntrack
+	struct proto *proto; ///< Proto of this conntrack
 };
 
 struct conntrack_child_list {
@@ -78,8 +78,8 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
-struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction);
-struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent);
+struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction);
+struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, struct conntrack_entry *parent);
 
 int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv));
 void *conntrack_get_priv(struct conntrack_entry *ce, void *obj);

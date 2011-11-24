@@ -27,8 +27,12 @@ enum proto_mpeg_dvb_mpe_fields {
 	proto_mpeg_dvb_mpe_field_dst,
 };
 
-int proto_mpeg_dvb_mpe_init(struct registry_instance *i);
-int proto_mpeg_dvb_mpe_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-int proto_mpeg_dvb_mpe_cleanup();
+struct proto_mpeg_dvb_mpe_priv {
+	struct proto_dependency *proto_ipv4;
+};
+
+int proto_mpeg_dvb_mpe_init(struct proto *proto,struct registry_instance *i);
+int proto_mpeg_dvb_mpe_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int proto_mpeg_dvb_mpe_cleanup(struct proto *proto);
 
 #endif

@@ -33,7 +33,7 @@ int packet_pool_release(struct packet *p);
 
 
 int packet_info_pool_init(struct packet_info_pool *pool);
-struct packet_info *packet_info_pool_get(struct proto_reg *p);
+struct packet_info *packet_info_pool_get(struct proto *p);
 int packet_pool_cleanup();
 int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
 int packet_info_pool_cleanup(struct packet_info_pool *pool);

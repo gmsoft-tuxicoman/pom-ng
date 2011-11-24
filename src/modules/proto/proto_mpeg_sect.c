@@ -24,19 +24,27 @@
 
 #include "proto_mpeg_sect.h"
 
-struct proto_dependency *proto_mpeg_dvb_mpe = NULL;
+int proto_mpeg_sect_init(struct proto *proto, struct registry_instance *i) {
 
-int proto_mpeg_sect_init(struct registry_instance *i) {
-
-	proto_mpeg_dvb_mpe = proto_add_dependency("mpeg_dvb_mpe");
-	if (!proto_mpeg_dvb_mpe) 
+	struct proto_mpeg_sect_priv *priv = malloc(sizeof(struct proto_mpeg_sect_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_mpeg_sect_priv));
 		return POM_ERR;
+	}
+	proto->priv = priv;
+
+	priv->proto_mpeg_dvb_mpe = proto_add_dependency("mpeg_dvb_mpe");
+	if (!priv->proto_mpeg_dvb_mpe) {
+		free(priv);
+		return POM_ERR;
+	}
 
 	return POM_OK;
 }
 
-int proto_mpeg_sect_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+int proto_mpeg_sect_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct proto_mpeg_sect_priv *priv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
@@ -54,7 +62,7 @@ int proto_mpeg_sect_process(struct packet *p, struct proto_process_stack *stack,
 	// We usually pass the whole payload including the table_id
 	switch (buff[0]) {
 		case 0x3E: // ETSI EN 301 192 | ISO 13818-6 (DVB MPE)
-			s_next->proto = proto_mpeg_dvb_mpe->proto;
+			s_next->proto = priv->proto_mpeg_dvb_mpe->proto;
 			s_next->pload = s->pload;
 			s_next->plen = s->plen;
 			break;
@@ -65,11 +73,17 @@ int proto_mpeg_sect_process(struct packet *p, struct proto_process_stack *stack,
 
 }
 
-int proto_mpeg_sect_cleanup() {
+int proto_mpeg_sect_cleanup(struct proto *proto) {
 
-	int res = POM_OK;
+	if (proto->priv) {
 
-	res += proto_remove_dependency(proto_mpeg_dvb_mpe);
+		struct proto_mpeg_sect_priv *priv = proto->priv;
+		
+		if (priv->proto_mpeg_dvb_mpe)
+			proto_remove_dependency(priv->proto_mpeg_dvb_mpe);
+
+		free(priv);
+	}
 
 	return POM_OK;
 }

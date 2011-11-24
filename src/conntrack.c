@@ -200,7 +200,7 @@ struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype 
 	return NULL;
 }
 
-struct conntrack_entry* conntrack_get_unique_from_parent(struct proto_reg *proto, struct conntrack_entry *parent) {
+struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, struct conntrack_entry *parent) {
 
 	if (!proto || !parent)
 		return NULL;
@@ -306,7 +306,7 @@ err:
 
 }
 
-struct conntrack_entry *conntrack_get(struct proto_reg *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction) {
+struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction) {
 
 	if (!fwd_value || !proto)
 		return NULL;
@@ -602,7 +602,7 @@ int conntrack_cleanup(void *conntrack) {
 		ce->cleanup_timer = NULL;
 	}
 	
-	struct proto_reg *proto = ce->proto;
+	struct proto *proto = ce->proto;
 	ce->proto = NULL;
 
 	if (ce->parent) {

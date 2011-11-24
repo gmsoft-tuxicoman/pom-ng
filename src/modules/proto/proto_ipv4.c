@@ -106,7 +106,7 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 }
 
 
-static int proto_ipv4_init(struct registry_instance *i) {
+static int proto_ipv4_init(struct proto *proto, struct registry_instance *i) {
 
 	param_frag_timeout = ptype_alloc_unit("uint32", "seconds");
 	if (!param_frag_timeout)
@@ -131,7 +131,7 @@ static int proto_ipv4_init(struct registry_instance *i) {
 	proto_gre = proto_add_dependency("gre");
 
 	if (!proto_icmp || !proto_tcp || !proto_udp || !proto_ipv6 || !proto_gre) {
-		proto_ipv4_cleanup();
+		proto_ipv4_cleanup(proto);
 		return POM_ERR;
 	}
 
@@ -150,7 +150,7 @@ err:
 }
 
 
-static int proto_ipv4_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_ipv4_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
@@ -409,7 +409,7 @@ static int proto_ipv4_conntrack_cleanup(struct conntrack_entry *ce) {
 	return POM_OK;
 }
 
-static int proto_ipv4_cleanup() {
+static int proto_ipv4_cleanup(struct proto *proto) {
 
 	int res = POM_OK;
 

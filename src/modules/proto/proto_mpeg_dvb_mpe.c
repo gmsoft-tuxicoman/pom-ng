@@ -24,19 +24,29 @@
 
 #include "proto_mpeg_dvb_mpe.h"
 
-struct proto_dependency *proto_ipv4 = NULL;
+int proto_mpeg_dvb_mpe_init(struct proto *proto, struct registry_instance *i) {
 
-int proto_mpeg_dvb_mpe_init(struct registry_instance *i) {
-
-	proto_ipv4 = proto_add_dependency("ipv4");
-	if (!proto_ipv4) 
+	struct proto_mpeg_dvb_mpe_priv *priv = malloc(sizeof(struct proto_mpeg_dvb_mpe_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_mpeg_dvb_mpe_priv));
 		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct proto_mpeg_dvb_mpe_priv));
+
+	proto->priv = priv;
+
+	priv->proto_ipv4 = proto_add_dependency("ipv4");
+	if (!priv->proto_ipv4) {
+		free(priv);
+		return POM_ERR;
+	}
 
 	return POM_OK;
 }
 
-int proto_mpeg_dvb_mpe_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+int proto_mpeg_dvb_mpe_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct proto_mpeg_dvb_mpe_priv *priv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
@@ -85,7 +95,7 @@ int proto_mpeg_dvb_mpe_process(struct packet *p, struct proto_process_stack *sta
 
 	}
 
-	s_next->proto = proto_ipv4->proto;
+	s_next->proto = priv->proto_ipv4->proto;
 	s_next->pload = s->pload + 12;
 	s_next->plen = s->plen - 12;
 
@@ -93,11 +103,14 @@ int proto_mpeg_dvb_mpe_process(struct packet *p, struct proto_process_stack *sta
 
 }
 
-int proto_mpeg_dvb_mpe_cleanup() {
+int proto_mpeg_dvb_mpe_cleanup(struct proto *proto) {
 
-	int res = POM_OK;
-
-	res += proto_remove_dependency(proto_ipv4);
+	if (proto->priv) {
+	
+		struct proto_mpeg_dvb_mpe_priv *priv = proto->priv;
+		proto_remove_dependency(priv->proto_ipv4);
+		free(priv);
+	}
 
 	return POM_OK;
 }

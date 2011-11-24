@@ -52,7 +52,7 @@
 #define PROTO_STOP	-2
 #define PROTO_INVALID	-3
 
-struct proto_reg {
+struct proto {
 
 	struct proto_reg_info *info;
 	struct proto_dependency *dep; // Corresponding dependency
@@ -70,19 +70,19 @@ struct proto_reg {
 	struct proto_event_analyzer_list *event_analyzers;
 	struct proto_packet_listener *packet_listeners;
 
-	struct proto_reg *next, *prev;
+	struct proto *next, *prev;
 
 };
 
 struct proto_dependency {
 	char *name;
 	unsigned int refcount;
-	struct proto_reg *proto;
+	struct proto *proto;
 	struct proto_dependency *next, *prev;
 };
 
 struct proto_process_stack {
-	struct proto_reg *proto;
+	struct proto *proto;
 	void *pload;
 	uint32_t plen;
 	int direction; // Used to pass direction to the next proto if he can't find out
@@ -134,7 +134,7 @@ struct proto_event_reg {
 
 struct proto_event {
 
-	struct proto_reg *proto;
+	struct proto *proto;
 	struct proto_event_reg *evt_reg;
 	unsigned int flags;
 	struct proto_event_data *data;
@@ -158,16 +158,16 @@ struct proto_reg_info {
 	struct conntrack_info ct_info;
 	struct proto_event_reg *events;
 
-	int (*init) (struct registry_instance *i);
-	int (*process) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-	int (*cleanup) ();
+	int (*init) (struct proto *proto, struct registry_instance *i);
+	int (*process) (struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	int (*cleanup) (struct proto *proto);
 
 };
 
 struct proto_packet_listener {
 
 	int flags;
-	struct proto_reg *proto;
+	struct proto *proto;
 	void *object;
 	int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 	struct proto_packet_listener *prev, *next;
@@ -190,7 +190,7 @@ int proto_remove_dependency(struct proto_dependency *dep);
 
 
 /// Allocate an event
-struct proto_event *proto_event_alloc(struct proto_reg *proto, unsigned int evt_id);
+struct proto_event *proto_event_alloc(struct proto *proto, unsigned int evt_id);
 
 /// Allocate an event data item
 struct ptype *proto_event_data_item_add(struct proto_event *evt, unsigned int data_id, char *key);
@@ -205,14 +205,14 @@ int proto_event_reset(struct proto_event *evt, struct conntrack_entry *ce);
 int proto_event_cleanup(struct proto_event *evt);
 
 /// Register an analyzer for a protocol
-int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_analyzer_reg *analyzer_reg);
+int proto_event_analyzer_register(struct proto *proto, struct proto_event_analyzer_reg *analyzer_reg);
 
 /// Unregister an analyzer from a protocol
-int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer *analyzer);
+int proto_event_analyzer_unregister(struct proto *proto, struct analyzer *analyzer);
 
 
 // Register a packet listener
-struct proto_packet_listener *proto_packet_listener_register(struct proto_reg *proto, unsigned int flags, void *object,  int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index));
+struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object,  int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index));
 
 // Unregister a packet listener
 int proto_packet_listener_unregister(struct proto_packet_listener *l);

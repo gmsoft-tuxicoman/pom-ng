@@ -51,7 +51,7 @@ enum proto_arp_fields {
 
 struct mod_reg_info* proto_arp_reg_info();
 static int proto_arp_mod_register(struct mod_reg *mod);
-static int proto_arp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_arp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_arp_mod_unregister();
 
 #endif

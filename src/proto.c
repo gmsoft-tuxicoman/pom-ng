@@ -26,7 +26,7 @@
 #include "mod.h"
 #include "input_server.h"
 
-static struct proto_reg *proto_head = NULL;
+static struct proto *proto_head = NULL;
 
 static struct proto_dependency *proto_dependency_head = NULL;
 static pthread_mutex_t proto_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -59,7 +59,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 	pom_mutex_lock(&proto_list_lock);
 
 	// Check if the protocol already exists
-	struct proto_reg *proto;
+	struct proto *proto;
 	for (proto = proto_head; proto && strcmp(proto->info->name, reg_info->name); proto = proto->next);
 	if (proto) {
 		pom_mutex_unlock(&proto_list_lock);
@@ -67,14 +67,14 @@ int proto_register(struct proto_reg_info *reg_info) {
 	}
 
 	// Allocate the protocol
-	proto = malloc(sizeof(struct proto_reg));
+	proto = malloc(sizeof(struct proto));
 	if (!proto) {
 		pom_mutex_unlock(&proto_list_lock);
-		pom_oom(sizeof(struct proto_reg));
+		pom_oom(sizeof(struct proto));
 		return POM_ERR;
 	}
 
-	memset(proto, 0, sizeof(struct proto_reg));
+	memset(proto, 0, sizeof(struct proto));
 	proto->info = reg_info;
 
 	
@@ -100,7 +100,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 	}
 
 	if (reg_info->init) {
-		if (reg_info->init(proto->reg_instance) == POM_ERR) {
+		if (reg_info->init(proto, proto->reg_instance) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while registering proto %s", reg_info->name);
 			goto err_registry;
 		}
@@ -151,11 +151,11 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 	if (!s)
 		return PROTO_ERR;
 	
-	struct proto_reg *proto = s[stack_index].proto;
+	struct proto *proto = s[stack_index].proto;
 
 	if (!proto || !proto->info->process)
 		return PROTO_ERR;
-	int result = proto->info->process(p, s, stack_index);
+	int result = proto->info->process(proto, p, s, stack_index);
 
 	if (result == PROTO_OK) {
 		struct proto_packet_listener *l = proto->packet_listeners;
@@ -183,14 +183,14 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 int proto_unregister(char *name) {
 
 	pom_mutex_lock(&proto_list_lock);
-	struct proto_reg *proto;
+	struct proto *proto;
 	for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
 	if (!proto) {
 		pom_mutex_unlock(&proto_list_lock);
 		return POM_OK;
 	}
 	
-	if (proto->info->cleanup && proto->info->cleanup()) {
+	if (proto->info->cleanup && proto->info->cleanup(proto)) {
 		pom_mutex_unlock(&proto_list_lock);
 		pomlog(POMLOG_ERR "Error while cleaning up the protocol %s", name);
 		return POM_ERR;
@@ -248,7 +248,7 @@ struct proto_dependency *proto_add_dependency(char *name) {
 		}
 		strcpy(dep->name, name);
 		
-		struct proto_reg *proto;
+		struct proto *proto;
 		for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
 		if (proto) {
 			if (proto->dep) {
@@ -316,7 +316,7 @@ int proto_remove_dependency(struct proto_dependency *dep) {
 int proto_empty_conntracks() {
 
 	pom_mutex_lock(&proto_list_lock);
-	struct proto_reg *proto;
+	struct proto *proto;
 	for (proto = proto_head; proto; proto = proto->next) {
 		conntrack_tables_empty(proto->ct);
 	}
@@ -330,7 +330,7 @@ int proto_cleanup() {
 	pom_mutex_lock(&proto_list_lock);
 
 	
-	struct proto_reg *proto = proto_head;
+	struct proto *proto = proto_head;
 	int forced = 0;
 	while (proto_head) {
 		if (!forced && proto->dep && proto->dep->refcount) {
@@ -346,14 +346,14 @@ int proto_cleanup() {
 		if (forced && proto->dep->refcount)
 			pomlog(POMLOG_WARN "Proto %s still has a refcount of %u", proto->dep->name, proto->dep->refcount);
 			
-		if (proto->info->cleanup && proto->info->cleanup() == POM_ERR)
+		if (proto->info->cleanup && proto->info->cleanup(proto) == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
 		conntrack_tables_cleanup(proto->ct);
 
 		mod_refcount_dec(proto->info->mod);
 		packet_info_pool_cleanup(&proto->pkt_info_pool);
 
-		struct proto_reg *tmp = proto;
+		struct proto *tmp = proto;
 		if (!proto->prev) {
 			proto_head = proto_head->next;
 			if (proto_head)
@@ -404,7 +404,7 @@ int proto_cleanup() {
 }
 
 
-struct proto_event *proto_event_alloc(struct proto_reg *proto, unsigned int evt_id) {
+struct proto_event *proto_event_alloc(struct proto *proto, unsigned int evt_id) {
 
 	struct proto_event *evt = malloc(sizeof(struct proto_event));
 	if (!evt) {
@@ -555,7 +555,7 @@ int proto_event_cleanup(struct proto_event *evt) {
 }
 
 
-int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_analyzer_reg *analyzer_reg) {
+int proto_event_analyzer_register(struct proto *proto, struct proto_event_analyzer_reg *analyzer_reg) {
 
 	struct proto_event_analyzer_list *lst = malloc(sizeof(struct proto_event_analyzer_list));
 	if (!lst) {
@@ -573,7 +573,7 @@ int proto_event_analyzer_register(struct proto_reg *proto, struct proto_event_an
 	return POM_OK;
 }
 
-int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer *analyzer) {
+int proto_event_analyzer_unregister(struct proto *proto, struct analyzer *analyzer) {
 
 	struct proto_event_analyzer_list *lst = proto->event_analyzers;
 	for (; lst && lst->analyzer_reg->analyzer != analyzer; lst = lst->next);
@@ -597,7 +597,7 @@ int proto_event_analyzer_unregister(struct proto_reg *proto, struct analyzer *an
 }
 
 
-struct proto_packet_listener *proto_packet_listener_register(struct proto_reg *proto, unsigned int flags, void *object, int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index)) {
+struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object, int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index)) {
 
 	struct proto_packet_listener *l = malloc(sizeof(struct proto_packet_listener));
 	if (!l) {

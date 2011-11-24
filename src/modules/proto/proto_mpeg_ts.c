@@ -32,52 +32,57 @@
 #include <docsis.h>
 #include <errno.h>
 
+int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i) {
 
-static struct proto_dependency *proto_docsis = NULL, *proto_mpeg_sect = NULL;
-
-// params
-static struct ptype *param_force_no_copy = NULL, *param_mpeg_ts_stream_timeout = NULL;
-
-
-int proto_mpeg_ts_init(struct registry_instance *i) {
-
-	param_force_no_copy = ptype_alloc("bool");
-	param_mpeg_ts_stream_timeout = ptype_alloc_unit("uint16", "seconds");
-	if (!param_force_no_copy || !param_mpeg_ts_stream_timeout)
-		goto err;
-
-	struct registry_param *p = registry_new_param("force_no_copy", "true", param_force_no_copy, "Should we force packet API to prevent copy packets internally", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("stream_timeout", "60", param_mpeg_ts_stream_timeout, "Timeout for each MPEG PID", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
-		goto err;
-
-	proto_docsis = proto_add_dependency("docsis");
-	proto_mpeg_sect = proto_add_dependency("mpeg_sect");
-
-	if (!proto_docsis || !proto_mpeg_sect) {
-		proto_mpeg_ts_cleanup();
+	struct proto_mpeg_ts_priv *priv = malloc(sizeof(struct proto_mpeg_ts_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_mpeg_ts_priv));
 		return POM_ERR;
 	}
+	memset(priv, 0, sizeof(struct proto_mpeg_ts_priv));
+
+	proto->priv = priv;
+
+	struct registry_param *p = NULL;
+
+	priv->param_force_no_copy = ptype_alloc("bool");
+	priv->param_mpeg_ts_stream_timeout = ptype_alloc_unit("uint16", "seconds");
+	if (!priv->param_force_no_copy || !priv->param_mpeg_ts_stream_timeout)
+		goto err;
+
+	p = registry_new_param("force_no_copy", "true", priv->param_force_no_copy, "Should we force packet API to prevent copy packets internally", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("stream_timeout", "60", priv->param_mpeg_ts_stream_timeout, "Timeout for each MPEG PID", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
+	p = NULL;
+
+	priv->proto_docsis = proto_add_dependency("docsis");
+	priv->proto_mpeg_sect = proto_add_dependency("mpeg_sect");
+
+	if (!priv->proto_docsis || !priv->proto_mpeg_sect)
+		goto err;
 
 
 	return POM_OK;
 
 err:
-	if (param_force_no_copy)
-		ptype_cleanup(param_force_no_copy);
-	
-	if (param_mpeg_ts_stream_timeout)
-		ptype_cleanup(param_mpeg_ts_stream_timeout);
 
+	if (p)
+		registry_cleanup_param(p);
+
+	proto_mpeg_ts_cleanup(proto);
+	
 	return POM_ERR;
 
 }
 
-int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct proto_mpeg_ts_priv *ppriv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	unsigned char *buff = s->pload;
@@ -113,11 +118,11 @@ int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, u
 		return PROTO_OK;
 	} else if (pid == MPEG_TS_DOCSIS_PID) {
 		stream_type = proto_mpeg_stream_type_docsis;
-		s_next->proto = proto_docsis->proto;
+		s_next->proto = ppriv->proto_docsis->proto;
 	} else {
 		// If nothing matched, it's probably a section packet
 		stream_type = proto_mpeg_stream_type_sect;
-		s_next->proto = proto_mpeg_sect->proto;
+		s_next->proto = ppriv->proto_mpeg_sect->proto;
 	}
 
 
@@ -161,6 +166,7 @@ int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, u
 		// New stream
 		stream->input_id = input_id;
 		stream->type = stream_type;
+		stream->ppriv = ppriv;
 
 		stream->t = timer_alloc(stream, proto_mpeg_ts_stream_cleanup);
 		if (!stream->t) {
@@ -173,7 +179,7 @@ int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, u
 	}
 
 	if (!stream->stream) {
-		char *force_no_copy = PTYPE_BOOL_GETVAL(param_force_no_copy);
+		char *force_no_copy = PTYPE_BOOL_GETVAL(ppriv->param_force_no_copy);
 		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_stream, stream);
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
@@ -204,9 +210,9 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 
 	struct proto_dependency *next_proto = NULL;
 	if (stream->type == proto_mpeg_stream_type_docsis) {
-		next_proto = proto_docsis;
+		next_proto = stream->ppriv->proto_docsis;
 	} else if (stream->type == proto_mpeg_stream_type_sect) {
-		next_proto = proto_mpeg_sect;
+		next_proto = stream->ppriv->proto_mpeg_sect;
 	} else {
 		pomlog(POMLOG_ERR "Internal error : unhandled stream type");
 		return PROTO_ERR;
@@ -304,7 +310,7 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 					return PROTO_STOP;
 			}
 		
-			char *force_no_copy = PTYPE_BOOL_GETVAL(param_force_no_copy);
+			char *force_no_copy = PTYPE_BOOL_GETVAL(stream->ppriv->param_force_no_copy);
 			if ( (stream->type == proto_mpeg_stream_type_docsis && (pos > (MPEG_TS_LEN - 1) - offsetof(struct docsis_hdr, hcs)))
 				|| (stream->type == proto_mpeg_stream_type_sect && (pos > (MPEG_TS_LEN - 1) - 3))) {
 				// Cannot fetch the complete packet size, will do later
@@ -381,7 +387,7 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 	}
 
 	if (stream->multipart) {
-		uint16_t *stream_timeout = PTYPE_UINT16_GETVAL(param_mpeg_ts_stream_timeout);
+		uint16_t *stream_timeout = PTYPE_UINT16_GETVAL(stream->ppriv->param_mpeg_ts_stream_timeout);
 		timer_queue(stream->t, *stream_timeout);
 	}
 
@@ -425,21 +431,27 @@ int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce) {
 	return POM_OK;
 }
 
-int proto_mpeg_ts_cleanup() {
+int proto_mpeg_ts_cleanup(struct proto *proto) {
 
 
-	int res = POM_OK;
+	if (proto->priv) {
+		struct proto_mpeg_ts_priv *priv = proto->priv;
 
-	res += ptype_cleanup(param_force_no_copy);
-	res += ptype_cleanup(param_mpeg_ts_stream_timeout);
+		if (priv->param_force_no_copy)
+			ptype_cleanup(priv->param_force_no_copy);
+		
+		if (priv->param_mpeg_ts_stream_timeout)
+			ptype_cleanup(priv->param_mpeg_ts_stream_timeout);
 
-	if (proto_docsis)
-		res += proto_remove_dependency(proto_docsis);
-	proto_docsis = NULL;
-	
-	if (proto_mpeg_sect)
-		res += proto_remove_dependency(proto_mpeg_sect);
-	proto_mpeg_sect = NULL;
 
-	return res;
+		if (priv->proto_docsis)
+			proto_remove_dependency(priv->proto_docsis);
+		
+		if (priv->proto_mpeg_sect)
+			proto_remove_dependency(priv->proto_mpeg_sect);
+
+		free(priv);
+	}
+
+	return POM_OK;
 }

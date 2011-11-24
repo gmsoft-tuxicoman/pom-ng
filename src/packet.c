@@ -212,7 +212,7 @@ int packet_info_pool_init(struct packet_info_pool *pool) {
 	return POM_OK;
 }
 
-struct packet_info *packet_info_pool_get(struct proto_reg *p) {
+struct packet_info *packet_info_pool_get(struct proto *p) {
 
 	struct packet_info *info = NULL;
 

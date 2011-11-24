@@ -46,6 +46,19 @@ enum proto_tcp_fields {
 	proto_tcp_field_win,
 };
 
+struct proto_tcp_priv {
+
+	struct ptype *param_tcp_syn_sent_t;
+	struct ptype *param_tcp_syn_recv_t;
+	struct ptype *param_tcp_last_ack_t;
+	struct ptype *param_tcp_close_t;
+	struct ptype *param_tcp_time_wait_t;
+	struct ptype *param_tcp_established_t;
+	struct ptype *param_tcp_reuse_handling;
+	struct proto_dependency *proto_http;
+
+};
+
 struct proto_tcp_conntrack_priv {
 
 	unsigned int state;
@@ -54,12 +67,12 @@ struct proto_tcp_conntrack_priv {
 };
 
 struct mod_reg_info* proto_tcp_reg_info();
-static int proto_tcp_init(struct registry_instance *i);
+static int proto_tcp_init(struct proto *proto, struct registry_instance *i);
 static int proto_tcp_mod_register(struct mod_reg *mod);
-static int proto_tcp_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 static int proto_tcp_process_payload(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce);
-static int proto_tcp_cleanup();
+static int proto_tcp_cleanup(struct proto *proto);
 static int proto_tcp_mod_unregister();
 
 #endif

@@ -124,7 +124,7 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 
 }
 
-static int proto_http_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_http_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];

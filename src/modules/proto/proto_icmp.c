@@ -77,7 +77,7 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 }
 
 
-static int proto_icmp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_icmp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 

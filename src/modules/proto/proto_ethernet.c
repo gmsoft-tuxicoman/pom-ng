@@ -29,8 +29,6 @@
 #include <arpa/inet.h>
 
 
-static struct proto_dependency *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_arp = NULL, *proto_vlan = NULL, *proto_pppoe = NULL;
-
 // ptype for fields value template
 static struct ptype *ptype_mac = NULL;
 
@@ -84,17 +82,25 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 }
 
 
-static int proto_ethernet_init() {
+static int proto_ethernet_init(struct proto *proto, struct registry_instance *i) {
+	
+	struct proto_ethernet_priv *priv = malloc(sizeof(struct proto_ethernet_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_ethernet_priv));
+		return POM_OK;
+	}
+	memset(priv, 0, sizeof(struct proto_ethernet_priv));
 
+	proto->priv = priv;
 
-	proto_ipv4 = proto_add_dependency("ipv4");
-	proto_ipv6 = proto_add_dependency("ipv6");
-	proto_arp = proto_add_dependency("arp");
-	proto_vlan = proto_add_dependency("vlan");
-	proto_pppoe = proto_add_dependency("pppoe");
+	priv->proto_ipv4 = proto_add_dependency("ipv4");
+	priv->proto_ipv6 = proto_add_dependency("ipv6");
+	priv->proto_arp = proto_add_dependency("arp");
+	priv->proto_vlan = proto_add_dependency("vlan");
+	priv->proto_pppoe = proto_add_dependency("pppoe");
 
-	if (!proto_ipv4 || !proto_ipv6 || !proto_arp || !proto_vlan || !proto_pppoe) {
-		proto_ethernet_cleanup();
+	if (!priv->proto_ipv4 || !priv->proto_ipv6 || !priv->proto_arp || !priv->proto_vlan || !priv->proto_pppoe) {
+		proto_ethernet_cleanup(proto);
 		return POM_ERR;
 	}
 
@@ -103,8 +109,9 @@ static int proto_ethernet_init() {
 
 }
 
-static int proto_ethernet_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_ethernet_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct proto_ethernet_priv *priv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 
 	if (sizeof(struct ether_header) > s->plen)
@@ -122,20 +129,20 @@ static int proto_ethernet_process(struct packet *p, struct proto_process_stack *
 
 	switch (ntohs(ehdr->ether_type)) {
 		case 0x0800:
-			s_next->proto = proto_ipv4->proto;
+			s_next->proto = priv->proto_ipv4->proto;
 			break;
 		case 0x0806:
-			s_next->proto = proto_arp->proto;
+			s_next->proto = priv->proto_arp->proto;
 			break;
 		case 0x8100:
-			s_next->proto = proto_vlan->proto;
+			s_next->proto = priv->proto_vlan->proto;
 			break;
 		case 0x86dd:
-			s_next->proto = proto_ipv6->proto;
+			s_next->proto = priv->proto_ipv6->proto;
 			break;
 		case 0x8863:
 		case 0x8864:
-			s_next->proto = proto_pppoe->proto;
+			s_next->proto = priv->proto_pppoe->proto;
 
 		default:
 			s_next->proto = NULL;
@@ -147,17 +154,26 @@ static int proto_ethernet_process(struct packet *p, struct proto_process_stack *
 
 }
 
-static int proto_ethernet_cleanup() {
+static int proto_ethernet_cleanup(struct proto *proto) {
 
-	int res = POM_OK;
+	if (proto->priv) {
 
-	res += proto_remove_dependency(proto_ipv4);
-	res += proto_remove_dependency(proto_ipv6);
-	res += proto_remove_dependency(proto_arp);
-	res += proto_remove_dependency(proto_vlan);
-	res += proto_remove_dependency(proto_pppoe);
+		struct proto_ethernet_priv *priv = proto->priv;
+		if (priv->proto_ipv4)
+			proto_remove_dependency(priv->proto_ipv4);
+		if (priv->proto_ipv6)
+			proto_remove_dependency(priv->proto_ipv6);
+		if (priv->proto_arp)
+			proto_remove_dependency(priv->proto_arp);
+		if (priv->proto_vlan)
+			proto_remove_dependency(priv->proto_vlan);
+		if (priv->proto_pppoe)
+			proto_remove_dependency(priv->proto_pppoe);
 
-	return res;
+		free(priv);
+	}
+
+	return POM_OK;
 }
 
 static int proto_ethernet_mod_unregister() {

@@ -29,9 +29,6 @@
 
 #include "proto_docsis.h"
 
-
-static struct proto_dependency *proto_ethernet = NULL, *proto_docsis_mgmt = NULL;
-
 // ptype for fields value template
 static struct ptype *ptype_bool = NULL, *ptype_uint8 = NULL;
 
@@ -93,14 +90,22 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 }
 
 
-static int proto_docsis_init() {
+static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 
+	struct proto_docsis_priv *priv = malloc(sizeof(struct proto_docsis_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_docsis_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct proto_docsis_priv));
 
-	proto_ethernet = proto_add_dependency("ethernet");
-	proto_docsis_mgmt = proto_add_dependency("docsis_mgmt");
+	proto->priv = priv;
 
-	if (!proto_ethernet || !proto_docsis_mgmt) {
-		proto_docsis_cleanup();
+	priv->proto_ethernet = proto_add_dependency("ethernet");
+	priv->proto_docsis_mgmt = proto_add_dependency("docsis_mgmt");
+
+	if (!priv->proto_ethernet || !priv->proto_docsis_mgmt) {
+		proto_docsis_cleanup(proto);
 		return POM_ERR;
 	}
 
@@ -109,8 +114,9 @@ static int proto_docsis_init() {
 
 }
 
-static int proto_docsis_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_docsis_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct proto_docsis_priv *priv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	struct docsis_hdr *dhdr = s->pload;
@@ -147,11 +153,11 @@ static int proto_docsis_process(struct packet *p, struct proto_process_stack *st
 		case FC_TYPE_ISOLATION_PKT_MAC:
 			// We don't need the 4 bytes of ethernet checksum
 			s_next->plen -= 4;
-			s_next->proto = proto_ethernet->proto;
+			s_next->proto = priv->proto_ethernet->proto;
 			break;
 		case FC_TYPE_MAC_SPC:
 			if (dhdr->fc_parm == FCP_MGMT) {
-				s_next->proto = proto_docsis_mgmt->proto;
+				s_next->proto = priv->proto_docsis_mgmt->proto;
 				break;
 			}
 			break;
@@ -162,14 +168,20 @@ static int proto_docsis_process(struct packet *p, struct proto_process_stack *st
 
 }
 
-static int proto_docsis_cleanup() {
+static int proto_docsis_cleanup(struct proto *proto) {
 
-	int res = POM_OK;
+	if (proto->priv) {
+		struct proto_docsis_priv *priv = proto->priv;
 
-	res += proto_remove_dependency(proto_ethernet);
-	res += proto_remove_dependency(proto_docsis_mgmt);
+		if (priv->proto_ethernet)
+			proto_remove_dependency(priv->proto_ethernet);
+		if (priv->proto_docsis_mgmt)
+			proto_remove_dependency(priv->proto_docsis_mgmt);
 
-	return res;
+		free(priv);
+	}
+
+	return POM_OK;
 }
 
 static int proto_docsis_mod_unregister() {

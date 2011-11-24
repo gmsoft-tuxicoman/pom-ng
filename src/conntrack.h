@@ -38,7 +38,7 @@ int conntrack_tables_empty(struct conntrack_tables *ct);
 int conntrack_tables_cleanup(struct conntrack_tables *ct);
 int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
-struct conntrack_con_info *conntrack_con_info_alloc(struct proto_reg *proto);
+struct conntrack_con_info *conntrack_con_info_alloc(struct proto *proto);
 int conntrack_cleanup(void *conntrack);
 
 #endif

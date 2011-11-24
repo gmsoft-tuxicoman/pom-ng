@@ -27,8 +27,12 @@ enum proto_mpeg_sect_fields {
 	proto_mpeg_sect_field_table_id,
 };
 
-int proto_mpeg_sect_init(struct registry_instance *i);
-int proto_mpeg_sect_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-int proto_mpeg_sect_cleanup();
+struct proto_mpeg_sect_priv {
+	struct proto_dependency *proto_mpeg_dvb_mpe;
+};
+
+int proto_mpeg_sect_init(struct proto *proto, struct registry_instance *i);
+int proto_mpeg_sect_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int proto_mpeg_sect_cleanup(struct proto *proto);
 
 #endif

@@ -40,13 +40,8 @@
 #endif
 
 
-static struct proto_dependency *proto_http = NULL;
-
 // ptypes for fields value template
 static struct ptype *ptype_uint8 = NULL, *ptype_uint16 = NULL, *ptype_uint32 = NULL;
-
-// params
-static struct ptype *param_tcp_syn_sent_t, *param_tcp_syn_recv_t, *param_tcp_last_ack_t, *param_tcp_close_t, *param_tcp_time_wait_t, *param_tcp_established_t, *param_tcp_reuse_handling;
 
 struct mod_reg_info* proto_tcp_reg_info() {
 	static struct mod_reg_info reg_info;
@@ -129,88 +124,87 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 }
 
 
-static int proto_tcp_init(struct registry_instance *i) {
+static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 
 
-	param_tcp_syn_sent_t = ptype_alloc_unit("uint16", "seconds");
-	param_tcp_syn_recv_t = ptype_alloc_unit("uint16", "seconds");
-	param_tcp_last_ack_t = ptype_alloc_unit("uint16", "seconds");
-	param_tcp_close_t = ptype_alloc_unit("uint16", "seconds");
-	param_tcp_time_wait_t = ptype_alloc_unit("uint16", "seconds");
-	param_tcp_established_t = ptype_alloc_unit("uint16", "seconds");
-	param_tcp_reuse_handling = ptype_alloc("bool");
+	struct proto_tcp_priv *priv = malloc(sizeof(struct proto_tcp_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_tcp_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct proto_tcp_priv));
+	proto->priv = priv;
+
+	priv->param_tcp_syn_sent_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_syn_recv_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_last_ack_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_close_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_time_wait_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_established_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_reuse_handling = ptype_alloc("bool");
 
 	// FIXME actually use param_tcp_reuse_handling !
 	
-	if (!param_tcp_syn_sent_t
-		|| !param_tcp_syn_recv_t
-		|| !param_tcp_last_ack_t
-		|| !param_tcp_close_t
-		|| !param_tcp_time_wait_t
-		|| !param_tcp_established_t
-		|| !param_tcp_reuse_handling) {
+	struct registry_param *p = NULL;
+
+	if (!priv->param_tcp_syn_sent_t
+		|| !priv->param_tcp_syn_recv_t
+		|| !priv->param_tcp_last_ack_t
+		|| !priv->param_tcp_close_t
+		|| !priv->param_tcp_time_wait_t
+		|| !priv->param_tcp_established_t
+		|| !priv->param_tcp_reuse_handling) {
 		
 		goto err;
 	}
 
-	struct registry_param *p = NULL;
-	p = registry_new_param("syn_sent_timer", "180", param_tcp_syn_sent_t, "SYN sent timer", 0);
+	p = registry_new_param("syn_sent_timer", "180", priv->param_tcp_syn_sent_t, "SYN sent timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("syn_recv_timer", "60", param_tcp_syn_recv_t, "SYN received timer", 0);
+	p = registry_new_param("syn_recv_timer", "60", priv->param_tcp_syn_recv_t, "SYN received timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("last_ack_timer", "30", param_tcp_last_ack_t, "Last ACK timer", 0);
+	p = registry_new_param("last_ack_timer", "30", priv->param_tcp_last_ack_t, "Last ACK timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("close_timer", "10", param_tcp_close_t, "Close timer", 0);
+	p = registry_new_param("close_timer", "10", priv->param_tcp_close_t, "Close timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("time_wait_timer", "180", param_tcp_time_wait_t, "Time wait timer", 0);
+	p = registry_new_param("time_wait_timer", "180", priv->param_tcp_time_wait_t, "Time wait timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("established_timer", "7200", param_tcp_established_t, "Established timer", 0);
+	p = registry_new_param("established_timer", "7200", priv->param_tcp_established_t, "Established timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("enable_reuse_handling", "no", param_tcp_reuse_handling, "Enable connection reuse handling (SO_REUSEADDR)", 0);
+	p = registry_new_param("enable_reuse_handling", "no", priv->param_tcp_reuse_handling, "Enable connection reuse handling (SO_REUSEADDR)", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	proto_http = proto_add_dependency("http");
-	if (!proto_http) {
-		proto_tcp_cleanup();
-		return POM_ERR;
-	}
+	p = NULL;
+
+	priv->proto_http = proto_add_dependency("http");
+	if (!priv->proto_http)
+		goto err;
+
 
 	return POM_OK;
 
 err:
+	if (p)
+		registry_cleanup_param(p);
 	
-	if (param_tcp_syn_sent_t)
-		ptype_cleanup(param_tcp_syn_sent_t);
-	if (param_tcp_syn_recv_t)
-		ptype_cleanup(param_tcp_syn_recv_t);
-	if (param_tcp_last_ack_t)
-		ptype_cleanup(param_tcp_last_ack_t);
-	if (param_tcp_close_t)
-		ptype_cleanup(param_tcp_close_t);
-	if (param_tcp_time_wait_t)
-		ptype_cleanup(param_tcp_time_wait_t);
-	if (param_tcp_established_t)
-		ptype_cleanup(param_tcp_established_t);
-	if (param_tcp_reuse_handling)
-		ptype_cleanup(param_tcp_reuse_handling);
+	proto_tcp_cleanup(proto);
 
 	return POM_ERR;
 }
 
-static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct tcphdr* hdr = s->pload;
@@ -261,6 +255,7 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 
 	pom_mutex_lock(&s->ce->lock);
 
+	struct proto_tcp_priv *ppriv = proto->priv;
 	struct proto_tcp_conntrack_priv *priv = s->ce->priv;
 
 	uint16_t *delay = NULL;
@@ -278,48 +273,48 @@ static int proto_tcp_process(struct packet *p, struct proto_process_stack *stack
 
 		// TODO improve this
 		if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
-			priv->proto = proto_http;
+			priv->proto = ppriv->proto_http;
 
 		// Set the correct state to the conntrack
 		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_SYN_RECV;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_recv_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_recv_t);
 		} else if (hdr->th_flags & TH_SYN) {
 			priv->state = STATE_TCP_SYN_SENT;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_sent_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_sent_t);
 		} else if (hdr->th_flags & TH_RST || hdr->th_flags & TH_FIN) {
 			priv->state = STATE_TCP_LAST_ACK;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_close_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_close_t);
 		} else {
 			priv->state = STATE_TCP_ESTABLISHED;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_established_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_established_t);
 		}
 	} else {
 
 		// Update conntrack timer
 		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_SYN_RECV;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_recv_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_recv_t);
 		} else if (hdr->th_flags & TH_SYN) {
 			priv->state = STATE_TCP_SYN_SENT;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_syn_sent_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_sent_t);
 		} else if (hdr->th_flags & TH_RST || hdr->th_flags & TH_FIN) {
 			if (hdr->th_flags & TH_ACK) {
 				priv->state = STATE_TCP_TIME_WAIT;
-				delay = PTYPE_UINT16_GETVAL(param_tcp_time_wait_t);
+				delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_time_wait_t);
 			} else {
 				priv->state = STATE_TCP_LAST_ACK;
-				delay = PTYPE_UINT16_GETVAL(param_tcp_last_ack_t);
+				delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_last_ack_t);
 			}
 		} else if (priv->state == STATE_TCP_LAST_ACK && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_TIME_WAIT;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_time_wait_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_time_wait_t);
 		} else if (priv->state == STATE_TCP_TIME_WAIT) {
 			pom_mutex_unlock(&s->ce->lock);
 			return POM_OK;
 		} else {
 			priv->state = STATE_TCP_ESTABLISHED;
-			delay = PTYPE_UINT16_GETVAL(param_tcp_established_t);
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_established_t);
 		}
 	}
 
@@ -397,22 +392,33 @@ static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
 	return POM_OK;
 }
 
-static int proto_tcp_cleanup() {
+static int proto_tcp_cleanup(struct proto *proto) {
 
+	struct proto_tcp_priv *priv = proto->priv;
 
-	int res = POM_OK;
+	if (priv) {
+		if (priv->param_tcp_syn_sent_t)
+			ptype_cleanup(priv->param_tcp_syn_sent_t);
+		if (priv->param_tcp_syn_recv_t)
+			ptype_cleanup(priv->param_tcp_syn_recv_t);
+		if (priv->param_tcp_last_ack_t)
+			ptype_cleanup(priv->param_tcp_last_ack_t);
+		if (priv->param_tcp_close_t)
+			ptype_cleanup(priv->param_tcp_close_t);
+		if (priv->param_tcp_time_wait_t)
+			ptype_cleanup(priv->param_tcp_time_wait_t);
+		if (priv->param_tcp_established_t)
+			ptype_cleanup(priv->param_tcp_established_t);
+		if (priv->param_tcp_reuse_handling)
+			ptype_cleanup(priv->param_tcp_reuse_handling);
 
-	res += ptype_cleanup(param_tcp_syn_sent_t);
-	res += ptype_cleanup(param_tcp_syn_recv_t);
-	res += ptype_cleanup(param_tcp_last_ack_t);
-	res += ptype_cleanup(param_tcp_close_t);
-	res += ptype_cleanup(param_tcp_time_wait_t);
-	res += ptype_cleanup(param_tcp_established_t);
-	res += ptype_cleanup(param_tcp_reuse_handling);
+		if (priv->proto_http)
+			proto_remove_dependency(priv->proto_http);
 
-	res += proto_remove_dependency(proto_http);
+		free(priv);
+	}
 
-	return res;
+	return POM_OK;
 }
 
 static int proto_tcp_mod_unregister() {

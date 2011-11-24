@@ -34,7 +34,7 @@ struct packet {
 	// Packet description
 	struct timeval ts;
 	size_t len;
-	struct proto_reg *datalink;
+	struct proto *datalink;
 	void *buff;
 	struct input_client_entry *input; // Input the packet came from initially
 	uint64_t id; // Unique packet number per input
@@ -76,7 +76,7 @@ struct packet_stream_pkt {
 
 	struct packet *pkt;
 	uint32_t seq, len, pkt_buff_offset;
-	struct proto_reg *proto;
+	struct proto *proto;
 	unsigned int flags;
 	struct packet_info *pkt_info;
 	struct packet_stream_pkt *prev, *next;

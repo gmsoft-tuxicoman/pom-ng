@@ -41,6 +41,14 @@ enum proto_mpeg_stream_type {
 	proto_mpeg_stream_type_docsis,
 };
 
+struct proto_mpeg_ts_priv {
+	struct proto_dependency *proto_docsis;
+	struct proto_dependency *proto_mpeg_sect;
+
+	struct ptype *param_force_no_copy;
+	struct ptype *param_mpeg_ts_stream_timeout;
+};
+
 struct proto_mpeg_ts_stream {
 
 	unsigned int input_id;
@@ -48,6 +56,7 @@ struct proto_mpeg_ts_stream {
 	unsigned int pkt_tot_len;
 	struct packet_multipart *multipart;
 	struct packet_stream *stream;
+	struct proto_mpeg_ts_priv *ppriv;
 
 	enum proto_mpeg_stream_type type;
 
@@ -65,11 +74,11 @@ struct proto_mpeg_ts_conntrack_priv {
 	struct proto_mpeg_ts_stream *streams;
 };
 
-int proto_mpeg_ts_init(struct registry_instance *i);
-int proto_mpeg_ts_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i);
+int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 int proto_mpeg_ts_stream_cleanup(void *);
 int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce);
-int proto_mpeg_ts_cleanup();
+int proto_mpeg_ts_cleanup(struct proto *proto);
 
 #endif

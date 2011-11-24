@@ -38,11 +38,20 @@ enum proto_ethernet_fields {
 	proto_ethernet_field_dst,
 };
 
+struct proto_ethernet_priv {
+
+	struct proto_dependency *proto_ipv4;
+	struct proto_dependency *proto_ipv6;
+	struct proto_dependency *proto_arp;
+	struct proto_dependency *proto_vlan;
+	struct proto_dependency *proto_pppoe;
+};
+
 struct mod_reg_info* proto_ethernet_reg_info();
-static int proto_ethernet_init();
+static int proto_ethernet_init(struct proto *proto, struct registry_instance *i);
 static int proto_ethernet_mod_register(struct mod_reg *mod);
-static int proto_ethernet_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int proto_ethernet_cleanup();
+static int proto_ethernet_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_ethernet_cleanup(struct proto *proto);
 static int proto_ethernet_mod_unregister();
 
 #endif
