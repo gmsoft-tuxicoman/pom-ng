@@ -29,6 +29,9 @@
 #include "timer.h"
 #include "main.h"
 
+// Define this to debug core packets
+//#define CORE_DUMP_PKT_INFO
+
 static int core_run = 0; // Set to 1 while the processing thread should run
 static enum core_state core_cur_state = core_state_idle;
 static pthread_mutex_t core_state_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -339,6 +342,7 @@ void *core_processing_thread_func(void *priv) {
 	return NULL;
 }
 
+#ifdef CORE_DUMP_PKT_INFO
 int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int res) {
 
 	char *res_str = "unknown result code";
@@ -381,16 +385,17 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 
 	return POM_OK;
 }
+#endif
 
 int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p) {
 
 	
 	int res = core_process_packet_stack(s, stack_index, p);
 
-	if (res != PROTO_ERR) {
+#ifdef CORE_DUMP_PKT_INFO
+	if (res != PROTO_ERR)
 		core_process_dump_info(s, p, res);
-	}
-	
+#endif
 	int i;
 	// Cleanup pkt_info
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
@@ -456,8 +461,10 @@ int core_process_packet(struct packet *p) {
 
 	int res = core_process_packet_stack(s, 1, p);
 
+#ifdef CORE_DUMP_PKT_INFO
 	if (res == PROTO_OK)
 		core_process_dump_info(s, p, res);
+#endif
 
 	// Cleanup pkt_info
 	int i;
