@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -531,12 +531,23 @@ int input_close(struct input *i) {
 	i->opened = 0;
 	if (i->shm_buff->flags & INPUT_FLAG_RUNNING) {
 		i->shm_buff->flags |= INPUT_FLAG_EOF;
+
+		// Signal underrun condition in case the other process already proceeded with all the packets
+		if (pthread_cond_signal(&i->shm_buff->underrun_cond)) {
+			pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
+			pom_mutex_unlock(&i->shm_buff->lock);
+			return POM_ERR;
+		}
 		pom_mutex_unlock(&i->shm_buff->lock);
 
 		if (!pthread_equal(pthread_self(), i->thread)) {
 			// Try to join the thread only if it's not ourself
 			if (pthread_join(i->thread, NULL))
 				pomlog(POMLOG_ERR "Error while waiting for the input thread to finish : %s", pom_strerror(errno));
+		} else {
+			if (pthread_detach(pthread_self())) {
+				pomlog(POMLOG_ERR "Error while detaching input thread : %s", pom_strerror(errno));
+			}
 		}
 	} else {
 		pom_mutex_unlock(&i->shm_buff->lock);
