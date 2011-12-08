@@ -93,7 +93,7 @@ int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct anal
 		*(value + value_size) = 0;
 
 
-		struct ptype *value_pt = analyzer_event_data_item_add(pload->rel_event, analyzer_http_request_post_data, name);
+		struct ptype *value_pt = event_data_item_add(pload->rel_event, analyzer_http_request_post_data, name);
 
 		if (!value_pt) {
 			free(name);

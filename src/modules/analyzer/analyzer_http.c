@@ -26,8 +26,6 @@
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_string.h>
 
-static struct ptype *ptype_string = NULL;
-
 struct mod_reg_info* analyzer_http_reg_info() {
 
 	static struct mod_reg_info reg_info;
@@ -65,59 +63,121 @@ int analyzer_http_mod_unregister() {
 
 int analyzer_http_init(struct analyzer *analyzer) {
 
-
-	ptype_string = ptype_alloc("string");
-	if (!ptype_string)
-		return POM_ERR;
-
-	
 	struct analyzer_http_priv *priv = malloc(sizeof(struct analyzer_http_priv));
 	if (!priv) {
 		pom_oom(sizeof(struct analyzer_http_priv));
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct analyzer_http_priv));
-
-	static struct analyzer_data_reg evt_request_data[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1];
-	memset(&evt_request_data, 0, sizeof(struct analyzer_data_reg) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
-	evt_request_data[analyzer_http_request_server_name].name = "server_name";
-	evt_request_data[analyzer_http_request_server_addr].name = "server_addr";
-	evt_request_data[analyzer_http_request_server_port].name = "server_port";
-	evt_request_data[analyzer_http_request_client_addr].name = "client_addr";
-	evt_request_data[analyzer_http_request_client_port].name = "client_port";
-	evt_request_data[analyzer_http_request_request_proto].name = "request_proto";
-	evt_request_data[analyzer_http_request_request_method].name = "request_method";
-	evt_request_data[analyzer_http_request_first_line].name = "first_line";
-	evt_request_data[analyzer_http_request_url].name = "url";
-	evt_request_data[analyzer_http_request_query_time].name = "query_time";
-	evt_request_data[analyzer_http_request_response_time].name = "response_time";
-	evt_request_data[analyzer_http_request_username].name = "username";
-	evt_request_data[analyzer_http_request_password].name = "password";
-	evt_request_data[analyzer_http_request_status].name = "status";
-	evt_request_data[analyzer_http_request_query_headers].name = "query_headers";
-	evt_request_data[analyzer_http_request_query_headers].flags = ANALYZER_DATA_FLAG_LIST;
-	evt_request_data[analyzer_http_request_query_headers].value_template = ptype_string;
-	evt_request_data[analyzer_http_request_response_headers].name = "response_headers";
-	evt_request_data[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
-	evt_request_data[analyzer_http_request_response_headers].value_template = ptype_string;
-	evt_request_data[analyzer_http_request_post_data].name = "post_data";
-	evt_request_data[analyzer_http_request_post_data].flags = ANALYZER_DATA_FLAG_LIST;
-	evt_request_data[analyzer_http_request_post_data].value_template = ptype_string;
-
-
-	if (analyzer_event_register(analyzer, "http_request", evt_request_data, analyzer_http_event_listeners_notify) == NULL) {
-		free(priv);
-		return POM_ERR;
-	}
-
-	priv->proto_http = proto_add_dependency("http");
-	if (!priv->proto_http) {
-		free(priv);
-		return POM_ERR;
-	}
 	analyzer->priv = priv;
 
+	priv->evt_query = event_find("http_query");
+	priv->evt_response = event_find("http_response");
+	if (!priv->evt_query || !priv->evt_response)
+		goto err;
+
+	priv->ptype_string = ptype_alloc("string");
+	if (!priv->ptype_string)
+		goto err;
+
+	static struct event_data_reg evt_request_data[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT];
+	memset(&evt_request_data, 0, sizeof(struct event_data_reg) * ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT);
+
+	evt_request_data[analyzer_http_request_server_name].name = "server_name";
+	evt_request_data[analyzer_http_request_server_name].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_server_name].value_template = priv->ptype_string;
+
+	evt_request_data[analyzer_http_request_server_addr].name = "server_addr";
+	evt_request_data[analyzer_http_request_server_addr].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_server_addr].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_server_port].name = "server_port";
+	evt_request_data[analyzer_http_request_server_port].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_server_port].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_client_addr].name = "client_addr";
+	evt_request_data[analyzer_http_request_client_addr].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_client_addr].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_client_port].name = "client_port";
+	evt_request_data[analyzer_http_request_client_port].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_client_port].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_request_proto].name = "request_proto";
+	evt_request_data[analyzer_http_request_request_proto].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_request_proto].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_request_method].name = "request_method";
+	evt_request_data[analyzer_http_request_request_method].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_request_method].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_first_line].name = "first_line";
+	evt_request_data[analyzer_http_request_first_line].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_first_line].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_url].name = "url";
+	evt_request_data[analyzer_http_request_url].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_url].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_query_time].name = "query_time";
+	evt_request_data[analyzer_http_request_query_time].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_query_time].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_response_time].name = "response_time";
+	evt_request_data[analyzer_http_request_response_time].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_response_time].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_username].name = "username";
+	evt_request_data[analyzer_http_request_username].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_username].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_password].name = "password";
+	evt_request_data[analyzer_http_request_password].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_password].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_status].name = "status";
+	evt_request_data[analyzer_http_request_status].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data[analyzer_http_request_status].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_query_headers].name = "query_headers";
+	evt_request_data[analyzer_http_request_query_headers].flags = EVENT_DATA_REG_FLAG_LIST;
+	evt_request_data[analyzer_http_request_query_headers].value_template = priv->ptype_string;
+
+	evt_request_data[analyzer_http_request_response_headers].name = "response_headers";
+	evt_request_data[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
+	evt_request_data[analyzer_http_request_response_headers].value_template = priv->ptype_string;
+	
+	evt_request_data[analyzer_http_request_post_data].name = "post_data";
+	evt_request_data[analyzer_http_request_post_data].flags = EVENT_DATA_REG_FLAG_LIST;
+	evt_request_data[analyzer_http_request_post_data].value_template = priv->ptype_string;
+
+
+	static struct event_reg_info analyzer_http_evt_request;
+	memset(&analyzer_http_evt_request, 0, sizeof(struct event_reg_info));
+	analyzer_http_evt_request.source_name = "analyzer_http";
+	analyzer_http_evt_request.source_obj = analyzer;
+	analyzer_http_evt_request.name = "http_request";
+	analyzer_http_evt_request.description = "HTTP request (compound event of http_query and http_response)";
+	analyzer_http_evt_request.data_reg = evt_request_data;
+	analyzer_http_evt_request.data_count = ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT;
+	analyzer_http_evt_request.listeners_notify = analyzer_http_event_listeners_notify;
+	analyzer_http_evt_request.cleanup = analyzer_http_request_event_cleanup;
+
+	priv->evt_request = event_register(&analyzer_http_evt_request);
+	if (!priv->evt_request)
+		goto err;
+
+	priv->proto_http = proto_add_dependency("http");
+	if (!priv->proto_http)
+		goto err;
+
 	return analyzer_http_post_init(analyzer);
+
+err:
+	analyzer_http_cleanup(analyzer);
+	return POM_ERR;
+
+
 }
 
 int analyzer_http_cleanup(struct analyzer *analyzer) {
@@ -125,175 +185,157 @@ int analyzer_http_cleanup(struct analyzer *analyzer) {
 	struct analyzer_http_priv *priv = analyzer->priv;
 	proto_remove_dependency(priv->proto_http);
 
-	free(priv);
+	if (priv->ptype_string)
+		ptype_cleanup(priv->ptype_string);
 
-	if (ptype_string) {
-		ptype_cleanup(ptype_string);
-		ptype_string = NULL;
-	}
+	if (priv->evt_request)
+		event_unregister(priv->evt_request);
+
+	free(priv);
 
 	return POM_OK;
 }
 
 int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
 
-	struct analyzer_http_ce_priv *p = priv;
-	analyzer_http_event_reset(&p->evt);
-	free(p->evt.data);
-
-	int i;
-	for (i = 0; i < 2; i++) {
-		if (p->pload[i]) {
-			analyzer_pload_buffer_cleanup(p->pload[i]);
-			p->pload[i] = NULL;
-		}
-	}
-
-	free(p);
-
+	free(priv);
 	return POM_OK;
 }
 
-int analyzer_http_event_listeners_notify(struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners) {
+int analyzer_http_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners) {
 
+	struct analyzer *analyzer = obj;
 	struct analyzer_http_priv *priv = analyzer->priv;
 
 	if (has_listeners) {
-		static struct proto_event_analyzer_reg analyzer_reg;
-		analyzer_reg.analyzer = analyzer;
-		analyzer_reg.process = analyzer_http_proto_event_process;
-		analyzer_reg.expire = analyzer_http_proto_event_expire;
-		if (proto_event_analyzer_register(priv->proto_http->proto, &analyzer_reg) != POM_OK)
+		static struct event_listener analyzer_reg;
+		memset(&analyzer_reg, 0, sizeof(struct event_listener));
+		analyzer_reg.obj = analyzer;
+		analyzer_reg.process_begin = analyzer_http_event_process_begin;
+		analyzer_reg.process_end = analyzer_http_event_process_end;
+		if (event_listener_register(priv->evt_query, &analyzer_reg) != POM_OK) {
 			return POM_ERR;
+		} else if (event_listener_register(priv->evt_response, &analyzer_reg) != POM_OK) {
+			event_listener_unregister(priv->evt_query, analyzer);
+			return POM_ERR;
+		}
 
 		priv->http_packet_listener = proto_packet_listener_register(priv->proto_http->proto, PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_http_proto_packet_process);
 		if (!priv->http_packet_listener) {
-			proto_event_analyzer_unregister(priv->proto_http->proto, analyzer);
+			event_listener_unregister(priv->evt_query, analyzer);
+			event_listener_unregister(priv->evt_response, analyzer);
 			return POM_ERR;
 		}
 
 	} else {
+		if (event_listener_unregister(priv->evt_query, analyzer) != POM_OK || event_listener_unregister(priv->evt_response, analyzer) != POM_OK)
+			return POM_ERR;
 		if (proto_packet_listener_unregister(priv->http_packet_listener) != POM_OK)
 			return POM_ERR;
-		return proto_event_analyzer_unregister(priv->proto_http->proto, analyzer);
 	}
 
 	return POM_OK;
 }
 
-int analyzer_http_event_reset(struct analyzer_event *evt) {
+int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	// Free possibly allocated stuff
-	struct analyzer_data *data = evt->data;
-	if (data[analyzer_http_request_server_addr].value)
-		ptype_cleanup(data[analyzer_http_request_server_addr].value);
-	if (data[analyzer_http_request_server_port].value)
-		ptype_cleanup(data[analyzer_http_request_server_port].value);
-	if (data[analyzer_http_request_client_addr].value)
-		ptype_cleanup(data[analyzer_http_request_client_addr].value);
-	if (data[analyzer_http_request_client_port].value)
-		ptype_cleanup(data[analyzer_http_request_client_port].value);
-
-	while (data[analyzer_http_request_post_data].items) {
-		analyzer_data_item_t *tmp = data[analyzer_http_request_post_data].items;
-		data[analyzer_http_request_post_data].items = tmp->next;
-
-		free(tmp->key);
-		ptype_cleanup(tmp->value);
-		free(tmp);
-	}
-
-	memset(data, 0, sizeof(struct analyzer_data) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
-
-	return POM_OK;
-}
-
-int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index) {
+	struct analyzer *analyzer = obj;
+	struct analyzer_http_priv *apriv = analyzer->priv;
 
 	struct proto_process_stack *s = &stack[stack_index];
 	if (!s->ce)
 		return POM_ERR;
 
-	struct analyzer_http_ce_priv *priv = conntrack_get_priv(s->ce, analyzer);
-	if (!priv) {
-		priv = malloc(sizeof(struct analyzer_http_ce_priv));
-		if (!priv) {
+	struct analyzer_http_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
+	if (!cpriv) {
+		cpriv = malloc(sizeof(struct analyzer_http_ce_priv));
+		if (!cpriv) {
 			pom_oom(sizeof(struct analyzer_http_ce_priv));
 			return POM_ERR;
 		}
-		memset(priv, 0, sizeof(struct analyzer_http_ce_priv));
+		memset(cpriv, 0, sizeof(struct analyzer_http_ce_priv));
 
-		priv->evt.info = analyzer->events;
-
-		struct analyzer_data *data = malloc(sizeof(struct analyzer_data) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
-		if (!data) {
-			free(priv);
-			pom_oom(sizeof(struct analyzer_data) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
+		if (conntrack_add_priv(s->ce, analyzer, cpriv, analyzer_http_ce_priv_cleanup) != POM_OK) {
+			free(cpriv);
 			return POM_ERR;
 		}
-		memset(data, 0, sizeof(struct analyzer_data) * (ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT + 1));
-		priv->evt.data = data;
 
-		if (conntrack_add_priv(s->ce, analyzer, priv, analyzer_http_ce_priv_cleanup) != POM_OK)
+	}
+
+	if (!cpriv->evt) {
+		cpriv->evt = event_alloc(apriv->evt_request);
+		
+		if (!cpriv->evt)
 			return POM_ERR;
+	}
 
+	struct analyzer_http_request_event_priv *epriv = cpriv->evt->priv;
+
+	if (!epriv) {
+		epriv = malloc(sizeof(struct analyzer_http_request_event_priv));
+		if (!epriv) {
+			pom_oom(sizeof(struct analyzer_http_request_event_priv));
+			return POM_ERR;
+		}
+		memset(epriv, 0, sizeof(struct analyzer_http_request_event_priv));
+		cpriv->evt->priv = epriv;
+	}
+
+	if ((epriv->response_event && evt->reg == apriv->evt_response) || (epriv->query_event && evt->reg == apriv->evt_query)) {
+		if (analyzer_http_event_finalize_process(cpriv) != POM_OK)
+			return POM_ERR;
 	}
 
 	// Do the mapping, no flag checking or other, we just know how :)
 
-	struct proto_event_data *src_data = evt->data;
-	struct analyzer_data *dst_data = priv->evt.data;
+	struct event_data *src_data = evt->data;
+	struct event_data *dst_data = cpriv->evt->data;
 
-	analyzer_data_item_t *headers = NULL;
+	struct event_data_item *headers = NULL;
 
-	if (evt->evt_reg->id == proto_http_evt_query) {
+	if (evt->reg == apriv->evt_query) {
 
-		priv->flags |= ANALYZER_HTTP_GOT_QUERY_EVT;
-
-		priv->query_dir = s->direction;
+		event_refcount_inc(evt);
+		epriv->query_event = evt;
+		epriv->query_dir = s->direction;
 
 		// Copy data contained into the query event
-		if (src_data[proto_http_query_first_line].set)
-			dst_data[analyzer_http_request_first_line].value = src_data[proto_http_query_first_line].value;
-		if (src_data[proto_http_query_proto].set)
-			dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_query_proto].value;
-		if (src_data[proto_http_query_method].set)
-			dst_data[analyzer_http_request_request_method].value = src_data[proto_http_query_method].value;
-		if (src_data[proto_http_query_url].set)
-			dst_data[analyzer_http_request_url].value = src_data[proto_http_query_url].value;
-		if (src_data[proto_http_query_start_time].set)
-			dst_data[analyzer_http_request_query_time].value = src_data[proto_http_query_start_time].value;
+		dst_data[analyzer_http_request_first_line].value = src_data[proto_http_query_first_line].value;
+		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_query_proto].value;
+		dst_data[analyzer_http_request_request_method].value = src_data[proto_http_query_method].value;
+		dst_data[analyzer_http_request_url].value = src_data[proto_http_query_url].value;
+		dst_data[analyzer_http_request_query_time].value = src_data[proto_http_query_start_time].value;
 
 		dst_data[analyzer_http_request_query_headers].items = src_data[proto_http_query_headers].items;
+		dst_data[analyzer_http_request_query_headers].flags = EVENT_DATA_FLAG_NO_CLEAN;
 
 		headers = src_data[proto_http_query_headers].items;
 
 
-	} else if (evt->evt_reg->id == proto_http_evt_response) {
+	} else if (evt->reg == apriv->evt_response) {
 
-		priv->flags |= ANALYZER_HTTP_GOT_RESPONSE_EVT;
-		priv->query_dir = (s->direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
+		event_refcount_inc(evt);
+		epriv->response_event = evt;
+		epriv->query_dir = (s->direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
 
-		if (src_data[proto_http_response_status].set)
-			dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
-		if (!dst_data[analyzer_http_request_request_proto].value && src_data[proto_http_response_proto].set)
-			dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
-		if (src_data[proto_http_response_start_time].set)
-			dst_data[analyzer_http_request_response_time].value = src_data[proto_http_response_start_time].value;
+		dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
+		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
+		dst_data[analyzer_http_request_response_time].value = src_data[proto_http_response_start_time].value;
 
 		dst_data[analyzer_http_request_response_headers].items = src_data[proto_http_response_headers].items;
+		dst_data[analyzer_http_request_response_headers].flags = EVENT_DATA_FLAG_NO_CLEAN;
 
 		headers = src_data[proto_http_response_headers].items;
 
 
 	} else {
-		pomlog(POMLOG_ERR "Unknown event ID %u", evt->evt_reg->id);
+		pomlog(POMLOG_ERR "Unexpected event %s", evt->reg->info->name);
 		return POM_ERR;
 	}
 
 	// Parse the info we need from the header
 	for (; headers; headers = headers->next) {
-		if (evt->evt_reg->id == proto_http_evt_query) {
+		if (evt->reg == apriv->evt_query) {
 
 			if (!dst_data[analyzer_http_request_server_name].value && !strcasecmp(headers->key, "Host")) {
 				dst_data[analyzer_http_request_server_name].value = headers->value;
@@ -310,9 +352,9 @@ int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_ev
 				pomlog(POMLOG_DEBUG "Could not parse Content-Length \"%s\"", PTYPE_STRING_GETVAL(headers->value));
 				continue;
 			}
-			priv->content_len[s->direction] = content_len;
+			epriv->content_len[s->direction] = content_len;
 		} else if (!strcasecmp(headers->key, "Content-Type")) {
-			priv->content_type[s->direction] = PTYPE_STRING_GETVAL(headers->value);
+			epriv->content_type[s->direction] = PTYPE_STRING_GETVAL(headers->value);
 		}
 		
 
@@ -334,7 +376,7 @@ int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_ev
 				dport = l4_stack->pkt_info->fields_value[i];
 		}
 
-		if (evt->evt_reg->id == proto_http_evt_query) {
+		if (evt->reg == apriv->evt_query) {
 			if (sport && !dst_data[analyzer_http_request_client_port].value)
 				dst_data[analyzer_http_request_client_port].value = ptype_alloc_from(sport);
 			if (dport && !dst_data[analyzer_http_request_server_port].value)
@@ -362,7 +404,7 @@ int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_ev
 				dst = l3_stack->pkt_info->fields_value[i];
 		}
 
-		if (evt->evt_reg->id == proto_http_evt_query) {
+		if (evt->reg == apriv->evt_query) {
 			if (src && !dst_data[analyzer_http_request_client_addr].value)
 				dst_data[analyzer_http_request_client_addr].value = ptype_alloc_from(src);
 			if (dst && !dst_data[analyzer_http_request_server_addr].value)
@@ -375,31 +417,73 @@ int analyzer_http_proto_event_process(struct analyzer *analyzer, struct proto_ev
 		}
 	}
 
-	if ((priv->flags & (ANALYZER_HTTP_GOT_QUERY_EVT | ANALYZER_HTTP_GOT_RESPONSE_EVT)) == (ANALYZER_HTTP_GOT_QUERY_EVT | ANALYZER_HTTP_GOT_RESPONSE_EVT)) {
-		// We got both events, process our composite event
-		int result = analyzer_event_process(&priv->evt);
-		priv->flags &= ~(ANALYZER_HTTP_GOT_QUERY_EVT | ANALYZER_HTTP_GOT_RESPONSE_EVT);
-		analyzer_http_event_reset(&priv->evt);
-		return result;
+	if (!(epriv->query_event && epriv->response_event)) {
+		// We have one of the two event, event processing begins
+		return event_process_begin(cpriv->evt, stack, stack_index);
 	}
 
 	return POM_OK;
 }
 
-int analyzer_http_proto_event_expire(struct analyzer *analyzer, struct proto_event *evt, struct conntrack_entry *ce) {
+int analyzer_http_event_process_end(struct event *evt, void *obj) {
 
 
-	struct analyzer_http_ce_priv *priv = conntrack_get_priv(ce, analyzer);
-	if (!priv)
+	struct analyzer *analyzer = obj;
+	struct analyzer_http_priv *apriv = analyzer->priv;
+
+	struct analyzer_http_ce_priv *cpriv = conntrack_get_priv(evt->ce, obj);
+	if (!cpriv) {
+		pomlog(POMLOG_WARN "Internal error, analyzer_http_event_process_end() called without _begin().");
 		return POM_OK;
-
-	if (priv->flags & (ANALYZER_HTTP_GOT_QUERY_EVT | ANALYZER_HTTP_GOT_RESPONSE_EVT)) {
-		// We either got a request or a query. Process
-		int result = analyzer_event_process(&priv->evt);
-		priv->flags &= ~(ANALYZER_HTTP_GOT_QUERY_EVT | ANALYZER_HTTP_GOT_RESPONSE_EVT);
-		analyzer_http_event_reset(&priv->evt);
-		return result;
 	}
+
+	if (evt->reg == apriv->evt_query)
+		cpriv->flags |= ANALYZER_HTTP_EVT_QUERY_END;
+	else
+		cpriv->flags |= ANALYZER_HTTP_EVT_RESPONSE_END;
+
+	if (cpriv->flags == (ANALYZER_HTTP_EVT_QUERY_END | ANALYZER_HTTP_EVT_RESPONSE_END))
+		return analyzer_http_event_finalize_process(cpriv);
+
+	return POM_OK;
+}
+
+int analyzer_http_event_finalize_process(struct analyzer_http_ce_priv *cpriv) {
+
+	struct event *evt = cpriv->evt;
+
+	if (event_process_end(evt) != POM_OK)
+		return POM_ERR;
+
+	cpriv->evt = NULL;
+	cpriv->flags = 0;
+
+	return POM_OK;
+}
+
+
+int analyzer_http_request_event_cleanup(struct event *evt) {
+
+	struct analyzer_http_request_event_priv *priv = evt->priv;
+
+	if (priv->query_event) {
+		event_refcount_dec(priv->query_event);
+		priv->query_event = NULL;
+	}
+
+	if (priv->response_event) {
+		event_refcount_dec(priv->response_event);
+		priv->response_event = NULL;
+	}
+
+	if (evt->data[analyzer_http_request_server_addr].value)
+		ptype_cleanup(evt->data[analyzer_http_request_server_addr].value);
+	if (evt->data[analyzer_http_request_server_port].value)
+		ptype_cleanup(evt->data[analyzer_http_request_server_port].value);
+	if (evt->data[analyzer_http_request_client_addr].value)
+		ptype_cleanup(evt->data[analyzer_http_request_client_addr].value);
+	if (evt->data[analyzer_http_request_client_port].value)
+		ptype_cleanup(evt->data[analyzer_http_request_client_port].value);
 
 	int i;
 	for (i = 0; i < 2; i++) {
@@ -411,6 +495,7 @@ int analyzer_http_proto_event_expire(struct analyzer *analyzer, struct proto_eve
 		priv->content_type[i] = NULL;
 	}
 
+	free(priv);
 
 	return POM_OK;
 }
@@ -425,28 +510,28 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 	if (!s->ce)
 		return POM_ERR;
 
-	struct analyzer_http_ce_priv *priv = conntrack_get_priv(s->ce, analyzer);
-	if (!priv) {
+	struct analyzer_http_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
+	if (!cpriv) {
 		pomlog(POMLOG_ERR "No private data attached to this connection. Ignoring payload.");
 		return POM_ERR;
 	}
 
 	int dir = s->direction;
 
-	struct analyzer_pload_type *type = analyzer_pload_type_get_by_mime_type(priv->content_type[dir]);
+	struct analyzer_http_request_event_priv *epriv = cpriv->evt->priv;
 
-	if (!priv->pload[dir]) {
-		priv->pload[dir] = analyzer_pload_buffer_alloc(type, priv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
-		if (!priv->pload[dir])
+	struct analyzer_pload_type *type = analyzer_pload_type_get_by_mime_type(epriv->content_type[dir]);
+
+	if (!epriv->pload[dir]) {
+		epriv->pload[dir] = analyzer_pload_buffer_alloc(type, epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
+		if (!epriv->pload[dir])
 			return POM_ERR;
 
-		priv->pload[dir]->rel_event = &priv->evt;
+		epriv->pload[dir]->rel_event = cpriv->evt;
 
 	}
 
-	pomlog("Got %u of HTTP payload", s->plen);
-
-	if (analyzer_pload_buffer_append(priv->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
+	if (analyzer_pload_buffer_append(epriv->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
 		return POM_ERR;
 
 	return POM_OK;

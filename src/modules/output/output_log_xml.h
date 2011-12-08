@@ -31,7 +31,7 @@ struct output_log_xml_priv {
 	struct ptype *p_filename;
 	struct ptype *p_source;
 
-	struct analyzer_event_reg *evt;
+	struct event_reg *evt;
 
 };
 
@@ -39,6 +39,6 @@ int output_log_xml_init(struct output *o);
 int output_log_xml_open(struct output *o);
 int output_log_xml_close(struct output *o);
 int output_log_xml_cleanup(struct output *o);
-int output_log_xml_process(void *obj, struct analyzer_event *evt);
+int output_log_xml_process(struct event *evt, void *obj);
 
 #endif

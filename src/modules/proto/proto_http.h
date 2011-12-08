@@ -46,18 +46,31 @@ struct http_info {
 	unsigned int flags;
 };
 
+struct proto_http_priv {
+	struct ptype *ptype_string;
+	struct ptype *ptype_uint16;
+	struct ptype *ptype_timestamp;
+
+	struct event_reg *evt_query;
+	struct event_reg *evt_response;
+
+};
+
 struct proto_http_conntrack_priv {
 
 	struct packet_stream_parser *parser[CT_DIR_TOT];
 	struct http_info info;
 	unsigned int state;
 	unsigned int last_err_code;
-	struct proto_event *query_event, *response_event;
+	struct event *query_event, *response_event;
 };
 
 struct mod_reg_info* proto_http_reg_info();
 static int proto_http_mod_register(struct mod_reg *mod);
+static int proto_http_init(struct proto *proto, struct registry_instance *ri);
+int proto_http_cleanup(struct proto *proto);
 static int proto_http_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_http_conntrack_reset(struct conntrack_entry *ce);
 static int proto_http_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_http_mod_unregister();

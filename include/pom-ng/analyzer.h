@@ -23,7 +23,7 @@
 #define __POM_NG_ANALYZER_H__
 
 #include <pom-ng/base.h>
-#include <pom-ng/proto.h>
+#include <pom-ng/event.h>
 #include <pom-ng/conntrack.h>
 #include <pom-ng/output.h>
 
@@ -45,21 +45,7 @@ struct analyzer {
 	struct analyzer_reg *info;
 	void *priv;
 
-	struct analyzer_event_reg *events;
-
 	struct analyzer *prev, *next;
-
-};
-
-struct analyzer_event_reg {
-
-	char *name;
-	struct analyzer_data_reg *data;
-	struct analyzer *analyzer;
-	struct analyzer_event_listener_list *listeners;
-	int (*listeners_notify) (struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners);
-
-	struct analyzer_event_reg *prev, *next;
 
 };
 
@@ -74,19 +60,7 @@ struct analyzer_reg {
 
 };
 
-
-struct analyzer_event {
-	struct analyzer_event_reg *info;
-	struct analyzer_data *data;
-};
-
-struct analyzer_event_listener {
-	void *obj;
-	char *name;
-	int (*process) (void *listener_obj, struct analyzer_event *evt);
-};
-
-typedef struct proto_event_data_item analyzer_data_item_t;
+typedef struct event_data_item analyzer_data_item_t;
 
 struct analyzer_data {
 	
@@ -165,7 +139,7 @@ struct analyzer_pload_buffer {
 	unsigned int flags;
 
 	struct analyzer_data *data;
-	struct analyzer_event *rel_event;
+	struct event *rel_event;
 	struct analyzer_pload_output_list *output_list;
 	void *analyzer_priv;
 
@@ -214,13 +188,6 @@ struct analyzer_pload_output_list {
 
 int analyzer_register(struct analyzer_reg *reg_info);
 int analyzer_unregister(char *name);
-
-struct analyzer_event_reg *analyzer_event_register(struct analyzer *analyzer, char *name, struct analyzer_data_reg *data, int (*listeners_notify) (struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners));
-struct analyzer_event_reg *analyzer_event_get(char *name);
-int analyzer_event_process(struct analyzer_event *evt);
-int analyzer_event_register_listener(struct analyzer_event_reg *evt, struct analyzer_event_listener *listener);
-int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *listener_name);
-struct ptype *analyzer_event_data_item_add(struct analyzer_event *evt, unsigned int data_id, char *key);
 
 int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_pload_reg *pload_analyzer);
 struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size, unsigned int flags);

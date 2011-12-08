@@ -97,7 +97,7 @@ int output_log_xml_open(struct output *o) {
 		return POM_ERR;
 	}
 
-	priv->evt = analyzer_event_get(src_name);
+	priv->evt = event_find(src_name);
 
 	if (!priv->evt) {
 		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
@@ -117,12 +117,11 @@ int output_log_xml_open(struct output *o) {
 	}
 
 	// Listen on the right event
-	static struct analyzer_event_listener listener;
-	listener.name = o->name;
+	static struct event_listener listener;
 	listener.obj = o;
-	listener.process = output_log_xml_process;
+	listener.process_end = output_log_xml_process;
 
-	if (analyzer_event_register_listener(priv->evt, &listener) != POM_OK)
+	if (event_listener_register(priv->evt, &listener) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -150,7 +149,7 @@ int output_log_xml_close(struct output *o) {
 		return POM_ERR;
 	}
 
-	analyzer_event_unregister_listener(priv->evt, o->name);
+	event_listener_unregister(priv->evt, o);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));
@@ -161,7 +160,7 @@ int output_log_xml_close(struct output *o) {
 }
 
 
-int output_log_xml_process(void *obj, struct analyzer_event *evt) {
+int output_log_xml_process(struct event *evt, void *obj) {
 
 	struct output *o = obj;
 	struct output_log_xml_priv *priv = o->priv;
@@ -181,23 +180,23 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 
 	// <event name="event_name">
 	
-	if (xmlTextWriterWriteString(writer, BAD_CAST "\n\n") < 0 ||
+	if (xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0 ||
 		xmlTextWriterStartElement(writer, BAD_CAST "event") < 0 ||
-		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->info->name) < 0)
+		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->name) < 0)
 		goto err;
 
 	unsigned int i;
-	for (i = 0; evt->info->data[i].name; i++) {
-		if (evt->info->data[i].flags & ANALYZER_DATA_FLAG_LIST) {
-			// Got a param_list
+	for (i = 0; i < evt->reg->info->data_count; i++) {
+		if (evt->reg->info->data_reg[i].flags & ANALYZER_DATA_FLAG_LIST) {
+			// Got a data_list
 		
 			if (!evt->data[i].items)
 				continue;
 
-			// <param_list name="param_name">
+			// <data_list name="data_name">
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
-				xmlTextWriterStartElement(writer, BAD_CAST "param_list") < 0 ||
-				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->info->data[i].name) < 0)
+				xmlTextWriterStartElement(writer, BAD_CAST "data_list") < 0 ||
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg[i].name) < 0)
 				goto err;
 
 			// <value key="key1">
@@ -226,24 +225,24 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 			}
 
 
-			// </param_list>
+			// </data_list>
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
 				xmlTextWriterEndElement(writer) < 0)
 				goto err;
 
 		} else {
 
-			// Got a single param
+			// Got a single data
 			
 			if (!evt->data[i].value)
 				continue;
 
 			
-			// <param name="param_name">
+			// <data name="data_name">
 
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
-				xmlTextWriterStartElement(writer, BAD_CAST "param") < 0 ||
-				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->info->data[i].name) < 0)
+				xmlTextWriterStartElement(writer, BAD_CAST "data") < 0 ||
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg[i].name) < 0)
 				goto err;
 
 			char *value = ptype_print_val_alloc(evt->data[i].value);
@@ -257,7 +256,7 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 
 			free(value);
 
-			// </param>
+			// </data>
 			
 			if (xmlTextWriterEndElement(writer) < 0)
 				goto err;
@@ -265,7 +264,7 @@ int output_log_xml_process(void *obj, struct analyzer_event *evt) {
 	}
 
 	// </event>
-	if (xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0 ||
+	if (xmlTextWriterWriteString(writer, BAD_CAST "\n\n") < 0 ||
 		xmlTextWriterEndElement(writer) < 0)
 		goto err;
 

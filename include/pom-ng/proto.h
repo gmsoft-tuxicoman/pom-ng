@@ -32,16 +32,6 @@
 // Current proto API version
 #define PROTO_API_VER	1
 
-
-#define PROTO_EVENT_DATA_FLAG_LIST	0x1
-
-
-// Indicates the event is followed by a payload
-#define PROTO_EVENT_FLAG_HAS_PAYLOAD	0x1
-// Indicates the event has been processed and should be reset before reuse
-#define PROTO_EVENT_FLAG_PROCESSED	0x2
-
-
 // The listener needs the payload of the specified protocol
 #define PROTO_PACKET_LISTENER_PLOAD_ONLY	0x2
 
@@ -67,7 +57,6 @@ struct proto {
 
 	void *priv;
 
-	struct proto_event_analyzer_list *event_analyzers;
 	struct proto_packet_listener *packet_listeners;
 
 	struct proto *next, *prev;
@@ -100,57 +89,7 @@ struct proto_pkt_field {
 
 };
 
-struct proto_event_data_reg {
-
-	char *name;
-	struct ptype *value_template;
-	unsigned int flags;
-};
-
-struct proto_event_data_item {
-	char *key;
-	struct ptype *value;
-	struct proto_event_data_item *next;
-};
-
-struct proto_event_data {
-
-	unsigned int set;
-	union {
-		struct ptype *value;
-		struct proto_event_data_item *items;
-	int (*process) (struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-	};
-};
-
-struct proto_event_reg {
-	char *name;
-	unsigned int id;
-	struct proto_event_data_reg *data;
-	unsigned int data_count;
-	struct proto_event_reg *next;
-};
-
-
-struct proto_event {
-
-	struct proto *proto;
-	struct proto_event_reg *evt_reg;
-	unsigned int flags;
-	struct proto_event_data *data;
-
-};
-
-struct proto_event_analyzer_reg {
-
-	struct analyzer *analyzer;
-	int (*process) (struct analyzer *analyzer, struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
-	int (*expire) (struct analyzer *analyzer, struct proto_event *evt, struct conntrack_entry *ce);
-
-};
-
 struct proto_reg_info {
-
 	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
@@ -160,8 +99,8 @@ struct proto_reg_info {
 
 	int (*init) (struct proto *proto, struct registry_instance *i);
 	int (*process) (struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	int (*post_process) (struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 	int (*cleanup) (struct proto *proto);
-
 };
 
 struct proto_packet_listener {
@@ -179,6 +118,9 @@ int proto_register(struct proto_reg_info *reg);
 /// Process the packet
 int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 
+/// Post process the packet
+int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+
 /// Unregister a protocol
 int proto_unregister(char *name);
 
@@ -187,28 +129,6 @@ struct proto_dependency *proto_add_dependency(char *dep);
 
 /// Release a dependency record
 int proto_remove_dependency(struct proto_dependency *dep);
-
-
-/// Allocate an event
-struct proto_event *proto_event_alloc(struct proto *proto, unsigned int evt_id);
-
-/// Allocate an event data item
-struct ptype *proto_event_data_item_add(struct proto_event *evt, unsigned int data_id, char *key);
-
-/// Process an event
-int proto_event_process(struct proto_event *evt, struct proto_process_stack *stack, unsigned int stack_index);
-
-/// Reset an event content for reuse
-int proto_event_reset(struct proto_event *evt, struct conntrack_entry *ce);
-
-/// Cleanup an event
-int proto_event_cleanup(struct proto_event *evt);
-
-/// Register an analyzer for a protocol
-int proto_event_analyzer_register(struct proto *proto, struct proto_event_analyzer_reg *analyzer_reg);
-
-/// Unregister an analyzer from a protocol
-int proto_event_analyzer_unregister(struct proto *proto, struct analyzer *analyzer);
 
 
 // Register a packet listener

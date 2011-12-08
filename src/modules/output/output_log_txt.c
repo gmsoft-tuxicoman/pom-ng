@@ -101,7 +101,7 @@ int output_log_txt_open(struct output *o) {
 		return POM_ERR;
 	}
 
-	priv->evt = analyzer_event_get(src_name);
+	priv->evt = event_find(src_name);
 
 	if (!priv->evt) {
 		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
@@ -129,9 +129,9 @@ int output_log_txt_open(struct output *o) {
 		memset(name, 0, sizeof(name));
 		strncpy(name, sep, end_off - start_off - 1);
 		
-		struct analyzer_data_reg *dreg = priv->evt->data;
+		struct event_data_reg *dreg = priv->evt->info->data_reg;
 		int i;
-		for (i = 0; dreg[i].name && strcmp(dreg[i].name, name); i++);
+		for (i = 0; i < priv->evt->info->data_count && strcmp(dreg[i].name, name); i++);
 
 		if (!dreg[i].name) {
 			pomlog(POMLOG_WARN "Field %s not found in data source %s", name, src_name);
@@ -176,12 +176,12 @@ int output_log_txt_open(struct output *o) {
 	}
 
 	// Register this input as a listener for the right event
-	static struct analyzer_event_listener listener;
-	listener.name = o->name;
+	static struct event_listener listener;
+	memset(&listener, 0, sizeof(struct event_listener));
 	listener.obj = o;
-	listener.process = output_log_txt_process;
+	listener.process_end = output_log_txt_process;
 		
-	if (analyzer_event_register_listener(priv->evt, &listener) != POM_OK)
+	if (event_listener_register(priv->evt, &listener) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -216,7 +216,7 @@ int output_log_txt_close(struct output *o) {
 		priv->field_count = 0;
 	}
 
-	analyzer_event_unregister_listener(priv->evt, o->name);
+	event_listener_unregister(priv->evt, o);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));
@@ -226,7 +226,7 @@ int output_log_txt_close(struct output *o) {
 	return POM_OK;
 }	
 
-int output_log_txt_process(void *obj, struct analyzer_event *evt) {
+int output_log_txt_process(struct event *evt, void *obj) {
 
 	struct output *o = obj;
 	struct output_log_txt_priv *priv = o->priv;

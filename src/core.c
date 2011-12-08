@@ -445,6 +445,16 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		}
 
 	}
+
+	for (; i >= stack_index; i--) {
+		int res = proto_post_process(p, stack, i);
+
+		if (res == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while post processing packet for proto %s", stack[stack_index].proto->info->name);
+			return POM_ERR;
+		}
+	}
+		
 	
 	return PROTO_OK;
 

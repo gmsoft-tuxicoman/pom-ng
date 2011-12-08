@@ -293,12 +293,6 @@ int analyzer_register(struct analyzer_reg *reg_info) {
 	if (reg_info->init) {
 		if (reg_info->init(analyzer) != POM_OK) {
 			pom_mutex_unlock(&analyzer_lock);
-			// Free any event that might have been registered
-			while (analyzer->events) {
-				struct analyzer_event_reg *tmp = analyzer->events;
-				analyzer->events = tmp->next;
-				free(tmp);
-			}
 			free(analyzer);
 			pomlog(POMLOG_ERR "Error while initializing analyzer %s", reg_info->name);
 			return POM_ERR;
@@ -312,6 +306,8 @@ int analyzer_register(struct analyzer_reg *reg_info) {
 	pom_mutex_unlock(&analyzer_lock);
 	
 	mod_refcount_inc(reg_info->mod);
+
+	pomlog(POMLOG_DEBUG "Analyzer %s registered", reg_info->name);
 
 	return POM_OK;
 }
@@ -332,13 +328,6 @@ int analyzer_unregister(char *name) {
 			pomlog(POMLOG_ERR "Error while cleaning up analyzer %s", name);
 			return POM_ERR;
 		}
-	}
-
-	struct analyzer_event_reg *evt = tmp->events;
-	while (tmp->events) {
-		tmp->events = evt->next;
-		free(evt);
-		evt = tmp->events;
 	}
 
 	if (tmp->prev)
@@ -374,13 +363,6 @@ int analyzer_cleanup() {
 
 		mod_refcount_dec(tmp->info->mod);
 
-		struct analyzer_event_reg *evt = tmp->events;
-		while (tmp->events) {
-			tmp->events = evt->next;
-			free(evt);
-			evt = tmp->events;
-		}
-
 		free(tmp);
 	}
 
@@ -411,141 +393,6 @@ int analyzer_cleanup() {
 
 }
 
-struct analyzer_event_reg *analyzer_event_register(struct analyzer *analyzer, char *name, struct analyzer_data_reg *data, int (*listeners_notify) (struct analyzer *analyzer, struct analyzer_event_reg *evt_reg, int has_listeners)) {
-
-	struct analyzer_event_reg *evt_reg = malloc(sizeof(struct analyzer_event_reg));
-	if (!evt_reg) {
-		pom_oom(sizeof(struct analyzer_event_reg));
-		return NULL;
-	}
-	memset(evt_reg, 0, sizeof(struct analyzer_event_reg));
-
-	evt_reg->data = data;
-
-	evt_reg->name = name;
-	evt_reg->analyzer = analyzer;
-	evt_reg->listeners_notify = listeners_notify;
-
-	evt_reg->next = analyzer->events;
-	if (evt_reg->next)
-		evt_reg->next->prev = evt_reg;
-	analyzer->events = evt_reg;
-
-	return evt_reg;
-}
-
-
-struct analyzer_event_reg *analyzer_event_get(char *name) {
-
-	struct analyzer *tmp;
-	for (tmp = analyzer_head; tmp; tmp = tmp->next) {
-
-		struct analyzer_event_reg *evt = tmp->events;
-		for (; evt; evt = evt->next) {
-			if (!strcmp(name, evt->name))
-				return evt;
-		}
-	}
-
-	return NULL;
-}
-
-
-
-int analyzer_event_register_listener(struct analyzer_event_reg *evt, struct analyzer_event_listener *listener) {
-
-	if (!evt->listeners && evt->listeners_notify) {
-		// Notify the analyzer that the event has a listener now
-		if (evt->listeners_notify(evt->analyzer, evt, 1) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while notifying the analyzer %s about new listeners for event %s", evt->analyzer->info->name, evt->name);
-			return POM_ERR;
-		}
-	}
-
-	struct analyzer_event_listener_list *listener_list = malloc(sizeof(struct analyzer_event_listener_list));
-	if (!listener_list) {
-		pom_oom(sizeof(struct analyzer_event_listener_list));
-		return POM_ERR;
-	}
-	memset(listener_list, 0, sizeof(struct analyzer_event_listener_list));
-
-	listener_list->listener = listener;
-	listener_list->next = evt->listeners;
-	if (listener_list->next)
-		listener_list->next->prev = listener_list;
-	evt->listeners = listener_list;
-
-	return POM_OK;
-}
-
-int analyzer_event_unregister_listener(struct analyzer_event_reg *evt, char *listener_name) {
-
-	struct analyzer_event_listener_list *tmp = evt->listeners;
-
-	for (; tmp && strcmp(tmp->listener->name, listener_name); tmp = tmp->next);
-
-	if (!tmp) {
-		pomlog(POMLOG_ERR "Listener %s is not registered to event %s", listener_name, evt->name);
-		return POM_ERR;
-	}
-
-	if (tmp->next)
-		tmp->next->prev = tmp->prev;
-	if (tmp->prev)
-		tmp->prev->next = tmp->next;
-	else
-		evt->listeners = tmp->next;
-	
-	free(tmp);
-
-	if (!evt->listeners && evt->listeners_notify) {
-		// Notify the analyzer that the event has a listener now
-		if (evt->listeners_notify(evt->analyzer, evt, 0) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while notifying the analyzer %s about lack of listeners for event %s", evt->analyzer->info->name, evt->name);
-			return POM_ERR;
-		}
-	}
-
-	return POM_OK;
-}
-
-struct ptype *analyzer_event_data_item_add(struct analyzer_event *evt, unsigned int data_id, char *key) {
-
-	analyzer_data_item_t *itm = malloc(sizeof(analyzer_data_item_t));
-	if (!itm) {
-		pom_oom(sizeof(analyzer_data_item_t));
-		return NULL;
-	}
-	memset(itm, 0, sizeof(analyzer_data_item_t));
-	
-	itm->key = key;
-
-	itm->value = ptype_alloc_from(evt->info->data[data_id].value_template);
-	if (!itm->value) {
-		free(itm);
-		return NULL;
-	}
-
-	itm->next = evt->data[data_id].items;
-	evt->data[data_id].items = itm;
-	return itm->value;
-}
-
-
-int analyzer_event_process(struct analyzer_event *evt) {
-
-	struct analyzer_event_listener_list *tmp = evt->info->listeners;
-	while (tmp) {
-		if (tmp->listener->process(tmp->listener->obj, evt) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while processing event %s for listener %s", evt->info->name, tmp->listener->name);
-			return POM_ERR;
-		}
-		tmp = tmp->next;
-	}
-
-	return POM_OK;
-
-}
 
 int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_pload_reg *pload_analyzer) {
 
