@@ -24,6 +24,10 @@
 #include <sys/types.h>
 #include <dirent.h>
 
+#ifdef HAVE_VALGRIND_VALGRIND_H
+#include <valgrind/valgrind.h>
+#endif
+
 static struct mod_reg *mod_reg_head = NULL;
 static pthread_mutex_t mod_reg_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -353,7 +357,12 @@ int mod_unload_all() {
 		pom_mutex_unlock(&mod->lock);
 		pthread_mutex_destroy(&mod->lock);
 
+#ifdef RUNNING_ON_VALGRIND
+		// Do not unload modules when running into valgrind so the backtraces are complete
+		if (!RUNNING_ON_VALGRIND && dlclose(mod->dl_handle))
+#else
 		if (dlclose(mod->dl_handle))
+#endif
 			pomlog(POMLOG_WARN "Error while closing module %s", mod->name);
 
 		pomlog(POMLOG_DEBUG "Module %s unloaded", mod->name);

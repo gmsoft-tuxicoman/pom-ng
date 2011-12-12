@@ -52,6 +52,9 @@ AC_CHECK_HEADERS([mcheck.h endian.h])
 # Check for backtrace()'s header
 AC_CHECK_HEADERS([execinfo.h])
 
+# Check for valgrind.h
+AC_CHECK_HEADERS([valgrind/valgrind.h])
+
 # Check endianess
 AC_C_BIGENDIAN
 
