@@ -264,24 +264,30 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				if (!line) // No more full lines in this packet
 					return PROTO_OK;
 
-				struct event *evt = (priv->state == HTTP_QUERY ? priv->query_event : priv->response_event);
-
 				if (!len) {
 					// Header are parsed
+					
+
+					if ((priv->info.flags & (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) == (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) {
+						pomlog(POMLOG_DEBUG "Ignoring Content-Lenght because transfer type is chunked");
+						priv->info.flags &= ~HTTP_FLAG_HAVE_CLEN;
+						priv->info.content_len = 0;
+					}
 					
 					// If there is no payload
 					if ( (!(priv->info.flags & HTTP_FLAG_HAVE_CLEN) || ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !priv->info.content_len)) ||
 						// Or if the response is not supposed to contain any payload
-						(priv->state == HTTP_RESPONSE && ((priv->last_err_code >= 100 && priv->last_err_code < 200) || priv->last_err_code == 204 || priv->last_err_code == 304))) {
+						(priv->state == HTTP_RESPONSE && ((priv->info.last_err_code >= 100 && priv->info.last_err_code < 200) || priv->info.last_err_code == 204 || priv->info.last_err_code == 304))) {
 							// Process the event
-							event_process_begin(evt, stack, stack_index);
-							event_process_end(evt);
-							
-							if (priv->state == HTTP_QUERY) {
-								priv->query_event = NULL;
+							event_process_begin(priv->event, stack, stack_index);
+							event_process_end(priv->event);
+							priv->event = NULL;
+						
+							int old_state = priv->state;
+							proto_http_conntrack_reset(s->ce);
+							if (old_state == HTTP_QUERY) {
 								priv->state = HTTP_RESPONSE_HEADER;
 							} else {
-								priv->response_event = NULL;
 								priv->state = HTTP_QUERY_HEADER;
 							}
 							return POM_OK;
@@ -289,7 +295,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 					// There is some payload, switch to the right state and process the begining of the event
 					priv->state++;
-					event_process_begin(evt, stack, stack_index);
+					event_process_begin(priv->event, stack, stack_index);
 
 					continue;
 				}
@@ -327,7 +333,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				value[value_len] = 0;
 
 
-				struct ptype *data_val = event_data_item_add(evt, (priv->state == HTTP_QUERY ? proto_http_query_headers : proto_http_response_headers), name);
+				struct ptype *data_val = event_data_item_add(priv->event, (priv->state == HTTP_QUERY ? proto_http_query_headers : proto_http_response_headers), name);
 				if (!data_val) {
 					free(name);
 					free(value);
@@ -381,19 +387,21 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	struct proto_http_conntrack_priv *priv = stack[stack_index].ce->priv;
+	struct conntrack_entry *ce = stack[stack_index].ce;
+
+	struct proto_http_conntrack_priv *priv = ce->priv;
 
 	if ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) {
 		// Payload done
+		event_process_end(priv->event);
+		priv->event = NULL;
 
 		if (priv->state == HTTP_BODY_QUERY) {
-			event_process_end(priv->query_event);
-			priv->query_event = NULL;
+			proto_http_conntrack_reset(ce);
 			priv->state = HTTP_RESPONSE_HEADER;
 
 		} else { // HTTP_BODY_RESPONSE
-			event_process_end(priv->response_event);
-			priv->response_event = NULL;
+			proto_http_conntrack_reset(ce);
 			priv->state = HTTP_QUERY_HEADER;
 
 		}
@@ -411,15 +419,11 @@ static int proto_http_conntrack_reset(struct conntrack_entry *ce) {
 	priv->state = HTTP_QUERY_HEADER;
 	memset(&priv->info, 0, sizeof(struct http_info));
 
-	if (priv->query_event) {
-		event_cleanup(priv->query_event);
-		priv->query_event = NULL;
+	if (priv->event) {
+		event_cleanup(priv->event);
+		priv->event = NULL;
 	}
 
-	if (priv->response_event) {
-		event_cleanup(priv->response_event);
-		priv->response_event = NULL;
-	}
 	return POM_OK;
 }
 
@@ -435,17 +439,13 @@ static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
 			packet_stream_parser_cleanup(priv->parser[i]);
 	}
 
-	if (priv->query_event) {
-		if (priv->query_event->flags & EVENT_FLAG_PROCESS_BEGAN)
-			event_process_end(priv->query_event);
-		else
-			event_cleanup(priv->query_event);
-	}
-	if (priv->response_event) {
-		if (priv->response_event->flags & EVENT_FLAG_PROCESS_BEGAN)
-			event_process_end(priv->response_event);
-		else 
-			event_cleanup(priv->response_event);
+	if (priv->event) {
+		if (priv->event->flags & EVENT_FLAG_PROCESS_BEGAN) {
+			pomlog(POMLOG_DEBUG "Processing event on cleanup !");
+			event_process_end(priv->event);
+		} else {
+			event_cleanup(priv->event);
+		}
 	}
 	
 	free(priv);
@@ -484,16 +484,17 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 		switch (tok_num) {
 			case 0:
+				
+				if (priv->event) {
+					pomlog(POMLOG_WARN "Internal error : http event still exist");
+					event_cleanup(priv->event);
+				}
+
 				if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
 					priv->state = HTTP_RESPONSE;
 
-					if (priv->response_event) {
-						pomlog(POMLOG_WARN "Internal error : http response event still exist");
-						event_cleanup(priv->response_event);
-					}
-					
-					priv->response_event = event_alloc(ppriv->evt_response);
-					if (!priv->response_event)
+					priv->event = event_alloc(ppriv->evt_response);
+					if (!priv->event)
 						return PROTO_ERR;
 
 					char *request_proto = malloc(tok_len + 1);
@@ -503,15 +504,11 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->response_event->data[proto_http_response_proto].value, request_proto);
+					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_response_proto].value, request_proto);
 				} else {
-					if (priv->query_event) {
-						pomlog(POMLOG_WARN "Internal error : http query event still exists");
-						event_cleanup(priv->response_event);
-					}
 
-					priv->query_event = event_alloc(ppriv->evt_query);
-					if (!priv->query_event)
+					priv->event = event_alloc(ppriv->evt_query);
+					if (!priv->event)
 						return POM_ERR;
 
 					int i;
@@ -528,7 +525,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_method, token, tok_len);
 					request_method[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_method].value, request_method);
+					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_method].value, request_method);
 					priv->state = HTTP_QUERY;
 				}
 				break;
@@ -544,8 +541,8 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 						return PROTO_INVALID;
 					}
 
-					PTYPE_UINT16_SETVAL(priv->response_event->data[proto_http_response_status].value, err_code);
-					priv->last_err_code = err_code;
+					PTYPE_UINT16_SETVAL(priv->event->data[proto_http_response_status].value, err_code);
+					priv->info.last_err_code = err_code;
 
 				} else if (priv->state == HTTP_QUERY) {
 					char *url = malloc(tok_len + 1);
@@ -555,7 +552,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(url, token, tok_len);
 					url[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_url].value, url);
+					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_url].value, url);
 
 				}
 				break;
@@ -576,7 +573,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_proto].value, request_proto);
+					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_proto].value, request_proto);
 
 				}
 				break;
@@ -618,16 +615,16 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 		memcpy(first_line, line, line_len);
 		first_line[line_len] = 0;
-		PTYPE_STRING_SETVAL_P(priv->query_event->data[proto_http_query_first_line].value, first_line);
+		PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_first_line].value, first_line);
 
-		PTYPE_TIMESTAMP_SETVAL(priv->query_event->data[proto_http_query_start_time].value, p->ts);
+		PTYPE_TIMESTAMP_SETVAL(priv->event->data[proto_http_query_start_time].value, p->ts);
 
 		debug_http("entry %p, found query : \"%s\"", ce, first_line);
 
 	} else {
-		debug_http("entry %p, response with status %u", ce, priv->last_err_code);
+		debug_http("entry %p, response with status %u", ce, priv->info.last_err_code);
 
-		PTYPE_TIMESTAMP_SETVAL(priv->response_event->data[proto_http_response_start_time].value, p->ts);
+		PTYPE_TIMESTAMP_SETVAL(priv->event->data[proto_http_response_start_time].value, p->ts);
 	}
 
 	return PROTO_OK;

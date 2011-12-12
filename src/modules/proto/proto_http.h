@@ -44,6 +44,7 @@
 struct http_info {
 	size_t content_len, content_pos;
 	unsigned int flags;
+	unsigned int last_err_code;
 };
 
 struct proto_http_priv {
@@ -61,8 +62,7 @@ struct proto_http_conntrack_priv {
 	struct packet_stream_parser *parser[CT_DIR_TOT];
 	struct http_info info;
 	unsigned int state;
-	unsigned int last_err_code;
-	struct event *query_event, *response_event;
+	struct event *event;
 };
 
 struct mod_reg_info* proto_http_reg_info();
