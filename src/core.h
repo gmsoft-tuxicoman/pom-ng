@@ -48,8 +48,6 @@ struct core_packet_queue {
 };
 
 struct core_processing_thread {
-	struct proto_process_stack stack[CORE_PROTO_STACK_MAX];
-	int stack_index;
 	pthread_t thread;
 	pthread_mutex_t lock;
 	pthread_cond_t restart_cond; // Issued by the reader thread when there is a packet to process
@@ -65,6 +63,7 @@ void *core_processing_thread_func(void *priv);
 int core_process_dump_pkt_info(struct proto_process_stack *s, struct packet *p, int res);
 int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
 int core_process_packet(struct packet *p);
+struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
 
 void core_get_clock(struct timeval *now);
 void core_wait_state(enum core_state state);

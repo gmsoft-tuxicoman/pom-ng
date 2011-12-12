@@ -75,10 +75,10 @@ struct packet_multipart {
 struct packet_stream_pkt {
 
 	struct packet *pkt;
-	uint32_t seq, len, pkt_buff_offset;
-	struct proto *proto;
+	struct proto_process_stack *stack;
+	uint32_t seq, ack;
+	unsigned int stack_index;
 	unsigned int flags;
-	struct packet_info *pkt_info;
 	struct packet_stream_pkt *prev, *next;
 
 };

@@ -222,7 +222,7 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 	unsigned int plen = s->plen - hdr_len;
 
 	if ((hdr->th_flags & TH_SYN) && plen > 0) {
-		// Invalid packet, SYN or RST flag present and len > 0
+		// Invalid packet, SYN flag present and len > 0
 		return PROTO_INVALID;
 	}
 

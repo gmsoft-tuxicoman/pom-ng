@@ -485,6 +485,29 @@ int core_process_packet(struct packet *p) {
 	return PROTO_OK;
 }
 
+struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt) {
+
+	struct proto_process_stack *new_stack = malloc(sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX + 2));
+	if (!new_stack) {
+		pom_oom(sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX + 2));
+		return NULL;
+	}
+
+	memcpy(new_stack, stack, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX + 2));
+	
+	int i;
+	for (i = 0; i < CORE_PROTO_STACK_MAX + 2; i++) {
+		// Remove reference to pkt_info
+		stack[i].pkt_info = NULL;
+		
+		// Adjust pload pointer
+		if (stack[i].pload && old_pkt->buff != new_pkt->buff)
+			new_stack[i].pload = new_pkt->buff + (stack[i].pload - old_pkt->buff);
+	}
+
+	return new_stack;
+}
+
 void core_get_clock(struct timeval *now) {
 
 	pom_mutex_lock(&core_clock_lock);

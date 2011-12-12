@@ -545,7 +545,7 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 		while (p) {
 			stream->head[i] = p->next;
 			packet_pool_release(p->pkt);
-			packet_info_pool_release(&p->proto->pkt_info_pool, p->pkt_info);
+			free(p->stack);
 			free(p);
 			p = stream->head[i];
 		}
@@ -555,7 +555,7 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 
 	free(stream);
 
-	debug_stream("entry %p, released");
+	debug_stream("entry %p, released", stream);
 
 	return POM_OK;
 }
@@ -615,29 +615,22 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			return POM_ERR;
 		}
 
-		packet_info_pool_release(&cur_stack->proto->pkt_info_pool, cur_stack->pkt_info);
-		cur_stack->pkt_info = NULL;
-
 		// Check if additional packets can be processed
 		struct packet_stream_pkt *p = NULL;
 		while ((p = packet_stream_get_next(stream, direction))) {
 
 
-			cur_stack->pload = p->pkt->buff + p->pkt_buff_offset;
-			cur_stack->plen = p->len;
-			cur_stack->pkt_info = p->pkt_info;
-			cur_stack->proto = p->proto;
-			cur_stack->direction = direction;
-			debug_stream("entry %p, processing additional packet with seq %u", stream, seq);
-			if (stream->handler(stream->priv, p->pkt, stack, stack_index) == POM_ERR) {
+			debug_stream("entry %p, processing additional packet with seq %u", stream, p->seq);
+			if (stream->handler(stream->priv, p->pkt, p->stack, p->stack_index) == POM_ERR) {
 				pom_mutex_unlock(&stream->lock);
 				return POM_ERR;
 			}
-			if (cur_stack->pkt_info) {
-				packet_info_pool_release(&cur_stack->proto->pkt_info_pool, cur_stack->pkt_info);
-				cur_stack->pkt_info = NULL;
-			}
 
+			int i;
+			for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
+				packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
+
+			free(p->stack);
 			packet_pool_release(p->pkt);
 			free(p);
 		}
@@ -647,6 +640,8 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	}
 
 	// Queue the packet then
+
+	debug_stream("entry %p, queuing packet with seq %u", stream, seq);
 
 	struct packet_stream_pkt *p = malloc(sizeof(struct packet_stream_pkt));
 	if (!p) {
@@ -662,15 +657,18 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		free(p);
 		return PROTO_ERR;
 	}
-	
-	debug_stream("entry %p, queuing packet with seq %u", stream, seq);
-	p->seq = seq;
-	p->len = cur_stack->plen;
-	p->pkt_info = cur_stack->pkt_info;
-	p->pkt_buff_offset = cur_stack->pload - pkt->buff; 
-	p->proto = cur_stack->proto;
+	p->stack = core_stack_backup(stack, pkt, p->pkt);
+	if (!p->stack) {
+		pom_mutex_unlock(&stream->lock);
+		packet_pool_release(p->pkt);
+		free(p);
+		return PROTO_ERR;
+	}
 
-	cur_stack->pkt_info = NULL;
+
+	p->seq = seq;
+	p->ack = ack;
+	p->stack_index = stack_index;
 
 
 	if (!stream->tail[direction]) {
@@ -711,33 +709,20 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		}
 	}
 	
-	stream->cur_buff_size += p->len;
+	stream->cur_buff_size += cur_stack->plen;
 
 	// Check if additional packets can be processed
 	if (stream->cur_buff_size >= stream->max_buff_size) {
 		struct packet_stream_pkt *p = NULL;
 		while ((p = packet_stream_get_next(stream, direction))) {
 
-			if (cur_stack->pkt_info) {
-				packet_info_pool_release(&cur_stack->proto->pkt_info_pool, cur_stack->pkt_info);
-				cur_stack->pkt_info = NULL;
-			}
-
-			cur_stack->pload = p->pkt->buff + p->pkt_buff_offset;
-			cur_stack->plen = p->len;
-			cur_stack->pkt_info = p->pkt_info;
-			cur_stack->proto = p->proto;
-			cur_stack->direction = direction;
-			debug_stream("entry %p, processing unblocked packet with seq %u", stream, seq);
-			if (stream->handler(stream->priv, p->pkt, stack, stack_index) == POM_ERR) {
+			debug_stream("entry %p, processing unblocked packet with seq %u", stream, p->seq);
+			if (stream->handler(stream->priv, p->pkt, p->stack, p->stack_index) == POM_ERR) {
 				pom_mutex_unlock(&stream->lock);
 				return POM_ERR;
 			}
 
-			if (cur_stack->pkt_info) {
-				packet_info_pool_release(&cur_stack->proto->pkt_info_pool, cur_stack->pkt_info);
-				cur_stack->pkt_info = NULL;
-			}
+			free(p->stack);
 			packet_pool_release(p->pkt);
 			free(p);
 
@@ -792,7 +777,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 				|| (seq < next_seq && next_seq - seq > PACKET_HALF_SEQ)) {
 
 				// Check if the next packet contains more bytes than the current on
-				if (res->next->len - (seq - res->next->seq) > res->len - (seq - res->seq)) {
+				if (res->next->stack[res->next->stack_index].plen - (seq - res->next->seq) > res->stack[res->stack_index].plen - (seq - res->seq)) {
 					// Next packet is completely duplicate, discard it
 					stream->head[direction] = res->next;
 					if (res->next) {
@@ -800,8 +785,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 					} else {
 						stream->tail[direction] = NULL;
 					}
-					stream->cur_buff_size -= res->len;
-					packet_info_pool_release(&res->proto->pkt_info_pool, res->pkt_info);
+					stream->cur_buff_size -= res->stack[res->stack_index].plen;
 					packet_pool_release(res->pkt);
 					free(res);
 					continue;
@@ -812,13 +796,13 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 		// Remove duplicate bytes
 		uint32_t dupe = cur_seq - seq;
 
-		if (dupe > res->len) {
+		if (dupe > res->stack[res->stack_index].plen) {
 			pomlog(POMLOG_ERR "Internal error while computing duplicate bytes");
 			return NULL;
 		}
 		res->seq += dupe;
-		res->pkt_buff_offset += dupe;
-		res->len -= dupe;
+		res->stack[res->stack_index].pload += dupe;
+		res->stack[res->stack_index].plen -= dupe;
 		stream->cur_buff_size -= dupe;
 		break;
 		
@@ -837,8 +821,8 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 		stream->tail[direction] = NULL;
 	}
 
-	stream->cur_seq[direction] = res->seq + res->len;
-	stream->cur_buff_size -= res->len;
+	stream->cur_seq[direction] = res->seq + res->stack[res->stack_index].plen;
+	stream->cur_buff_size -= res->stack[res->stack_index].plen;
 
 	return res;
 }
