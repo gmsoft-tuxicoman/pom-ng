@@ -286,13 +286,10 @@ int input_ipc_server_halt() {
 	if (id == POM_ERR)
 		return POM_ERR;
 
-	// Do not wait for the reply	
-	/*struct input_ipc_raw_cmd_reply *reply;
+	struct input_ipc_raw_cmd_reply *reply;
 	if (input_ipc_reply_wait(id, &reply) == POM_ERR)
 		return POM_ERR;
-
-	int status = reply->status;
-	*/
+	
 	input_ipc_destroy_request(id);
 	return POM_OK;
 
