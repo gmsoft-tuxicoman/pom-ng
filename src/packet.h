@@ -28,6 +28,10 @@
 
 #define PACKET_HALF_SEQ (0x1 << 31)
 
+#define PACKET_FLAG_STREAM_GOT_FWD_DIR	0x4
+#define PACKET_FLAG_STREAM_GOT_REV_DIR	0x8
+#define PACKET_FLAG_STREAM_GOT_BOTH_DIR	(PACKET_FLAG_STREAM_GOT_FWD_DIR | PACKET_FLAG_STREAM_GOT_REV_DIR)
+
 struct packet *packet_pool_get();
 int packet_pool_release(struct packet *p);
 
@@ -38,6 +42,6 @@ int packet_pool_cleanup();
 int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
 int packet_info_pool_cleanup(struct packet_info_pool *pool);
 
-struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int direction);
+struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction);
 
 #endif

@@ -76,7 +76,7 @@ struct packet_stream_pkt {
 
 	struct packet *pkt;
 	struct proto_process_stack *stack;
-	uint32_t seq, ack;
+	uint32_t seq, ack, plen;
 	unsigned int stack_index;
 	unsigned int flags;
 	struct packet_stream_pkt *prev, *next;
@@ -86,6 +86,7 @@ struct packet_stream_pkt {
 struct packet_stream {
 
 	uint32_t cur_seq[CT_DIR_TOT];
+	uint32_t cur_ack[CT_DIR_TOT];
 	uint32_t cur_buff_size, max_buff_size;
 	unsigned int flags;
 	pthread_mutex_t lock;
