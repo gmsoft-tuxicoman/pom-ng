@@ -23,21 +23,28 @@
 #include "httpd.h"
 #include "xmlrpcsrv.h"
 
-static struct MHD_Daemon *httpd_daemon = NULL;
+static struct MHD_Daemon *httpd_daemon_v4 = NULL;
+static struct MHD_Daemon *httpd_daemon_v6 = NULL;
 
 
 int httpd_init(int port) {
 
-	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION | MHD_USE_IPv6;
+	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION;
 
 #ifdef MHD_USE_POLL
 	mhd_flags |= MHD_USE_POLL;
 #endif
 
-	httpd_daemon = MHD_start_daemon(mhd_flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_END);
+	// Start the IPv4 daemon
+	httpd_daemon_v4 = MHD_start_daemon(mhd_flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_END);
 
-	if (!httpd_daemon)
+	if (!httpd_daemon_v4)
 		return POM_ERR;
+
+
+	// Start the IPv6 daemon (don't check for failure here)
+	mhd_flags |= MHD_USE_IPv6;
+	httpd_daemon_v6 = MHD_start_daemon(mhd_flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_END);
 
 	return POM_OK;
 }
@@ -47,6 +54,8 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 	// Store some info about this connection
 	// This will be freed by httpd_mhd_request_completed()
 
+	struct MHD_Response *response = NULL;
+	char *mime_type = NULL;
 	struct httpd_conn_info *info = *con_cls;
 	if (!info) {
 		info = malloc(sizeof(struct httpd_conn_info));
@@ -63,52 +72,40 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 	}
 
 
-	if (!strcmp(method, "POST") && !strcmp(url, XMLRPCSRV_URI)) {
+	if (!strcmp(method, MHD_HTTP_METHOD_POST) && !strcmp(url, XMLRPCSRV_URI)) {
 
 		// Process XML-RPC command
 		
-		if (!*upload_data_size) {
-			// Process the query and send the output
-			char *response = NULL;
-			size_t reslen = 0;
-			xmlrpcsrv_process(info->buff, info->buffpos, &response, &reslen);
-			free(info->buff);
-
-			struct MHD_Response *http_response;
-			http_response = MHD_create_response_from_data(reslen, (void *)response, MHD_YES, MHD_NO);
-
-			if (http_response) {
-
-				if (MHD_queue_response(connection, MHD_HTTP_OK, http_response) == MHD_NO)
-					pomlog(POMLOG_ERR "Error, could not queue HTTP response");
-				MHD_destroy_response (http_response);
-
-			} else {
-				pomlog(POMLOG_ERR "Error, could not create HTTP response");
+		if (*upload_data_size) {
+			size_t totlen = info->buffpos + *upload_data_size + 1;
+			if (totlen > info->buffsize) {
+				info->buff = realloc(info->buff, totlen);
+				if (!info->buff) {
+					pomlog(POMLOG_ERR "Not enough memory to store XML-RPC request");
+					return MHD_NO;
+				}
+				info->buffsize = totlen;
 			}
+			memcpy(info->buff + info->buffpos, upload_data, *upload_data_size);
+			info->buffpos += *upload_data_size;
+			*upload_data_size = 0;
 
-
+			// Terminate with a null just in case
+			*(info->buff + info->buffpos) = 0;
 			return MHD_YES;
+
 		}
 
-		size_t totlen = info->buffpos + *upload_data_size + 1;
-		if (totlen > info->buffsize) {
-			info->buff = realloc(info->buff, totlen);
-			if (!info->buff) {
-				pomlog(POMLOG_ERR "Not enough memory to store XML-RPC request");
-				return MHD_NO;
-			}
-			info->buffsize = totlen;
-		}
-		memcpy(info->buff + info->buffpos, upload_data, *upload_data_size);
-		info->buffpos += *upload_data_size;
-		*upload_data_size = 0;
+		// Process the query and send the output
+		char *xml_response = NULL;
+		size_t xml_reslen = 0;
+		xmlrpcsrv_process(info->buff, info->buffpos, &xml_response, &xml_reslen);
+		free(info->buff);
 
-		// Terminate with a null just in case
-		*(info->buff + info->buffpos) = 0;
-		return MHD_YES;
+		response = MHD_create_response_from_data(xml_reslen, (void *)xml_response, MHD_YES, MHD_NO);
+		mime_type = "text/xml";
 
-	} else if (!strcmp(method, "GET")) {
+	} else if (!strcmp(method, MHD_HTTP_METHOD_GET)) {
 		// Process GET request
 		
 		const char *replystr = "<html><body>It works !<br/>I'm running as uid %u and gid %u.</body></html>";
@@ -124,24 +121,41 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 		snprintf(buffer, buffsize - 1, replystr, geteuid(), getegid());
 
-		struct MHD_Response *response;
 		response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
-
-		if (!response) {
-			pomlog(POMLOG_ERR "Error while creating response for request \"%s\"", url);
-			return MHD_NO;
-		}
-		
-		int res = MHD_queue_response(connection, MHD_HTTP_OK, response);
-		MHD_destroy_response (response);
-
-		return res;
+		mime_type = "text/html";
 
 	} else {
 		pomlog(POMLOG_INFO "Unknown request %s for %s using version %s", method, url, version);
+		return MHD_NO;
+	}
+
+	if (!response) {
+		pomlog(POMLOG_ERR "Error while creating response for request \"%s\"", url);
+		return MHD_NO;
 	}
 	
+	if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE, mime_type) == MHD_NO) {
+		pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_CONTENT_TYPE " header to the response");
+		goto err;
+	}
+
+	if (MHD_add_response_header(response, MHD_HTTP_HEADER_SERVER, PACKAGE_NAME) == MHD_NO) {
+		pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_SERVER " header to the response");
+		goto err;
+	}
+
+	if (MHD_queue_response(connection, MHD_HTTP_OK, response) == MHD_NO) {
+		pomlog(POMLOG_ERR "Error, could not queue HTTP response");
+		goto err;
+	}
+
+	MHD_destroy_response(response);
+	return MHD_YES;
+
+err:
+	MHD_destroy_response(response);
 	return MHD_NO;
+
 }
 
 
@@ -160,9 +174,14 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 
 int httpd_cleanup() {
 
-	if (httpd_daemon) {
-		MHD_stop_daemon(httpd_daemon);
-		httpd_daemon = NULL;
+	if (httpd_daemon_v4) {
+		MHD_stop_daemon(httpd_daemon_v4);
+		httpd_daemon_v4 = NULL;
+	}
+
+	if (httpd_daemon_v6) {
+		MHD_stop_daemon(httpd_daemon_v6);
+		httpd_daemon_v6 = NULL;
 	}
 
 	return POM_OK;
