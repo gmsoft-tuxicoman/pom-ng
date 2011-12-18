@@ -74,7 +74,7 @@ int analyzer_init(char *mime_type_database) {
 	doc = xmlParseFile(mime_type_database);
 
 	if (!doc) {
-		pomlog(POMLOG_ERR "Error while parsing mime type databse %s", mime_type_database);
+		pomlog(POMLOG_ERR "Error while parsing mime type database %s", mime_type_database);
 		return POM_ERR;
 	}
 
