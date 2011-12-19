@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,13 +23,24 @@
 #include "httpd.h"
 #include "xmlrpcsrv.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 static struct MHD_Daemon *httpd_daemon_v4 = NULL;
 static struct MHD_Daemon *httpd_daemon_v6 = NULL;
+static char *httpd_www_data = NULL;
 
 
-int httpd_init(int port) {
+int httpd_init(int port, char *www_data) {
 
 	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION;
+
+	httpd_www_data = strdup(www_data);
+	if (!httpd_www_data) {
+		pom_oom(strlen(www_data) + 1);
+		return POM_ERR;
+	}
 
 #ifdef MHD_USE_POLL
 	mhd_flags |= MHD_USE_POLL;
@@ -56,6 +67,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 	struct MHD_Response *response = NULL;
 	char *mime_type = NULL;
+	unsigned int status_code = MHD_HTTP_OK;
 	struct httpd_conn_info *info = *con_cls;
 	if (!info) {
 		info = malloc(sizeof(struct httpd_conn_info));
@@ -107,22 +119,90 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 	} else if (!strcmp(method, MHD_HTTP_METHOD_GET)) {
 		// Process GET request
-		
-		const char *replystr = "<html><body>It works !<br/>I'm running as uid %u and gid %u.</body></html>";
 
-		size_t buffsize = strlen(replystr) + 20;
+		if (!strcmp(url, HTTPD_STATUS_URL)) {
+			const char *replystr = "<html><body>It works !<br/>I'm running as uid %u and gid %u.</body></html>";
 
-		char *buffer = malloc(buffsize);
-		if (!buffer) {
-			pomlog(POMLOG_ERR "Not enough memory to allocate a buffer of %u bytes", buffsize);
-			return MHD_NO;
+			size_t buffsize = strlen(replystr) + 20;
+
+			char *buffer = malloc(buffsize);
+			if (!buffer) {
+				pomlog(POMLOG_ERR "Not enough memory to allocate a buffer of %u bytes", buffsize);
+				return MHD_NO;
+			}
+			memset(buffer, 0, buffsize);
+
+			snprintf(buffer, buffsize - 1, replystr, geteuid(), getegid());
+
+			response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
+			mime_type = "text/html";
+		} else if (strstr(url, "..")) {
+			// We're not supposed to have .. in a url
+			status_code = MHD_HTTP_NOT_FOUND;
+
+			char *replystr = "<html><head><title>Not found</title></head><body>Go away.</body></html>";
+			response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+
+		} else {
+			char *filename = malloc(strlen(httpd_www_data) + strlen(url) + 1);
+			if (!filename) {
+				pom_oom(strlen(httpd_www_data) + strlen(url) + 1);
+				goto err;
+			}
+			strcpy(filename, httpd_www_data);
+			strcat(filename, url);
+
+			if (strlen(filename) && filename[strlen(filename) - 1] == '/') {
+				// Directory, add index page.
+				char *index_filename = realloc(filename, strlen(filename) + strlen(HTTPD_INDEX_PAGE) + 1);
+				if (!index_filename) {
+					pom_oom(strlen(filename) + strlen(HTTPD_INDEX_PAGE) + 1);
+					free(filename);
+					goto err;
+				}
+				strcat(index_filename, HTTPD_INDEX_PAGE);
+				filename = index_filename;
+			}
+
+			// Guess the mime type
+			mime_type = "binary/octet-stream";
+			char *ext = strrchr(filename, '.');
+			if (ext) {
+				ext++;
+				if (!strcasecmp(ext, "html") || !strcasecmp(ext, "htm"))
+					mime_type = "text/html";
+				else if (!strcasecmp(ext, "png"))
+					mime_type = "image/png";
+				else if (!strcasecmp(ext, "jpg") || !strcasecmp(ext, "jpeg"))
+					mime_type = "image/jpeg";
+				else if (!strcasecmp(ext, "js"))
+					mime_type = "application/javascript";
+			}
+
+
+			int fd = open(filename, O_RDONLY);
+			size_t file_size;
+
+			if (fd != -1) {
+				struct stat buf;
+				if (fstat(fd, &buf)) {
+					close(fd);
+					fd = -1;
+				} else {
+					file_size = buf.st_size;
+				}
+			}
+
+			if (fd == -1) {
+				char *replystr = "<html><head><title>Not found</title></head><body>File not found</body></html>";
+				response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+				status_code = MHD_HTTP_NOT_FOUND;
+			} else {
+				response = MHD_create_response_from_fd(file_size, fd);
+			}
+
+			free(filename);
 		}
-		memset(buffer, 0, buffsize);
-
-		snprintf(buffer, buffsize - 1, replystr, geteuid(), getegid());
-
-		response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
-		mime_type = "text/html";
 
 	} else {
 		pomlog(POMLOG_INFO "Unknown request %s for %s using version %s", method, url, version);
@@ -134,7 +214,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		return MHD_NO;
 	}
 	
-	if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE, mime_type) == MHD_NO) {
+	if (mime_type && MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE, mime_type) == MHD_NO) {
 		pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_CONTENT_TYPE " header to the response");
 		goto err;
 	}
@@ -144,7 +224,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		goto err;
 	}
 
-	if (MHD_queue_response(connection, MHD_HTTP_OK, response) == MHD_NO) {
+	if (MHD_queue_response(connection, status_code, response) == MHD_NO) {
 		pomlog(POMLOG_ERR "Error, could not queue HTTP response");
 		goto err;
 	}
@@ -183,6 +263,8 @@ int httpd_cleanup() {
 		MHD_stop_daemon(httpd_daemon_v6);
 		httpd_daemon_v6 = NULL;
 	}
+
+	free(httpd_www_data);
 
 	return POM_OK;
 }

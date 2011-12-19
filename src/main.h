@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,9 @@
 
 #ifndef __MAIN_H__
 #define __MAIN_H__
+
+#define POMNG_HTTPD_PORT	8080
+#define POMNG_HTTPD_WWW_DATA	DATAROOT "/pom-ng-webui/"
 
 void signal_handler(int signal);
 int main(int argc, char *argv[]);

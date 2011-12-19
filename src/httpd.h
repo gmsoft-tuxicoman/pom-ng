@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,6 +32,8 @@
 
 #define HTTPD_POST_BUFF_SIZE  512
 
+#define HTTPD_STATUS_URL	"/status.html"
+#define HTTPD_INDEX_PAGE	"index.html"
 
 struct httpd_server_info {
 
@@ -48,7 +50,7 @@ struct httpd_conn_info {
 
 };
 
-int httpd_init(int port);
+int httpd_init(int port, char* www_data);
 int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls);
 void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
 int httpd_cleanup();

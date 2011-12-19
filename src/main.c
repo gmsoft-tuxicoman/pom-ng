@@ -272,7 +272,7 @@ int main(int argc, char *argv[]) {
 		goto err_xmlrpcsrv;
 	}
 
-	if (httpd_init(8080) != POM_OK) {
+	if (httpd_init(POMNG_HTTPD_PORT, POMNG_HTTPD_WWW_DATA) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting HTTP server");
 		goto err_httpd;
 	}
