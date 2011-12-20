@@ -272,14 +272,16 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 		
 		if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
 			// Don't provide a default value for immutable parameters
-			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s}",
-							"name", p->name,
-							"value", value,
-							"description", p->description);
-		} else {
 			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s}",
 							"name", p->name,
 							"value", value,
+							"type", ptype_get_name(p->value),
+							"description", p->description);
+		} else {
+			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s,s:s}",
+							"name", p->name,
+							"value", value,
+							"type", ptype_get_name(p->value),
 							"default_value", p->default_value,
 							"description", p->description);
 		}
