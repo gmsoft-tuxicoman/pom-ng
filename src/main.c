@@ -56,6 +56,9 @@ void signal_handler(int signal) {
 			if (running)
 				halt_signal("Input process died :-(\n");
 			break;
+		case SIGPIPE:
+			// Ignore for now
+			break;
 		case SIGINT:
 		case SIGTERM:
 		default:
@@ -220,6 +223,7 @@ int main(int argc, char *argv[]) {
 	sigaction(SIGINT, &mysigaction, NULL);
 	sigaction(SIGCHLD, &mysigaction, NULL);
 	sigaction(SIGTERM, &mysigaction, NULL);
+	sigaction(SIGPIPE, &mysigaction, NULL);
 
 	// Initialize components
 	
