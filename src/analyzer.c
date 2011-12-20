@@ -514,10 +514,16 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		// We need to perform some magic
 		if (pload->buff_pos > ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE || (pload->expected_size && pload->expected_size < ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE)) {
 			// We have enough to perform some magic
+
+			// libmagic is no thread safe ...
+			static pthread_mutex_t magic_lock = PTHREAD_MUTEX_INITIALIZER;
+			pom_mutex_lock(&magic_lock);
+
 			char *magic_mime_type = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
 			if (!magic_mime_type) {
 				pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
 				pload->state = analyzer_pload_buffer_state_error;
+				pom_mutex_unlock(&magic_lock);
 				return POM_ERR;
 			}
 			struct analyzer_pload_type *magic_pload_type = analyzer_pload_type_get_by_mime_type(magic_mime_type);
@@ -527,6 +533,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				pomlog(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_mime_type);
 				pload->type = magic_pload_type;
 			}
+
+			pom_mutex_unlock(&magic_lock);
 
 			pload->state = analyzer_pload_buffer_state_partial;
 		}
