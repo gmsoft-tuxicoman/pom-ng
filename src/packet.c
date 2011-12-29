@@ -35,7 +35,7 @@
 #define debug_stream_parser(x ...)
 #endif
 
-#if 1
+#if 0
 #define debug_stream(x ...) pomlog(POMLOG_DEBUG "stream: " x)
 #else
 #define debug_stream(x ...)
@@ -569,6 +569,76 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	return POM_OK;
 }
 
+static int packet_stream_is_packet_old_dupe(struct packet_stream *stream, struct packet_stream_pkt *pkt, int direction) {
+
+	uint32_t end_seq = pkt->seq + pkt->plen;
+	uint32_t cur_seq = stream->cur_seq[direction];
+
+	if ((cur_seq > end_seq && cur_seq - end_seq < PACKET_HALF_SEQ)
+		|| (cur_seq < end_seq && end_seq - cur_seq > PACKET_HALF_SEQ)) {
+		// cur_seq is after the end of the packet, discard it
+		return 1;
+	}
+	
+	return 0;
+}
+
+static int packet_stream_remove_dupe_bytes(struct packet_stream *stream, struct packet_stream_pkt *pkt, int direction) {
+
+	uint32_t cur_seq = stream->cur_seq[direction];
+	if ((cur_seq > pkt->seq && cur_seq - pkt->seq < PACKET_HALF_SEQ)
+		|| (cur_seq < pkt->seq && pkt->seq - cur_seq > PACKET_HALF_SEQ)) {
+		// We need to discard some of the packet
+		uint32_t dupe = cur_seq - pkt->seq;
+
+		if (dupe > pkt->stack[pkt->stack_index].plen) {
+			pomlog(POMLOG_ERR "Internal error while computing duplicate bytes");
+			return POM_ERR;
+		}
+		pkt->stack[pkt->stack_index].pload += dupe;
+		pkt->stack[pkt->stack_index].plen -= dupe;
+		pkt->seq += dupe;
+	}
+
+	return POM_OK;
+}
+
+static int packet_stream_is_packet_next(struct packet_stream *stream, struct packet_stream_pkt *pkt, int direction) {
+
+	int rev_direction = (direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
+	uint32_t cur_seq = stream->cur_seq[direction];
+	uint32_t rev_seq = stream->cur_seq[rev_direction];
+
+
+	// Check that there is no gap with what we expect
+	if ((cur_seq < pkt->seq && pkt->seq - cur_seq < PACKET_HALF_SEQ)
+		|| (cur_seq > pkt->seq && cur_seq - pkt->seq > PACKET_HALF_SEQ)) {
+		// There is a gap
+		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : GAP : cur_seq %u, rev_seq %u", stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
+		return 0;
+	}
+
+
+	if (stream->flags & PACKET_FLAG_STREAM_BIDIR) {
+		// There is additional checking for bi dir stream
+
+	
+		if ((rev_seq < pkt->ack && pkt->ack - rev_seq < PACKET_HALF_SEQ)
+			|| (rev_seq > pkt->ack && rev_seq - pkt->ack > PACKET_HALF_SEQ)) {
+			// The host processed data in the reverse direction which we haven't processed yet
+			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
+			return 0;
+		}
+
+	}
+
+
+	// This packet can be processed
+	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : is next : cur_seq %u, rev_seq %u", stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
+
+	return 1;
+
+}
 
 int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack) {
 
@@ -579,10 +649,11 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : start", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
-	// Check if the packet is worth processing
 	struct proto_process_stack *cur_stack = &stack[stack_index];
 	int direction = cur_stack->direction;
 
+
+	// Update the stream flags
 	if (stream->flags & PACKET_FLAG_STREAM_BIDIR) {
 
 		// Update flags
@@ -594,56 +665,35 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	}
 
+	// Put this packet in our struct packet_stream_pkt
+	struct packet_stream_pkt spkt = {0};
+	spkt.pkt = pkt;
+	spkt.seq = seq;
+	spkt.ack = ack;
+	spkt.plen = cur_stack->plen;
+	spkt.stack = stack;
+
+
+	// Check if the packet is worth processing
 	uint32_t cur_seq = stream->cur_seq[direction];
-	uint32_t end_seq = seq + cur_stack->plen;
 	if (cur_seq != seq) {
-		if ((cur_seq > end_seq && cur_seq - end_seq < PACKET_HALF_SEQ)
-			|| (cur_seq < end_seq && end_seq - cur_seq > PACKET_HALF_SEQ)) {
+		if (packet_stream_is_packet_old_dupe(stream, &spkt, direction)) {
 			// cur_seq is after the end of the packet, discard it
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : discard", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 			pom_mutex_unlock(&stream->lock);
 			return POM_OK;
 		}
 
-		// cur_seq is before the end of the packet
-		
-
-		if ((cur_seq > seq && cur_seq - seq < PACKET_HALF_SEQ)
-			|| (cur_seq < seq && seq - cur_seq > PACKET_HALF_SEQ)) {
-			// We need to discard some of the packet
-			uint32_t dupe = cur_seq - seq;
-
-			if (dupe > cur_stack->plen) {
-				pomlog(POMLOG_ERR "Internal error while computing duplicate bytes");
-				return POM_ERR;
-			}
-			cur_stack->pload += dupe;
-			cur_stack->plen -= dupe;
-			seq += dupe;
-		}
+		if (packet_stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR)
+			return POM_ERR;
 	}
 
 
 	// Ok let's process it then
-	int rev_direction = (direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
-	uint32_t rev_seq = stream->cur_seq[rev_direction];
 
 	// Check if it is the packet we're waiting for
-	if (
-		// Check sequence in the current direction
-		(cur_seq == seq) &&
-		
-		( // Check the ack if appropriate
+	if (packet_stream_is_packet_next(stream, &spkt, direction)) {
 
-			// If it's a bi-dir stream
-			( (stream->flags & PACKET_FLAG_STREAM_BIDIR) &&
-
-				// And that the remote end did not process something else in the reverse direction
-				((ack <= rev_seq && rev_seq - ack < PACKET_HALF_SEQ)
-				|| (ack > rev_seq && ack - rev_seq > PACKET_HALF_SEQ))
-
-			)
-		)) {
 		// Process it
 		stream->cur_seq[direction] += cur_stack->plen;
 		stream->cur_ack[direction] = ack;
@@ -775,8 +825,6 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 
 	struct packet_stream_pkt *res = NULL;
 
-	// Check if packet contains duplicate bytes
-	
 	int dirs[2] = { *direction, (*direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD) };
 
 	int i, cur_dir;
@@ -784,7 +832,6 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 		
 		*direction = dirs[i];
 		cur_dir = *direction;
-		int rev_dir = (cur_dir == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
 
 		while (stream->head[cur_dir]) {
 			
@@ -794,96 +841,45 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 				debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : buffer full", stream, res->pkt->ts.tv_sec, res->pkt->ts.tv_usec, res->seq, res->ack);
 				break; // Buffer is full, proceed with dequeueing
 			}
-			
+		
+
+			if (!packet_stream_is_packet_next(stream, res, *direction)) {
+				res = NULL;
+				break;
+			}
 
 			uint32_t cur_seq = stream->cur_seq[cur_dir];
 			uint32_t seq = res->seq;
-			uint32_t ack = res->ack;
-			uint32_t rev_seq = stream->cur_seq[rev_dir];
-			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : evaluating cur_seq %u, rev_seq %u", stream, res->pkt->ts.tv_sec, res->pkt->ts.tv_usec, res->seq, res->ack, cur_seq, rev_seq);
+			// Check for duplicate bytes
+			if (cur_seq != seq) {
 
-			if (
-				// Check sequence in the current direction
-				(cur_seq == seq) &&
-				
-				( // Check the ack if appropriate
-
-					// If it's a bid-dir stream
-					( (stream->flags & PACKET_FLAG_STREAM_BIDIR) &&
-
-						// And that the remote end did not process something else in the reverse direction
-						((ack <= rev_seq && rev_seq - ack < PACKET_HALF_SEQ)
-						|| (ack > rev_seq && ack - rev_seq > PACKET_HALF_SEQ))
-
-					)
-				)) {
-
-				// No overlap
-				break;
-			}
-
-
-			// Check if we have everything we need
-			if (
-				// Check that there is no gap with what we expect
-				((cur_seq < seq && seq - cur_seq < PACKET_HALF_SEQ)
-				|| (cur_seq > seq && cur_seq - seq > PACKET_HALF_SEQ)) ||
-
-				// Check that the reverse direction has already processed this packet
-				(
-					(stream->flags & PACKET_FLAG_STREAM_BIDIR) &&
-
-					( (rev_seq < ack && ack - rev_seq < PACKET_HALF_SEQ)
-					|| (rev_seq > ack && rev_seq - ack > PACKET_HALF_SEQ) )
-
-				)
-				
-				) {
-
-				// There is a gap
-				res = NULL;
-				break;
-
-			}
-
-			// Some of the bytes of this packet were already processed
-			
-
-			if (res->next) {
-				// Check if the next packet starts before or at the current sequence
-				uint32_t next_seq = res->next->seq;
-				if ((seq >= next_seq && seq - next_seq < PACKET_HALF_SEQ)
-					|| (seq < next_seq && next_seq - seq > PACKET_HALF_SEQ)) {
-
-					// Check if the next packet contains more bytes than the current on
-					if (res->next->plen - (seq - res->next->seq) > res->plen - (seq - res->seq)) {
-						// Next packet is completely duplicate, discard it
-						stream->head[cur_dir] = res->next;
-						if (res->next) {
-							res->next->prev = NULL;
-						} else {
-							stream->tail[cur_dir] = NULL;
-						}
-						stream->cur_buff_size -= res->plen;
-						packet_pool_release(res->pkt);
-						free(res);
-						continue;
+				if (packet_stream_is_packet_old_dupe(stream, res, i)) {
+					// Packet is a duplicate, remove it
+					stream->head[cur_dir] = res->next;
+					if (res->next) {
+						res->next->prev = NULL;
+					} else {
+						stream->tail[cur_dir] = NULL;
 					}
+
+					if (res->prev) {
+						pomlog(POMLOG_WARN "Dequeing packet which wasn't the first in the list. This shouldn't happen !");
+						res->prev->next = res->next;
+					}
+					
+					stream->cur_buff_size -= res->plen;
+					packet_pool_release(res->pkt);
+					free(res);
+					// Next packet please
+					continue;
+				} else {
+					if (packet_stream_remove_dupe_bytes(stream, res, *direction) == POM_ERR)
+						return NULL;
+
 				}
 			}
-			
-			// Remove duplicate bytes
-			uint32_t dupe = cur_seq - seq;
 
-			if (dupe > res->plen) {
-				pomlog(POMLOG_ERR "Internal error while computing duplicate bytes");
-				return NULL;
-			}
-			res->seq += dupe;
-			res->stack[res->stack_index].pload += dupe;
-			res->stack[res->stack_index].plen -= dupe;
-			res->plen -= dupe;
-			stream->cur_buff_size -= dupe;
+			
 			break;
 			
 		}
