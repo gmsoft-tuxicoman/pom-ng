@@ -557,7 +557,7 @@ int core_set_state(enum core_state state) {
 
 		now.tv_usec -= core_start_time.tv_usec;
 		now.tv_sec -= core_start_time.tv_sec;
-		pomlog(POMLOG_DEBUG "Core was running for %u.%u secs", now.tv_sec, now.tv_usec);
+		pomlog(POMLOG_INFO "Core was running for %u.%u secs", now.tv_sec, now.tv_usec);
 
 	} else if (state == core_state_running) {
 		gettimeofday(&core_start_time, NULL);
