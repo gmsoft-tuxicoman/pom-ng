@@ -37,6 +37,7 @@ int output_init() {
 		return POM_ERR;
 
 	output_registry_class->instance_add = output_instance_add;
+	output_registry_class->instance_remove = output_instance_remove;
 
 	return POM_OK;
 }
