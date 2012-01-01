@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@
 #include "packet.h"
 #include "main.h"
 #include "core.h"
-#include "input_client.h"
 
 #include <pom-ng/ptype.h>
 
@@ -43,7 +42,140 @@
 
 static struct packet *packet_head, *packet_unused_head;
 static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
-unsigned int num = 0;
+
+
+#define PACKET_BUFFER_POOL_COUNT 8
+static size_t packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT] = {
+	80, // For small packets
+	200, // Special one for MPEG packets which are 188 bytes long
+	600, // Many packets are 576 bytes long
+	1300, // Intermediate one
+	1600, // For packets of size 1500 (and a bit more in case of vlan/wifi/etc)
+	2048, // Big packets
+	4096, // Even bigger packets
+	9100, // Jumbo frames
+};
+static struct packet_buffer_pool packet_buffer_pool[PACKET_BUFFER_POOL_COUNT] = {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}};
+static pthread_mutex_t packet_buffer_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset) {
+
+	if (align_offset >= PACKET_BUFFER_ALIGNMENT) {
+		pomlog(POMLOG_ERR "Alignment offset too big");
+		return POM_ERR;
+	}
+
+	size_t tot_size = size + align_offset + PACKET_BUFFER_ALIGNMENT;
+
+	if (tot_size > packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT - 1]) {
+		pomlog(POMLOG_ERR "Requested size too big : %llu", size);
+		return POM_ERR;
+	}
+
+	int i;
+	for (i = 0; i < PACKET_BUFFER_POOL_COUNT && packet_buffer_pool_size[i] < tot_size; i++);
+
+	struct packet_buffer *pb = NULL;
+
+	pom_mutex_lock(&packet_buffer_pool_mutex);
+
+	if (!packet_buffer_pool[i].unused) {
+
+		// Allocate a new one
+		size_t alloc_size = packet_buffer_pool_size[i] + sizeof(struct packet_buffer);
+
+		pb = malloc(alloc_size);
+		if (!pb) {
+			pom_mutex_unlock(&packet_buffer_pool_mutex);
+			pom_oom(alloc_size);
+			return POM_ERR;
+		}
+		memset(pb, 0, alloc_size);
+
+		pb->base_buff = (void*)pb + sizeof(struct packet_buffer);
+		pb->aligned_buff = (void*) (((long)pb->base_buff & ~(PACKET_BUFFER_ALIGNMENT - 1)) + PACKET_BUFFER_ALIGNMENT + align_offset);
+		pb->pool_id = i;
+
+	} else {
+		// Reuse an unused one
+		pb = packet_buffer_pool[i].unused;
+		if (pb->next)
+			pb->next->prev = NULL;
+
+		packet_buffer_pool[i].unused = pb->next;
+
+
+	}
+
+	// Put this one in the used list
+
+	pb->next = packet_buffer_pool[i].used;
+	if (pb->next)
+		pb->next->prev = pb;
+	packet_buffer_pool[i].used = pb;
+
+	pom_mutex_unlock(&packet_buffer_pool_mutex);
+
+	pkt->pkt_buff = pb;
+	pkt->len = size;
+	pkt->buff = pb->aligned_buff;
+
+	return POM_OK;
+}
+
+void packet_buffer_pool_release(struct packet_buffer *pb) {
+
+	pom_mutex_lock(&packet_buffer_pool_mutex);
+	if (pb->pool_id >= PACKET_BUFFER_POOL_COUNT) {
+		pom_mutex_unlock(&packet_buffer_pool_mutex);
+		pomlog(POMLOG_ERR "Internal error, packet pool id too big");
+		halt("Internal error");
+		return;
+	}
+
+	if (pb->next)
+		pb->next->prev = pb->prev;
+	
+	if (pb->prev)
+		pb->prev->next = pb->next;
+	else
+		packet_buffer_pool[pb->pool_id].used = pb->next;
+
+	pb->next = packet_buffer_pool[pb->pool_id].unused;
+	if (pb->next)
+		pb->next->prev = pb;
+	pb->prev = NULL;
+	packet_buffer_pool[pb->pool_id].unused = pb;
+
+	pom_mutex_unlock(&packet_buffer_pool_mutex);
+	
+}
+
+int packet_buffer_pool_cleanup() {
+
+	pom_mutex_lock(&packet_buffer_pool_mutex);
+
+	int i;
+	for (i = 0; i < PACKET_BUFFER_POOL_COUNT; i++) {
+		while (packet_buffer_pool[i].used) {
+			struct packet_buffer *tmp = packet_buffer_pool[i].used;
+			pomlog(POMLOG_WARN "A buffer was still in use on packet_buffer_pool_cleanup().");
+			packet_buffer_pool[i].used = tmp->next;
+			free(tmp);
+		}
+
+		while (packet_buffer_pool[i].unused) {
+			struct packet_buffer *tmp = packet_buffer_pool[i].unused;
+			packet_buffer_pool[i].unused = tmp->next;
+			free(tmp);
+		}
+
+	}
+
+	
+	pom_mutex_unlock(&packet_buffer_pool_mutex);
+	return POM_OK;
+}
 
 struct packet *packet_pool_get() {
 
@@ -86,26 +218,23 @@ struct packet *packet_clone(struct packet *src, unsigned int flags) {
 
 	struct packet *dst = NULL;
 
-	if (!(flags & PACKET_FLAG_FORCE_NO_COPY) && src->input_pkt) {
-		// It uses the input buffer, we cannot hold this ressource
+	if (!(flags & PACKET_FLAG_FORCE_NO_COPY) && !src->pkt_buff) {
+		// If it doesn't have a pkt_buff structure, it means it was not allocated by us
+		// That means that the packet is somewhere probably in a ringbuffer (pcap)
 		dst = packet_pool_get();
 		if (!dst)
 			return NULL;
-
-		memcpy(&dst->ts, &src->ts, sizeof(struct timeval));
-		dst->len = src->len;
-		dst->buff = malloc(src->len);
-		if (!dst->buff) {
-			pom_oom(dst->len);
+		// FIXME get the alignment offset from the input
+		if (packet_buffer_pool_get(dst, src->len, 0) != POM_OK) {
 			packet_pool_release(dst);
 			return NULL;
 		}
 
+		memcpy(&dst->ts, &src->ts, sizeof(struct timeval));
 		memcpy(dst->buff, src->buff, src->len);
 
 		dst->datalink = src->datalink;
 		dst->input = src->input;
-		dst->id = src->id;
 
 		// Multipart and stream are not copied
 		
@@ -143,9 +272,11 @@ int packet_pool_release(struct packet *p) {
 	else
 		packet_head = p->next;
 
-	struct input_client_entry *i = p->input;
-	struct input_packet *input_pkt = p->input_pkt;
-	unsigned char *buff = p->buff;
+	if (p->pkt_buff) {
+		packet_buffer_pool_release(p->pkt_buff);
+		p->pkt_buff = NULL;
+		p->buff = NULL;
+	}
 
 	memset(p, 0, sizeof(struct packet));
 	
@@ -163,15 +294,7 @@ int packet_pool_release(struct packet *p) {
 	if (multipart)
 		res = packet_multipart_cleanup(multipart);
 
-	if (input_pkt) {
-		if (input_client_release_packet(i, input_pkt) != POM_OK) {
-			res = POM_ERR;
-			pomlog(POMLOG_ERR "Error while releasing packet from the buffer");
-		}
-	} else {
-		// Packet doesn't come from an input -> free the buffer
-		free(buff);
-	}
+
 
 	return res;
 }
@@ -574,7 +697,7 @@ static int packet_stream_is_packet_old_dupe(struct packet_stream *stream, struct
 	uint32_t end_seq = pkt->seq + pkt->plen;
 	uint32_t cur_seq = stream->cur_seq[direction];
 
-	if ((cur_seq > end_seq && cur_seq - end_seq < PACKET_HALF_SEQ)
+	if ((cur_seq >= end_seq && cur_seq - end_seq < PACKET_HALF_SEQ)
 		|| (cur_seq < end_seq && end_seq - cur_seq > PACKET_HALF_SEQ)) {
 		// cur_seq is after the end of the packet, discard it
 		return 1;
@@ -591,12 +714,13 @@ static int packet_stream_remove_dupe_bytes(struct packet_stream *stream, struct 
 		// We need to discard some of the packet
 		uint32_t dupe = cur_seq - pkt->seq;
 
-		if (dupe > pkt->stack[pkt->stack_index].plen) {
+		if (dupe > pkt->plen) {
 			pomlog(POMLOG_ERR "Internal error while computing duplicate bytes");
 			return POM_ERR;
 		}
 		pkt->stack[pkt->stack_index].pload += dupe;
 		pkt->stack[pkt->stack_index].plen -= dupe;
+		pkt->plen -= dupe;
 		pkt->seq += dupe;
 	}
 
@@ -672,6 +796,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	spkt.ack = ack;
 	spkt.plen = cur_stack->plen;
 	spkt.stack = stack;
+	spkt.stack_index = stack_index;
 
 
 	// Check if the packet is worth processing

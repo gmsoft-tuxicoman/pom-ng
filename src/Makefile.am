@@ -19,11 +19,10 @@
 include $(top_srcdir)/Makefile.common
 
 XMLRPC_SRC = xmlrpcsrv.c xmlrpcsrv.h xmlrpccmd.c xmlrpccmd.h xmlrpccmd_registry.c xmlrpccmd_registry.h
-CORE_SRC = ipc.c ipc.h httpd.c httpd.h pomlog.c pomlog.h mod.c mod.h
-INPUT_SRC = input_ipc.c input_ipc.h input_client.c input_client.h input_server.c input_server.h
+CORE_SRC = httpd.c httpd.h pomlog.c pomlog.h mod.c mod.h
 
 bin_PROGRAMS = pom-ng
-pom_ng_SOURCES = main.c main.h $(CORE_SRC) $(XMLRPC_SRC) $(INPUT_SRC)
+pom_ng_SOURCES = main.c main.h $(CORE_SRC) $(XMLRPC_SRC)
 pom_ng_CFLAGS = @libxml2_CFLAGS@ -DPOM_LIBDIR='"@POM_MOD_LIBDIR@"' -DDATAROOT='"$(pkgdatadir)"'
 pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@ @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@ @magic_LIBS@
 

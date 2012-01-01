@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,9 +28,8 @@
 #include <sys/wait.h>
 
 #include "main.h"
-#include "input_server.h"
-#include "input_client.h"
-#include "input_ipc.h"
+#include "input.h"
+#include "core.h"
 #include "xmlrpcsrv.h"
 #include "httpd.h"
 #include "registry.h"
@@ -45,9 +44,7 @@
 #include <pom-ng/ptype.h>
 
 static char* shutdown_reason = NULL;
-static pid_t input_process_pid = 0;
 static int running = 1, shutdown_in_error = 0;
-static pthread_t input_ipc_thread;
 
 void signal_handler(int signal) {
 
@@ -165,41 +162,6 @@ int main(int argc, char *argv[]) {
 
 	pomlog("Starting " PACKAGE_NAME " ...");
 
-	// Create IPC key and queue
-	
-	key_t input_ipc_key = 0;
-	
-	int i;
-	for (i = 0; i < strlen(PACKAGE_NAME); i++)
-		input_ipc_key += PACKAGE_NAME[i];
-	input_ipc_key += getpid();
-
-	int input_ipc_queue = input_ipc_create_queue(input_ipc_key);
-	if (input_ipc_queue == POM_ERR) {
-		pomlog(POMLOG_ERR "Unable to create IPC message queue");
-		return -1;
-	}
-	
-	// Change the permissions of the queue to the low privilege user
-	if (uid || gid) {
-		if (input_ipc_set_uid_gid(input_ipc_queue, uid, gid) != POM_OK) {
-			pomlog(POMLOG_ERR "Could not set right permissions on the IPC queue");
-			return -1;
-		}
-	}
-
-	// Fork the input process while we have root privileges
-	input_process_pid = fork();
-
-	if (input_process_pid == -1) {
-		pomlog(POMLOG_ERR "Error while forking()");
-		return -1;
-	}
-
-	if (!input_process_pid) { // Child
-		return input_server_main(input_ipc_key, uid, gid);
-	}
-
 	// Drop privileges if provided
 
 	if (gid && setegid(gid)) {
@@ -212,7 +174,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (uid || gid)
-		pomlog(POMLOG_ERR "Main process dropped privileges to uid/gid %u/%u", geteuid(), getegid());
+		pomlog(POMLOG_ERR "Dropped privileges to uid/gid %u/%u", geteuid(), getegid());
 
 	// Install signal handler
 
@@ -227,15 +189,6 @@ int main(int argc, char *argv[]) {
 
 	// Initialize components
 	
-	// Wait for the IPC queue to be created
-	int input_queue_id = input_ipc_get_queue(input_ipc_key);
-	if (input_queue_id == -1)
-		goto err_early;
-
-	// Init the input IPC log thread
-	if (pomlog_ipc_thread_init(&input_queue_id) != POM_OK)
-		goto err_early;
-
 	if (registry_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the registry");
 		goto err_registry;
@@ -251,18 +204,14 @@ int main(int argc, char *argv[]) {
 		goto err_analyzer;
 	}
 
+	if (input_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the inputs");
+		goto err_input;
+	}
+
 	if (output_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the outputs");
 		goto err_output;
-	}
-
-	if (input_client_init() != POM_OK) {
-		pomlog(POMLOG_ERR "Error while initializing the input_client module");
-		goto err_input_client;
-	}
-
-	if (input_ipc_create_processing_thread(&input_ipc_thread, &input_queue_id, &running) != POM_OK) {
-		goto err_input_ipc_thread;
 	}
 
 	// Load all the available modules
@@ -302,38 +251,24 @@ int main(int argc, char *argv[]) {
 
 	// Cleanup components
 
-	packet_pool_cleanup();
-
 
 	core_cleanup(shutdown_in_error);
 
-
-	
+	packet_pool_cleanup();
+	packet_buffer_pool_cleanup();
+	input_cleanup();
 	httpd_cleanup();
 	xmlrpcsrv_cleanup();
-	timers_cleanup();
-	input_client_cleanup(shutdown_in_error);
 	output_cleanup();
 	analyzer_cleanup();
 	proto_cleanup();
 	registry_cleanup();
-
-	input_ipc_server_halt();
-	pomlog("Waiting for input process to terminate ...");
-	waitpid(input_process_pid, NULL, 0);
-	input_ipc_cleanup();
-
-	pthread_cancel(input_ipc_thread);
-	pthread_join(input_ipc_thread, NULL);
+	timers_cleanup();
 
 	mod_unload_all();
 
 
 	pomlog_cleanup();
-	// Delete the IPC queue
-	if (msgctl(input_ipc_queue, IPC_RMID, 0)) {
-		printf("Unable to remove the IPC msg queue while terminating\n");
-	}
 	printf(PACKAGE_NAME " shutted down\n");
 
 
@@ -349,11 +284,8 @@ err_httpd:
 err_xmlrpcsrv:
 	mod_unload_all();
 err_mod:
-	pthread_cancel(input_ipc_thread);
-	pthread_join(input_ipc_thread, NULL);
-err_input_ipc_thread:
-	input_client_cleanup(shutdown_in_error);
-err_input_client:
+	input_cleanup();
+err_input:
 	output_cleanup();
 err_output:
 	analyzer_cleanup();
@@ -362,19 +294,8 @@ err_analyzer:
 err_proto:
 	registry_cleanup();
 err_registry:
-	input_ipc_server_halt();
-	pomlog("Waiting for input process to terminate ...");
-	waitpid(input_process_pid, NULL, 0);
-	input_ipc_cleanup();
-err_early:
 	timers_cleanup();
 	pomlog_cleanup();
-
-	// Delete the IPC queue
-	if (msgctl(input_ipc_queue, IPC_RMID, 0)) {
-		printf("Unable to remove the IPC msg queue while terminating\n");
-	}
-
 
 	printf(PACKAGE_NAME " failed to initialize\n");
 	return -1; 
@@ -385,6 +306,7 @@ int halt(char *reason) {
 		return POM_ERR;
 
 	shutdown_in_error = 1;
+	kill(getpid(), SIGINT);
 
 	return POM_OK;
 }

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,7 +20,6 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/core.h>
-#include <pom-ng/input_client.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_uint16.h>
 
@@ -145,26 +144,26 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 
 	struct proto_mpeg_ts_conntrack_priv *priv = s->ce->priv;
 
-	unsigned int input_id = p->input->id;
 	// Find the MPEG stream from the right input
+	
+	int i;
+	for (i = 0; i < priv->streams_array_size && priv->streams[i].input != p->input; i++);
 
-	if (priv->streams_array_size < (input_id + 1)) {
-		struct proto_mpeg_ts_stream *new_streams = realloc(priv->streams, sizeof(struct proto_mpeg_ts_stream) * (input_id + 1));
+	struct proto_mpeg_ts_stream *stream = NULL;
+	if (i >= priv->streams_array_size) {
+		// New stream
+		struct proto_mpeg_ts_stream *new_streams = realloc(priv->streams, sizeof(struct proto_mpeg_ts_stream) * (priv->streams_array_size + 1));
 		if (!new_streams) {
 			pom_mutex_unlock(&s->ce->lock);
-			pom_oom(sizeof(struct proto_mpeg_ts_stream) * (input_id + 1));
+			pom_oom(sizeof(struct proto_mpeg_ts_stream) * (priv->streams_array_size + 1));
 			return PROTO_ERR;
 		}
 		priv->streams = new_streams;
-		memset(&priv->streams[priv->streams_array_size], 0, sizeof(struct proto_mpeg_ts_stream) * ((p->input->id + 1) - priv->streams_array_size));
-		priv->streams_array_size = p->input->id + 1;
+		memset(&priv->streams[priv->streams_array_size], 0, sizeof(struct proto_mpeg_ts_stream));
+		priv->streams_array_size++;
+		stream = &priv->streams[priv->streams_array_size];
 
-	}
-
-	struct proto_mpeg_ts_stream *stream = &priv->streams[p->input->id];
-	if (!stream->ce) {
-		// New stream
-		stream->input_id = input_id;
+		stream->input = p->input;
 		stream->type = stream_type;
 		stream->ppriv = ppriv;
 
@@ -176,15 +175,18 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 		stream->ce = s->ce;
 		stream->last_seq = (buff[3] - 1) & 0xF;
 
-	}
-
-	if (!stream->stream) {
 		char *force_no_copy = PTYPE_BOOL_GETVAL(ppriv->param_force_no_copy);
 		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_stream, stream);
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;
 		}
+
+		// Remove the conntrack timer if any
+		conntrack_delayed_cleanup(s->ce, 0);
+
+	} else {
+		stream = &priv->streams[i];
 	}
 
 	pom_mutex_unlock(&s->ce->lock);
@@ -231,7 +233,7 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 
 	}
 	if (missed)
-		pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %u", missed, stream->input_id);
+		pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %u", missed, stream->input->name);
 
 	if (stream->multipart) {
 
@@ -399,7 +401,12 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 
 int proto_mpeg_ts_stream_cleanup(void *priv) {
 
+
 	struct proto_mpeg_ts_stream *stream = priv;
+	
+	pom_mutex_lock(&stream->ce->lock);
+
+	// Cleanup the stream stuff
 	if (stream->multipart)
 		packet_multipart_cleanup(stream->multipart);
 	if (stream->stream)
@@ -407,7 +414,39 @@ int proto_mpeg_ts_stream_cleanup(void *priv) {
 
 	timer_cleanup(stream->t);
 	
-	memset(stream, 0, sizeof(struct proto_mpeg_ts_stream));
+	// Remove it from the table
+	struct proto_mpeg_ts_conntrack_priv *cpriv = stream->ce->priv;
+
+	// Find out where it is in the table
+	int i;
+	for (i = 0; i < cpriv->streams_array_size && cpriv->streams[i].input != stream->input; i++);
+
+	if (i >= cpriv->streams_array_size) {
+		pomlog(POMLOG_ERR "Internal error, stream not found in the conntrack priv while cleaning it up");
+		pom_mutex_unlock(&stream->ce->lock);
+		return POM_ERR;
+	}
+
+	if (cpriv->streams_array_size == 1) {
+		// Cleanup the conntrack in 10 seconds if no more packets
+		conntrack_delayed_cleanup(stream->ce, 10);
+	} else {
+		size_t len = (cpriv->streams_array_size - i - 1) * sizeof(struct proto_mpeg_ts_stream);
+		if (len)
+			memmove(&cpriv->streams[i], &cpriv->streams[i+1], len);
+	}
+
+	cpriv->streams_array_size--;
+	struct proto_mpeg_ts_stream *new_streams = realloc(cpriv->streams, sizeof(struct proto_mpeg_ts_stream) * cpriv->streams_array_size);
+
+	if (cpriv->streams_array_size && !new_streams) {
+		// Not really an issue as we lowered the size anyway
+		pom_oom(sizeof(struct proto_mpeg_ts_stream) * cpriv->streams_array_size);
+	} else {
+		cpriv->streams = new_streams;
+	}
+	
+	pom_mutex_unlock(&stream->ce->lock);
 
 	return POM_OK;
 }

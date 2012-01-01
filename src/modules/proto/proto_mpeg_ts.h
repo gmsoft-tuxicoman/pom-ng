@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 
 #include <pom-ng/proto.h>
 #include <pom-ng/timer.h>
+#include <pom-ng/input.h>
 
 #define MPEG_TS_LEN 188
 
@@ -51,7 +52,7 @@ struct proto_mpeg_ts_priv {
 
 struct proto_mpeg_ts_stream {
 
-	unsigned int input_id;
+	struct input *input;
 	unsigned int pkt_cur_len;
 	unsigned int pkt_tot_len;
 	struct packet_multipart *multipart;

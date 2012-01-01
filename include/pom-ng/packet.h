@@ -23,22 +23,34 @@
 #define __POM_NG_PACKET_H__
 
 #include <pom-ng/base.h>
+#include <pom-ng/conntrack.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
 #define PACKET_FLAG_STREAM_BIDIR	0x2
 
 struct proto_process_stack;
 
+struct packet_buffer {
+
+	void *base_buff;
+	void *aligned_buff;
+	int pool_id;
+	struct packet_buffer *next, *prev;
+
+	// The actual data will be after this
+	
+};
+
 struct packet {
 
 	// Packet description
+	uint64_t id; // Unique packet number per input
+	size_t len;  // Packet length
 	struct timeval ts;
-	size_t len;
 	struct proto *datalink;
 	void *buff;
-	struct input_client_entry *input; // Input the packet came from initially
-	uint64_t id; // Unique packet number per input
-	struct input_packet *input_pkt; // Input packet, present if buff points to the input IPC buffer
+	struct input *input; // Input the packet came from initially
+	struct packet_buffer *pkt_buff; // Structure pointing to the buffer information (if any)
 	struct packet_multipart *multipart; // Multipart details if the current packet is compose of multiple ones
 	unsigned int refcount; // Reference count
 	struct packet *prev, *next; // Used internally
@@ -105,7 +117,11 @@ struct packet_stream_parser {
 	unsigned int plen;
 };
 
+int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset);
+
+struct packet *packet_pool_get();
 struct packet *packet_clone(struct packet *src, unsigned int flags);
+int packet_pool_release(struct packet *p);
 
 struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep, unsigned int flags);
 int packet_multipart_cleanup(struct packet_multipart *m);

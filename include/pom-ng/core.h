@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,5 +25,6 @@
 #include <pom-ng/proto.h>
 
 int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
+int core_queue_packet(struct packet *p);
 
 #endif

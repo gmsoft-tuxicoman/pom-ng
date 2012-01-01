@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,7 +21,6 @@
 #include "analyzer.h"
 #include "output.h"
 #include "mod.h"
-#include "input_server.h"
 #include "common.h"
 
 #include <libxml/parser.h>
@@ -271,11 +270,6 @@ int analyzer_register(struct analyzer_reg *reg_info) {
 	if (reg_info->api_ver != ANALYZER_API_VER) {
 		pomlog(POMLOG_ERR "Cannot register analyzer as API version differ : expected %u got %u", ANALYZER_API_VER, reg_info->api_ver);
 		return POM_ERR;
-	}
-
-	if (input_server_is_current_process()) {
-		pomlog(POMLOG_DEBUG "Not loading analyzer %s in the input process", reg_info->name);
-		return POM_OK;
 	}
 
 	pom_mutex_lock(&analyzer_lock);

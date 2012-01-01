@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -38,5 +38,6 @@ struct output_reg {
 int output_init();
 int output_cleanup();
 int output_instance_add(char *type, char *name);
+int output_instance_remove(struct registry_instance *ri);
 int output_instance_start_stop_handler(void *priv, struct ptype *run);
 #endif

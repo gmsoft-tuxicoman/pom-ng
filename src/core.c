@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,11 +23,11 @@
 #include "common.h"
 #include "core.h"
 #include "input.h"
-#include "input_client.h"
 #include "packet.h"
 #include "conntrack.h"
 #include "timer.h"
 #include "main.h"
+#include "proto.h"
 
 // Define this to debug core packets
 //#define CORE_DUMP_PKT_INFO
@@ -128,6 +128,7 @@ err:
 
 int core_cleanup(int emergency_cleanup) {
 
+	core_run = 0;
 
 	if (!emergency_cleanup) {
 		while (core_pkt_queue_head) {
@@ -139,8 +140,6 @@ int core_cleanup(int emergency_cleanup) {
 			sleep(1);
 		}
 	}
-
-	core_run = 0;
 
 	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
 		pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
@@ -160,6 +159,7 @@ int core_cleanup(int emergency_cleanup) {
 	while (core_pkt_queue_head) {
 		struct core_packet_queue *tmp = core_pkt_queue_head;
 		core_pkt_queue_head = tmp->next;
+		packet_pool_release(tmp->pkt);
 		free(tmp);
 		pomlog(POMLOG_WARN "A packet was still in the buffer");
 	}
@@ -174,7 +174,7 @@ int core_cleanup(int emergency_cleanup) {
 	return POM_OK;
 }
 
-int core_queue_packet(struct packet *p, struct input_client_entry *i) {
+int core_queue_packet(struct packet *p) {
 
 	pom_mutex_lock(&core_pkt_queue_mutex);
 
@@ -183,6 +183,11 @@ int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 		if (pthread_cond_wait(&core_pkt_queue_restart_cond, &core_pkt_queue_mutex)) {
 			pomlog(POMLOG_ERR "Error while waiting for overrun mutex condition : %s", pom_strerror(errno));
 			pom_mutex_unlock(&core_pkt_queue_mutex);
+			return POM_ERR;
+		}
+
+		if (!core_run) {
+			// We cleaned up early
 			return POM_ERR;
 		}
 	}
@@ -209,7 +214,6 @@ int core_queue_packet(struct packet *p, struct input_client_entry *i) {
 
 	memset(tmp, 0, sizeof(struct core_packet_queue));
 	tmp->pkt = p;
-	tmp->input = i;
 	core_pkt_queue_usage++;
 
 	// Add the packet at the end of the queue
@@ -554,10 +558,14 @@ int core_set_state(enum core_state state) {
 			now.tv_sec--;
 			now.tv_usec += 1000000;
 		}
+		pom_mutex_lock(&core_clock_lock);
+		memset(&core_clock, 0, sizeof(struct timeval));
+		pom_mutex_unlock(&core_clock_lock);
+
 
 		now.tv_usec -= core_start_time.tv_usec;
 		now.tv_sec -= core_start_time.tv_sec;
-		pomlog(POMLOG_INFO "Core was running for %u.%u secs", now.tv_sec, now.tv_usec);
+		pomlog(POMLOG_INFO "Core was running for %u.%06u secs", now.tv_sec, now.tv_usec);
 
 	} else if (state == core_state_running) {
 		gettimeofday(&core_start_time, NULL);

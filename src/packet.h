@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,12 +28,20 @@
 
 #define PACKET_HALF_SEQ (0x1 << 31)
 
+#define PACKET_BUFFER_ALIGNMENT 4
+
 #define PACKET_FLAG_STREAM_GOT_FWD_DIR	0x4
 #define PACKET_FLAG_STREAM_GOT_REV_DIR	0x8
 #define PACKET_FLAG_STREAM_GOT_BOTH_DIR	(PACKET_FLAG_STREAM_GOT_FWD_DIR | PACKET_FLAG_STREAM_GOT_REV_DIR)
 
-struct packet *packet_pool_get();
-int packet_pool_release(struct packet *p);
+struct packet_buffer_pool {
+	struct packet_buffer *used;
+	struct packet_buffer *unused;
+
+};
+
+void packet_buffer_pool_release(struct packet_buffer *pb);
+int packet_buffer_pool_cleanup();
 
 
 int packet_info_pool_init(struct packet_info_pool *pool);

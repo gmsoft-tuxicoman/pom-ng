@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,6 +41,8 @@ struct input_pcap_file_priv {
 };
 
 struct input_pcap_priv {
+
+	uint64_t last_pkt_id;
 	pcap_t *p;
 	enum input_pcap_type type;
 	union {
@@ -48,20 +50,23 @@ struct input_pcap_priv {
 		struct input_pcap_file_priv file;
 	} tpriv;
 
+	struct proto_dependency *datalink;
+	unsigned int align_offset;
+
 };
 
 static int input_pcap_mod_register(struct mod_reg *mod);
 static int input_pcap_mod_unregister();
 
+static int input_pcap_common_open(struct input *i);
 
-static int input_pcap_interface_alloc(struct input *i);
+static int input_pcap_interface_init(struct input *i);
 static int input_pcap_interface_open(struct input *i);
 
-static int input_pcap_file_alloc(struct input *i);
+static int input_pcap_file_init(struct input *i);
 static int input_pcap_file_open(struct input *i);
 
 static int input_pcap_read(struct input *i);
-static int input_pcap_get_caps(struct input *i, struct input_caps *ic);
 static int input_pcap_close(struct input *i);
 static int input_pcap_cleanup(struct input *i);
 

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,6 +39,11 @@
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
 
+#include <pom-ng/registry.h>
+
+#include <pom-ng/packet.h>
+#include <pom-ng/core.h>
+
 #include "input_dvb.h"
 
 /// We use a bigger buffer size of the demux interface. This way we can cope with some burst.
@@ -64,31 +69,33 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 
 	int res = POM_OK;
 
-	static struct input_reg_info in_dvb_file;
-	memset(&in_dvb_file, 0, sizeof(struct input_reg_info));
-	in_dvb_file.name = "dvb_file";
-	in_dvb_file.api_ver = INPUT_API_VER;
-	in_dvb_file.alloc = input_dvb_file_alloc;
-	in_dvb_file.open = input_dvb_file_open;
-	in_dvb_file.read = input_dvb_read;
-	in_dvb_file.get_caps = input_dvb_get_caps;
-	in_dvb_file.close = input_dvb_close;
-	in_dvb_file.cleanup = input_dvb_cleanup;
+	static struct input_reg_info in_dvb_device;
+	memset(&in_dvb_device, 0, sizeof(struct input_reg_info));
+	in_dvb_device.name = "dvb_device";
+	in_dvb_device.api_ver = INPUT_API_VER;
+	in_dvb_device.flags = INPUT_REG_FLAG_LIVE;
+	in_dvb_device.mod = mod;
+	in_dvb_device.init = input_dvb_device_init;
+	in_dvb_device.open = input_dvb_device_open;
+	in_dvb_device.read = input_dvb_read;
+	in_dvb_device.close = input_dvb_close;
+	in_dvb_device.cleanup = input_dvb_cleanup;
 
-	res += input_register(&in_dvb_file, mod);
+	res += input_register(&in_dvb_device);
 
 	static struct input_reg_info in_dvb_c;
 	memset(&in_dvb_c, 0, sizeof(struct input_reg_info));
 	in_dvb_c.name = "dvb_c";
 	in_dvb_c.api_ver = INPUT_API_VER;
-	in_dvb_c.alloc = input_dvb_c_alloc;
+	in_dvb_c.flags = INPUT_REG_FLAG_LIVE;
+	in_dvb_c.mod = mod;
+	in_dvb_c.init = input_dvb_c_init;
 	in_dvb_c.open = input_dvb_open;
 	in_dvb_c.read = input_dvb_read;
-	in_dvb_c.get_caps = input_dvb_get_caps;
 	in_dvb_c.close = input_dvb_close;
 	in_dvb_c.cleanup = input_dvb_cleanup;
 
-	res += input_register(&in_dvb_c, mod);
+	res += input_register(&in_dvb_c);
 
 
 	return res;
@@ -97,14 +104,14 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 static int input_dvb_mod_unregister() {
 	
 	int res = POM_OK;
-	res += input_unregister("dvb_file");
+	res += input_unregister("dvb_device");
 	res += input_unregister("dvb_c");
 
 	return res;
 }
 
 
-static int input_dvb_file_alloc(struct input *i) {
+static int input_dvb_device_init(struct input *i) {
 
 	struct input_dvb_priv *priv = malloc(sizeof(struct input_dvb_priv));
 	if (!priv) {
@@ -117,33 +124,45 @@ static int input_dvb_file_alloc(struct input *i) {
 	priv->demux_fd = -1;
 	priv->dvr_fd = -1;
 
+	priv->proto_mpeg_ts = proto_add_dependency("mpeg_ts");
+	if (!priv->proto_mpeg_ts || !priv->proto_mpeg_ts->proto) {
+		free(priv);
+		pomlog(POMLOG_ERR "Cannot initialize input DVB-C : protocol mpeg_ts not registered");
+		return POM_ERR;
+	}
+
 	priv->filter_null_pid = ptype_alloc("bool");
 
-	priv->tpriv.file.filename = ptype_alloc("string");
-	if (!priv->tpriv.file.filename || !priv->filter_null_pid)
-		return POM_ERR;
-
-	if (input_register_param(i, "filter_null_pid", priv->filter_null_pid, "yes", "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0) != POM_OK)
+	priv->frontend = ptype_alloc("string");
+	if (!priv->frontend || !priv->filter_null_pid)
 		goto err;
 
-	if (input_register_param(i, "filename", priv->tpriv.file.filename, "dump.ts", "File to read packets from", 0) != POM_OK)
+	struct registry_param *p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	priv->type = input_dvb_type_file;
+	p = registry_new_param("device", "/dev/dvb/adapterX/dvrY", priv->frontend, "Device to read packets from", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	priv->type = input_dvb_type_device;
 	i->priv = priv;
 
 	return POM_OK;
 
 err:
-	if (priv->tpriv.file.filename)
-		ptype_cleanup(priv->tpriv.file.filename);
+
+	if (priv->proto_mpeg_ts)
+		proto_remove_dependency(priv->proto_mpeg_ts);
+	if (p)
+		registry_cleanup_param(p);
 
 	free(priv);
 
 	return POM_ERR;
 }
 
-static int input_dvb_c_alloc(struct input *i) {
+static int input_dvb_c_init(struct input *i) {
 
 	struct input_dvb_priv *priv = malloc(sizeof(struct input_dvb_priv));
 	if (!priv) {
@@ -155,6 +174,15 @@ static int input_dvb_c_alloc(struct input *i) {
 	priv->frontend_fd = -1;
 	priv->demux_fd = -1;
 	priv->dvr_fd = -1;
+
+	priv->proto_mpeg_ts = proto_add_dependency("mpeg_ts");
+	if (!priv->proto_mpeg_ts || !priv->proto_mpeg_ts->proto) {
+		free(priv);
+		pomlog(POMLOG_ERR "Cannot initialize input DVB-C : protocol mpeg_ts not registered");
+		return POM_ERR;
+	}
+
+	struct registry_param *p = NULL;
 
 	priv->adapter = ptype_alloc("uint16");
 	priv->frontend = ptype_alloc("uint16");
@@ -166,25 +194,32 @@ static int input_dvb_c_alloc(struct input *i) {
 	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout || !priv->filter_null_pid || !priv->tpriv.c.modulation) 
 		goto err;
 
-	if (input_register_param(i, "adapter", priv->adapter, "0", "Adapter ID : /dev/dvb/adapterX", 0) != POM_OK)
+	p = registry_new_param("adapter", "0", priv->adapter, "Adapter ID : /dev/dvb/adapterX", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "frontend", priv->frontend, "0", "Frontend ID : /dev/dvb/adapterX/frontendY", 0) != POM_OK)
+	p = registry_new_param("frontend", "0", priv->frontend, "Frontend ID : /dev/dvb/adapterX/frontendY", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "frequency", priv->freq, "0", "Frequency in Hz", 0) != POM_OK)
+	p = registry_new_param("frequency", "0", priv->freq, "Frequency in Hz", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "symbol_rate", priv->symbol_rate, "0", "Symbols per seconds", 0) != POM_OK)
+	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "tuning_timeout", priv->tuning_timeout, "3", "Timeout while trying to tune in seconds", 0) != POM_OK)
+	p = registry_new_param("tuning_timeout", "3", priv->tuning_timeout, "Timeout while trying to tune in seconds", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "filter_null_pid", priv->filter_null_pid, "yes", "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0) != POM_OK)
+	p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	if (input_register_param(i, "modulation", priv->tpriv.c.modulation, "0", "Modulation either QAM64 or QAM256", 0) != POM_OK)
+	p = registry_new_param("modulation", "0", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
 	priv->type = input_dvb_type_c;
@@ -194,6 +229,13 @@ static int input_dvb_c_alloc(struct input *i) {
 	return POM_OK;
 
 err:
+
+	if (priv->proto_mpeg_ts)
+		proto_remove_dependency(priv->proto_mpeg_ts);
+
+	if (p)
+		registry_cleanup_param(p);
+
 	if (priv->adapter)
 		ptype_cleanup(priv->adapter);
 	if (priv->frontend)
@@ -214,19 +256,20 @@ err:
 	return POM_ERR;
 }
 
-static int input_dvb_file_open(struct input *i) {
+static int input_dvb_device_open(struct input *i) {
 
 	struct input_dvb_priv *priv = i->priv;
 
-	char *filename = PTYPE_STRING_GETVAL(priv->tpriv.file.filename);
-	priv->dvr_fd = open(filename, O_RDONLY);
+	char *device_name = PTYPE_STRING_GETVAL(priv->frontend);
+	priv->dvr_fd = open(device_name, O_RDONLY);
+
 	if (priv->dvr_fd == -1) {
-		pomlog(POMLOG_ERR "Unable to open file %s : %s", filename, pom_strerror(errno));
+		pomlog(POMLOG_ERR "Unable to open file %s : %s", device_name, pom_strerror(errno));
 		return POM_ERR;
 	}
 
-	gettimeofday(&priv->tpriv.file.last_ts, NULL);
-	
+	// FIXME make sure that the file open is a special device
+
 	return POM_OK;
 }
 
@@ -449,19 +492,25 @@ static int input_dvb_read(struct input *i) {
 
 	ssize_t len = 0, r = 0;
 
-	struct input_packet *pkt = NULL;
 	unsigned char *pkt_data = NULL;
-	struct timeval *pkt_ts = NULL;
 
-	pkt = input_packet_buffer_alloc(i, MPEG_TS_LEN, p->type == input_dvb_type_file, &pkt_data, &pkt_ts);
+	// Get a new place holder for our packet
+	struct packet *pkt = packet_pool_get();
+
+	if (!pkt)
+		return POM_ERR;
+
+	if (packet_buffer_pool_get(pkt, MPEG_TS_LEN, 0) != POM_OK) {
+		packet_pool_release(pkt);
+		return POM_ERR;
+	}
+
+	pkt->input = i;
+	pkt->datalink = p->proto_mpeg_ts->proto;
 
 	do {
 
-		unsigned char tmp_buff[MPEG_TS_LEN];
-		if (!pkt) // Store data in a temp buffer if we need to drop them
-			pkt_data = tmp_buff;
-
-		r = read(p->dvr_fd, pkt_data + len, MPEG_TS_LEN - len);
+		r = read(p->dvr_fd, pkt->buff + len, MPEG_TS_LEN - len);
 		if (r < 0) {
 			if (errno == EOVERFLOW) {
 				pomlog(POMLOG_DEBUG "Overflow in the kernel buffer while reading packets. Lots of packets were missed");
@@ -490,37 +539,20 @@ static int input_dvb_read(struct input *i) {
 
 
 	// Check sync byte
-	if (pkt_data[0] != 0x47) {
+	if (*(unsigned char *)(pkt->buff) != 0x47) {
 		pomlog(POMLOG_ERR "Error, stream out of sync !");
 		return POM_ERR;
 	}
 
-	if (!pkt)
-		return POM_OK;
-
-
-	
-	// FIXME this is not valid for dvb_file input
-	if (gettimeofday(pkt_ts, NULL)) {
+	if (gettimeofday(&pkt->ts, NULL)) {
 		pomlog(POMLOG_ERR "Error while getting time of the day : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
 
-	return input_packet_buffer_process(i, pkt);
+	pkt->id = p->last_pkt_id++;
 
-}
+	return core_queue_packet(pkt);
 
-static int input_dvb_get_caps(struct input *i, struct input_caps *ic) {
-
-	struct input_dvb_priv *priv = i->priv;
-
-	ic->datalink = "mpeg_ts";
-	if (priv->type == input_dvb_type_file)
-		ic->is_live = 0;
-	else
-		ic->is_live = 1;
-
-	return POM_OK;
 }
 
 static int input_dvb_close(struct input *i) {
@@ -563,9 +595,6 @@ static int input_dvb_cleanup(struct input *i) {
 		ptype_cleanup(p->tuning_timeout);
 
 	switch (p->type) {
-		case input_dvb_type_file:
-			ptype_cleanup(p->tpriv.file.filename);
-			break;
 		case input_dvb_type_c:
 			ptype_cleanup(p->tpriv.c.modulation);
 			break;

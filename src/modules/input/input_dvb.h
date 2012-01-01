@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
 
 
 enum input_dvb_type {
-	input_dvb_type_file, // Should be used for troubleshooting only
+	input_dvb_type_device, // Used for card with a user space tuner not compatible with the dvb api
 	input_dvb_type_c,
 	input_dvb_type_s, // TODO
 	input_dvb_type_t, // TODO
@@ -34,14 +34,13 @@ struct input_dvb_c_priv {
 	struct ptype *modulation;
 };
 
-struct input_dvb_file_priv {
-	struct ptype *filename;
-	struct timeval last_ts;
-};
-
 struct input_dvb_priv {
+
+	uint64_t last_pkt_id;
 	
 	enum input_dvb_type type;
+
+	struct proto_dependency *proto_mpeg_ts;
 
 	// Some (mostly) common params
 	struct ptype *adapter, *frontend, *freq, *symbol_rate, *tuning_timeout, *filter_null_pid;
@@ -50,7 +49,6 @@ struct input_dvb_priv {
 
 	union {
 		struct input_dvb_c_priv c;
-		struct input_dvb_file_priv file;
 	} tpriv;
 
 };
@@ -58,13 +56,12 @@ struct input_dvb_priv {
 struct mod_reg_info* input_dvb_reg_info();
 static int input_dvb_mod_register(struct mod_reg *mod);
 static int input_dvb_mod_unregister();
-static int input_dvb_file_alloc(struct input *i);
-static int input_dvb_c_alloc(struct input *i);
-static int input_dvb_file_open(struct input *i);
+static int input_dvb_device_init(struct input *i);
+static int input_dvb_c_init(struct input *i);
+static int input_dvb_device_open(struct input *i);
 static int input_dvb_open(struct input *i);
 static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t symbol_rate, fe_modulation_t modulation);
 static int input_dvb_read(struct input *i);
-static int input_dvb_get_caps(struct input *i, struct input_caps *ic);
 static int input_dvb_close(struct input *i);
 static int input_dvb_cleanup(struct input *i);
 

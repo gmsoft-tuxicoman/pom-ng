@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include <pom-ng/core.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
+#include <pom-ng/input.h>
 #include <pthread.h>
 
 #define CORE_PROTO_STACK_MAX		16
@@ -43,7 +44,6 @@ enum core_state {
 
 struct core_packet_queue {
 	struct packet *pkt;
-	struct input_client_entry *input;
 	struct core_packet_queue *prev, *next;
 };
 
@@ -57,8 +57,7 @@ struct core_processing_thread {
 int core_init(int num_threads);
 int core_cleanup(int emergency_cleanup);
 
-int core_spawn_reader_thread(struct input_client_entry *i);
-int core_queue_packet(struct packet *p, struct input_client_entry *i);
+int core_spawn_reader_thread(struct input *i);
 void *core_processing_thread_func(void *priv);
 int core_process_dump_pkt_info(struct proto_process_stack *s, struct packet *p, int res);
 int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);

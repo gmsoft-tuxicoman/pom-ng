@@ -17,11 +17,10 @@
 
 
 
-BASE_HDRS = pom-ng/analyzer.h pom-ng/base.h pom-ng/core.h pom-ng/mod.h pom-ng/pomlog.h pom-ng/packet.h pom-ng/proto.h pom-ng/conntrack.h pom-ng/timer.h pom-ng/registry.h pom-ng/output.h pom-ng/event.h
-INPUT_HDRS = pom-ng/input.h pom-ng/input_client.h
+BASE_HDRS = pom-ng/analyzer.h pom-ng/base.h pom-ng/core.h pom-ng/mod.h pom-ng/pomlog.h pom-ng/input.h pom-ng/packet.h pom-ng/proto.h pom-ng/conntrack.h pom-ng/timer.h pom-ng/registry.h pom-ng/output.h pom-ng/event.h
 PTYPE_HDRS = pom-ng/ptype.h pom-ng/ptype_bool.h pom-ng/ptype_ipv4.h pom-ng/ptype_mac.h pom-ng/ptype_string.h pom-ng/ptype_timestamp.h pom-ng/ptype_uint8.h pom-ng/ptype_uint16.h pom-ng/ptype_uint32.h
 PROTO_HDRS = pom-ng/proto_http.h
 ANALYZER_HDRS = pom-ng/analyzer_http.h
 OTHER_HDRS = docsis.h
 
-nobase_include_HEADERS = $(BASE_HDRS) $(INPUT_HDRS) $(PTYPE_HDRS) $(PROTO_HDRS) $(ANALYZER_HDRS) $(OTHER_HDRS)
+nobase_include_HEADERS = $(BASE_HDRS) $(PTYPE_HDRS) $(PROTO_HDRS) $(ANALYZER_HDRS) $(OTHER_HDRS)

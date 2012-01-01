@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,31 +25,12 @@
 
 #include <pom-ng/input.h>
 
-#define INPUT_NAME_MAX 16
 
-#define INPUT_PARAM_NAME_MAX 16
-#define INPUT_PARAM_VALUE_MAX 255
-#define INPUT_PARAM_DEFVAL_MAX 64
-#define INPUT_PARAM_DESCRIPTION_MAX 64
-#define INPUT_PARAM_TYPE_MAX 8
-#define INPUT_PARAM_COUNT_MAX 8
+#define INPUT_REGISTRY "input"
 
-#define INPUT_SHM_BUFF_SIZE 2 * 1024 * 1024
-
-#define INPUT_FLAG_ATTACHED	0x1 ///< the parent process has attached the buffer
-#define INPUT_FLAG_EOF		0x2 ///< the input reached EOF
-#define INPUT_FLAG_RUNNING	0x4 ///< the input is running in the input process
-
-struct input_packet {
-
-	// Used by input buffer
-	int inpkt_prev_offset, inpkt_next_offset;
-	int buff_offset;
-
-	// Packet description
-	struct timeval ts;
-	size_t len;
-};
+#define INPUT_RUN_STOPPED	0x0
+#define INPUT_RUN_RUNNING	0x1
+#define INPUT_RUN_STOPPING	0x2
 
 struct input_reg {
 
@@ -61,50 +42,15 @@ struct input_reg {
 
 };
 
-struct input_list {
-	unsigned int id;
-	struct input *i;
-	struct input_list *prev, *next;
-
-};
 
 
-struct input_param {
-	char *name;
-	struct ptype *value;
-	char *default_value;
-	char *description;
-	unsigned int flags;
+int input_init();
+int input_cleanup();
 
-	struct input_param *next;
-};
-
-struct input_buff {
-	int inpkt_head_offset; ///< Offset of the first packet in the buffer
-	int inpkt_process_head_offset; ///< Offset of the next packet to process in the buffer
-	int inpkt_tail_offset; ///< Last packet in the buffer
-	unsigned int flags;
-
-	pthread_mutex_t lock;
-	pthread_cond_t underrun_cond, overrun_cond;
-
-	unsigned int buff_start_offset;
-	unsigned int buff_end_offset;
-};
-
-int input_register(struct input_reg_info *reg_info, struct mod_reg *mod);
-struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t gid);
-int input_open(struct input *i, struct input_caps *ic);
-int input_run(struct input *i);
-int input_cleanup(struct input *i);
+int input_instance_add(char *type, char *name);
+int input_instance_remove(struct registry_instance *ri);
+int input_instance_start_stop_handler(void *priv, struct ptype *run);
 
 void *input_process_thread(void *param);
-
-
-void input_reg_lock(int write);
-void input_reg_unlock();
-
-void input_instance_lock(struct input *i, int write);
-void input_instance_unlock(struct input *i);
 
 #endif

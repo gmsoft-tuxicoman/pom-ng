@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 #include "proto.h"
 #include "main.h"
 #include "mod.h"
-#include "input_server.h"
 
 static struct proto *proto_head = NULL;
 
@@ -50,11 +49,6 @@ int proto_register(struct proto_reg_info *reg_info) {
 		return POM_ERR;
 	}
 
-
-	if (input_server_is_current_process()) {
-		pomlog(POMLOG_DEBUG "Not loading protocol %s in the input process", reg_info->name);
-		return POM_OK;
-	}
 
 	pom_mutex_lock(&proto_list_lock);
 

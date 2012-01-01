@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,11 @@
 #include <pom-ng/input.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_bool.h>
+
+#include <pom-ng/registry.h>
+
+#include <pom-ng/packet.h>
+#include <pom-ng/core.h>
 
 #include "input_pcap.h"
 #include <string.h>
@@ -45,26 +50,27 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	memset(&in_pcap_interface, 0, sizeof(struct input_reg_info));
 	in_pcap_interface.name = "pcap_interface";
 	in_pcap_interface.api_ver = INPUT_API_VER;
-	in_pcap_interface.alloc = input_pcap_interface_alloc;
+	in_pcap_interface.flags = INPUT_REG_FLAG_LIVE;
+	in_pcap_interface.mod = mod;
+	in_pcap_interface.init = input_pcap_interface_init;
 	in_pcap_interface.open = input_pcap_interface_open;
 	in_pcap_interface.read = input_pcap_read;
-	in_pcap_interface.get_caps = input_pcap_get_caps;
 	in_pcap_interface.close = input_pcap_close;
 	in_pcap_interface.cleanup = input_pcap_cleanup;
-	res += input_register(&in_pcap_interface, mod);
+	res += input_register(&in_pcap_interface);
 
 
 	static struct input_reg_info in_pcap_file;
 	memset(&in_pcap_file, 0, sizeof(struct input_reg_info));
 	in_pcap_file.name = "pcap_file";
 	in_pcap_file.api_ver = INPUT_API_VER;
-	in_pcap_file.alloc = input_pcap_file_alloc;
+	in_pcap_file.mod = mod;
+	in_pcap_file.init = input_pcap_file_init;
 	in_pcap_file.open = input_pcap_file_open;
 	in_pcap_file.read = input_pcap_read;
-	in_pcap_file.get_caps = input_pcap_get_caps;
 	in_pcap_file.close = input_pcap_close;
 	in_pcap_file.cleanup = input_pcap_cleanup;
-	res += input_register(&in_pcap_file, mod);
+	res += input_register(&in_pcap_file);
 
 	return res;
 
@@ -78,12 +84,52 @@ static int input_pcap_mod_unregister() {
 	return res;
 }
 
+static int input_pcap_common_open(struct input *i) {
+
+	struct input_pcap_priv *priv = i->priv;
+
+	if (!priv || !priv->p)
+		return POM_ERR;
+
+	char *datalink = "undefined";
+
+	switch (pcap_datalink(priv->p)) {
+		case DLT_EN10MB:
+			datalink = "ethernet";
+			// Ethernet is 14 bytes long
+			priv->align_offset = 2;
+			break;
+
+		case DLT_DOCSIS:
+			datalink = "docsis";
+			break;
+
+		case DLT_LINUX_SLL:
+			datalink = "linux_cooked";
+			break;
+
+		case DLT_RAW:
+			datalink = "ipv4";
+			break;
+	}
+
+	priv->datalink = proto_add_dependency(datalink);
+
+	if (!priv->datalink || !priv->datalink->proto) {
+		pomlog(POMLOG_ERR "Cannot open input pcap : protocol %s not registered", datalink);
+		input_pcap_close(i);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+
+}
 
 /*
  * input pcap type interface
  */
 
-static int input_pcap_interface_alloc(struct input *i) {
+static int input_pcap_interface_init(struct input *i) {
 
 	struct input_pcap_priv *priv;
 	priv = malloc(sizeof(struct input_pcap_priv));
@@ -93,24 +139,46 @@ static int input_pcap_interface_alloc(struct input *i) {
 	}
 	memset(priv, 0, sizeof(struct input_pcap_priv));
 	
+	struct registry_param *p = NULL;
+
 	priv->tpriv.iface.interface = ptype_alloc("string");
 	priv->tpriv.iface.promisc = ptype_alloc("bool");
 	if (!priv->tpriv.iface.interface || !priv->tpriv.iface.promisc)
-		return POM_ERR;
+		goto err;
 
 	char err[PCAP_ERRBUF_SIZE];
 	char *dev = pcap_lookupdev(err);
 	if (!dev)
 		dev = "none";
 
-	input_register_param(i, "interface", priv->tpriv.iface.interface, dev, "Interface to capture packets from", 0);
-	input_register_param(i, "promisc", priv->tpriv.iface.promisc, "no", "Promiscious mode", 0);
+	p = registry_new_param("interface", dev, priv->tpriv.iface.interface, "Interface to capture packets from", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("promisc", "no", priv->tpriv.iface.promisc, "Promiscious mode", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
 
 	priv->type = input_pcap_type_interface;
 
 	i->priv = priv;
 
 	return POM_OK;
+
+err:
+
+	if (priv->tpriv.iface.interface)
+		ptype_cleanup(priv->tpriv.iface.interface);
+
+	if (priv->tpriv.iface.promisc)
+		ptype_cleanup(priv->tpriv.iface.promisc);
+
+	if (p)
+		registry_cleanup_param(p);
+
+	free(priv);
+
+	return POM_ERR;
 
 }
 
@@ -129,7 +197,7 @@ static int input_pcap_interface_open(struct input *i) {
 		return POM_ERR;
 	}
 
-	return POM_OK;
+	return input_pcap_common_open(i);
 
 }
 
@@ -137,7 +205,7 @@ static int input_pcap_interface_open(struct input *i) {
  * input pcap type file
  */
 
-static int input_pcap_file_alloc(struct input *i) {
+static int input_pcap_file_init(struct input *i) {
 
 	struct input_pcap_priv *priv;
 	priv = malloc(sizeof(struct input_pcap_priv));
@@ -146,12 +214,16 @@ static int input_pcap_file_alloc(struct input *i) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct input_pcap_priv));
-	
+
+	struct registry_param *p = NULL;
+
 	priv->tpriv.file.file = ptype_alloc("string");
 	if (!priv->tpriv.file.file)
-		return POM_ERR;
+		goto err;
 
-	input_register_param(i, "filename", priv->tpriv.file.file, "dump.cap", "File in PCAP format", 0);
+	p = registry_new_param("filename", "dump.cap", priv->tpriv.file.file, "File in PCAP format", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
 
 	priv->type = input_pcap_type_file;
 
@@ -159,6 +231,17 @@ static int input_pcap_file_alloc(struct input *i) {
 
 	return POM_OK;
 
+err:
+
+	if (priv->tpriv.file.file)
+		ptype_cleanup(priv->tpriv.file.file);
+
+	if (p)
+		registry_cleanup_param(p);
+
+	free(priv);
+
+	return POM_ERR;
 }
 
 static int input_pcap_file_open(struct input *i) {
@@ -174,7 +257,7 @@ static int input_pcap_file_open(struct input *i) {
 		return POM_ERR;
 	}
 
-	return POM_OK;
+	return input_pcap_common_open(i);
 
 }
 
@@ -186,10 +269,10 @@ static int input_pcap_file_open(struct input *i) {
 static int input_pcap_read(struct input *i) {
 
 	struct input_pcap_priv *p = i->priv;
-	unsigned char *data;
 
 	struct pcap_pkthdr *phdr;
-
+	
+	u_char *data;
 	int result = pcap_next_ex(p->p, &phdr, (const u_char**) &data);
 	if (phdr->len > phdr->caplen) 
 		pomlog(POMLOG_WARN "Warning, some packets were truncated at capture time");
@@ -202,69 +285,38 @@ static int input_pcap_read(struct input *i) {
 
 	if (result != 1)
 		return POM_ERR;
-
-	unsigned char *pkt_data = NULL;
-	struct timeval *pkt_ts = NULL;
-
-	struct input_packet *pkt = input_packet_buffer_alloc(i, phdr->caplen, p->type != input_pcap_type_interface, &pkt_data, &pkt_ts);
-
-	if (!pkt) // Drop the packet
-		return POM_OK;
 	
-	memcpy(pkt_data, data, phdr->caplen);
-	memcpy(pkt_ts, &phdr->ts, sizeof(struct timeval));
-
-	return input_packet_buffer_process(i, pkt);
-}
-
-static int input_pcap_get_caps(struct input *i, struct input_caps *ic) {
-
-	struct input_pcap_priv *p = i->priv;
-
-	if (!p->p)
+	struct packet *pkt = packet_pool_get();
+	if (!pkt)
 		return POM_ERR;
 
-	switch (pcap_datalink(p->p)) {
-		case DLT_EN10MB:
-			ic->datalink = "ethernet";
-			// Ethernet is 14 bytes long
-			ic->align_offset = 2;
-			break;
-
-		case DLT_DOCSIS:
-			ic->datalink = "docsis";
-			break;
-
-		case DLT_LINUX_SLL:
-			ic->datalink = "linux_cooked";
-			break;
-
-		case DLT_RAW:
-			ic->datalink = "ipv4";
-			break;
-	
-		default:
-			ic->datalink = "undefined";
+	if (packet_buffer_pool_get(pkt, phdr->caplen, p->align_offset)) {
+		packet_pool_release(pkt);
+		return POM_ERR;
 	}
 
-	if (p->type == input_pcap_type_interface)
-		ic->is_live = 1;
-	else
-		ic->is_live = 0;
+	pkt->input = i;
+	pkt->datalink = p->datalink->proto;
+	pkt->id = p->last_pkt_id++;
+	memcpy(&pkt->ts, &phdr->ts, sizeof(struct timeval));
+	memcpy(pkt->buff, data, phdr->caplen);
 
-	return POM_OK;
-
+	return core_queue_packet(pkt);
 }
 
 static int input_pcap_close(struct input *i) {
 
-	struct input_pcap_priv *p = i->priv;
+	struct input_pcap_priv *priv = i->priv;
 
-	if (!p->p)
+	if (!priv->p)
 		return POM_OK;
-	pcap_close(p->p);
-	p->p = NULL;
-	
+	pcap_close(priv->p);
+	priv->p = NULL;
+	proto_remove_dependency(priv->datalink);
+	priv->datalink = NULL;
+	priv->last_pkt_id = 0;
+	priv->align_offset = 0;
+
 	return POM_OK;
 }
 

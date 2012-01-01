@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,28 +22,71 @@
 
 #include "common.h"
 
-#include <sys/ipc.h>
-#include <sys/msg.h>
-#include <sys/shm.h>
-#include <signal.h>
-
+#include "registry.h"
 #include "input.h"
-#include "ipc.h"
-#include "input_ipc.h"
-#include "input_server.h"
-#include "input_client.h"
 #include "mod.h"
+#include "core.h"
 #include <pom-ng/ptype.h>
+#include <pom-ng/ptype_bool.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
 
-static pthread_rwlock_t input_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
+static struct registry_class *input_registry_class = NULL;
+
 static struct input_reg *input_reg_head = NULL;
+static struct input *input_head = NULL;
+unsigned int input_cur_running = 0;
 
-int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
+int input_init() {
+	
+	input_registry_class = registry_add_class(INPUT_REGISTRY);
+	if (!input_registry_class)
+		return POM_ERR;
 
-	if (!input_server_is_current_process())
-		return input_client_register_input(reg_info, mod);
+	input_registry_class->instance_add = input_instance_add;
+	input_registry_class->instance_remove = input_instance_remove;
+		
+	return POM_OK;
+}
+
+int input_cleanup() {
+
+
+	while (input_head) {
+		struct input *i = input_head;
+		input_head = input_head->next;
+		if (i->running) {
+			registry_set_param_value(i->reg_param_running, "0");
+		}
+
+
+		if (i->reg->info->cleanup && i->reg->info->cleanup(i) != POM_OK)
+			pomlog(POMLOG_WARN "Error while cleaning up input");
+
+		pthread_mutex_destroy(&i->lock);
+		free(i->name);
+		free(i);
+	}
+
+	while (input_reg_head) {
+
+		struct input_reg *tmp = input_reg_head;
+		input_reg_head = tmp->next;
+
+		mod_refcount_dec(tmp->info->mod);
+		free(tmp);
+	}
+
+
+	if (input_registry_class)
+		registry_remove_class(input_registry_class);
+	input_registry_class = NULL;
+
+	return POM_OK;
+
+}
+
+int input_register(struct input_reg_info *reg_info) {
 
 	pomlog(POMLOG_DEBUG "Registering input %s", reg_info->name);
 
@@ -60,597 +103,34 @@ int input_register(struct input_reg_info *reg_info, struct mod_reg *mod) {
 
 	memset(reg, 0, sizeof(struct input_reg));
 
-	input_reg_lock(1);
-
 	struct input_reg *tmp;
 	for (tmp = input_reg_head; tmp && strcmp(tmp->info->name, reg_info->name); tmp = tmp->next);
 	if (tmp) {
 		pomlog(POMLOG_ERR "Input %s already registered", reg_info->name);
 		free(reg);
-		input_reg_unlock();
 		return POM_ERR;
 	}
 
 	reg->info = reg_info;
-	reg->module = mod;
 
-	mod_refcount_inc(mod);
+	mod_refcount_inc(reg_info->mod);
 
 	reg->next = input_reg_head;
 	input_reg_head = reg;
 	if (reg->next)
 		reg->next->prev = reg;
 
-	input_reg_unlock();
-
 	return POM_OK;
 
-}
-
-struct input* input_alloc(const char* type, int input_ipc_key, uid_t uid, gid_t gid) {
-
-	input_reg_lock(1);
-
-	struct input_reg *reg;
-	for (reg = input_reg_head; reg && strcmp(reg->info->name, type); reg = reg->next);
-
-	if (!reg) {
-		input_reg_unlock();
-		pomlog(POMLOG_ERR "Input of type %s not found", type);
-		return NULL;
-	}
-
-	reg->refcount++;
-	input_reg_unlock();
-
-	// Try to allocate IPC shared memory
-	void *shm_buff = NULL;
-	int shm_id = -1;
-	size_t shm_buff_size = INPUT_SHM_BUFF_SIZE;
-	while (!shm_buff) {
-		// Create the new id
-		input_ipc_key++;
-		shm_id = shmget(input_ipc_key, shm_buff_size, IPC_CREAT | IPC_EXCL);
-		if (shm_id == -1) {
-			if (errno == ENOMEM) {
-				pomlog(POMLOG_ERR "Not enough memory to allocate IPC shared memory of %u bytes", INPUT_SHM_BUFF_SIZE);
-				goto err;
-			}
-			continue;
-		}
-
-		// we should round up the size to a multiple of PAGE_SIZE // sysconf(_SC_PAGESIZE);
-
-		// Attach the memory segment in our address space
-		shm_buff = shmat(shm_id, NULL, 0);
-		if (shm_buff == (void*)-1) {
-			pomlog(POMLOG_ERR "Error while attaching the IPC shared memory segment : %s", pom_strerror(errno));
-			shm_buff = NULL;
-			shmctl(shm_id, IPC_RMID, 0);
-			goto err;
-		}
-
-		struct shmid_ds data;
-		if (shmctl(shm_id, IPC_STAT, &data)) {
-			pomlog(POMLOG_ERR "Error while getting shared memory data : %s", pom_strerror(errno));
-			goto err;
-		}
-
-		data.shm_perm.uid = uid;
-		data.shm_perm.gid = gid;
-		data.shm_perm.mode = 0600;
-
-		if (shmctl(shm_id, IPC_SET, &data)) {
-			pomlog(POMLOG_ERR "Error while setting the correct permissions on the IPC shared memory : %s", pom_strerror(errno));
-			goto err;
-		}
-
-	}
-	
-	struct input *ret = malloc(sizeof(struct input));
-	if (!ret) {
-		pom_oom(sizeof(struct input));
-		goto err;
-	}
-	memset(ret, 0, sizeof(struct input));
-
-	if (pthread_rwlock_init(&ret->op_lock, NULL)) {
-		pomlog(POMLOG_ERR "Error while initializing the input op lock");
-		goto err_ret;
-	}
-
-	ret->shm_key = input_ipc_key;
-	ret->shm_id = shm_id;
-	ret->shm_buff = shm_buff;
-	ret->shm_buff_size = shm_buff_size;
-
-	// Setup the buffer
-	struct input_buff *buff = ret->shm_buff;
-	memset(buff, 0, sizeof(struct input_buff));
-
-	buff->buff_start_offset = sizeof(struct input_buff);
-	buff->buff_end_offset = ret->shm_buff_size;
-
-	buff->inpkt_head_offset = -1;
-	buff->inpkt_process_head_offset = -1;
-	buff->inpkt_tail_offset = -1;
-
-	// Setup the buffer lock
-	pthread_mutexattr_t attr;
-	pthread_condattr_t condattr;
-
-	if (pthread_mutexattr_init(&attr)) {
-		pomlog(POMLOG_ERR "Error while initializing the mutex attributes");
-		goto err_oplock;
-	}
-
-	if (pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED)) {
-		pomlog(POMLOG_ERR "Error while setting the pshared attribute");
-		goto err_mutexattr;
-	}
-
-	if (pthread_mutex_init(&buff->lock, &attr)) {
-		pomlog(POMLOG_ERR "Error while initializing the mutex on the shared memory");
-		goto err_mutexattr;
-	}
-
-	if (pthread_condattr_init(&condattr)) {
-		pomlog(POMLOG_ERR "Error while initializing the mutex condition attributes");
-		goto err_mutex;
-	}
-
-	if (pthread_condattr_setpshared(&condattr, PTHREAD_PROCESS_SHARED)) {
-		pomlog(POMLOG_ERR "Error while setting the pshared condition attribute");
-		goto err_condattr;
-	}
-
-	if (pthread_cond_init(&buff->underrun_cond, &condattr)) {
-		pomlog(POMLOG_ERR "Error while initializing the underrun condition");
-		goto err_condattr;
-	}
-
-	if (pthread_cond_init(&buff->overrun_cond, &condattr)) {
-		pomlog(POMLOG_ERR "Error while initializing the overrun condition");
-		goto err_underrun_cond;
-	}
-
-	if (pthread_condattr_destroy(&condattr)) {
-		pomlog(POMLOG_WARN "Error while destroying the mutex cond attributes");
-	}
-
-	if (pthread_mutexattr_destroy(&attr)) {
-		pomlog(POMLOG_WARN "Error while destroying the mutex attributes");
-	}
-
-	ret->type = reg;
-	if (reg->info->alloc) {
-		if (reg->info->alloc(ret) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while allocating input %s", type);
-			pthread_cond_destroy(&buff->underrun_cond);
-			goto err_mutex;
-		}
-	}
-	
-
-	return ret;
-
-err_underrun_cond:
-	pthread_cond_destroy(&buff->underrun_cond);
-err_condattr:
-	pthread_condattr_destroy(&condattr);
-err_mutex:
-	pthread_mutex_destroy(&buff->lock);
-err_mutexattr:
-	pthread_mutexattr_destroy(&attr);
-err_oplock:
-	pthread_rwlock_destroy(&ret->op_lock);
-err_ret:
-	free(ret);
-err:
-
-	if (shm_buff)
-		shmdt(shm_buff);
-	if (shm_id != -1)
-		shmctl(shm_id, IPC_RMID, 0);
-
-	input_reg_lock(1);
-	reg->refcount--;
-	input_reg_unlock();
-
-	return NULL;
-}
-
-int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags) {
-
-	// Create the input_param structure
-
-	struct input_param *p = malloc(sizeof(struct input_param));
-	if (!p) {
-		pom_oom(sizeof(struct input_param));
-		return POM_ERR;
-	}
-	memset(p, 0, sizeof(struct input_param));
-
-	p->name = strdup(name);
-	if (!p->name) {
-		pom_oom(strlen(name));
-		goto err_name;
-	}
-
-	p->default_value = strdup(default_value);
-	if (!p->default_value) {
-		pom_oom(strlen(default_value));
-		goto err_defval;
-	}
-
-	p->description = strdup(description);
-	if (!p->description) {
-		pom_oom(strlen(description));
-		goto err_description;
-	}
-
-	p->value = value;
-
-	if (ptype_parse_val(p->value, default_value) != POM_OK) {
-		pomlog(POMLOG_ERR "Unable to parse default value \"%s\" for input parameter %s", default_value, name);
-		goto err;
-	}
-
-	p->flags = flags;
-
-
-	p->next = i->params;
-	i->params = p;
-
-	return POM_OK;
-
-err:
-	free(p->description);
-err_description:
-	free(p->default_value);
-err_defval:
-	free(p->name);
-err_name:
-	free(p);
-
-	return POM_ERR;
-}
-
-
-int input_open(struct input *i, struct input_caps *ic) {
-
-	if (!i || !ic)
-		return POM_ERR;
-
-	input_instance_lock(i, 1);
-
-	pom_mutex_lock(&i->shm_buff->lock);
-	if (i->shm_buff->flags & INPUT_FLAG_EOF) {
-		pom_mutex_unlock(&i->shm_buff->lock);
-		input_instance_unlock(i);
-		pomlog(POMLOG_ERR "Input packets are still being processed. Please wait ...");
-		return POM_ERR;
-	}
-	pom_mutex_unlock(&i->shm_buff->lock);
-	
-
-	if (i->opened || !i->type->info->get_caps) {
-		input_instance_unlock(i);
-		return POM_ERR;
-	}
-
-	int res = POM_ERR;
-	if (i->type->info->open) {
-		res = i->type->info->open(i);
-		if (res == POM_ERR) {
-			input_instance_unlock(i);
-			return POM_ERR;
-		}
-	}
-
-	if (i->type->info->get_caps(i, ic) == POM_ERR) {
-		input_instance_unlock(i);
-		pomlog(POMLOG_ERR "Unable to get input capabilities");
-		input_close(i);
-		return POM_ERR;
-	}
-
-
-	i->opened = 1;
-	input_instance_unlock(i);
-
-	return res;
-}
-
-
-int input_run(struct input *i) {
-
-	input_instance_lock(i, 1);
-
-	if (pthread_create(&i->thread, NULL, input_process_thread, (void *) i)) {
-		input_instance_unlock(i);
-		pomlog(POMLOG_ERR "Unable to spawn a new thread for the input");
-		input_close(i);
-		return POM_ERR;
-
-	}
-
-	input_instance_unlock(i);
-	return POM_OK;
-}
-
-
-struct input_packet *input_packet_buffer_alloc(struct input *i, size_t pkt_size, int wait_if_full, unsigned char **pkt_data_ptr, struct timeval **pkt_ts_ptr) {
-
-
-	if (!i || !pkt_size)
-		return NULL;
-
-	struct input_buff *buff = i->shm_buff;
-
-	// Find some space where to store the packet in the shared mem
-	
-	struct input_packet *pkt = NULL;
-
-	pom_mutex_lock(&buff->lock);
-
-	size_t buff_pkt_len = sizeof(struct input_packet) + pkt_size;
-
-	void *buff_start, *buff_end;
-	struct input_packet *buff_head, *buff_tail;
-retry:
-
-	buff_start = (buff->buff_start_offset ? (void*)buff + buff->buff_start_offset : NULL);
-	buff_end = (buff->buff_end_offset ? (void*)buff + buff->buff_end_offset : NULL);
-	buff_head = (struct input_packet *)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	buff_tail = (struct input_packet *)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
-
-	// Check for that size right after tail
-
-
-
-	if (!buff_tail) { // buffer is empty
-		pkt = buff_start;
-	} else {
-		// Something is in the buffer, see if it fits 
-		void *next = buff_tail + sizeof(struct input_packet) + buff_tail->len;
-
-
-		if (buff_tail >= buff_head) {
-			// Check if packet fits after last one
-			if (next + buff_pkt_len > buff_end) {
-				// Ok packet won't fit, let's see if we can put it at the begining
-				next = buff_start;
-				if ((void *) buff_head < next + buff_pkt_len) {
-					// Ok it doesn't fit at the begining, buffer is full
-					next = NULL;
-				}
-			}
-		} else {
-			if ((void*)buff_head < next + buff_pkt_len) {
-				// Ok it doesn't fit at the begining, buffer is full
-				next = NULL;
-			}
-		}
-
-		if (!next) { // Buffer overflow
-
-			if (!wait_if_full) {
-				//pomlog(POMLOG_DEBUG "Packet dropped (%ub) ...", pkt_size);
-				pom_mutex_unlock(&buff->lock);
-				return NULL;
-			} else {
-				//pomlog(POMLOG_DEBUG "Buffer overflow, waiting ....");
-				if (pthread_cond_wait(&buff->overrun_cond, &buff->lock)) {
-					pom_mutex_unlock(&buff->lock);
-					pomlog(POMLOG_ERR "Error while waiting for overrun condition : %s", pom_strerror(errno));
-					return NULL;
-				}
-
-				goto retry;
-			}
-		}
-
-		pkt = next;
-	}
-
-	// The copy of the packet is done unlocked
-	pom_mutex_unlock(&buff->lock);
-	memset(pkt, 0, sizeof(struct input_packet));
-	pkt->inpkt_prev_offset = -1;
-	pkt->inpkt_next_offset = -1;
-	pkt->len = pkt_size;
-
-	*pkt_data_ptr = (unsigned char *)pkt + sizeof(struct input_packet);
-	*pkt_ts_ptr = &pkt->ts;
-	pkt->buff_offset = (void*)(*pkt_data_ptr) - (void*)buff;
-
-	return pkt;
-}
-
-int input_packet_buffer_process(struct input *i, struct input_packet *pkt) {
-
-	struct input_buff *buff = i->shm_buff;
-
-	pom_mutex_lock(&buff->lock);
-
-	// Refecth the variables after relocking
-	struct input_packet *buff_head = (struct input_packet*)(buff->inpkt_head_offset >= 0 ? (void*)buff + buff->inpkt_head_offset : NULL);
-	struct input_packet *buff_tail = (struct input_packet*)(buff->inpkt_tail_offset >= 0 ? (void*)buff + buff->inpkt_tail_offset : NULL);
-	if (!buff_head) {
-		buff->inpkt_head_offset = (void*)pkt - (void*)buff;
-		buff->inpkt_process_head_offset = (void*)pkt - (void*)buff;
-		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
-
-		if (pthread_cond_signal(&buff->underrun_cond)) {
-			pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
-			pom_mutex_unlock(&buff->lock);
-			return POM_ERR;
-		}
-
-	} else {
-		// Connect the new packet to the last one in the buffer
-		pkt->inpkt_prev_offset = buff->inpkt_tail_offset;
-		// Update the last one to point to the next one
-		buff_tail->inpkt_next_offset = (void*)pkt - (void*)buff;
-		// Update tail of packets
-		buff->inpkt_tail_offset = (void*)pkt - (void*)buff;
-
-		if (buff->inpkt_process_head_offset == -1) {
-			buff->inpkt_process_head_offset = buff->inpkt_tail_offset;
-			if (pthread_cond_signal(&buff->underrun_cond)) {
-				pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
-				pom_mutex_unlock(&buff->lock);
-				return POM_ERR;
-			}
-		}
-	}
-
-	pom_mutex_unlock(&buff->lock);
-
-	return POM_OK;
-}
-
-int input_close(struct input *i) {
-
-	if (!i)
-		return POM_ERR;
-
-	// Signal the input it has been closed
-	
-	input_instance_lock(i, 1);
-	if (!i->opened) {
-		input_instance_unlock(i);
-		return POM_ERR;
-	}
-
-	input_instance_unlock(i);
-
-
-	pom_mutex_lock(&i->shm_buff->lock);
-	i->opened = 0;
-	if (i->shm_buff->flags & INPUT_FLAG_RUNNING) {
-		i->shm_buff->flags |= INPUT_FLAG_EOF;
-
-		// Signal underrun condition in case the other process already proceeded with all the packets
-		if (pthread_cond_signal(&i->shm_buff->underrun_cond)) {
-			pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
-			pom_mutex_unlock(&i->shm_buff->lock);
-			return POM_ERR;
-		}
-		pom_mutex_unlock(&i->shm_buff->lock);
-
-		if (!pthread_equal(pthread_self(), i->thread)) {
-			// Try to join the thread only if it's not ourself
-			if (pthread_join(i->thread, NULL))
-				pomlog(POMLOG_ERR "Error while waiting for the input thread to finish : %s", pom_strerror(errno));
-		} else {
-			if (pthread_detach(pthread_self())) {
-				pomlog(POMLOG_ERR "Error while detaching input thread : %s", pom_strerror(errno));
-			}
-		}
-	} else {
-		pom_mutex_unlock(&i->shm_buff->lock);
-	}
-
-	input_instance_lock(i, 1);
-	if (i->type->info->close) {
-		if (i->type->info->close(i) == POM_ERR) {
-			input_instance_unlock(i);
-			return POM_ERR;
-		}
-	}
-
-	input_instance_unlock(i);
-
-	return POM_OK;
-}
-
-int input_cleanup(struct input *i) {
-
-	if (!i)
-		return POM_ERR;
-	
-	input_instance_lock(i, 1);
-	if (i->opened) {
-		input_instance_unlock(i);
-		return POM_ERR;
-	}
-
-	if (i->type->info->cleanup)
-		i->type->info->cleanup(i);
-
-	// Free shm stuff
-	if (i->shm_buff) {
-		int try = 0, maxtry = 30;
-		for (; try < maxtry; try++) {
-			pom_mutex_lock(&i->shm_buff->lock);
-			if (pthread_cond_signal(&i->shm_buff->underrun_cond)) {
-				pomlog(POMLOG_ERR "Could not signal the underrun condition : %s", pom_strerror(errno));
-				pom_mutex_unlock(&i->shm_buff->lock);
-				return POM_ERR;
-			}
-			unsigned int attached = i->shm_buff->flags & INPUT_FLAG_ATTACHED;
-			pom_mutex_unlock(&i->shm_buff->lock);
-			if (!attached)
-				break;
-			pomlog(POMLOG_DEBUG "Input process waiting for the main process to detach the buffer ...");
-			sleep(1);
-		}
-
-		if (try == maxtry)
-			pomlog(POMLOG_WARN "Buffer still attached after %u tries. Is the other process dead ? Cleaning up anyway ...", try);
-
-		if (shmdt(i->shm_buff))
-			pomlog(POMLOG_WARN "Error while detaching shared memory : %s", pom_strerror(errno));
-		i->shm_buff = NULL;
-	}
-	
-	if (i->shm_id != -1 && shmctl(i->shm_id, IPC_RMID, 0) == -1)
-		pomlog(POMLOG_WARN "Error while removing the IPC id %u : %s", i->shm_id, pom_strerror(errno));
-
-	input_reg_lock(1);
-	i->type->refcount--;
-	input_reg_unlock();
-
-	input_instance_unlock(i);
-	pthread_rwlock_destroy(&i->op_lock);
-
-	while (i->params) {
-		struct input_param *p = i->params;
-		free(p->name);
-		free(p->default_value);
-		free(p->description);
-
-		i->params = p->next;
-		free(p);
-	}
-
-	free(i);
-
-	return POM_OK;
 }
 
 int input_unregister(char *name) {
 
-	if (!input_server_is_current_process())
-		return input_client_unregister_input(name);
-
-	input_reg_lock(1);
 	struct input_reg *reg;
 
 	for (reg = input_reg_head; reg && strcmp(reg->info->name, name); reg = reg->next);
-	if (!reg) {
-		pomlog(POMLOG_DEBUG "Input %s is not registered, cannot unregister it.", name);
-		input_reg_unlock();
-		return POM_OK; // Do not return an error so module unloading proceeds
-	}
-
-	if (reg->refcount) {
-		pomlog(POMLOG_WARN "Cannot unregister input %s as it's still in use", name);
-		input_reg_unlock();
-		return POM_ERR;
-	}
+	if (!reg) 
+		return POM_OK;
 
 	if (reg->prev)
 		reg->prev->next = reg->next;
@@ -665,87 +145,260 @@ int input_unregister(char *name) {
 
 	mod_refcount_dec(reg->module);
 
-	input_reg_unlock();
-
 	free(reg);
 
 	return POM_OK;
 }
 
+int input_instance_add(char *type, char *name) {
+
+	struct input_reg *reg;
+	for (reg = input_reg_head; reg && strcmp(reg->info->name, type); reg = reg->next);
+
+	if (!reg) {
+		pomlog(POMLOG_ERR "Input type %s does not exists", type);
+		return POM_ERR;
+	}
+
+	struct input *res = malloc(sizeof(struct input));
+	if (!res) {
+		pom_oom(sizeof(struct input));
+		return POM_ERR;
+	}
+	memset(res, 0, sizeof(struct input));
+
+	if (pthread_mutex_init(&res->lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing the input mutex : %s", pom_strerror(errno));
+		goto err;
+	}
+
+	res->reg = reg;
+	res->name = strdup(name);
+	if (!res->name) {
+		pom_oom(strlen(name) + 1);
+		goto err;
+	}
+
+	res->reg_instance = registry_add_instance(input_registry_class, name);
+	if (!res->reg_instance)
+		goto err;
+
+	struct ptype *param_running_val = ptype_alloc("bool");
+	if (!param_running_val)
+		goto err;
+
+	struct registry_param *param_running = registry_new_param("running", "no", param_running_val, "Running state of the input",  REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (!param_running) {
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+	res->reg_param_running = param_running;
+
+	if (registry_param_set_callbacks(param_running, res, NULL, input_instance_start_stop_handler) != POM_OK) {
+		registry_cleanup_param(param_running);
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+	
+	if (registry_instance_add_param(res->reg_instance, param_running) != POM_OK) {
+		registry_cleanup_param(param_running);
+		ptype_cleanup(param_running_val);
+		goto err;
+	}
+
+
+	struct ptype *input_type = ptype_alloc("string");
+	if (!input_type)
+		goto err;
+
+	struct registry_param *type_param = registry_new_param("type", type, input_type, "Type of the input", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+	if (!type_param) {
+		ptype_cleanup(input_type);
+		goto err;
+	}
+
+	if (registry_instance_add_param(res->reg_instance, type_param) != POM_OK) {
+		registry_cleanup_param(type_param);
+		ptype_cleanup(input_type);
+		goto err;
+	}
+
+	if (registry_uid_create(res->reg_instance) != POM_OK)
+		goto err;
+
+	res->reg_instance->priv = res;
+
+	if (reg->info->init) {
+		if (reg->info->init(res) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while initializing the input %s", name);
+			goto err;
+		}
+	}
+
+	res->next = input_head;
+	if (res->next)
+		res->next->prev = res;
+	input_head = res;
+
+	return POM_OK;
+
+err:
+	if (res->name)
+		free(res->name);
+
+	if (res->reg_instance)
+		registry_remove_instance(res->reg_instance);
+
+	free(res);
+
+	return POM_ERR;
+}
+
+int input_instance_remove(struct registry_instance *ri) {
+
+	struct input *i = ri->priv;
+	
+	pom_mutex_lock(&i->lock);
+	int running = i->running;
+	pom_mutex_unlock(&i->lock);
+	if (running && registry_set_param_value(i->reg_param_running, "0") != POM_OK) {
+		return POM_ERR;
+	}
+
+	if (i->reg->info->cleanup) {
+		if (i->reg->info->cleanup(i) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while cleaning up input");
+			return POM_ERR;
+		}
+	}
+
+	pthread_mutex_destroy(&i->lock);
+
+	free(i->name);
+
+	if (i->prev)
+		i->prev->next = i->next;
+	else
+		input_head = i->next;
+
+	if (i->next)
+		i->next->prev = i->prev;
+
+	free(i);
+
+	return POM_OK;
+}
+
+int input_instance_start_stop_handler(void *priv, struct ptype *run) {
+
+	struct input *i = priv;
+
+	char *new_state = PTYPE_BOOL_GETVAL(run);
+
+	pom_mutex_lock(&i->lock);
+	char cur_state = (i->running == INPUT_RUN_STOPPED ? 0 : 1);
+
+	if (cur_state == *new_state) {
+		pom_mutex_unlock(&i->lock);
+		pomlog(POMLOG_ERR "Error, input is already %s", (cur_state ? "running" : "stopped"));
+		return POM_ERR;
+	}
+
+	if (*new_state) {
+
+		if (!(i->reg->info->flags & INPUT_REG_FLAG_LIVE)) {
+			struct input *tmp;
+			for (tmp = input_head; tmp; tmp = tmp->next) {
+				if (tmp != i) {
+					pom_mutex_lock(&tmp->lock);
+					if (i->running) {
+						pom_mutex_unlock(&tmp->lock);
+						pom_mutex_unlock(&i->lock);
+						pomlog(POMLOG_ERR "When using non-live input, it can only be started alone");
+						return POM_ERR;
+					}
+					pom_mutex_unlock(&tmp->lock);
+				}
+			}
+		}
+
+		if (i->reg->info->open && i->reg->info->open(i) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while starting input %s", i->name);
+			pom_mutex_unlock(&i->lock);
+			return POM_ERR;
+		}
+
+		i->running = INPUT_RUN_RUNNING;
+		pom_mutex_unlock(&i->lock);
+		if (pthread_create(&i->thread, NULL, input_process_thread, (void*) i)) {
+			pom_mutex_unlock(&i->lock);
+			pomlog(POMLOG_ERR "Unable to start a new thread for input %s : %s", i->name, pom_strerror(errno));
+			return POM_ERR;
+		}
+
+		input_cur_running++;
+
+		if (input_cur_running == 1)
+			core_set_state(core_state_running);
+		
+	} else {
+		i->running = INPUT_RUN_STOPPING;
+		pom_mutex_unlock(&i->lock);
+
+		if (i->reg->info->interrupt && i->reg->info->interrupt(i) == POM_ERR) {
+			pomlog(POMLOG_WARN "Warning : error while interrupting the read process of the input");
+		}
+
+		if (i->thread != pthread_self()) {
+			if (pthread_join(i->thread, NULL))
+				pomlog(POMLOG_WARN "Error while joining the input thread : %s", pom_strerror(errno));
+		} else {
+			if (pthread_detach(i->thread))
+				pomlog(POMLOG_WARN "Error while detaching the input thread : %s", pom_strerror(errno));
+		}
+
+		input_cur_running--;
+
+		if (!input_cur_running)
+			core_set_state(core_state_finishing);
+	}
+
+
+	return POM_OK;
+
+}
+
+
+
 void *input_process_thread(void *param) {
 
 	struct input *i = param;
 
-	pomlog(POMLOG_DEBUG "New input thread running");
+	pom_mutex_lock(&i->lock);
 
-	pom_mutex_lock(&i->shm_buff->lock);
-	i->shm_buff->flags |= INPUT_FLAG_RUNNING;
-	pom_mutex_unlock(&i->shm_buff->lock);
+	pomlog(POMLOG_DEBUG "Input %s started", i->name);
 
-	while (i->type->info->read(i) == POM_OK) {
-		input_instance_lock(i, 0);
-		if (!i->opened) {
-			input_instance_unlock(i);
-			break;
+	while (i->running == INPUT_RUN_RUNNING) {
+	
+		pom_mutex_unlock(&i->lock);
+		if (i->reg->info->read(i) != POM_OK) {
+			// This will update the value of i->running
+			pomlog(POMLOG_ERR "Error while reading from input %s", i->name);
+			registry_set_param_value(i->reg_param_running, "0");
 		}
-		input_instance_unlock(i);
+		pom_mutex_lock(&i->lock);
+
 	}
 
-	if (i->opened)
-		input_close(i);
+	if (i->reg->info->close && i->reg->info->close(i) != POM_OK) {
+		pomlog(POMLOG_WARN "Error while stopping input %s", i->name);
+	}
 
-	pom_mutex_lock(&i->shm_buff->lock);
-	i->shm_buff->flags &= ~INPUT_FLAG_RUNNING;
-	pom_mutex_unlock(&i->shm_buff->lock);
-	pomlog(POMLOG_DEBUG "Input thread finished");
+
+	i->running = INPUT_RUN_STOPPED;
+	pom_mutex_unlock(&i->lock);
+	pomlog(POMLOG_DEBUG "Input %s stopped", i->name);
 
 	return NULL;
-}
 
-
-void input_reg_lock(int write) {
-	
-	int res = 0;
-	
-	if (write)
-		res = pthread_rwlock_wrlock(&input_reg_rwlock);
-	else
-		res = pthread_rwlock_rdlock(&input_reg_rwlock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while locking the input_reg lock");
-		abort();
-	}
-
-}
-
-void input_reg_unlock() {
-
-	if (pthread_rwlock_unlock(&input_reg_rwlock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the input_reg lock");
-		abort();
-	}
-}
-
-void input_instance_lock(struct input *i, int write) {
-	
-	int res = 0;
-
-	if (write)
-		res = pthread_rwlock_wrlock(&i->op_lock);
-	else
-		res = pthread_rwlock_rdlock(&i->op_lock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while locking the input instance op lock : %s", pom_strerror(errno));
-		abort();
-	}
-}
-
-void input_instance_unlock(struct input *i) {
-
-	if (pthread_rwlock_unlock(&i->op_lock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the input instance op lock : %s", pom_strerror(errno));
-		abort();
-	}
 }

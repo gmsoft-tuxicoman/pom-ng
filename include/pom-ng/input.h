@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,23 +31,24 @@
 // Current input API version
 #define INPUT_API_VER	1
 
-struct input_buff;
-struct input_param;
-struct input_packet;
+
+// Define that the input is capturing live packets
+#define INPUT_REG_FLAG_LIVE	0x1
 
 struct input {
-	struct input_reg* type; ///< Type of the input
-	int opened;
-	struct input_param *params;
+
+	char *name;
+	struct input_reg* reg;
+	struct registry_instance *reg_instance;
+	struct registry_param *reg_param_running;
+	int running;
+
 	void *priv;
 
-	int shm_key;
-	int shm_id;
-	struct input_buff *shm_buff;
-	size_t shm_buff_size;
-
+	pthread_mutex_t lock;
 	pthread_t thread;
-	pthread_rwlock_t op_lock;
+
+	struct input *prev, *next;
 };
 
 struct input_caps {
@@ -61,35 +62,28 @@ struct input_reg_info {
 
 	unsigned int api_ver;
 	char *name;
+	struct mod_reg *mod;
+	unsigned int flags;
 
-	/// Pointer to the allocate function of the input
+	/// Pointer to the initialization function of the input
 	/**
-	 * The allloc function is called to create a new input
+	 * The init function is called to create a new input
 	 * @param i The input structure to init
 	 * @return POM_OK on nuccess and POM_ERR on failure.
 	 **/
-	int (*alloc) (struct input *i);
+	int (*init) (struct input *i);
 
 	/// Pointer to the open function of the input
 	/**
-	 * The open function is called when opening the input.
+	 * The open function is called when starting the input.
 	 * @param i The input to init
 	 * @return POM_OK on success and POM_ERR on failure.
 	 **/
 	int (*open) (struct input *i);
 
-	/// Pointer to the read function
-	/**
-	 *  Reads a packet and store it in the shared buffer.
-	 *  @param i The input to read from
-	 *  @param f The frame to fill with read packet
-	 *  @return POM_OK or POM_ERR in case of fatal error.
-	 **/
-	int (*read) (struct input *i);
-
 	/// Pointer to the close fonction
 	/**
-	 * Close the input.
+	 * Called when stopping the input.
 	 * @param i The input to close
 	 * @return POM_OK on success, POM_ERR on failure.
 	 **/
@@ -103,15 +97,14 @@ struct input_reg_info {
 	 **/
 	int (*cleanup) (struct input *i);
 
-	/// Pointer to the fonction to provide the capabilities of an input
+	/// Pointer to the read function
 	/**
-	 * Fills the struct input_caps with the capabilities of the input.
-	 * The input must be opened or POM_ERR will be returned.
-	 * @param i The input we need capabilities from
-	 * @param ic The struct input_caps that needs to be filled
-	 * @return POM_OK on success and POM_ERR on failure.
+	 *  Reads a packet and send it to the core queue.
+	 *  @param i The input to read from
+	 *  @param f The frame to fill with read packet
+	 *  @return POM_OK or POM_ERR in case of fatal error.
 	 **/
-	int (*get_caps) (struct input *i, struct input_caps *ic);
+	int (*read) (struct input *i);
 
 	/// Pointer to interrupt that should be called when interrupting the current read
 	/**
@@ -125,22 +118,8 @@ struct input_reg_info {
 // Full decl is private
 struct input_reg;
 
-/// Register a new input.
-int input_register(struct input_reg_info *reg, struct mod_reg *mod);
-
-/// Stops an input
-int input_close(struct input *i);
-
-/// Unregister a input
+int input_register(struct input_reg_info *reg_info);
 int input_unregister(char *name);
 
-// Allocate a buffer to store a packet of a specific size
-struct input_packet *input_packet_buffer_alloc(struct input *i, size_t pkt_size, int wait_if_full, unsigned char **pkt_data_ptr, struct timeval **pkt_ts_ptr);
-
-// Process the packet after filling buff and ts
-int input_packet_buffer_process(struct input *i, struct input_packet *pkt);
-
-// Called by an input module to register a parameter
-int input_register_param(struct input *i, char *name, struct ptype *value, char *default_value, char *description, unsigned int flags);
 
 #endif
