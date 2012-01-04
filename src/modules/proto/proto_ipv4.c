@@ -183,7 +183,7 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 
 
 	s_next->pload = s->pload + hdr_len;
-	s_next->plen = s->plen - hdr_len;
+	s_next->plen = ntohs(hdr->ip_len) - hdr_len;
 	s_next->direction = s->direction;
 
 	switch (hdr->ip_p) {
