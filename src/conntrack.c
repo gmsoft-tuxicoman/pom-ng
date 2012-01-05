@@ -28,6 +28,12 @@
 
 #define INITVAL 0x5de97c2d // random value
 
+#if 0
+#define debug_conntrack(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_conntrack(x ...)
+#endif
+
 struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev) {
 
 	struct conntrack_tables *ct = malloc(sizeof(struct conntrack_tables));
@@ -281,12 +287,14 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 			lst_fwd->next->prev = lst_fwd;
 		ct->fwd_table[0] = lst_fwd;
 		pom_mutex_unlock(&ct->lock);
+		debug_conntrack("Allocated conntrack %p with parent %p (uniq child)", res, parent);
 
 	} else if (parent->children->next) {
 		pomlog(POMLOG_ERR "Error, parent has more than one child while it was supposed to have only one");
 	} else {
 		res = parent->children->ce;
 	}
+
 
 	pom_mutex_unlock(&parent->lock);
 
@@ -507,6 +515,7 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 	}
 
 	// Unlock the tables
+	debug_conntrack("Allocated conntrack %p with parent %p", res, parent);
 	pom_mutex_unlock(&ct->lock);
 	
 	return res;
@@ -592,6 +601,8 @@ int conntrack_cleanup(void *conntrack) {
 
 	pom_mutex_lock(&ce->lock);
 
+	debug_conntrack("Cleaning up conntrack %p, with parent %p", ce, ce->parent);
+
 	if (!ce->proto) {
 		// Conntrack is already being cleaned up by another thread
 		return POM_OK;
@@ -601,10 +612,15 @@ int conntrack_cleanup(void *conntrack) {
 		timer_cleanup(ce->cleanup_timer);
 		ce->cleanup_timer = NULL;
 	}
-	
+
 	struct proto *proto = ce->proto;
 	ce->proto = NULL;
 
+	if (ce->priv && proto->info->ct_info.cleanup_handler) {
+		if (proto->info->ct_info.cleanup_handler(ce) != POM_OK)
+			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
+	}
+	
 	if (ce->parent) {
 		// Remove the child from the parent
 		pom_mutex_lock(&ce->parent->lock);
@@ -641,11 +657,6 @@ int conntrack_cleanup(void *conntrack) {
 		pom_mutex_lock(&ce->lock);
 	}
 
-
-	if (ce->priv && proto->info->ct_info.cleanup_handler) {
-		if (proto->info->ct_info.cleanup_handler(ce) != POM_OK)
-			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
-	}
 
 	struct conntrack_tables *ct = proto->ct;
 
