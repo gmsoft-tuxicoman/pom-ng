@@ -539,10 +539,9 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 	if (pload->state == analyzer_pload_buffer_state_partial) {
 		// If we know what type of payload we are dealing with, try to analyze it
-		if (pload->type) {
+		if (pload->type && pload->type->analyzer) {
 
 			struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
-
 
 			// Have the analyzer look at the payload
 			// The analyzer will either leave the state as it is or change it to error or analyzed
@@ -639,7 +638,7 @@ int analyzer_pload_output(struct analyzer_pload_buffer *pload) {
 
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 
-	if (pload->type) {
+	if (pload->type && pload->type->analyzer) {
 
 		struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
 		if (pload_analyzer->cleanup) {
