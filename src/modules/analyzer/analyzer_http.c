@@ -198,8 +198,14 @@ int analyzer_http_cleanup(struct analyzer *analyzer) {
 
 int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
 
+	struct analyzer_http_ce_priv *cpriv = priv;
+
+	int res = POM_OK;
+	if (cpriv->evt)
+		res = analyzer_http_event_finalize_process(cpriv);
+
 	free(priv);
-	return POM_OK;
+	return res;
 }
 
 int analyzer_http_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners) {
@@ -274,6 +280,8 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 	if (!epriv) {
 		epriv = malloc(sizeof(struct analyzer_http_request_event_priv));
 		if (!epriv) {
+			event_cleanup(cpriv->evt);
+			cpriv->evt = NULL;
 			pom_oom(sizeof(struct analyzer_http_request_event_priv));
 			return POM_ERR;
 		}
@@ -284,6 +292,20 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 	if ((epriv->response_event && evt->reg == apriv->evt_response) || (epriv->query_event && evt->reg == apriv->evt_query)) {
 		if (analyzer_http_event_finalize_process(cpriv) != POM_OK)
 			return POM_ERR;
+		cpriv->evt = event_alloc(apriv->evt_request);
+		
+		if (!cpriv->evt)
+			return POM_ERR;
+
+		epriv = malloc(sizeof(struct analyzer_http_request_event_priv));
+		if (!epriv) {
+			event_cleanup(cpriv->evt);
+			cpriv->evt = NULL;
+			pom_oom(sizeof(struct analyzer_http_request_event_priv));
+			return POM_ERR;
+		}
+		memset(epriv, 0, sizeof(struct analyzer_http_request_event_priv));
+		cpriv->evt->priv = epriv;
 	}
 
 	// Do the mapping, no flag checking or other, we just know how :)
