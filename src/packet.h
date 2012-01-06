@@ -50,6 +50,8 @@ int packet_pool_cleanup();
 int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
 int packet_info_pool_cleanup(struct packet_info_pool *pool);
 
+int packet_stream_timeout(void *priv);
+int packet_stream_force_dequeue(struct packet_stream *stream);
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction);
 
 #endif

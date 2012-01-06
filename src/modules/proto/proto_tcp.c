@@ -339,7 +339,7 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 		uint32_t ack = ntohl(hdr->th_ack);
 
 		// FIXME only create bidir stream if we actually get packet from the other direction
-		priv->stream = packet_stream_alloc(seq, ack, s->direction, 65535, PACKET_FLAG_STREAM_BIDIR, proto_tcp_process_payload, priv);
+		priv->stream = packet_stream_alloc(seq, ack, s->direction, 65535, 30, PACKET_FLAG_STREAM_BIDIR, proto_tcp_process_payload, priv);
 		if (!priv->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;

@@ -176,7 +176,7 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 		stream->last_seq = (buff[3] - 1) & 0xF;
 
 		char *force_no_copy = PTYPE_BOOL_GETVAL(ppriv->param_force_no_copy);
-		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_stream, stream);
+		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, 10, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_stream, stream);
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;

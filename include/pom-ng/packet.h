@@ -24,6 +24,7 @@
 
 #include <pom-ng/base.h>
 #include <pom-ng/conntrack.h>
+#include <pom-ng/timer.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
 #define PACKET_FLAG_STREAM_BIDIR	0x2
@@ -105,6 +106,7 @@ struct packet_stream {
 	struct packet_stream_pkt *head[CT_DIR_TOT], *tail[CT_DIR_TOT];
 	int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 	void *priv;
+	struct timer *t;
 };
 
 
@@ -128,7 +130,7 @@ int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index),  void *priv);
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int timeout, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index), void *priv);
 int packet_stream_cleanup(struct packet_stream *stream);
 int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack);
 

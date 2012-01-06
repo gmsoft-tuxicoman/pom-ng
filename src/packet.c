@@ -633,7 +633,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 }
 
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index),  void *priv) {
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int timeout, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index), void *priv) {
 	
 	struct packet_stream *res = malloc(sizeof(struct packet_stream));
 	if (!res) {
@@ -642,6 +642,12 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 	}
 
 	memset(res, 0, sizeof(struct packet_stream));
+	
+	res->t = timer_alloc(res, packet_stream_timeout);
+
+	if (!res->t)
+		return NULL;
+
 	int rev_direction = (direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
 	res->cur_seq[direction] = start_seq;
 	res->cur_ack[direction] = start_ack;
@@ -652,6 +658,7 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 	res->priv = priv;
 
 	if (pthread_mutex_init(&res->lock, NULL)) {
+		timer_cleanup(res->t);
 		pomlog(POMLOG_ERR "Error while initializing packet_stream list mutex : %s", pom_strerror(errno));
 		return NULL;
 	}
@@ -665,31 +672,37 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 
 int packet_stream_cleanup(struct packet_stream *stream) {
 
-	int i;
-	for (i = 0; i < CT_DIR_TOT; i++) {
-		struct packet_stream_pkt *p = stream->head[i];
-		while (p) {
-			stream->head[i] = p->next;
-			if (p->pkt)
-				packet_pool_release(p->pkt);
-			if (p->stack) {
-				int j;
-				for (j = 1; j < CORE_PROTO_STACK_MAX && p->stack[j].pkt_info; j++)
-					packet_info_pool_release(&p->stack[j].proto->pkt_info_pool, p->stack[j].pkt_info);
-				free(p->stack);
-			}
-			free(p);
-			p = stream->head[i];
+	pom_mutex_lock(&stream->lock);
+	while (stream->head[0] || stream->head[1]) {
+		if (packet_stream_force_dequeue(stream) == POM_ERR) {
+			pomlog(POMLOG_ERR "Error while processing remaining packets in the stream");
+			break;
 		}
 	}
+	
+	pom_mutex_unlock(&stream->lock);
 
 	pthread_mutex_destroy(&stream->lock);
+
+	timer_cleanup(stream->t);
 
 	free(stream);
 
 	debug_stream("entry %p, released", stream);
 
 	return POM_OK;
+}
+
+int packet_stream_timeout(void *priv) {
+
+	struct packet_stream *stream = priv;
+	int res = POM_OK;
+	
+	pom_mutex_lock(&stream->lock);
+	res = packet_stream_force_dequeue(stream);
+	pom_mutex_unlock(&stream->lock);
+
+	return res;
 }
 
 static int packet_stream_is_packet_old_dupe(struct packet_stream *stream, struct packet_stream_pkt *pkt, int direction) {
@@ -750,6 +763,7 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 		if ((rev_seq < pkt->ack && pkt->ack - rev_seq < PACKET_HALF_SEQ)
 			|| (rev_seq > pkt->ack && rev_seq - pkt->ack > PACKET_HALF_SEQ)) {
 			// The host processed data in the reverse direction which we haven't processed yet
+			timer_queue(stream->t, 2); // Only wait 2 seconds for the reverse direction
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
 			return 0;
 		}
@@ -937,14 +951,106 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	
 	stream->cur_buff_size += cur_stack->plen;
 
-
-	// FIXME handle buffer overflow
+	
+	if (stream->cur_buff_size >= stream->max_buff_size) {
+		// Buffer overflow
+		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+		if (packet_stream_force_dequeue(stream) != POM_OK) {
+			pom_mutex_unlock(&stream->lock);
+			return POM_ERR;
+		}
+	}
 
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 	pom_mutex_unlock(&stream->lock);
 	return POM_OK;
 }
 
+int packet_stream_force_dequeue(struct packet_stream *stream) {
+
+	if (!stream->head[CT_DIR_FWD] && !stream->head[CT_DIR_REV])
+		return POM_OK;
+
+	unsigned int next_dir;
+
+	if (!stream->head[CT_DIR_FWD]) {
+		next_dir = CT_DIR_REV;
+	} else if (!stream->head[CT_DIR_REV]) {
+		next_dir = CT_DIR_FWD;
+	} else {
+		// We have packets in both direction, lets see which one we'll process first
+		int i;
+		for (i = 0; i < 2; i++) {
+			int r = 1 - i;
+			struct packet_stream_pkt *a = stream->head[i], *b = stream->head[r];
+			uint32_t end_seq = a->seq + a->plen;
+			if ((end_seq <= b->ack && b->ack - end_seq < PACKET_HALF_SEQ) ||
+				(b->ack > end_seq && end_seq - b->ack > PACKET_HALF_SEQ))
+				break;
+
+		}
+		next_dir = i;
+
+	}
+
+	struct packet_stream_pkt *p = stream->head[next_dir];
+	if (p->next)
+		p->next->prev = NULL;
+	else
+		stream->tail[next_dir] = NULL;
+	
+	stream->head[next_dir] = p->next;
+
+	if (packet_stream_remove_dupe_bytes(stream, p, next_dir) == POM_ERR)
+		return POM_ERR;
+
+	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->ts.tv_sec, p->ts.tv_usec, p->seq, p->ack);
+	int res = stream->handler(stream->priv, p->pkt, p->stack, p->stack_index);
+
+	int i;
+	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
+		packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
+
+	free(p->stack);
+	packet_pool_release(p->pkt);
+	stream->cur_seq[next_dir] = p->seq + p->plen;
+	stream->cur_ack[next_dir] = p->ack;
+	stream->cur_buff_size -= p->plen;
+
+	free(p);
+
+
+	if (res == POM_ERR)
+		return POM_ERR;
+
+	// See if we can process additional packets
+
+	// Check if additional packets can be processed
+	while ((p = packet_stream_get_next(stream, &next_dir))) {
+
+
+		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process additional", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
+
+		if (stream->handler(stream->priv, p->pkt, p->stack, p->stack_index) == POM_ERR) {
+			pom_mutex_unlock(&stream->lock);
+			return POM_ERR;
+		}
+
+		for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
+			packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
+
+		free(p->stack);
+		packet_pool_release(p->pkt);
+
+		stream->cur_seq[next_dir] += p->plen;
+		stream->cur_ack[next_dir] = p->ack;
+
+		free(p);
+	}
+
+	return POM_OK;
+
+}
 
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction) {
 
@@ -961,12 +1067,6 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 		while (stream->head[cur_dir]) {
 			
 			res = stream->head[cur_dir];
-
-			if (stream->cur_buff_size >= stream->max_buff_size) {
-				debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : buffer full", stream, res->pkt->ts.tv_sec, res->pkt->ts.tv_usec, res->seq, res->ack);
-				break; // Buffer is full, proceed with dequeueing
-			}
-		
 
 			if (!packet_stream_is_packet_next(stream, res, *direction)) {
 				res = NULL;
@@ -991,6 +1091,10 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 						pomlog(POMLOG_WARN "Dequeing packet which wasn't the first in the list. This shouldn't happen !");
 						res->prev->next = res->next;
 					}
+
+					for (i = 1; i < CORE_PROTO_STACK_MAX && res->stack[i].pkt_info; i ++)
+						packet_info_pool_release(&res->stack[i].proto->pkt_info_pool, res->stack[i].pkt_info);
+					free(res->stack);
 					
 					stream->cur_buff_size -= res->plen;
 					packet_pool_release(res->pkt);
