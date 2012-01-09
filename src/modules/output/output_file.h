@@ -46,7 +46,7 @@ int output_file_cleanup(struct output *o);
 int output_file_close(struct output *o);
 
 int output_file_pload_open(struct analyzer_pload_output_list *po);
-ssize_t output_file_pload_write(struct analyzer_pload_output_list *po, void *data, size_t len);
+int output_file_pload_write(struct analyzer_pload_output_list *po, void *data, size_t len);
 int output_file_pload_close(struct analyzer_pload_output_list *po);
 
 

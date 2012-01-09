@@ -187,12 +187,12 @@ int output_file_pload_open(struct analyzer_pload_output_list *po) {
 
 }
 
-ssize_t output_file_pload_write(struct analyzer_pload_output_list *po, void *data, size_t len) {
+int output_file_pload_write(struct analyzer_pload_output_list *po, void *data, size_t len) {
 
 
 	struct output_file_pload_priv *ppriv = po->priv;
-	ssize_t res = write(ppriv->fd, data, len);
-	if (res == -1)
+	int res = pom_write(ppriv->fd, data, len);
+	if (res != POM_ERR)
 		pomlog(POMLOG_ERR "Error while writing to file %s : %s", ppriv->filename, pom_strerror(errno));
 
 	return res;

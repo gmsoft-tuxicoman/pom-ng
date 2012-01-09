@@ -424,38 +424,70 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_
 
 }
 
+static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pload, void *data, size_t size) {
+
+	if (!pload->buff_size) {
+		size_t alloc_size = (pload->expected_size > 65535 ? 65535 : pload->expected_size);
+		pload->buff_size = alloc_size;
+		pload->buff = malloc(pload->expected_size);
+		if (!pload->buff) {
+			pom_oom(pload->expected_size);
+			pload->state = analyzer_pload_buffer_state_error;
+			return POM_ERR;
+		}
+	}
+	if (pload->expected_size && pload->expected_size < pload->buff_pos + size) {
+		pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
+		pload->state = analyzer_pload_buffer_state_error;
+		return POM_OK;
+	}
+
+	if (pload->buff_size < pload->buff_pos + size) {
+		// Buffer is too small, add a page
+		long pagesize = sysconf(_SC_PAGESIZE);
+		if (!pagesize)
+			pagesize = 4096;
+
+		size_t new_size = pload->buff_size + pagesize;
+
+		void *new_buff = realloc(pload->buff, new_size);
+		if (!new_buff) {
+			pom_oom(new_size);
+			pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
+			pload->state = analyzer_pload_buffer_state_error;
+			return POM_ERR;
+		}
+
+		pload->buff = new_buff;
+		pload->buff_size = new_size;
+	}
+
+	memcpy(pload->buff + pload->buff_pos, data, size);
+	pload->buff_pos += size;
+
+	return POM_OK;
+}
 
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size) {
 
 	if (pload->state == analyzer_pload_buffer_state_error || pload->state == analyzer_pload_buffer_state_done) {
 		// Don't process payloads which encountered an error or which do not need additional processing
+		if (pload->buff_size) {
+			// Remove the buffer if still present
+			pload->buff_size = 0;
+			free(pload->buff);
+			pload->buff = NULL;
+		}
 		return POM_OK;
 	}
 
-
 	if (pload->state == analyzer_pload_buffer_state_empty) {
+
+		// Use the current data as the buffer
+		pload->buff_pos = size;
+		pload->buff = data;
+
 		// We need to allocate the buffer for this payload
-		if (pload->expected_size) {
-			// Easy enough, we know what size it will be in total
-			pload->buff_size = pload->expected_size;
-			pload->buff = malloc(pload->expected_size);
-			if (!pload->buff) {
-				pom_oom(pload->expected_size);
-				pload->state = analyzer_pload_buffer_state_error;
-				return POM_ERR;
-			}
-		} else {
-			// We don't know how big it will be, allocate a page
-			long pagesize = sysconf(_SC_PAGESIZE);
-			if (!pagesize)
-				pagesize = 4096;
-			pload->buff = malloc(pagesize);
-			if (!pload->buff) {
-				pom_oom(pagesize);
-				pload->state = analyzer_pload_buffer_state_error;
-				return POM_ERR;
-			}
-		}
 #ifdef HAVE_LIBMAGIC
 		pload->state = analyzer_pload_buffer_state_magic;
 #else
@@ -464,43 +496,9 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 	}
 
-
-	// Add the data to the buffer
-	if (pload->expected_size) {
-		if (pload->expected_size < pload->buff_pos + size) {
-			pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
-			pload->state = analyzer_pload_buffer_state_error;
-			return POM_OK;
-		}
-	} else {
-
-		if (pload->buff_size < pload->buff_pos + size) {
-			// Buffer is too small, add a page
-			long pagesize = sysconf(_SC_PAGESIZE);
-			if (!pagesize)
-				pagesize = 4096;
-
-			size_t new_size = pload->buff_size + pagesize;
-
-			void *new_buff = realloc(pload->buff, new_size);
-			if (!new_buff) {
-				pom_oom(new_size);
-				pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
-				pload->state = analyzer_pload_buffer_state_error;
-				return POM_ERR;
-			}
-
-			pload->buff = new_buff;
-			pload->buff_size = new_size;
-		}
-	}
-	
-	memcpy(pload->buff + pload->buff_pos, data, size);
-	pload->buff_pos += size;
-
-	if (pload->state == analyzer_pload_buffer_state_analyzed) {
-		// Send the payload to the output
-		return analyzer_pload_output(pload);
+	if (pload->buff_size) { // There is a buffer, we need to append data to the current buffer
+		if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
+			return POM_ERR;
 	}
 
 #ifdef HAVE_LIBMAGIC
@@ -508,12 +506,14 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		// We need to perform some magic
 		if (pload->buff_pos > ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE || (pload->expected_size && pload->expected_size < ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE)) {
 			// We have enough to perform some magic
+			
 
 			// libmagic is no thread safe ...
 			static pthread_mutex_t magic_lock = PTHREAD_MUTEX_INITIALIZER;
 			pom_mutex_lock(&magic_lock);
 
 			char *magic_mime_type = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
+
 			if (!magic_mime_type) {
 				pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
 				pload->state = analyzer_pload_buffer_state_error;
@@ -531,6 +531,14 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			pom_mutex_unlock(&magic_lock);
 
 			pload->state = analyzer_pload_buffer_state_partial;
+		} else {
+			if (!pload->buff_size) {
+				// Not enough data. We need to buffer what we have
+				return analyzer_pload_buffer_append_to_buff(pload, data, size);
+			} else {
+				// We already appended the data
+				return POM_OK;
+			}
 		}
 	}
 
@@ -552,6 +560,15 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					// For now, remove the type from the payload
 					pload->type = NULL;
 				}
+			} else {
+				// The analyzer needs the full buffer
+				if (!pload->buff_size) {
+					// Not enough data. We need to buffer what we have
+					return analyzer_pload_buffer_append_to_buff(pload, data, size);
+				} else {
+					// We already appended the data
+					return POM_OK;
+				}
 			}
 		
 			if (!pload->type) {
@@ -564,76 +581,87 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			pload->state = analyzer_pload_buffer_state_analyzed;
 		}
 
-		if (pload->state == analyzer_pload_buffer_state_analyzed) {
-			// Process the payload to the ouptut
-			return analyzer_pload_output(pload);
-		}
 
 	}
 
-	return POM_OK;
+	if (pload->state == analyzer_pload_buffer_state_analyzed) {
+		if (!pload->output_list) {
+			// Try to send this payload to all the outputs
+			// TODO filtering
+			struct analyzer_pload_output *tmp;
+			for (tmp = analyzer_pload_outputs; tmp; tmp = tmp->next) {
 
-}
+				struct analyzer_pload_output_list *lst = malloc(sizeof(struct analyzer_pload_output_list));
+				if (!lst) {
+					pom_oom(sizeof(struct analyzer_pload_output_list));
+					// Error is not fatal
+					return POM_OK;
+				}
+				memset(lst, 0, sizeof(struct analyzer_pload_output_list));
+				lst->o = tmp;
+				lst->pload = pload;
 
-int analyzer_pload_output(struct analyzer_pload_buffer *pload) {
+				if (tmp->reg_info->open(lst)) {
+					pomlog(POMLOG_ERR "Error while opending output %s for a payload", tmp->output->name);
+					free(lst);
+					continue;
+				}
 
+				lst->next = pload->output_list;
+				if (lst->next)
+					lst->next->prev = lst;
 
-	if (!pload->output_list) {
-		// Try to send this payload to all the outputs
-		// TODO filtering
-		struct analyzer_pload_output *tmp;
-		for (tmp = analyzer_pload_outputs; tmp; tmp = tmp->next) {
+				pload->output_list = lst;
 
-			struct analyzer_pload_output_list *lst = malloc(sizeof(struct analyzer_pload_output_list));
-			if (!lst) {
-				pom_oom(sizeof(struct analyzer_pload_output_list));
-				// Error is not fatal
+			}
+			if (!pload->output_list) {
+				pload->state = analyzer_pload_buffer_state_done;
+				if (pload->buff_size) {
+					free(pload->buff);
+					pload->buff = NULL;
+					pload->buff_size = 0;
+				}
 				return POM_OK;
 			}
-			memset(lst, 0, sizeof(struct analyzer_pload_output_list));
-			lst->o = tmp;
-			lst->pload = pload;
 
-			if (tmp->reg_info->open(lst)) {
-				pomlog(POMLOG_ERR "Error while opending output %s for a payload", tmp->output->name);
+		}
+
+		struct analyzer_pload_output_list *lst;
+		for (lst = pload->output_list; lst; lst = lst->next) {
+			int res;
+			if (pload->buff_size) {
+				res = lst->o->reg_info->write(lst, pload->buff, pload->buff_pos);
+			} else {
+				res = lst->o->reg_info->write(lst, data, size);
+			}
+			if (res != POM_OK) {
+				pomlog(POMLOG_ERR "Error while writing to output %s", lst->o->output->name);
+				lst->o->reg_info->close(lst);
+				// Remove this input from the list
+				if (lst->next)
+					lst->next->prev = lst->prev;
+				if (lst->prev)
+					lst->prev->next = lst->next;
+				else
+					pload->output_list = lst->next;
+
 				free(lst);
 				continue;
 			}
 
-			lst->next = pload->output_list;
-			if (lst->next)
-				lst->next->prev = lst;
-
-			pload->output_list = lst;
-
 		}
 
-	}
+		if (pload->buff_size) {
+			// The buffer was written, we can safely get rid of it
+			pload->buff_size = 0;
+			free(pload->buff);
+			pload->buff = NULL;
 
-	struct analyzer_pload_output_list *lst;
-	for (lst = pload->output_list; lst; lst = lst->next) {
-		ssize_t res = lst->o->reg_info->write(lst, pload->buff + lst->cur_pos, pload->buff_pos - lst->cur_pos);
-		if (res < 0) {
-			pomlog(POMLOG_ERR "Error while writing to output %s", lst->o->output->name);
-			lst->o->reg_info->close(lst);
-			// Remove this input from the list
-			if (lst->next)
-				lst->next->prev = lst->prev;
-			if (lst->prev)
-				lst->prev->next = lst->next;
-			else
-				pload->output_list = lst->next;
-			continue;
 		}
-
-		lst->cur_pos += res;
-
 	}
-
-	if (!pload->output_list)
-		pload->state = analyzer_pload_buffer_state_done;
 
 	return POM_OK;
+
 }
 
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
@@ -657,7 +685,7 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 
 	}
 
-	if (pload->buff)
+	if (pload->buff_size && pload->buff)
 		free(pload->buff);
 	free(pload);
 

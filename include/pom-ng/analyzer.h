@@ -160,7 +160,7 @@ struct analyzer_pload_output_reg {
 
 
 	int (*open) (struct analyzer_pload_output_list *po);
-	ssize_t (*write) (struct analyzer_pload_output_list *po, void *data, size_t len);
+	int (*write) (struct analyzer_pload_output_list *po, void *data, size_t len);
 	int (*close) (struct analyzer_pload_output_list *po); 
 
 };
@@ -178,7 +178,6 @@ struct analyzer_pload_output_list {
 
 	struct analyzer_pload_output *o;
 	struct analyzer_pload_buffer *pload;
-	size_t cur_pos;
 
 	void *priv;
 
