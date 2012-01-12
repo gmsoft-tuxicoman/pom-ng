@@ -192,7 +192,7 @@ int output_file_pload_write(struct analyzer_pload_output_list *po, void *data, s
 
 	struct output_file_pload_priv *ppriv = po->priv;
 	int res = pom_write(ppriv->fd, data, len);
-	if (res != POM_ERR)
+	if (res == POM_ERR)
 		pomlog(POMLOG_ERR "Error while writing to file %s : %s", ppriv->filename, pom_strerror(errno));
 
 	return res;
