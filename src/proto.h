@@ -38,6 +38,7 @@ struct proto_event_analyzer_list {
 
 int proto_init();
 void proto_dependency_refcount_inc(struct proto_dependency *proto_dep);
+int proto_process_payload(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 int proto_empty_conntracks();
 int proto_cleanup();
 

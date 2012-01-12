@@ -151,27 +151,36 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 		return PROTO_ERR;
 	int result = proto->info->process(proto, p, s, stack_index);
 
-	if (result == PROTO_OK) {
-		struct proto_packet_listener *l = proto->packet_listeners;
-		while (l) {
-			int listener_res = POM_OK;
-			if (l->flags & PROTO_PACKET_LISTENER_PLOAD_ONLY) {
-				if (s[stack_index + 1].plen)
-					listener_res = l->process(l->object, p, s, stack_index + 1);
-
-			} else {
-				listener_res = l->process(l->object, p, s, stack_index);
-			}
-			if (listener_res != POM_OK) {
-				pomlog(POMLOG_WARN "Warning listener failed");
+	if (result == PROTO_OK && s[stack_index].plen) {
+		
+		// Process packet listeners
+		struct proto_packet_listener *l;
+		for (l = proto->packet_listeners; l; l = l->next) {
+			if (l->process(l->object, p, s, stack_index) != POM_OK) {
+				pomlog(POMLOG_WARN "Warning packet listener failed");
 				// FIXME remove listener from the list ?
 			}
-
-			l = l->next;
 		}
+
 	}
 
 	return result;
+}
+
+int proto_process_payload(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
+
+	// Process payload listeners
+	if (s[stack_index].plen && s[stack_index - 1].proto) {
+		struct proto_packet_listener *l;
+		for (l = s[stack_index - 1].proto->payload_listeners; l; l = l->next) {
+			if (l->process(l->object, p, s, stack_index) != POM_OK) {
+				pomlog(POMLOG_WARN "Warning payload listener failed");
+				// FIXME remove listener from the list ?
+			}
+		}
+	}
+
+	return POM_OK;
 }
 
 int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
@@ -427,11 +436,18 @@ struct proto_packet_listener *proto_packet_listener_register(struct proto *proto
 	l->proto = proto;
 	l->object = object;
 
-	l->next = proto->packet_listeners;
+	if (l->flags & PROTO_PACKET_LISTENER_PLOAD_ONLY)
+		l->next = proto->payload_listeners;
+	else
+		l->next = proto->packet_listeners;
+
 	if (l->next)
 		l->next->prev = l;
-	
-	proto->packet_listeners = l;
+
+	if (l->flags & PROTO_PACKET_LISTENER_PLOAD_ONLY)
+		proto->payload_listeners = l;
+	else
+		proto->packet_listeners = l;
 
 	return l;
 }
@@ -444,10 +460,14 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 	if (l->next)
 		l->next->prev = l->prev;
 
-	if (l->prev)
+	if (l->prev) {
 		l->prev->next = l->next;
-	else
-		l->proto->packet_listeners = l->next;
+	} else {
+		if (l->flags & PROTO_PACKET_LISTENER_PLOAD_ONLY)
+			l->proto->payload_listeners = l->next;
+		else
+			l->proto->packet_listeners = l->next;
+	}
 
 	free(l);
 

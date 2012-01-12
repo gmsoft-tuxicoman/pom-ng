@@ -58,6 +58,7 @@ struct proto {
 	void *priv;
 
 	struct proto_packet_listener *packet_listeners;
+	struct proto_packet_listener *payload_listeners;
 
 	struct proto *next, *prev;
 

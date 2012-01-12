@@ -414,14 +414,14 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 
 int core_process_packet_stack(struct proto_process_stack *stack, unsigned int stack_index, struct packet *p) {
 
-	if (!stack[stack_index].proto)
-		return PROTO_OK;
-
 	unsigned int i;
 
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {
 
 		struct proto_process_stack *s = &stack[i];
+
+		if (!s->proto)
+			break;
 	
 		if (s->proto->info->pkt_fields)
 			s->pkt_info = packet_info_pool_get(s->proto);
@@ -431,26 +431,37 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (res == PROTO_ERR) {
 			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s->proto->info->name);
 			return POM_ERR;
-		} else if (res < 0)
-			return res;
-	
+		}
+
 		struct proto_process_stack *s_next = &stack[i + 1];
 
-		if (!s_next->proto)
+		if (!s_next->pload)
 			break;
-
+	
 		if ((s_next->pload > s_next->pload + s_next->plen) || // Check if next payload is further than the end of current paylod
 			(s_next->pload < s->pload) || // Check if next payload is before the start of the current payload
 			(s_next->pload + s_next->plen > s->pload + s->plen) || // Check if the end of the next payload is after the end of the current payload
 			(s_next->pload + s_next->plen < s_next->pload)) { // Check for integer overflow
 			// Invalid packet
 			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s->proto->info->name);
-			break;
+			return POM_OK;
 		}
 
+		if (proto_process_payload(p, stack, i) != POM_OK)
+			return POM_ERR;
+
+		if (res < 0)
+			return res;
 	}
 
+	if (proto_process_payload(p, stack, i) != POM_OK)
+		return POM_ERR;
+
 	for (; i >= stack_index; i--) {
+
+		if (!stack[i].proto)
+			continue;
+
 		int res = proto_post_process(p, stack, i);
 
 		if (res == POM_ERR) {
