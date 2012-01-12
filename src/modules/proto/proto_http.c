@@ -21,6 +21,7 @@
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/event.h>
+#include <pom-ng/core.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_timestamp.h>
@@ -267,7 +268,6 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				if (!len) {
 					// Header are parsed
 					
-
 					if ((priv->info.flags & (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) == (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) {
 						pomlog(POMLOG_DEBUG "Ignoring Content-Lenght because transfer type is chunked");
 						priv->info.flags &= ~HTTP_FLAG_HAVE_CLEN;
@@ -275,9 +275,14 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					}
 					
 					// If there is no payload
-					if ( (!(priv->info.flags & HTTP_FLAG_HAVE_CLEN) || ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !priv->info.content_len)) ||
+					if ( ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !priv->info.content_len) ||
 						// Or if the response is not supposed to contain any payload
-						(priv->state == HTTP_RESPONSE && ((priv->info.last_err_code >= 100 && priv->info.last_err_code < 200) || priv->info.last_err_code == 204 || priv->info.last_err_code == 304))) {
+						(priv->state == HTTP_RESPONSE && ((priv->info.last_err_code >= 100 && priv->info.last_err_code < 200) || priv->info.last_err_code == 204 || priv->info.last_err_code == 304)) ||
+						
+						// Or if its a query, forget about having CLEN
+						(priv->state == HTTP_QUERY && (!(priv->info.flags & HTTP_FLAG_HAVE_CLEN)))
+						
+						) {
 							// Process the event
 							event_process_begin(priv->event, stack, stack_index);
 							event_process_end(priv->event);
@@ -365,11 +370,77 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 			case HTTP_BODY_QUERY: 
 			case HTTP_BODY_RESPONSE : {
 
+
+				if (priv->info.flags & HTTP_FLAG_CHUNKED) {
+					if (!priv->info.chunk_len) {
+
+						if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
+							return PROTO_ERR;
+						if (!line) // No more full line in this packet
+							return PROTO_OK;
+
+						char int_str[6] = {0};
+						if (len >= sizeof(int_str) || !len) {
+							pomlog(POMLOG_DEBUG "Invalid chunk size of len %u", len);
+							priv->state = HTTP_INVALID;
+							return PROTO_INVALID;
+						}
+
+						memcpy(int_str, line, len);
+						if (sscanf(line, "%x", &priv->info.chunk_len) != 1) {
+							pomlog(POMLOG_DEBUG "Unparseable chunk size provided : %s", int_str);
+							priv->state = HTTP_INVALID;
+							return PROTO_INVALID;
+						}
+					}
+
+					unsigned int remaining_size = 0;
+					void *pload = NULL;
+					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
+					unsigned int chunk_remaining = priv->info.chunk_len - priv->info.chunk_pos;
+					s_next->pload = pload;
+					if (remaining_size > chunk_remaining) {
+						// There is the start of another chunk in this packet
+						s_next->plen = chunk_remaining;
+						remaining_size -= chunk_remaining;
+						pload += chunk_remaining;
+						if (remaining_size >= 2) {
+							// Remove last CRLF
+							remaining_size -= 2;
+							pload += 2;
+						}
+						debug_http("entry %p, got %u bytes of chunked payload", s->ce, s_next->plen);
+						
+						priv->info.chunk_pos = 0;
+						priv->info.chunk_len = 0;
+
+						if (s_next->plen) {
+
+							int res = core_process_multi_packet(stack, stack_index + 1, p);
+							if (res == PROTO_ERR)
+								return PROTO_ERR;
+
+							packet_stream_parser_add_payload(parser, pload, remaining_size);
+						} else {
+							// This is the last chunk
+							return PROTO_OK;
+						}
+
+						// Continue parsing the next chunk
+						continue;
+					} else {
+						s_next->plen = remaining_size;
+					}
+					priv->info.chunk_pos += remaining_size;
+
+				} 
+
 				// Set the right payload in the next stack index
 				packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
 				priv->info.content_pos += s_next->plen;
 
 				debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
+
 
 				return PROTO_OK;
 
@@ -391,7 +462,11 @@ static int proto_http_post_process(struct proto *proto, struct packet *p, struct
 
 	struct proto_http_conntrack_priv *priv = ce->priv;
 
-	if ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) {
+	if (
+		((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) // End of payload reached
+		|| ((priv->info.flags & HTTP_FLAG_CHUNKED) && !priv->info.chunk_len) // Last chunk was processed
+		
+		) {
 		// Payload done
 		event_process_end(priv->event);
 		priv->event = NULL;

@@ -43,6 +43,7 @@
 
 struct http_info {
 	size_t content_len, content_pos;
+	unsigned int chunk_pos, chunk_len;
 	unsigned int flags;
 	unsigned int last_err_code;
 };
