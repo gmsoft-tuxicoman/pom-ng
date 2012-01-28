@@ -230,9 +230,17 @@ then
 	ANALYZER_OBJS="analyzer_jpeg.la"
 fi
 
+# Check for Sqlite3
+AC_CHECK_HEADERS([sqlite3.h], [want_sqlite3=yes], [want_sqlite3=no])
+if test "x$want_sqlite3" = "xyes"
+then
+	DATASTORE_OBJS="$DATASTORE_OBJS datastore_sqlite.la"
+fi
+
+AC_SUBST(ANALYZER_OBJS)
+AC_SUBST(DATASTORE_OBJS)
 AC_SUBST(INPUT_OBJS)
 AC_SUBST(OUTPUT_OBJS)
-AC_SUBST(ANALYZER_OBJS)
 
 AC_OUTPUT
 
@@ -254,6 +262,7 @@ echo " * Linux DVB        : $want_dvb"
 echo " * Libmagic         : $want_magic"
 echo " * Zlib             : $want_zlib"
 echo " * JPEG             : $want_jpeg"
+echo " * Sqlite3          : $want_sqlite3"
 echo ""
 echo "Author : Guy Martin <gmsoft@tuxicoman.be>"
 

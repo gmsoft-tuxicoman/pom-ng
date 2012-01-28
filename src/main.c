@@ -40,6 +40,7 @@
 #include "timer.h"
 #include "analyzer.h"
 #include "output.h"
+#include "datastore.h"
 
 #include <pom-ng/ptype.h>
 
@@ -214,6 +215,11 @@ int main(int argc, char *argv[]) {
 		goto err_output;
 	}
 
+	if (datastore_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the datastores");
+		goto err_datastore;
+	}
+
 	// Load all the available modules
 	if (mod_load_all() != POM_OK) { 
 		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
@@ -262,6 +268,7 @@ int main(int argc, char *argv[]) {
 	output_cleanup();
 	analyzer_cleanup();
 	proto_cleanup();
+	datastore_cleanup();
 	registry_cleanup();
 	timers_cleanup();
 
@@ -284,10 +291,12 @@ err_httpd:
 err_xmlrpcsrv:
 	mod_unload_all();
 err_mod:
-	input_cleanup();
-err_input:
+	datastore_cleanup();
+err_datastore:
 	output_cleanup();
 err_output:
+	input_cleanup();
+err_input:
 	analyzer_cleanup();
 err_analyzer:
 	proto_cleanup();

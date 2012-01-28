@@ -35,7 +35,7 @@ static struct registry_class *input_registry_class = NULL;
 
 static struct input_reg *input_reg_head = NULL;
 static struct input *input_head = NULL;
-unsigned int input_cur_running = 0;
+static unsigned int input_cur_running = 0;
 
 int input_init() {
 	
@@ -95,6 +95,13 @@ int input_register(struct input_reg_info *reg_info) {
 		return POM_ERR;
 	}
 
+	struct input_reg *tmp;
+	for (tmp = input_reg_head; tmp && strcmp(tmp->info->name, reg_info->name); tmp = tmp->next);
+	if (tmp) {
+		pomlog(POMLOG_ERR "Input %s already registered", reg_info->name);
+		return POM_ERR;
+	}
+
 	struct input_reg *reg = malloc(sizeof(struct input_reg));
 	if(!reg) {
 		pom_oom(sizeof(struct input_reg));
@@ -102,14 +109,6 @@ int input_register(struct input_reg_info *reg_info) {
 	}
 
 	memset(reg, 0, sizeof(struct input_reg));
-
-	struct input_reg *tmp;
-	for (tmp = input_reg_head; tmp && strcmp(tmp->info->name, reg_info->name); tmp = tmp->next);
-	if (tmp) {
-		pomlog(POMLOG_ERR "Input %s already registered", reg_info->name);
-		free(reg);
-		return POM_ERR;
-	}
 
 	reg->info = reg_info;
 

@@ -18,22 +18,30 @@
  *
  */
 
-#ifndef __POM_NG_PTYPE_TIMESTAMP_H__
-#define __POM_NG_PTYPE_TIMESTAMP_H__
+#ifndef __POM_NG_PTYPE_UINT64_H__
+#define __POM_NG_PTYPE_UINT64_H__
 
 #include <pom-ng/ptype.h>
 
-#include <sys/time.h>
+#define PTYPE_UINT64_PRINT_DECIMAL	0x1
+#define PTYPE_UINT64_PRINT_HEX		0x2
+#define PTYPE_UINT64_PRINT_HUMAN	0x3
+#define PTYPE_UINT64_PRINT_HUMAN_1024	0x4
 
+/// x is the struct ptype
+#define PTYPE_UINT64_GETVAL(x) \
+	(uint64_t*) (x)->value
 
-/// x is the struct ptype,
-#define PTYPE_TIMESTAMP_GETVAL(x) \
-	(struct timeval*) (x)->value
 
 /// x is the struct ptype, y the value
-#define PTYPE_TIMESTAMP_SETVAL(x, y) {		\
-	struct timeval *v = (x)->value;		\
-	memcpy(v, &y, sizeof(struct timeval));	\
+#define PTYPE_UINT64_SETVAL(x, y) {	\
+	uint64_t *v = (x)->value;	\
+	*v = (y);			\
+}
+
+/// x is the struct ptype, y the increment
+#define PTYPE_UINT64_INC(x, y) {		\
+	*((uint64_t*)(x)->value) += (y);	\
 }
 
 #endif

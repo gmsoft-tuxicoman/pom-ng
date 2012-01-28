@@ -18,14 +18,15 @@
 include $(top_srcdir)/Makefile.common
 
 ANALYZER_SRC = analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
+DATASTORE_SRC = @DATASTORE_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
-PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_string.la ptype_timestamp.la
+PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
 
-lib_LTLIBRARIES = $(ANALYZER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
+lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = input_pcap.la input_dvb.la output_pcap.la analyzer_jpeg.la
+EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la input_pcap.la input_dvb.la output_pcap.la
 
 
 analyzer_gif_la_SOURCES = analyzer/analyzer_gif.c analyzer/analyzer_gif.h
@@ -40,6 +41,10 @@ analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_png_la_SOURCES = analyzer/analyzer_png.c analyzer/analyzer_png.h
 analyzer_png_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_png_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+
+datastore_sqlite_la_SOURCES = datastore/datastore_sqlite.c datastore/datastore_sqlite.h
+datastore_sqlite_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lsqlite3
+datastore_sqlite_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
 input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
@@ -102,6 +107,9 @@ ptype_uint16_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_uint32_la_SOURCES = ptype/ptype_uint32.c ptype/ptype_uint32.h
 ptype_uint32_la_LDFLAGS = -module -avoid-version 
 ptype_uint32_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_uint64_la_SOURCES = ptype/ptype_uint64.c ptype/ptype_uint64.h
+ptype_uint64_la_LDFLAGS = -module -avoid-version 
+ptype_uint64_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_string_la_SOURCES = ptype/ptype_string.c ptype/ptype_string.h
 ptype_string_la_LDFLAGS = -module -avoid-version 
 ptype_string_la_LIBADD = $(top_builddir)/src/libpom-ng.la

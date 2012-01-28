@@ -18,22 +18,22 @@
  *
  */
 
-#ifndef __POM_NG_PTYPE_TIMESTAMP_H__
-#define __POM_NG_PTYPE_TIMESTAMP_H__
+#ifndef __PTYPE_UINT64_H__
+#define __PTYPE_UINT64_H__
 
 #include <pom-ng/ptype.h>
 
-#include <sys/time.h>
+int ptype_uint64_mod_register(struct mod_reg *mod);
+int ptype_uint64_mod_unregister();
 
 
-/// x is the struct ptype,
-#define PTYPE_TIMESTAMP_GETVAL(x) \
-	(struct timeval*) (x)->value
-
-/// x is the struct ptype, y the value
-#define PTYPE_TIMESTAMP_SETVAL(x, y) {		\
-	struct timeval *v = (x)->value;		\
-	memcpy(v, &y, sizeof(struct timeval));	\
-}
+int ptype_uint64_alloc(struct ptype *p);
+int ptype_uint64_cleanup(struct ptype *p);
+int ptype_uint64_parse(struct ptype *p, char *val);
+int ptype_uint64_print(struct ptype *p, char *val, size_t size);
+int ptype_uint64_compare(int op, void *val_a, void* val_b);
+int ptype_uint64_serialize(struct ptype *p, char *val, size_t size);
+int ptype_uint64_copy(struct ptype *dst, struct ptype *src);
+size_t ptype_uint64_value_size(struct ptype *p);
 
 #endif

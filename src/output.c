@@ -133,7 +133,7 @@ int output_instance_add(char *type, char *name) {
 	res->name = strdup(name);
 	if (!res->name) {
 		pom_oom(strlen(name) + 1);
-		return POM_ERR;
+		goto err;
 	}
 
 	res->reg_instance = registry_add_instance(output_registry_class, name);
