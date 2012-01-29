@@ -44,13 +44,8 @@ int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i) {
 
 	struct registry_param *p = NULL;
 
-	priv->param_force_no_copy = ptype_alloc("bool");
 	priv->param_mpeg_ts_stream_timeout = ptype_alloc_unit("uint16", "seconds");
-	if (!priv->param_force_no_copy || !priv->param_mpeg_ts_stream_timeout)
-		goto err;
-
-	p = registry_new_param("force_no_copy", "true", priv->param_force_no_copy, "Should we force packet API to prevent copy packets internally", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (!priv->param_mpeg_ts_stream_timeout)
 		goto err;
 
 	p = registry_new_param("stream_timeout", "60", priv->param_mpeg_ts_stream_timeout, "Timeout for each MPEG PID", 0);
@@ -175,8 +170,7 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 		stream->ce = s->ce;
 		stream->last_seq = (buff[3] - 1) & 0xF;
 
-		char *force_no_copy = PTYPE_BOOL_GETVAL(ppriv->param_force_no_copy);
-		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, 10, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0), proto_mpeg_ts_process_stream, stream);
+		stream->stream = packet_stream_alloc(p->id * MPEG_TS_LEN, 0, CT_DIR_FWD, 512 * MPEG_TS_LEN, 10, 0, proto_mpeg_ts_process_stream, stream);
 		if (!stream->stream) {
 			pom_mutex_unlock(&s->ce->lock);
 			return PROTO_ERR;
@@ -312,11 +306,10 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 					return PROTO_STOP;
 			}
 		
-			char *force_no_copy = PTYPE_BOOL_GETVAL(stream->ppriv->param_force_no_copy);
 			if ( (stream->type == proto_mpeg_stream_type_docsis && (pos > (MPEG_TS_LEN - 1) - offsetof(struct docsis_hdr, hcs)))
 				|| (stream->type == proto_mpeg_stream_type_sect && (pos > (MPEG_TS_LEN - 1) - 3))) {
 				// Cannot fetch the complete packet size, will do later
-				stream->multipart = packet_multipart_alloc(next_proto, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
+				stream->multipart = packet_multipart_alloc(next_proto, 0);
 				if (!stream->multipart)
 					return PROTO_ERR;
 				stream->pkt_tot_len = 0;
@@ -336,7 +329,7 @@ int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_proc
 				return PROTO_ERR;
 			}
 			if (pkt_len + pos > MPEG_TS_LEN) {
-				stream->multipart = packet_multipart_alloc(next_proto, (*force_no_copy ? PACKET_FLAG_FORCE_NO_COPY : 0));
+				stream->multipart = packet_multipart_alloc(next_proto, 0);
 				if (!stream->multipart)
 					return PROTO_ERR;
 				stream->pkt_tot_len = pkt_len;
@@ -476,9 +469,6 @@ int proto_mpeg_ts_cleanup(struct proto *proto) {
 	if (proto->priv) {
 		struct proto_mpeg_ts_priv *priv = proto->priv;
 
-		if (priv->param_force_no_copy)
-			ptype_cleanup(priv->param_force_no_copy);
-		
 		if (priv->param_mpeg_ts_stream_timeout)
 			ptype_cleanup(priv->param_mpeg_ts_stream_timeout);
 
