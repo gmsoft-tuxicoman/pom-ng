@@ -603,8 +603,9 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 		return PROTO_ERR;
 	}
 
-	p->buff = malloc(multipart->cur);
-	if (!p->buff) {
+
+	// FIXME align offset
+	if (packet_buffer_pool_get(p, multipart->cur, 0)) {
 		packet_pool_release(p);
 		packet_multipart_cleanup(multipart);
 		pom_oom(multipart->cur);
@@ -781,7 +782,7 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack) {
 
 	if (!stream || !pkt || !stack)
-		return POM_ERR;
+		return PROTO_ERR;
 
 	pom_mutex_lock(&stream->lock);
 
@@ -820,11 +821,11 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			// cur_seq is after the end of the packet, discard it
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : discard", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 			pom_mutex_unlock(&stream->lock);
-			return POM_OK;
+			return PROTO_OK;
 		}
 
 		if (packet_stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR)
-			return POM_ERR;
+			return PROTO_ERR;
 	}
 
 
@@ -839,9 +840,9 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
 		int res = stream->handler(stream->priv, pkt, stack, stack_index);
-		if (res == POM_ERR) {
+		if (res == PROTO_ERR) {
 			pom_mutex_unlock(&stream->lock);
-			return POM_ERR;
+			return PROTO_ERR;
 		}
 
 		// Check if additional packets can be processed
@@ -854,7 +855,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 			if (stream->handler(stream->priv, p->pkt, p->stack, p->stack_index) == POM_ERR) {
 				pom_mutex_unlock(&stream->lock);
-				return POM_ERR;
+				return PROTO_ERR;
 			}
 
 			int i;
@@ -871,7 +872,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		}
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		pom_mutex_unlock(&stream->lock);
-		return POM_OK;
+		return res;
 	}
 
 	// Queue the packet then
@@ -963,7 +964,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 	pom_mutex_unlock(&stream->lock);
-	return POM_OK;
+	return PROTO_OK;
 }
 
 int packet_stream_force_dequeue(struct packet_stream *stream) {
