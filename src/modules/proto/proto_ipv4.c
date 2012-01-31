@@ -163,7 +163,7 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 
 	unsigned int hdr_len = hdr->ip_hl * 4;
 
-	if (s->plen < sizeof(struct ip) || // lenght smaller than header
+	if (s->plen < sizeof(struct ip) || // length smaller than header
 		hdr->ip_hl < 5 || // ip header < 5 bytes
 		ntohs(hdr->ip_len) < hdr_len || // datagram size < ip header length
 		ntohs(hdr->ip_len) > s->plen) { // datagram size > given size
