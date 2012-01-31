@@ -355,9 +355,10 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 		s_next->pload = s->pload + hdr_len;
 		s_next->plen = s->plen - hdr_len;
 		s_next->direction = s->direction;
-		if (packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack)) != POM_OK)
-			return PROTO_ERR;
-		return PROTO_STOP;
+		int res = packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack));
+		if (res == PROTO_OK)
+			return PROTO_STOP;
+		return res;
 	}
 	
 	return PROTO_OK;
