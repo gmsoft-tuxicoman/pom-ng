@@ -51,13 +51,6 @@ struct input {
 	struct input *prev, *next;
 };
 
-struct input_caps {
-
-	char *datalink;
-	unsigned int align_offset;
-	unsigned int is_live;
-};
-
 struct input_reg_info {
 
 	unsigned int api_ver;
