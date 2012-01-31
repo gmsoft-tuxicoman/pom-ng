@@ -25,7 +25,7 @@
 enum input_dvb_type {
 	input_dvb_type_device, // Used for card with a user space tuner not compatible with the dvb api
 	input_dvb_type_c,
-	input_dvb_type_s, // TODO
+	input_dvb_type_s,
 	input_dvb_type_t, // TODO
 };
 
@@ -34,10 +34,15 @@ struct input_dvb_c_priv {
 	struct ptype *modulation;
 };
 
+struct input_dvb_s_priv{
+	
+	struct ptype *polarity;
+	struct ptype *lnb_type;
+	// TODO support for DiSEqC
+};
+
 struct input_dvb_priv {
 
-	uint64_t last_pkt_id;
-	
 	enum input_dvb_type type;
 
 	struct proto_dependency *proto_mpeg_ts;
@@ -49,17 +54,32 @@ struct input_dvb_priv {
 
 	union {
 		struct input_dvb_c_priv c;
+		struct input_dvb_s_priv s;
 	} tpriv;
 
+};
+
+struct input_dvb_lnb_param {
+	char *name;
+	unsigned int low_val;
+	unsigned int high_val;
+	unsigned int switch_val;
+	unsigned int min_freq;
+	unsigned int max_freq;
 };
 
 struct mod_reg_info* input_dvb_reg_info();
 static int input_dvb_mod_register(struct mod_reg *mod);
 static int input_dvb_mod_unregister();
+
+static int input_dvb_common_init(struct input *i);
 static int input_dvb_device_init(struct input *i);
 static int input_dvb_c_init(struct input *i);
+static int input_dvb_s_init(struct input *i);
+
 static int input_dvb_device_open(struct input *i);
 static int input_dvb_open(struct input *i);
+
 static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t symbol_rate, fe_modulation_t modulation);
 static int input_dvb_read(struct input *i);
 static int input_dvb_close(struct input *i);

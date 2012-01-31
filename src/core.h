@@ -35,7 +35,6 @@
 #define CORE_PROCESS_THREAD_MAX		64
 #define CORE_PROCESS_THREAD_DEFAULT	2
 
-
 enum core_state {
 	core_state_idle = 0, // Core is idle
 	core_state_running, // Core is receiving packets from the input
@@ -49,8 +48,8 @@ struct core_packet_queue {
 
 struct core_processing_thread {
 	pthread_t thread;
-	pthread_mutex_t lock;
-	pthread_cond_t restart_cond; // Issued by the reader thread when there is a packet to process
+	unsigned int thread_id;
+	struct core_packet_queue *pkt_queue_head, *pkt_queue_tail; // Thread's own queue
 
 };
 

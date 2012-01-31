@@ -42,7 +42,6 @@ struct input_pcap_file_priv {
 
 struct input_pcap_priv {
 
-	uint64_t last_pkt_id;
 	pcap_t *p;
 	enum input_pcap_type type;
 	union {
@@ -50,9 +49,9 @@ struct input_pcap_priv {
 		struct input_pcap_file_priv file;
 	} tpriv;
 
-	struct proto_dependency *datalink;
+	struct proto_dependency *datalink_proto;
+	int datalink_dlt;
 	unsigned int align_offset;
-
 };
 
 static int input_pcap_mod_register(struct mod_reg *mod);

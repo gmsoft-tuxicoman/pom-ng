@@ -40,6 +40,7 @@ static unsigned int core_thread_active = 0;
 static struct timeval core_start_time;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
+static int core_num_threads = 0;
 static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static struct timeval core_clock;
@@ -76,7 +77,9 @@ int core_init(int num_threads) {
 
 	if (num_threads > CORE_PROCESS_THREAD_MAX)
 		num_threads = CORE_PROCESS_THREAD_MAX;
-	pomlog(POMLOG_INFO "Starting %u processing thread(s)", num_threads);
+
+	core_num_threads = num_threads;	
+	pomlog(POMLOG_INFO "Starting %u processing thread(s)", core_num_threads);
 
 	core_run = 1;
 
@@ -84,31 +87,18 @@ int core_init(int num_threads) {
 
 	int i;
 
-	for (i = 0; i < num_threads; i++) {
+	for (i = 0; i < core_num_threads; i++) {
 		struct core_processing_thread *tmp = malloc(sizeof(struct core_processing_thread));
 		if (!tmp) {
 			pom_oom(sizeof(struct core_processing_thread));
 			goto err;
 		}
 		memset(tmp, 0, sizeof(struct core_processing_thread));
-		
-		if (pthread_mutex_init(&tmp->lock, NULL)) {
-			pomlog(POMLOG_ERR "Error while initializing the processing thread's mutex : %s", pom_strerror(errno));
-			free(tmp);
-			goto err;
-		}
 
-		if (pthread_cond_init(&tmp->restart_cond, NULL)) {
-			pomlog(POMLOG_ERR "Error while initializing processing thread's mutex condition : %s", pom_strerror(errno));
-			pthread_mutex_destroy(&tmp->lock);
-			free(tmp);
-			goto err;
-		}
-		
+		tmp->thread_id = i;
+
 		if (pthread_create(&tmp->thread, NULL, core_processing_thread_func, tmp)) {
 			pomlog(POMLOG_ERR "Error while creating a new processing thread : %s", pom_strerror(errno));
-			pthread_mutex_destroy(&tmp->lock);
-			pthread_cond_destroy(&tmp->restart_cond);
 			free(tmp);
 			goto err;
 		}
@@ -149,8 +139,6 @@ int core_cleanup(int emergency_cleanup) {
 	int i;
 	for (i = 0; i < CORE_PROCESS_THREAD_MAX && core_processing_threads[i]; i++) {
 		pthread_join(core_processing_threads[i]->thread, NULL);
-		pthread_cond_destroy(&core_processing_threads[i]->restart_cond);
-		pthread_mutex_destroy(&core_processing_threads[i]->lock);
 		free(core_processing_threads[i]);
 	}
 
@@ -174,7 +162,7 @@ int core_cleanup(int emergency_cleanup) {
 	return POM_OK;
 }
 
-int core_queue_packet(struct packet *p) {
+int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity) {
 
 	pom_mutex_lock(&core_pkt_queue_mutex);
 
@@ -216,14 +204,32 @@ int core_queue_packet(struct packet *p) {
 	tmp->pkt = p;
 	core_pkt_queue_usage++;
 
-	// Add the packet at the end of the queue
-	if (core_pkt_queue_tail) {
-		tmp->prev = core_pkt_queue_tail;
-		core_pkt_queue_tail->next = tmp;
-		core_pkt_queue_tail = tmp;
+	if (flags & CORE_QUEUE_HAS_THREAD_AFFINITY) {
+	
+		int affinity_thread = thread_affinity % core_num_threads;
+		struct core_processing_thread *t = core_processing_threads[affinity_thread];
+	
+		if (t->pkt_queue_tail) {
+			tmp->prev = t->pkt_queue_tail;
+			t->pkt_queue_tail->next = tmp;
+			t->pkt_queue_tail = tmp;
+		} else {
+			t->pkt_queue_head = tmp;
+			t->pkt_queue_tail = tmp;
+		}
+
 	} else {
-		core_pkt_queue_head = tmp;
-		core_pkt_queue_tail = tmp;
+
+		// Add the packet at the end of the shared queue
+		if (core_pkt_queue_tail) {
+			tmp->prev = core_pkt_queue_tail;
+			core_pkt_queue_tail->next = tmp;
+			core_pkt_queue_tail = tmp;
+		} else {
+			core_pkt_queue_head = tmp;
+			core_pkt_queue_tail = tmp;
+		}
+
 	}
 
 	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
@@ -241,12 +247,13 @@ int core_queue_packet(struct packet *p) {
 
 void *core_processing_thread_func(void *priv) {
 
+	struct core_processing_thread *tpriv = priv;
 
 	pom_mutex_lock(&core_pkt_queue_mutex);
 
 	while (core_run) {
 		
-		while (!core_pkt_queue_head) {
+		while (!core_pkt_queue_head && !tpriv->pkt_queue_head) {
 			if (core_thread_active == 0) {
 				if (core_get_state() == core_state_finishing) {
 					// Free the conntrack tables
@@ -268,16 +275,32 @@ void *core_processing_thread_func(void *priv) {
 
 		}
 		core_thread_active++;
-		struct core_packet_queue *tmp = core_pkt_queue_head;
 
-		struct packet *pkt = tmp->pkt;
+		struct core_packet_queue *tmp = NULL;
+		
+		// Dequeue packets from our own queue first
+		struct packet *pkt = NULL;
+		if (tpriv->pkt_queue_head) {
+			tmp = tpriv->pkt_queue_head;
+			pkt = tmp->pkt;
 
-		// Remove the packet from the queue
-		core_pkt_queue_head = tmp->next;
-		if (core_pkt_queue_head)
-			core_pkt_queue_head->prev = NULL;
-		else
-			core_pkt_queue_tail = NULL;
+			tpriv->pkt_queue_head = tmp->next;
+			if (tpriv->pkt_queue_head)
+				tpriv->pkt_queue_head->prev = NULL;
+			else
+				tpriv->pkt_queue_tail = NULL;
+
+		} else {
+			tmp = core_pkt_queue_head;
+			pkt = tmp->pkt;
+
+			// Remove the packet from the main queue
+			core_pkt_queue_head = tmp->next;
+			if (core_pkt_queue_head)
+				core_pkt_queue_head->prev = NULL;
+			else
+				core_pkt_queue_tail = NULL;
+		}
 
 		// Add it to the unused list
 		memset(tmp, 0, sizeof(struct core_packet_queue));
@@ -374,12 +397,17 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 	
 		char buff[256];
 
-		if (s[i].proto->info->pkt_fields) {
-			int j;
-			for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
-				ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
-				printf("%s: %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+		if (s[i].pkt_info) {
+
+			if (s[i].proto->info->pkt_fields) {
+				int j;
+				for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
+					ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
+					printf("%s: %s; ", s[i].proto->info->pkt_fields[j].name, buff);
+				}
 			}
+		} else {
+			printf("pkt_info missing ");
 		}
 
 		printf("}; ");
@@ -430,7 +458,9 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 		if (res == PROTO_ERR) {
 			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s->proto->info->name);
-			return POM_ERR;
+			return PROTO_ERR;
+		} else if (res < 0) {
+			return res;
 		}
 
 		struct proto_process_stack *s_next = &stack[i + 1];
@@ -444,18 +474,16 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 			(s_next->pload + s_next->plen < s_next->pload)) { // Check for integer overflow
 			// Invalid packet
 			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s->proto->info->name);
-			return POM_OK;
+			return PROTO_OK;
 		}
 
 		if (proto_process_payload(p, stack, i) != POM_OK)
-			return POM_ERR;
+			return PROTO_ERR;
 
-		if (res < 0)
-			return res;
 	}
 
 	if (proto_process_payload(p, stack, i) != POM_OK)
-		return POM_ERR;
+		return PROTO_ERR;
 
 	for (; i >= stack_index; i--) {
 
@@ -466,7 +494,7 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 		if (res == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while post processing packet for proto %s", stack[stack_index].proto->info->name);
-			return POM_ERR;
+			return PROTO_ERR;
 		}
 	}
 		
@@ -487,8 +515,7 @@ int core_process_packet(struct packet *p) {
 	int res = core_process_packet_stack(s, 1, p);
 
 #ifdef CORE_DUMP_PKT_INFO
-	if (res == PROTO_OK)
-		core_process_dump_info(s, p, res);
+	core_process_dump_info(s, p, res);
 #endif
 
 	// Cleanup pkt_info

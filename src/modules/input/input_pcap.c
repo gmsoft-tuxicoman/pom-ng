@@ -30,6 +30,9 @@
 #include "input_pcap.h"
 #include <string.h>
 
+// FIXME change this define when this value gets upstream
+#define DLT_MPEGTS DLT_USER0
+
 struct mod_reg_info* input_pcap_reg_info() {
 	static struct mod_reg_info reg_info;
 	memset(&reg_info, 0, sizeof(struct mod_reg_info));
@@ -93,7 +96,8 @@ static int input_pcap_common_open(struct input *i) {
 
 	char *datalink = "undefined";
 
-	switch (pcap_datalink(priv->p)) {
+	priv->datalink_dlt = pcap_datalink(priv->p);
+	switch (priv->datalink_dlt) {
 		case DLT_EN10MB:
 			datalink = "ethernet";
 			// Ethernet is 14 bytes long
@@ -111,11 +115,15 @@ static int input_pcap_common_open(struct input *i) {
 		case DLT_RAW:
 			datalink = "ipv4";
 			break;
+
+		case DLT_MPEGTS: // FIXME update this when upstream add it
+			datalink = "mpeg_ts";
+			break;
 	}
 
-	priv->datalink = proto_add_dependency(datalink);
+	priv->datalink_proto = proto_add_dependency(datalink);
 
-	if (!priv->datalink || !priv->datalink->proto) {
+	if (!priv->datalink_proto || !priv->datalink_proto->proto) {
 		pomlog(POMLOG_ERR "Cannot open input pcap : protocol %s not registered", datalink);
 		input_pcap_close(i);
 		return POM_ERR;
@@ -296,12 +304,19 @@ static int input_pcap_read(struct input *i) {
 	}
 
 	pkt->input = i;
-	pkt->datalink = p->datalink->proto;
-	pkt->id = p->last_pkt_id++;
+	pkt->datalink = p->datalink_proto->proto;
 	memcpy(&pkt->ts, &phdr->ts, sizeof(struct timeval));
 	memcpy(pkt->buff, data, phdr->caplen);
 
-	return core_queue_packet(pkt);
+	unsigned int flags = 0, affinity = 0;
+
+	if (p->datalink_dlt == DLT_MPEGTS) {
+		// MPEG2 TS has thread affinity based on the PID
+		flags |= CORE_QUEUE_HAS_THREAD_AFFINITY;
+		affinity = ((((char*)pkt->buff)[1] & 0x1F) << 8) | ((char *)pkt->buff)[2];
+	}
+
+	return core_queue_packet(pkt, flags, affinity);
 }
 
 static int input_pcap_close(struct input *i) {
@@ -312,9 +327,8 @@ static int input_pcap_close(struct input *i) {
 		return POM_OK;
 	pcap_close(priv->p);
 	priv->p = NULL;
-	proto_remove_dependency(priv->datalink);
-	priv->datalink = NULL;
-	priv->last_pkt_id = 0;
+	proto_remove_dependency(priv->datalink_proto);
+	priv->datalink_proto = NULL;
 	priv->align_offset = 0;
 
 	return POM_OK;
