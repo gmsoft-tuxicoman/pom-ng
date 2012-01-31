@@ -24,7 +24,9 @@
 
 #include <pom-ng/proto.h>
 
+#define CORE_QUEUE_HAS_THREAD_AFFINITY	0x1
+
 int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
-int core_queue_packet(struct packet *p);
+int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity);
 
 #endif

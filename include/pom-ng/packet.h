@@ -45,7 +45,6 @@ struct packet_buffer {
 struct packet {
 
 	// Packet description
-	uint64_t id; // Unique packet number per input
 	size_t len;  // Packet length
 	struct timeval ts;
 	struct proto *datalink;
