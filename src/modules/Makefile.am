@@ -21,7 +21,7 @@ ANALYZER_SRC = analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
-PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la
+PROTO_SRC = proto_arp.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_tcp.la proto_udp.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
@@ -88,6 +88,9 @@ proto_mpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_tcp_la_SOURCES = proto/proto_tcp.c proto/proto_tcp.h
 proto_tcp_la_LDFLAGS = -module -avoid-version
 proto_tcp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+proto_udp_la_SOURCES = proto/proto_udp.c proto/proto_udp.h
+proto_udp_la_LDFLAGS = -module -avoid-version
+proto_udp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 ptype_bool_la_SOURCES = ptype/ptype_bool.c ptype/ptype_bool.h
 ptype_bool_la_LDFLAGS = -module -avoid-version 
