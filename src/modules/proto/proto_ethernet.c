@@ -87,7 +87,7 @@ static int proto_ethernet_init(struct proto *proto, struct registry_instance *i)
 	struct proto_ethernet_priv *priv = malloc(sizeof(struct proto_ethernet_priv));
 	if (!priv) {
 		pom_oom(sizeof(struct proto_ethernet_priv));
-		return POM_OK;
+		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct proto_ethernet_priv));
 
