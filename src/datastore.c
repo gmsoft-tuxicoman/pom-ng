@@ -26,6 +26,7 @@
 
 #include <pom-ng/datastore.h>
 #include <pom-ng/ptype_bool.h>
+#include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint64.h>
 #include <pom-ng/ptype_string.h>
 
@@ -144,40 +145,42 @@ int datastore_instance_add(char *type, char *name) {
 	}
 	memset(res, 0, sizeof(struct datastore));
 
+	// Create a new recursive lock
+	pthread_mutexattr_t attr;
+	if (pthread_mutexattr_init(&attr)) {
+		pomlog(POMLOG_ERR "Error while initializing the conntrack mutex attribute");
+		free(res);
+		return POM_ERR;
+	}
+
+	if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
+		pomlog(POMLOG_ERR "Error while setting conntrack mutex attribute to recursive");
+		pthread_mutexattr_destroy(&attr);
+		free(res);
+		return POM_ERR;
+	}
+
+	if (pthread_mutex_init(&res->lock, &attr)) {
+		pomlog(POMLOG_ERR "Error while initializing the datastore lock : %s", pom_strerror(errno));
+		free(res);
+		return POM_ERR;
+	}
+
+	pthread_mutexattr_destroy(&attr);
+
 	res->reg = reg;
 	res->name = strdup(name);
 	if (!res->name) {
 		free(res);
 		pom_oom(strlen(name) + 1);
-		return POM_ERR;
+		goto err;
 	}
+
 
 	res->reg_instance = registry_add_instance(datastore_registry_class, name);
 
 	if (!res->reg_instance)
 		goto err;
-
-	struct ptype *param_open_val = ptype_alloc("bool");
-	if (!param_open_val)
-		goto err;
-
-	struct registry_param *param_open = registry_new_param("open", "no", param_open_val, "Datastore is open", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
-	if (!param_open) {
-		ptype_cleanup(param_open_val);
-		goto err;
-	}
-
-	if (registry_param_set_callbacks(param_open, res, NULL, datastore_instance_open_close_handler) != POM_OK) {
-		registry_cleanup_param(param_open);
-		ptype_cleanup(param_open_val);
-		goto err;
-	}
-
-	if (registry_instance_add_param(res->reg_instance, param_open) != POM_OK) {
-		registry_cleanup_param(param_open);
-		ptype_cleanup(param_open_val);
-		goto err;
-	}
 
 	struct ptype *datastore_type = ptype_alloc("string");
 	if (!datastore_type)
@@ -216,6 +219,9 @@ int datastore_instance_add(char *type, char *name) {
 	return POM_OK;
 
 err:
+
+	pthread_mutex_destroy(&res->lock);
+
 	if (res->name)
 		free(res->name);
 
@@ -233,7 +239,7 @@ int datastore_instance_remove(struct registry_instance *ri) {
 	
 	struct datastore *d = ri->priv;
 
-	if (d->open && datastore_instance_close(d) != POM_OK) {
+	if (datastore_close(d) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while closing the datastore");
 		return POM_ERR;
 	}
@@ -244,6 +250,8 @@ int datastore_instance_remove(struct registry_instance *ri) {
 			return POM_ERR;
 		}
 	}
+
+	pthread_mutex_destroy(&d->lock);
 
 	free(d->name);
 	
@@ -260,32 +268,20 @@ int datastore_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
-int datastore_instance_open_close_handler(void *priv, struct ptype *open) {
+int datastore_open(struct datastore *d) {
 
-	struct datastore *d = priv;
-
-	char *new_state = PTYPE_BOOL_GETVAL(open);
-
-	if (d->open == *new_state) {
-		pomlog(POMLOG_ERR "Error, datastore is already %s", (*new_state ? "open" : "closed"));
+	if (!d)
 		return POM_ERR;
+
+	pom_mutex_lock(&d->lock);
+
+	if (d->open) {
+		pom_mutex_unlock(&d->lock);
+		return POM_OK;
 	}
-
-	int res = POM_ERR;
-	if (*new_state) {
-		res = datastore_instance_open(d);
-	} else {
-		res = datastore_instance_close(d);
-	}
-
-	return res;
-
-}
-
-int datastore_instance_open(struct datastore *d) {
-
 
 	if (d->reg->info->open && d->reg->info->open(d) != POM_OK) {
+		pom_mutex_unlock(&d->lock);
 		pomlog(POMLOG_ERR "Error while opening datastore %s", d->reg->info->name);
 		return POM_ERR;
 	}
@@ -298,7 +294,6 @@ int datastore_instance_open(struct datastore *d) {
 
 	static struct datavalue_template dataset_db_template[] = {
 		{ .name = "name", .type = "string" }, // Name of the dataset
-		{ .name = "type", .type = "string" },
 		{ .name = "description", .type = "string" }, // Description of the dataset
 		{ 0 }
 	};
@@ -317,10 +312,10 @@ int datastore_instance_open(struct datastore *d) {
 	// Allocate the dataset_schema
 	
 	static struct datavalue_template dataset_schema_template[] = {
-		{ .name = "dataset_id", "uint64" },
-		{ .name = "name", "string" },
-		{ .name = "type", "string" },
-		{ .name = "field_id", "uint16" },
+		{ .name = "dataset_id", .type = "uint64" },
+		{ .name = "name", .type = "string" },
+		{ .name = "type", .type = "string" },
+		{ .name = "field_id", .type = "uint16" },
 		{ 0 }
 	};
 
@@ -358,6 +353,11 @@ int datastore_instance_open(struct datastore *d) {
 			goto err;
 		}
 
+		if (d->dataset_db_query->values[0].is_null) {
+			pomlog(POMLOG_ERR "Dataset name is NULL");
+			goto err;
+		}
+
 		PTYPE_UINT64_SETVAL(dsid, d->dataset_db_query->data_id);
 	
 
@@ -385,6 +385,10 @@ int datastore_instance_open(struct datastore *d) {
 			memset(&tmp_template[datacount], 0, sizeof(struct datavalue_template) * 2);
 
 			char *name = PTYPE_STRING_GETVAL(d->dataset_schema_query->values[1].value);
+			if (d->dataset_schema_query->values[1].is_null) {
+				pomlog(POMLOG_ERR "NULL value for template entry name");
+				goto err;
+			}
 			ds_template[datacount].name = strdup(name);
 			if (!ds_template[datacount].name) {
 				pom_oom(strlen(name) + 1);
@@ -392,6 +396,10 @@ int datastore_instance_open(struct datastore *d) {
 			}
 
 			char *type = PTYPE_STRING_GETVAL(d->dataset_schema_query->values[2].value);
+			if (d->dataset_schema_query->values[2].is_null) {
+				pomlog(POMLOG_ERR "NULL value for template entry type");
+				goto err;
+			}
 			ds_template[datacount].type = strdup(type);
 			if (!ds_template[datacount].type)
 				goto err;
@@ -401,7 +409,7 @@ int datastore_instance_open(struct datastore *d) {
 		}
 
 
-		struct dataset *ds = datastore_dataset_alloc(d, ds_template, PTYPE_STRING_GETVAL(d->dataset_db_query->values[1].value));
+		struct dataset *ds = datastore_dataset_alloc(d, ds_template, PTYPE_STRING_GETVAL(d->dataset_db_query->values[0].value));
 		if (!ds)
 			goto err;
 
@@ -429,7 +437,8 @@ int datastore_instance_open(struct datastore *d) {
 	}
 
 	d->open = 1;
-
+	
+	pom_mutex_unlock(&d->lock);
 
 	pomlog("Datastore %s opened", d->reg->info->name);
 
@@ -499,14 +508,21 @@ err:
 		free(ds_template);
 	}
 
+	pom_mutex_unlock(&d->lock);
+
 	return POM_ERR;
 }
 
-int datastore_instance_close(struct datastore *d) {
+int datastore_close(struct datastore *d) {
+
+	if (!d)
+		return POM_ERR;
+
+	pom_mutex_lock(&d->lock);
 
 	if (!d->open) {
-		pomlog(POMLOG_ERR "Cannot close datastore %s as it's already closed", d->name);
-		return POM_ERR;
+		pom_mutex_unlock(&d->lock);
+		return POM_OK;
 	}
 
 	struct dataset* dset = d->datasets;
@@ -516,13 +532,13 @@ int datastore_instance_close(struct datastore *d) {
 
 		if (dset->open) {
 			pomlog(POMLOG_ERR "Cannot close datastore %s as the dataset %s is still open", d->name, dset->name);
+			pom_mutex_unlock(&d->lock);
 			return POM_ERR;
 		}
 		dset = dset->next;
 	}
 
 
-	d->open = 0;
 
 	dset = d->datasets;
 
@@ -568,6 +584,171 @@ int datastore_instance_close(struct datastore *d) {
 	if (d->reg->info->close && d->reg->info->close(d) != POM_OK)
 		pomlog(POMLOG_WARN "Warning : error while closing the datastore");
 
+	d->open = 0;
+
+	pom_mutex_unlock(&d->lock);
+
+	return POM_OK;
+}
+
+struct datastore *datastore_instance_get(char *datastore_name) {
+	struct datastore *res;
+	for (res = datastore_head; res && strcmp(res->name, datastore_name); res = res->next);
+
+	return res;
+}
+
+struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt) {
+
+	struct dataset *res = NULL;
+
+	struct datavalue_template *new_dt = NULL;
+	int i;
+
+	pom_mutex_lock(&d->lock);
+
+	if (!d->open) {
+		if (datastore_open(d) != POM_OK) {
+			pom_mutex_unlock(&d->lock);
+			return NULL;
+		}
+	}
+
+	for (res = d->datasets; res && strcmp(res->name, name); res = res->next);
+	
+	if (res) {
+		if (res->open) { // Datastore found and already open
+			pom_mutex_unlock(&d->lock);
+			return res;
+		}
+		
+		struct datavalue_template *flds = res->data_template;
+		int i;
+
+		for (i = 0; dt[i].name; i++) {
+			if (!flds->name || strcmp(dt[i].name, flds[i].name) || strcmp(dt[i].type, flds[i].type)) {
+				pom_mutex_unlock(&d->lock);
+				pomlog(POMLOG_ERR "Cannot open dataset %s. Missmatch in provided vs existing fields", name);
+				return NULL;
+			}
+		}
+		
+		res->open = 1;
+
+	} else {
+		pomlog("Dataset %s doesn't exists in datastore %s. Creating it ...", name, d->name);
+
+		// Copy the template
+		for (i = 0; dt[i].name; i++);
+		i++;
+
+		size_t size = sizeof(struct datavalue_template) * i;
+		struct datavalue_template *new_dt = malloc(size);
+		if (!new_dt) {
+			pom_oom(size);
+			return NULL;
+		}
+		memset(new_dt, 0, size);
+		
+		for (i = 0; dt[i].name; i++) {
+
+			new_dt[i].name = strdup(dt[i].name);
+			if (!new_dt[i].name) {
+				pom_oom(strlen(dt[i].name) + 1);
+				goto err;
+			}
+
+			new_dt[i].type = strdup(dt[i].type);
+			if (!new_dt[i].type) {
+				pom_oom(strlen(dt[i].type) + 1);
+				goto err;
+			}
+		}
+
+		// Allocate the new dataset
+		res = datastore_dataset_alloc(d, new_dt, name);
+		if (!res)
+			goto err;
+
+		if (datastore_dataset_create(res) != POM_OK)
+			goto err;
+
+
+		// Add it in the database
+		PTYPE_STRING_SETVAL(d->dataset_db_query->values[0].value, name);
+		d->dataset_db_query->values[0].is_null = 0;
+		d->dataset_db_query->values[1].is_null = 1;
+		if (datastore_dataset_write(d->dataset_db_query) != POM_OK)
+			goto err;
+
+		res->dataset_id = d->dataset_db_query->data_id;
+
+		for (i = 0; dt[i].name; i++) {
+			PTYPE_UINT64_SETVAL(d->dataset_schema_query->values[0].value, res->dataset_id);
+			d->dataset_schema_query->values[0].is_null = 0;
+			PTYPE_STRING_SETVAL(d->dataset_schema_query->values[1].value, dt[i].name);
+			d->dataset_schema_query->values[1].is_null = 0;
+			PTYPE_STRING_SETVAL(d->dataset_schema_query->values[2].value, dt[i].type);
+			d->dataset_schema_query->values[2].is_null = 0;
+			PTYPE_UINT16_SETVAL(d->dataset_schema_query->values[3].value, i);
+			d->dataset_schema_query->values[3].is_null = 0;
+
+
+			if (datastore_dataset_write(d->dataset_schema_query) != POM_OK)
+				goto err;
+
+		}
+
+		// Add it in the list of datasets
+		res->next = d->datasets;
+		if (res->next)
+			res->next->prev = res;
+		d->datasets = res;
+
+	}
+
+	pom_mutex_unlock(&d->lock);
+
+	pomlog(POMLOG_DEBUG "Dataset %s in datastore %s opened", res->name, d->name);
+
+	return res;
+
+err:
+
+	pom_mutex_unlock(&d->lock);
+
+	if (new_dt) {
+		for (i = 0; new_dt[i].name || new_dt[i].type; i++) {
+			if (new_dt[i].name)
+				free(new_dt[i].name);
+			if (new_dt[i].type)
+				free(new_dt[i].type);
+		}
+		free(new_dt);
+	}
+
+	if (!res)
+		return NULL;
+
+	//datastore_dataset_destroy(res);
+
+	datastore_dataset_cleanup(res);
+
+	// FIXME remove the datastore from the db if it was already added
+	// or implement begin/commit/rollback
+	
+	return NULL;
+
+}
+
+int datastore_dataset_close(struct dataset *ds) {
+
+	struct datastore *d = ds->dstore;
+
+	pom_mutex_lock(&d->lock);
+	ds->open = 0;
+	pom_mutex_unlock(&d->lock);
+
 	return POM_OK;
 }
 
@@ -606,6 +787,22 @@ err:
 	return NULL;
 }
 
+int datastore_dataset_cleanup(struct dataset *ds) {
+
+	struct datastore *d = ds->dstore;
+	
+	if (d->reg->info->dataset_cleanup) {
+		if (d->reg->info->dataset_cleanup(ds) != POM_OK)
+			return POM_ERR;
+	}
+
+	free(ds->name);
+	free(ds);
+
+	return POM_OK;
+
+}
+
 int datastore_dataset_create(struct dataset *ds) {
 
 	struct datastore *d = ds->dstore;
@@ -638,7 +835,29 @@ int datastore_dataset_read(struct dataset_query *dsq) {
 		dsq->prepared = 1;
 	}
 
+	// FIXME handle error
+
 	return d->reg->info->dataset_read(dsq);
+
+}
+
+int datastore_dataset_write(struct dataset_query *dsq) {
+
+	struct datastore *d = dsq->ds->dstore;
+
+	if (!dsq->prepared) {
+		if (d->reg->info->dataset_query_prepare) {
+			int res = d->reg->info->dataset_query_prepare(dsq);
+			if (res != DATASET_QUERY_OK)
+				return res;
+		}
+		
+		dsq->prepared = 1;
+	}
+	
+	// FIXME handle error
+	
+	return d->reg->info->dataset_write(dsq);
 
 }
 
@@ -758,3 +977,4 @@ int datastore_dataset_query_unset_condition(struct dataset_query *dsq) {
 
 	return POM_OK;
 }
+

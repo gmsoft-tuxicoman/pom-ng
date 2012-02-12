@@ -108,6 +108,8 @@ struct datastore {
 	void *priv; ///< Private data of the datastore
 	int open;
 
+	pthread_mutex_t lock;
+
 	struct datastore_reg *reg;
 
 	struct registry_instance *reg_instance;
@@ -154,7 +156,12 @@ struct datastore_reg_info {
 int datastore_register(struct datastore_reg_info *reg_info);
 int datastore_unregister(char *name);
 
+struct datastore *datastore_instance_get(char *datastore_name);
+
+struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt);
+int datastore_dataset_close(struct dataset *ds);
 int datastore_dataset_read(struct dataset_query *dsq);
+int datastore_dataset_write(struct dataset_query *dsq);
 
 struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds);
 int datastore_dataset_query_cleanup(struct dataset_query *dsq);
