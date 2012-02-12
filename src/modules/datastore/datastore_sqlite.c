@@ -459,44 +459,49 @@ static int datastore_sqlite_dataset_read(struct dataset_query *dsq) {
 	struct datavalue_template *dt = dsq->ds->data_template;
 	int i;
 	for (i = 0; dt[i].name; i++) {
-		switch (dt[i].native_type) {
-			case DATASTORE_SQLITE_PTYPE_BOOL: {
-				int res = sqlite3_column_int(qpriv->read_stmt, i + 1);
-				PTYPE_BOOL_SETVAL(dv[i].value, res);
-				break;
-			}
-			case DATASTORE_SQLITE_PTYPE_UINT8: {
-				uint8_t res = sqlite3_column_int(qpriv->read_stmt, i + 1);
-				PTYPE_UINT8_SETVAL(dv[i].value, res);
-				break;
-			}
-			case DATASTORE_SQLITE_PTYPE_UINT16: {
-				uint16_t res = sqlite3_column_int(qpriv->read_stmt, i + 1);
-				PTYPE_UINT16_SETVAL(dv[i].value, res);
-				break;
-			}
-			case DATASTORE_SQLITE_PTYPE_UINT32: {
-				uint32_t res = sqlite3_column_int(qpriv->read_stmt, i + 1);
-				PTYPE_UINT32_SETVAL(dv[i].value, res);
-				break;
-			}
-			case DATASTORE_SQLITE_PTYPE_UINT64: {
-				uint64_t res = sqlite3_column_int64(qpriv->read_stmt, i + 1);
-				PTYPE_UINT64_SETVAL(dv[i].value, res);
-				break;
-			}
-			case DATASTORE_SQLITE_PTYPE_TIMESTAMP: {
-				time_t res = sqlite3_column_int64(qpriv->read_stmt, i + 1);
-				PTYPE_TIMESTAMP_SETVAL(dv[i].value, res);
-				break;
-			}
-			default: {
-				const unsigned char *txt = sqlite3_column_text(qpriv->read_stmt, i + 1);
-				if (ptype_parse_val(dv[i].value, (char*)txt) != POM_OK) {
-					sqlite3_reset(qpriv->read_stmt);
-					return DATASET_QUERY_ERR;
+
+		if (sqlite3_column_type(qpriv->read_stmt, i + 1) == SQLITE_NULL) {
+			dv[i].is_null = 1;
+		} else {
+			switch (dt[i].native_type) {
+				case DATASTORE_SQLITE_PTYPE_BOOL: {
+					int res = sqlite3_column_int(qpriv->read_stmt, i + 1);
+					PTYPE_BOOL_SETVAL(dv[i].value, res);
+					break;
 				}
-				break;
+				case DATASTORE_SQLITE_PTYPE_UINT8: {
+					uint8_t res = sqlite3_column_int(qpriv->read_stmt, i + 1);
+					PTYPE_UINT8_SETVAL(dv[i].value, res);
+					break;
+				}
+				case DATASTORE_SQLITE_PTYPE_UINT16: {
+					uint16_t res = sqlite3_column_int(qpriv->read_stmt, i + 1);
+					PTYPE_UINT16_SETVAL(dv[i].value, res);
+					break;
+				}
+				case DATASTORE_SQLITE_PTYPE_UINT32: {
+					uint32_t res = sqlite3_column_int(qpriv->read_stmt, i + 1);
+					PTYPE_UINT32_SETVAL(dv[i].value, res);
+					break;
+				}
+				case DATASTORE_SQLITE_PTYPE_UINT64: {
+					uint64_t res = sqlite3_column_int64(qpriv->read_stmt, i + 1);
+					PTYPE_UINT64_SETVAL(dv[i].value, res);
+					break;
+				}
+				case DATASTORE_SQLITE_PTYPE_TIMESTAMP: {
+					time_t res = sqlite3_column_int64(qpriv->read_stmt, i + 1);
+					PTYPE_TIMESTAMP_SETVAL(dv[i].value, res);
+					break;
+				}
+				default: {
+					const unsigned char *txt = sqlite3_column_text(qpriv->read_stmt, i + 1);
+					if (ptype_parse_val(dv[i].value, (char*)txt) != POM_OK) {
+						sqlite3_reset(qpriv->read_stmt);
+						return DATASET_QUERY_ERR;
+					}
+					break;
+				}
 			}
 		}
 	}
