@@ -147,10 +147,6 @@ then
 	AC_SUBST(magic_LIBS)
 fi
 
-# update libdir
-POM_MOD_LIBDIR="${libdir}/${PACKAGE_NAME}"
-AC_SUBST(POM_MOD_LIBDIR)
-
 # Check for PCAP
 AC_CHECK_HEADERS([pcap.h pcap-bpf.h], [pcap_headers=yes], [pcap_headers=no])
 AC_CHECK_LIB([pcap], [pcap_open_offline, pcap_open_dead, pcap_close, pcap_breakloop], [want_pcap=yes], [want_pcap=no])

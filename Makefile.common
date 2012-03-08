@@ -18,3 +18,5 @@
 
 CFLAGS += -Wall -I$(top_srcdir)/include -D_FILE_OFFSET_BITS=64
 
+mod_dir=$(exec_prefix)/lib/pom-ng
+

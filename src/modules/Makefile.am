@@ -16,6 +16,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 include $(top_srcdir)/Makefile.common
+libdir=$(mod_dir)
 
 ANALYZER_SRC = analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
