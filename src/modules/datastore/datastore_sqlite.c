@@ -66,14 +66,17 @@ static int datastore_sqlite_mod_register(struct mod_reg *mod) {
 	datastore_sqlite.mod = mod;
 	datastore_sqlite.init = datastore_sqlite_init;
 	datastore_sqlite.cleanup = datastore_sqlite_cleanup;
-	datastore_sqlite.open = datastore_sqlite_open;
-	datastore_sqlite.close = datastore_sqlite_close;
+	datastore_sqlite.connect = datastore_sqlite_connect;
+	datastore_sqlite.disconnect = datastore_sqlite_disconnect;
+	datastore_sqlite.transaction_begin = datastore_sqlite_transaction_begin;
+	datastore_sqlite.transaction_commit = datastore_sqlite_transaction_commit;
+	datastore_sqlite.transaction_rollback = datastore_sqlite_transaction_rollback;
 	datastore_sqlite.dataset_alloc = datastore_sqlite_dataset_alloc;
 	datastore_sqlite.dataset_cleanup = datastore_sqlite_dataset_cleanup;
 	datastore_sqlite.dataset_create = datastore_sqlite_dataset_create;
 	datastore_sqlite.dataset_read = datastore_sqlite_dataset_read;
 	datastore_sqlite.dataset_write = datastore_sqlite_dataset_write;
-	//datastore_sqlite.dataset_delete = datastore_sqlite_dataset_delete;
+	datastore_sqlite.dataset_delete = datastore_sqlite_dataset_delete;
 	datastore_sqlite.dataset_query_alloc = datastore_sqlite_dataset_query_alloc;
 	datastore_sqlite.dataset_query_prepare = datastore_sqlite_dataset_query_prepare;
 	datastore_sqlite.dataset_query_cleanup = datastore_sqlite_dataset_query_cleanup;
@@ -132,40 +135,82 @@ static int datastore_sqlite_cleanup(struct datastore *d) {
 	return POM_OK;
 }
 
-static int datastore_sqlite_open(struct datastore *d) {
+static int datastore_sqlite_connect(struct datastore_connection *dc) {
 
-	struct datastore_sqlite_priv *priv = d->priv;
+	struct datastore_sqlite_priv *priv = dc->d->priv;
 
 	char *dbfile = PTYPE_STRING_GETVAL(priv->p_dbfile);
+
+	struct datastore_sqlite_connection_priv *cpriv = malloc(sizeof(struct datastore_sqlite_connection_priv));
+	if (!cpriv) {
+		pom_oom(sizeof(struct datastore_sqlite_connection_priv));
+		return POM_ERR;
+	}
+	memset(cpriv, 0, sizeof(struct datastore_sqlite_priv));
 	
-	if (sqlite3_open_v2(dbfile, &priv->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL)) {
-		pomlog(POMLOG_ERR "Connection to database %s failed : %s", dbfile, sqlite3_errmsg(priv->db));
-		priv->db = NULL;
+	if (sqlite3_open_v2(dbfile, &cpriv->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL)) {
+		pomlog(POMLOG_ERR "Connection to database %s failed : %s", dbfile, sqlite3_errmsg(cpriv->db));
+		if (cpriv->db)
+			sqlite3_close(cpriv->db);
+		free(cpriv);
 		return POM_ERR;
 
 	}
 
-	sqlite3_busy_handler(priv->db, datastore_sqlite_busy_callback, NULL);
+	sqlite3_busy_handler(cpriv->db, datastore_sqlite_busy_callback, NULL);
 
-	pomlog("Connected to database %s", dbfile);
+	dc->priv = cpriv;
+
+	pomlog("New connection to database %s", dbfile);
 
 	return POM_OK;
 
 	
 }
 
-static int datastore_sqlite_close(struct datastore *d) {
+static int datastore_sqlite_disconnect(struct datastore_connection *dc) {
 
-	struct datastore_sqlite_priv *priv = d->priv;
+	struct datastore_sqlite_connection_priv *cpriv = dc->priv;
 
-	if (priv->db) {
-		sqlite3_close(priv->db);
-		priv->db = NULL;
-		pomlog("Connection to the database closed");
-	}
+	sqlite3_close(cpriv->db);
+	free(cpriv);
+	pomlog("Connection to the database closed");
 
 	return POM_OK;
 
+}
+
+static int datastore_sqlite_transaction_begin(struct datastore_connection *dc) {
+	
+	struct datastore_sqlite_connection_priv *cpriv = dc->priv;
+
+	int res = sqlite3_exec(cpriv->db, "BEGIN", NULL, NULL, NULL);
+
+	if (res != SQLITE_OK)
+		pomlog(POMLOG_ERR "Failed to begin transaction on datastore \"%s\" : %s", dc->d->name, sqlite3_errmsg(cpriv->db));
+	return datastore_sqlite_get_ds_state_error(res);
+}
+
+static int datastore_sqlite_transaction_commit(struct datastore_connection *dc) {
+	
+	struct datastore_sqlite_connection_priv *cpriv = dc->priv;
+
+	int res = sqlite3_exec(cpriv->db, "COMMIT", NULL, NULL, NULL);
+
+	if (res != SQLITE_OK)
+		pomlog(POMLOG_ERR "Failed to commit transaction on datastore \"%s\" : %s", dc->d->name, sqlite3_errmsg(cpriv->db));
+	return datastore_sqlite_get_ds_state_error(res);
+}
+
+static int datastore_sqlite_transaction_rollback(struct datastore_connection *dc) {
+	
+	struct datastore_sqlite_connection_priv *cpriv = dc->priv;
+
+	int res = sqlite3_exec(cpriv->db, "ROLLBACK", NULL, NULL, NULL);
+
+	if (res != SQLITE_OK)
+		pomlog(POMLOG_ERR "Failed to rollback transaction on datastore \"%s\" : %s", dc->d->name, sqlite3_errmsg(cpriv->db));
+	return datastore_sqlite_get_ds_state_error(res);
 }
 
 
@@ -231,6 +276,12 @@ static int datastore_sqlite_dataset_alloc(struct dataset *ds) {
 
 	pomlog(POMLOG_DEBUG "WRITE QUERY : %s", write_query);
 
+	char delete_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1];
+	strcpy(delete_query, "DELETE FROM ");
+	strncat(delete_query, ds->name, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(write_query));
+
+	pomlog(POMLOG_DEBUG "DELETE QUERY : %s", delete_query);
+
 	struct dataset_sqlite_priv *priv = malloc(sizeof(struct dataset_sqlite_priv));
 	if (!priv) {
 		pom_oom(sizeof(struct dataset_sqlite_priv));
@@ -240,15 +291,24 @@ static int datastore_sqlite_dataset_alloc(struct dataset *ds) {
 
 	priv->read_query = strdup(read_query);
 	if (!priv->read_query) {
-		pom_oom(strlen(read_query));
+		pom_oom(strlen(read_query) + 1);
 		free(priv);
 		return POM_ERR;
 	}
 
 	priv->write_query = strdup(write_query);
 	if (!priv->write_query) {
-		pom_oom(strlen(write_query));
+		pom_oom(strlen(write_query) + 1);
 		free(priv->read_query);
+		free(priv);
+		return POM_ERR;
+	}
+
+	priv->delete_query = strdup(delete_query);
+	if (!priv->delete_query) {
+		pom_oom(strlen(delete_query) + 1);
+		free(priv->read_query);
+		free(priv->write_query);
 		free(priv);
 		return POM_ERR;
 	}
@@ -263,6 +323,7 @@ static int datastore_sqlite_dataset_cleanup(struct dataset *ds) {
 	struct dataset_sqlite_priv *priv = ds->priv;
 	free(priv->read_query);
 	free(priv->write_query);
+	free(priv->delete_query);
 
 	free(priv);
 
@@ -270,9 +331,7 @@ static int datastore_sqlite_dataset_cleanup(struct dataset *ds) {
 
 }
 
-static int datastore_sqlite_dataset_create(struct dataset *ds) {
-
-	struct datastore_sqlite_priv *priv = ds->dstore->priv;
+static int datastore_sqlite_dataset_create(struct dataset *ds, struct datastore_connection *dc) {
 
 	char create_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1];
 	strcpy(create_query, "CREATE TABLE ");
@@ -302,10 +361,12 @@ static int datastore_sqlite_dataset_create(struct dataset *ds) {
 
 	pomlog(POMLOG_DEBUG "CREATE QUERY : %s", create_query);
 
-	int res = sqlite3_exec(priv->db, create_query, NULL, NULL, NULL);
+	struct datastore_sqlite_connection_priv *cpriv = dc->priv;
+
+	int res = sqlite3_exec(cpriv->db, create_query, NULL, NULL, NULL);
 
 	if (res != SQLITE_OK)
-		pomlog(POMLOG_ERR "Failed to create dataset \"%s\" : %s", ds->name, sqlite3_errmsg(priv->db));
+		pomlog(POMLOG_ERR "Failed to create dataset \"%s\" : %s", ds->name, sqlite3_errmsg(cpriv->db));
 	return datastore_sqlite_get_ds_state_error(res);
 
 }
@@ -328,20 +389,17 @@ static int datastore_sqlite_dataset_query_alloc(struct dataset_query *dsq) {
 static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 
 
-	char *query, tmp_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1];
+	char tmp_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1] = { 0 };
+	char *read_query = NULL, *delete_query = NULL;
+	char tmp_read_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1], tmp_delete_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1];
+
 
 	struct dataset_sqlite_query_priv *qpriv = dsq->priv;
 	struct dataset_sqlite_priv *priv = dsq->ds->priv;
-	struct datastore_sqlite_priv *dpriv = dsq->ds->dstore->priv;
+	struct datastore_sqlite_connection_priv *cpriv = dsq->con->priv;
 	struct datavalue_condition *qc = dsq->cond;
 	struct datavalue_read_order *qro = dsq->read_order;
 
-	if (qc || qro) {
-		query = tmp_query;
-		strncpy(query, priv->read_query, DATASTORE_SQLITE_QUERY_BUFF_LEN);
-	} else {
-		query = priv->read_query;
-	}
 
 	if (qc) {
 		struct datavalue_template *dt = dsq->ds->data_template;
@@ -363,23 +421,24 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 
 		switch (dt[qc->field_id].native_type) {
 			case DATASTORE_SQLITE_PTYPE_BOOL:
-				snprintf(query + strlen(query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_BOOL_GETVAL(qc->value));
+				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_BOOL_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT8:
-				snprintf(query + strlen(query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_UINT8_GETVAL(qc->value));
+				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_UINT8_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT16:
-				snprintf(query + strlen(query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query), " WHERE %s %s %hu", dt[qc->field_id].name, op, *PTYPE_UINT16_GETVAL(qc->value));
+				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %hu", dt[qc->field_id].name, op, *PTYPE_UINT16_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT32:
-				snprintf(query + strlen(query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query), " WHERE %s %s %u", dt[qc->field_id].name, op, *PTYPE_UINT32_GETVAL(qc->value));
+				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %u", dt[qc->field_id].name, op, *PTYPE_UINT32_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT64:
-				snprintf(query + strlen(query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query), " WHERE %s %s %lu", dt[qc->field_id].name, op, *PTYPE_UINT64_GETVAL(qc->value));
+				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %lu", dt[qc->field_id].name, op, *PTYPE_UINT64_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_STRING: {
-				snprintf(query + strlen(query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query), " WHERE %s %s ", dt[qc->field_id].name, op);
-				datastore_sqlite_escape_string(query + strlen(query), PTYPE_STRING_GETVAL(qc->value), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query));
+				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s \"", dt[qc->field_id].name, op);
+				datastore_sqlite_escape_string(tmp_query + strlen(tmp_query), PTYPE_STRING_GETVAL(qc->value), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+				strncat(tmp_query, "\"", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
 				break;
 			}
 			default:
@@ -387,8 +446,8 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 				return DATASET_QUERY_ERR;
 		}
 
-		if (strlen(query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
-			pomlog(POMLOG_ERR "Read query too long");
+		if (strlen(tmp_query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
+			pomlog(POMLOG_ERR "Query conditions too long");
 			return DATASET_QUERY_ERR;
 		}
 
@@ -396,28 +455,52 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 	}
 	
 	if (qro) {
-		strncat(query, " ORDER BY ", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query));
+		strncat(tmp_query, " ORDER BY ", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
 		if (qro->direction == DATASET_READ_ORDER_DESC)
-			strncat(query, " DESC", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(query));
+			strncat(tmp_query, " DESC", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
 	}
 
-	if (strlen(query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
-		pomlog(POMLOG_ERR "Read query too long");
+	if (strlen(tmp_query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
+		pomlog(POMLOG_ERR "Query order too long");
 		return DATASET_QUERY_ERR;
 	}
 
-	int res = sqlite3_prepare_v2(dpriv->db, query, -1, &qpriv->read_stmt, NULL);
+
+	if (qc || qro) {
+		read_query = tmp_read_query;
+		strcpy(tmp_read_query, priv->read_query);
+		strncat(tmp_read_query, tmp_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+
+		delete_query = tmp_delete_query;
+		strcpy(tmp_delete_query, priv->delete_query);
+		strncat(tmp_delete_query, tmp_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+	} else {
+		read_query = priv->read_query;
+		delete_query = priv->delete_query;
+	}
+		
+
+	int res = sqlite3_prepare_v2(cpriv->db, read_query, -1, &qpriv->read_stmt, NULL);
 	if (res != SQLITE_OK) {
-		pomlog(POMLOG_ERR "Unable to prepare the READ SQL query : %s", sqlite3_errmsg(dpriv->db));
+		pomlog(POMLOG_ERR "Unable to prepare the READ SQL query : %s", sqlite3_errmsg(cpriv->db));
 		return datastore_sqlite_get_ds_state_error(res);
 	}
 
-
-	res = sqlite3_prepare_v2(dpriv->db, priv->write_query, -1, &qpriv->write_stmt, NULL);
+	res = sqlite3_prepare_v2(cpriv->db, priv->write_query, -1, &qpriv->write_stmt, NULL);
 	if (res != SQLITE_OK) {
-		pomlog(POMLOG_ERR "Unable to prepare the write SQL query : %s", sqlite3_errmsg(dpriv->db));
+		pomlog(POMLOG_ERR "Unable to prepare the write SQL query : %s", sqlite3_errmsg(cpriv->db));
 		sqlite3_finalize(qpriv->read_stmt);
 		qpriv->read_stmt = NULL;
+		return datastore_sqlite_get_ds_state_error(res);
+	}
+
+	res = sqlite3_prepare_v2(cpriv->db, delete_query, -1, &qpriv->delete_stmt, NULL);
+	if (res != SQLITE_OK) {
+		pomlog(POMLOG_ERR "Unable to prepare the delete SQL query : %s", sqlite3_errmsg(cpriv->db));
+		sqlite3_finalize(qpriv->read_stmt);
+		sqlite3_finalize(qpriv->write_stmt);
+		qpriv->read_stmt = NULL;
+		qpriv->write_stmt = NULL;
 		return datastore_sqlite_get_ds_state_error(res);
 	}
 
@@ -432,6 +515,8 @@ static int datastore_sqlite_dataset_query_cleanup(struct dataset_query *dsq) {
 			sqlite3_finalize(priv->read_stmt);
 		if (priv->write_stmt)
 			sqlite3_finalize(priv->write_stmt);
+		if (priv->delete_stmt)
+			sqlite3_finalize(priv->delete_stmt);
 		
 		free(priv);
 
@@ -514,7 +599,7 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 	struct datavalue *dv = dsq->values;
 	struct dataset_sqlite_query_priv *qpriv = dsq->priv;
 	struct datavalue_template *dt = dsq->ds->data_template;
-	struct datastore_sqlite_priv *dpriv = dsq->ds->dstore->priv;
+	struct datastore_sqlite_connection_priv *cpriv = dsq->con->priv;
 
 	int i, res;
 	for (i = 0; dt[i].name; i++) {
@@ -553,7 +638,7 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 			}
 		}
 		if (res != SQLITE_OK) {
-			pomlog(POMLOG_ERR "Unable to bind the value to the query : %s", sqlite3_errmsg(dpriv->db));
+			pomlog(POMLOG_ERR "Unable to bind the value to the query : %s", sqlite3_errmsg(cpriv->db));
 			sqlite3_reset(qpriv->write_stmt);
 			return datastore_sqlite_get_ds_state_error(res);
 		}
@@ -561,7 +646,7 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 	}
 
 
-	// We need to make sure we write and retrieve the last row id in an atomic way
+	// We need to make sure we write and retrieve the last row id in an atomic way on a db level
 	
 	static pthread_mutex_t write_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -569,13 +654,13 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 
 	res = sqlite3_step(qpriv->write_stmt);
 	if (res != SQLITE_DONE) {
-		pomlog(POMLOG_ERR "Error while executing the write query : %s", sqlite3_errmsg(dpriv->db));
+		pomlog(POMLOG_ERR "Error while executing the write query : %s", sqlite3_errmsg(cpriv->db));
 		pom_mutex_unlock(&write_lock);
 		sqlite3_reset(qpriv->write_stmt);
 		return datastore_sqlite_get_ds_state_error(res);
 	}
 	
-	dsq->data_id = sqlite3_last_insert_rowid(dpriv->db);
+	dsq->data_id = sqlite3_last_insert_rowid(cpriv->db);
 
 	pom_mutex_unlock(&write_lock);
 
@@ -583,6 +668,15 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 	sqlite3_clear_bindings(qpriv->write_stmt);
 
 	return DATASET_QUERY_OK;
+}
+
+static int datastore_sqlite_dataset_delete(struct dataset_query *dsq) {
+
+	struct dataset_sqlite_query_priv *qpriv = dsq->priv;
+
+	int res = sqlite3_step(qpriv->delete_stmt);
+
+	return datastore_sqlite_get_ds_state_error(res);
 }
 
 static int datastore_sqlite_busy_callback(void *priv, int retries) {
@@ -598,6 +692,7 @@ static int datastore_sqlite_get_ds_state_error(int errnum) {
 	
 	switch (errnum) {
 		case SQLITE_OK:
+		case SQLITE_DONE:
 			return DATASET_QUERY_OK;
 		case SQLITE_ERROR:
 		case SQLITE_ABORT:

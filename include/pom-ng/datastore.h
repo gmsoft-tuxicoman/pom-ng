@@ -31,14 +31,17 @@
 #define DATASTORE_DATASET_SCHEMA_TABLE_NAME "dataset_schema"
 
 
-#define DATASET_QUERY_OK		0
+#define DATASET_QUERY_OK		POM_OK
 #define DATASET_QUERY_MORE		1
-#define DATASET_QUERY_ERR		-1
+#define DATASET_QUERY_ERR		POM_ERR
 #define DATASET_QUERY_DATASTORE_ERR	-2
 
 /// Possible read directions
 #define DATASET_READ_ORDER_ASC 0
 #define DATASET_READ_ORDER_DESC 1
+
+/// Condition flags
+#define DATASET_COND_CLEANUP_VAL	1
 
 // Private decl
 struct datastore_reg;
@@ -62,6 +65,7 @@ struct datavalue_condition {
 	int op; ///< Ptype operation
 	struct ptype *value; ///< Value to compare with
 	short field_id; ///< Field to compare against
+	int flags; ///< Condition flags
 };
 
 struct datavalue_read_order {
@@ -72,6 +76,8 @@ struct datavalue_read_order {
 struct dataset_query {
 	
 	void *priv;
+
+	struct datastore_connection *con;
 
 	struct dataset *ds;
 
@@ -89,7 +95,7 @@ struct dataset {
 
 	char *name;
 	uint64_t dataset_id; // Used internaly
-	int open;
+	unsigned int refcount;
 
 	struct datavalue_template *data_template;
 
@@ -103,12 +109,19 @@ struct dataset {
 
 };
 
+struct datastore_connection {
+	void *priv;
+	struct datastore *d;
+	struct datastore_connection *prev, *next;
+};
+
 struct datastore {
 	char *name; ///< Name of the datastore
 	void *priv; ///< Private data of the datastore
-	int open;
 
 	pthread_mutex_t lock;
+
+	struct datastore_connection *con_main, *cons, *cons_unused;
 
 	struct datastore_reg *reg;
 
@@ -118,9 +131,7 @@ struct datastore {
 
 	struct dataset *datasets; ///< List of all the datasets
 	struct dataset *dataset_db; ///< Dataset containing the lists of dataset
-	struct dataset_query *dataset_db_query; ///< Query for the above dataset
 	struct dataset *dataset_schema; ///< Dataset containing the schema of the datasets
-	struct dataset_query *dataset_schema_query; ///< Query for the above dataset
 
 	struct datastore *next;
 	struct datastore *prev;
@@ -135,16 +146,20 @@ struct datastore_reg_info {
 
 	int (*init) (struct datastore *d);
 	int (*cleanup) (struct datastore *t);
-	int (*open) (struct datastore *d);
-	int (*close) (struct datastore *d);
+	int (*connect) (struct datastore_connection *dc);
+	int (*disconnect) (struct datastore_connection *dc);
+
+	int (*transaction_begin) (struct datastore_connection *dc);
+	int (*transaction_commit) (struct datastore_connection *dc);
+	int (*transaction_rollback) (struct datastore_connection *dc);
 
 	int (*dataset_alloc) (struct dataset *ds);
 	int (*dataset_cleanup) (struct dataset *ds);
 	int (*dataset_destroy) (struct dataset *ds);
-	int (*dataset_create) (struct dataset *ds);
+	int (*dataset_create) (struct dataset *ds, struct datastore_connection *dc);
 	int (*dataset_read) (struct dataset_query *dsq);
 	int (*dataset_write) (struct dataset_query *dsq);
-	int (*dataset_delete) (struct dataset *query);
+	int (*dataset_delete) (struct dataset_query *dsq);
 
 	int (*dataset_query_alloc) (struct dataset_query *dsq);
 	int (*dataset_query_prepare) (struct dataset_query *dsq);
@@ -158,14 +173,25 @@ int datastore_unregister(char *name);
 
 struct datastore *datastore_instance_get(char *datastore_name);
 
-struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt);
+struct datastore_connection *datastore_connection_new(struct datastore *d);
+int datastore_connection_release(struct datastore_connection *dc);
+int datastore_transaction_begin(struct datastore_connection *dc);
+int datastore_transaction_commit(struct datastore_connection *dc);
+int datastore_transaction_rollback(struct datastore_connection *dc);
+
 int datastore_dataset_close(struct dataset *ds);
 int datastore_dataset_read(struct dataset_query *dsq);
+int datastore_dataset_read_single(struct dataset_query *dsq);
 int datastore_dataset_write(struct dataset_query *dsq);
+int datastore_dataset_delete(struct dataset_query *dsq);
 
-struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds);
+struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds, struct datastore_connection *dc);
+struct dataset_query *datastore_dataset_query_open(struct datastore *d, char *name, struct datavalue_template *dt, struct datastore_connection *dc);
 int datastore_dataset_query_cleanup(struct dataset_query *dsq);
 int datastore_dataset_query_set_condition(struct dataset_query *dsq, short field_id, int ptype_op, struct ptype *value);
+int datastore_dataset_query_set_condition_copy(struct dataset_query *dsq, short field_id, int ptype_op, struct ptype *value);
+int datastore_dataset_query_set_string_condition(struct dataset_query *dsq, short field_id, int ptype_op, char *value);
+int datastore_dataset_query_set_uint64_condition(struct dataset_query *dsq, short field_id, int ptype_op, uint64_t value);
 int datastore_dataset_query_unset_condition(struct dataset_query *dsq);
 
 #endif

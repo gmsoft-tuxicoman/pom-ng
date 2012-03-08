@@ -50,11 +50,11 @@ int datastore_instance_add(char *type, char *name);
 int datastore_instance_remove(struct registry_instance *ri);
 
 int datastore_open(struct datastore *d);
-int datastore_close(struct datastore *d);
 
 struct dataset *datastore_dataset_alloc(struct datastore *d, struct datavalue_template *dt, char *name);
+struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt, struct datastore_connection *dc);
 int datastore_dataset_cleanup(struct dataset *ds);
-int datastore_dataset_create(struct dataset *ds);
+int datastore_dataset_create(struct dataset *ds, struct datastore_connection *dc);
 
 
 #endif

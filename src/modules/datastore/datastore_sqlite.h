@@ -31,19 +31,23 @@
 struct datastore_sqlite_priv {
 
 	struct ptype *p_dbfile;
+};
+
+struct datastore_sqlite_connection_priv {
 
 	sqlite3 *db;
-
 };
 
 struct dataset_sqlite_priv {
 	char *read_query;
 	char *write_query;
+	char *delete_query;
 };
 
 struct dataset_sqlite_query_priv {
 	sqlite3_stmt *read_stmt;
 	sqlite3_stmt *write_stmt;
+	sqlite3_stmt *delete_stmt;
 };
 
 static int datastore_sqlite_mod_register(struct mod_reg *mod);
@@ -52,14 +56,19 @@ static int datastore_sqlite_mod_unregister();
 static int datastore_sqlite_init(struct datastore *d);
 static int datastore_sqlite_cleanup(struct datastore *d);
 
-static int datastore_sqlite_open(struct datastore *d);
-static int datastore_sqlite_close(struct datastore *d);
-static int datastore_sqlite_dataset_create(struct dataset *ds);
+static int datastore_sqlite_connect(struct datastore_connection *dc);
+static int datastore_sqlite_disconnect(struct datastore_connection *dc);
+
+static int datastore_sqlite_transaction_begin(struct datastore_connection *dc);
+static int datastore_sqlite_transaction_commit(struct datastore_connection *dc);
+static int datastore_sqlite_transaction_rollback(struct datastore_connection *dc);
 
 static int datastore_sqlite_dataset_alloc(struct dataset *ds);
 static int datastore_sqlite_dataset_cleanup(struct dataset *ds);
+static int datastore_sqlite_dataset_create(struct dataset *ds, struct datastore_connection *dc);
 static int datastore_sqlite_dataset_read(struct dataset_query *dsq);
 static int datastore_sqlite_dataset_write(struct dataset_query *dsq);
+static int datastore_sqlite_dataset_delete(struct dataset_query *dsq);
 
 static int datastore_sqlite_dataset_query_alloc(struct dataset_query *dsq);
 static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq);

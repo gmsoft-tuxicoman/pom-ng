@@ -239,11 +239,6 @@ int datastore_instance_remove(struct registry_instance *ri) {
 	
 	struct datastore *d = ri->priv;
 
-	if (datastore_close(d) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while closing the datastore");
-		return POM_ERR;
-	}
-
 	if (d->reg->info->cleanup) {
 		if (d->reg->info->cleanup(d) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while cleaning up the datastore");
@@ -275,19 +270,27 @@ int datastore_open(struct datastore *d) {
 
 	pom_mutex_lock(&d->lock);
 
-	if (d->open) {
+	if (d->con_main) {
 		pom_mutex_unlock(&d->lock);
 		return POM_OK;
 	}
 
-	if (d->reg->info->open && d->reg->info->open(d) != POM_OK) {
+	d->con_main = malloc(sizeof(struct datastore_connection));
+	if (!d->con_main) {
 		pom_mutex_unlock(&d->lock);
-		pomlog(POMLOG_ERR "Error while opening datastore %s", d->reg->info->name);
+		pom_oom(sizeof(struct datastore_connection));
+		return POM_ERR;
+	}
+	memset(d->con_main, 0, sizeof(struct datastore_connection));
+	d->con_main->d = d;
+
+	if (d->reg->info->connect(d->con_main) != POM_OK) {
+		pom_mutex_unlock(&d->lock);
+		pomlog(POMLOG_ERR "Error while connecting to datastore %s", d->reg->info->name);
 		return POM_ERR;
 	}
 
 
-	struct ptype *dsid = NULL;
 	struct datavalue_template *ds_template = NULL;
 
 	// Allocate the dataset_db
@@ -298,15 +301,16 @@ int datastore_open(struct datastore *d) {
 		{ 0 }
 	};
 
-	
+
+	struct dataset_query *dataset_db_query = NULL, *dataset_schema_query = NULL;
+
 	d->dataset_db = datastore_dataset_alloc(d, dataset_db_template, DATASTORE_DATASET_TABLE);
 	if (!d->dataset_db)
 		goto err;
 
-	d->dataset_db_query = datastore_dataset_query_alloc(d->dataset_db);
-	
-	if (!d->dataset_db_query)
-		goto err;
+	// Add this dataset to the global list
+	d->dataset_db->next = d->datasets;
+	d->datasets = d->dataset_db;
 
 
 	// Allocate the dataset_schema
@@ -323,27 +327,26 @@ int datastore_open(struct datastore *d) {
 	if (!d->dataset_schema)
 		goto err;
 
-	d->dataset_schema_query = datastore_dataset_query_alloc(d->dataset_schema);
-	if (!d->dataset_schema_query)
+	// Add the dsschema datasets to the list of datasets
+	
+	d->datasets->prev = d->dataset_schema;
+	d->dataset_schema->next = d->datasets;
+	d->datasets = d->dataset_schema;
+
+	dataset_db_query = datastore_dataset_query_alloc(d->dataset_db, NULL);
+	if (!dataset_db_query)
 		goto err;
 
-	// Add the dsdb and dsschema datasets to the list of datasets
-	
-	d->dataset_db->next = d->dataset_schema;
-	d->dataset_schema->prev = d->dataset_db;
-	d->datasets = d->dataset_db;
-
-
+	dataset_schema_query = datastore_dataset_query_alloc(d->dataset_schema, NULL);
+	if (!dataset_schema_query)
+		goto err;
 
 	// Fetch the existings datasets
-	dsid = ptype_alloc("uint64");
-	if (!dsid)
-		goto err;
 
 	int found = 0;
 
 	while (1) {
-		int res = datastore_dataset_read(d->dataset_db_query);
+		int res = datastore_dataset_read(dataset_db_query);
 		if (res == DATASET_QUERY_OK) {
 			found = 1;
 			break;
@@ -353,21 +356,25 @@ int datastore_open(struct datastore *d) {
 			goto err;
 		}
 
-		if (d->dataset_db_query->values[0].is_null) {
+		if (dataset_db_query->values[0].is_null) {
 			pomlog(POMLOG_ERR "Dataset name is NULL");
 			goto err;
 		}
 
-		PTYPE_UINT64_SETVAL(dsid, d->dataset_db_query->data_id);
 	
 
 		// Set read condition
-		datastore_dataset_query_set_condition(d->dataset_schema_query, 0, PTYPE_OP_EQ, dsid);
+		struct ptype *dsid = NULL;
+		dsid = ptype_alloc("uint64");
+		if (!dsid)
+			goto err;
+		PTYPE_UINT64_SETVAL(dsid, dataset_db_query->data_id);
+		datastore_dataset_query_set_condition(dataset_schema_query, 0, PTYPE_OP_EQ, dsid);
 
 		unsigned int datacount = 0;
 
 		while (1) {
-			res = datastore_dataset_read(d->dataset_schema_query);
+			res = datastore_dataset_read(dataset_schema_query);
 			if (res == DATASET_QUERY_OK) {
 				found = 1;
 				break;
@@ -384,8 +391,8 @@ int datastore_open(struct datastore *d) {
 			ds_template = tmp_template;
 			memset(&tmp_template[datacount], 0, sizeof(struct datavalue_template) * 2);
 
-			char *name = PTYPE_STRING_GETVAL(d->dataset_schema_query->values[1].value);
-			if (d->dataset_schema_query->values[1].is_null) {
+			char *name = PTYPE_STRING_GETVAL(dataset_schema_query->values[1].value);
+			if (dataset_schema_query->values[1].is_null) {
 				pomlog(POMLOG_ERR "NULL value for template entry name");
 				goto err;
 			}
@@ -395,8 +402,8 @@ int datastore_open(struct datastore *d) {
 				goto err;
 			}
 
-			char *type = PTYPE_STRING_GETVAL(d->dataset_schema_query->values[2].value);
-			if (d->dataset_schema_query->values[2].is_null) {
+			char *type = PTYPE_STRING_GETVAL(dataset_schema_query->values[2].value);
+			if (dataset_schema_query->values[2].is_null) {
 				pomlog(POMLOG_ERR "NULL value for template entry type");
 				goto err;
 			}
@@ -409,7 +416,7 @@ int datastore_open(struct datastore *d) {
 		}
 
 
-		struct dataset *ds = datastore_dataset_alloc(d, ds_template, PTYPE_STRING_GETVAL(d->dataset_db_query->values[0].value));
+		struct dataset *ds = datastore_dataset_alloc(d, ds_template, PTYPE_STRING_GETVAL(dataset_db_query->values[0].value));
 		if (!ds)
 			goto err;
 
@@ -419,54 +426,54 @@ int datastore_open(struct datastore *d) {
 
 		d->datasets = ds;
 
+		ds_template = NULL;
+
 	}
 
-	ptype_cleanup(dsid);
-	dsid = NULL;
+	datastore_dataset_query_cleanup(dataset_db_query);
+	datastore_dataset_query_cleanup(dataset_schema_query);
+
+
 	ds_template = NULL;
 
 	if (!found) {
-		if (datastore_dataset_create(d->dataset_db) != POM_OK)
+		
+		if (datastore_transaction_begin(d->con_main) != POM_OK)
 			goto err;
 
-		if (datastore_dataset_create(d->dataset_schema) != POM_OK) {
-			// datastore_dataset_destroy(dsdb);
+		if (datastore_dataset_create(d->dataset_db, d->con_main) != POM_OK) {
+			datastore_transaction_rollback(d->con_main);
+			goto err;
+		}
+
+		if (datastore_dataset_create(d->dataset_schema, d->con_main) != POM_OK) {
+			datastore_transaction_rollback(d->con_main);
+			goto err;
+		}
+
+		if (datastore_transaction_commit(d->con_main) != POM_OK) {
+			datastore_transaction_rollback(d->con_main);
 			goto err;
 		}
 
 	}
 
-	d->open = 1;
-	
 	pom_mutex_unlock(&d->lock);
+
+
 
 	pomlog("Datastore %s opened", d->reg->info->name);
 
 	return POM_OK;
 
 err:
-	
-	if (d->dataset_db) {
-		if (d->reg->info->dataset_cleanup)
-			d->reg->info->dataset_cleanup(d->dataset_db);
-		d->dataset_db = NULL;
-	}
 
-	if (d->dataset_schema) {
-		if (d->reg->info->dataset_cleanup)
-			d->reg->info->dataset_cleanup(d->dataset_schema);
-		d->dataset_schema = NULL;
-	}
 
-	if (d->dataset_db_query) {
-		datastore_dataset_query_cleanup(d->dataset_db_query);
-		d->dataset_db_query = NULL;
-	}
+	if (dataset_db_query)
+		datastore_dataset_query_cleanup(dataset_db_query);
 
-	if (d->dataset_schema_query) {
-		datastore_dataset_query_cleanup(d->dataset_schema_query);
-		d->dataset_schema_query = NULL;
-	}
+	if (dataset_schema_query)
+		datastore_dataset_query_cleanup(dataset_schema_query);
 
 	struct dataset *dset = NULL;
 	for (dset = d->datasets; d->datasets; dset = d->datasets) {
@@ -475,24 +482,22 @@ err:
 		
 		d->datasets = dset->next;
 
-		int i;
-		for (i = 0; dset->data_template[i].name; i++) {
-			free(dset->data_template[i].name);
-			free(dset->data_template[i].type);
-		}
+		if (dset != d->dataset_db && dset != d->dataset_schema) { // Those two have a static template
+			int i;
+			for (i = 0; dset->data_template[i].name; i++) {
+				free(dset->data_template[i].name);
+				free(dset->data_template[i].type);
+			}
 
-		if (dset != d->dataset_db && dset != d->dataset_schema) // Those two have a static template
 			free(dset->data_template);
+		}
 
 		free(dset->name);
 		free(dset);
 	}
 
-	if (d->reg->info->close)
-		d->reg->info->close(d);
-
-	if (dsid)
-		ptype_cleanup(dsid);
+	d->reg->info->disconnect(d->con_main);
+	free(d->con_main);
 
 	if (ds_template) {
 		int i;
@@ -520,18 +525,24 @@ int datastore_close(struct datastore *d) {
 
 	pom_mutex_lock(&d->lock);
 
-	if (!d->open) {
+	if (!d->con_main) {
 		pom_mutex_unlock(&d->lock);
 		return POM_OK;
 	}
 
+	if (d->cons) {
+		pomlog(POMLOG_ERR "Cannot close datastore, some connections are still active");
+		pom_mutex_unlock(&d->lock);
+		return POM_ERR;
+	}
+
 	struct dataset* dset = d->datasets;
 
-	// Check if all datasets are closed
+	// Check if all datasets are unused
 	while (dset) {
 
-		if (dset->open) {
-			pomlog(POMLOG_ERR "Cannot close datastore %s as the dataset %s is still open", d->name, dset->name);
+		if (dset->refcount) {
+			pomlog(POMLOG_ERR "Cannot close datastore %s as the dataset %s is still in use", d->name, dset->name);
 			pom_mutex_unlock(&d->lock);
 			return POM_ERR;
 		}
@@ -541,18 +552,6 @@ int datastore_close(struct datastore *d) {
 
 
 	dset = d->datasets;
-
-	// Cleanup our specific queries
-	
-	if (d->reg->info->dataset_query_cleanup) {
-		if (datastore_dataset_query_cleanup(d->dataset_db_query) != POM_OK)
-			pomlog(POMLOG_WARN "Warning : error while cleaning up the dataset db query");
-		d->dataset_db_query = NULL;
-
-		if (datastore_dataset_query_cleanup(d->dataset_schema_query) != POM_OK)
-			pomlog(POMLOG_WARN "Warning : error while cleaning up the dataset schema query");
-		d->dataset_schema_query = NULL;
-	}
 
 	// Cleanup all the datasets
 	
@@ -580,15 +579,110 @@ int datastore_close(struct datastore *d) {
 	d->dataset_schema = NULL;
 
 	// Close the datastore
-	
-	if (d->reg->info->close && d->reg->info->close(d) != POM_OK)
-		pomlog(POMLOG_WARN "Warning : error while closing the datastore");
 
-	d->open = 0;
+	while (d->cons_unused) {
+		struct datastore_connection *tmp = d->cons_unused;
+		d->cons_unused = tmp->next;
+		if (d->reg->info->disconnect(tmp) != POM_OK)
+			pomlog(POMLOG_WARN "Warning: error while closing a datastore connection");
+		free(tmp);
+	}
+	
+	if (d->reg->info->disconnect(d->con_main) != POM_OK)
+		pomlog(POMLOG_WARN "Warning : error while closing the main datastore connection");
+	free(d->con_main);
+	d->con_main = NULL;
 
 	pom_mutex_unlock(&d->lock);
 
 	return POM_OK;
+}
+
+struct datastore_connection *datastore_connection_new(struct datastore *d) {
+
+	if (!d)
+		return NULL;
+
+	pom_mutex_lock(&d->lock);
+	struct datastore_connection *res = d->cons_unused;
+
+	if (!res) {
+		res = malloc(sizeof(struct datastore_connection));
+		if (!res) {
+			pom_mutex_unlock(&d->lock);
+			pom_oom(sizeof(struct datastore_connection));
+			return NULL;
+		}
+		memset(res, 0, sizeof(struct datastore_connection));
+		res->d = d;
+
+		if (d->reg->info->connect(res) != POM_OK) {
+			pom_mutex_unlock(&d->lock);
+			pomlog(POMLOG_ERR "Error while creating new connection to datastore %s", d->name);
+			free(res);
+			return NULL;
+		}
+
+		res->next = d->cons;
+		if (res->next)
+			res->next->prev = res;
+
+		d->cons = res;
+	} else {
+		d->cons_unused = res->next;
+		if (d->cons_unused->prev)
+			d->cons_unused->prev = NULL;
+
+		res->next = NULL;
+		res->prev = NULL;
+
+	}
+
+	pom_mutex_unlock(&d->lock);
+
+	
+	return res;
+}
+
+int datastore_connection_release(struct datastore_connection *dc) {
+	
+	struct datastore *d = dc->d;
+
+	pom_mutex_lock(&d->lock);
+	
+	if (dc->prev)
+		dc->prev->next = dc->next;
+	else
+		d->cons = dc->next;
+
+	if (dc->next)
+		dc->next->prev = dc->prev;
+
+	dc->next = d->cons_unused;
+	
+	if (dc->next)
+		dc->next->prev = dc;
+
+	d->cons_unused = dc;
+
+	pom_mutex_unlock(&d->lock);
+
+	return POM_OK;
+}
+
+int datastore_transaction_begin(struct datastore_connection *dc) {
+
+	return dc->d->reg->info->transaction_begin(dc);
+}
+
+int datastore_transaction_commit(struct datastore_connection *dc) {
+
+	return dc->d->reg->info->transaction_commit(dc);
+}
+
+int datastore_transaction_rollback(struct datastore_connection *dc) {
+
+	return dc->d->reg->info->transaction_rollback(dc);
 }
 
 struct datastore *datastore_instance_get(char *datastore_name) {
@@ -598,16 +692,19 @@ struct datastore *datastore_instance_get(char *datastore_name) {
 	return res;
 }
 
-struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt) {
+struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt, struct datastore_connection *dc) {
 
 	struct dataset *res = NULL;
 
 	struct datavalue_template *new_dt = NULL;
 	int i;
 
+	struct datastore_connection *tmp_dc = dc;
+	struct dataset_query *dataset_db_query = NULL, *dataset_schema_query = NULL;
+
 	pom_mutex_lock(&d->lock);
 
-	if (!d->open) {
+	if (!d->con_main) {
 		if (datastore_open(d) != POM_OK) {
 			pom_mutex_unlock(&d->lock);
 			return NULL;
@@ -617,7 +714,7 @@ struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct d
 	for (res = d->datasets; res && strcmp(res->name, name); res = res->next);
 	
 	if (res) {
-		if (res->open) { // Datastore found and already open
+		if (res->refcount) { // Datastore found and already open
 			pom_mutex_unlock(&d->lock);
 			return res;
 		}
@@ -632,8 +729,6 @@ struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct d
 				return NULL;
 			}
 		}
-		
-		res->open = 1;
 
 	} else {
 		pomlog("Dataset %s doesn't exists in datastore %s. Creating it ...", name, d->name);
@@ -670,34 +765,61 @@ struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct d
 		if (!res)
 			goto err;
 
-		if (datastore_dataset_create(res) != POM_OK)
+		if (!tmp_dc) {
+			// No connection provided. Create a new one to isolate this creation
+			tmp_dc = datastore_connection_new(d);
+			if (!tmp_dc)
+				goto err;
+			if (datastore_transaction_begin(tmp_dc) != POM_OK)
+				goto err;
+		}
+
+
+		if (datastore_dataset_create(res, tmp_dc) != POM_OK)
 			goto err;
 
+		dataset_db_query = datastore_dataset_query_alloc(d->dataset_db, tmp_dc);
+		if (!dataset_db_query)
+			goto err;
 
 		// Add it in the database
-		PTYPE_STRING_SETVAL(d->dataset_db_query->values[0].value, name);
-		d->dataset_db_query->values[0].is_null = 0;
-		d->dataset_db_query->values[1].is_null = 1;
-		if (datastore_dataset_write(d->dataset_db_query) != POM_OK)
+		PTYPE_STRING_SETVAL(dataset_db_query->values[0].value, name);
+		dataset_db_query->values[0].is_null = 0;
+		dataset_db_query->values[1].is_null = 1;
+		if (datastore_dataset_write(dataset_db_query) != POM_OK)
 			goto err;
 
-		res->dataset_id = d->dataset_db_query->data_id;
+		res->dataset_id = dataset_db_query->data_id;
+
+		dataset_schema_query = datastore_dataset_query_alloc(d->dataset_schema, tmp_dc);
+		if (!dataset_schema_query)
+			goto err;
 
 		for (i = 0; dt[i].name; i++) {
-			PTYPE_UINT64_SETVAL(d->dataset_schema_query->values[0].value, res->dataset_id);
-			d->dataset_schema_query->values[0].is_null = 0;
-			PTYPE_STRING_SETVAL(d->dataset_schema_query->values[1].value, dt[i].name);
-			d->dataset_schema_query->values[1].is_null = 0;
-			PTYPE_STRING_SETVAL(d->dataset_schema_query->values[2].value, dt[i].type);
-			d->dataset_schema_query->values[2].is_null = 0;
-			PTYPE_UINT16_SETVAL(d->dataset_schema_query->values[3].value, i);
-			d->dataset_schema_query->values[3].is_null = 0;
+			PTYPE_UINT64_SETVAL(dataset_schema_query->values[0].value, res->dataset_id);
+			dataset_schema_query->values[0].is_null = 0;
+			PTYPE_STRING_SETVAL(dataset_schema_query->values[1].value, dt[i].name);
+			dataset_schema_query->values[1].is_null = 0;
+			PTYPE_STRING_SETVAL(dataset_schema_query->values[2].value, dt[i].type);
+			dataset_schema_query->values[2].is_null = 0;
+			PTYPE_UINT16_SETVAL(dataset_schema_query->values[3].value, i);
+			dataset_schema_query->values[3].is_null = 0;
 
 
-			if (datastore_dataset_write(d->dataset_schema_query) != POM_OK)
+			if (datastore_dataset_write(dataset_schema_query) != POM_OK)
 				goto err;
 
 		}
+
+		if (!dc) {
+			if (datastore_transaction_commit(tmp_dc) != POM_OK)
+				goto err;
+
+			datastore_connection_release(tmp_dc);
+		}
+
+		datastore_dataset_query_cleanup(dataset_db_query);
+		datastore_dataset_query_cleanup(dataset_schema_query);
 
 		// Add it in the list of datasets
 		res->next = d->datasets;
@@ -717,6 +839,17 @@ err:
 
 	pom_mutex_unlock(&d->lock);
 
+	if (!dc && tmp_dc) {
+		datastore_transaction_rollback(tmp_dc);
+		datastore_connection_release(tmp_dc);
+	}
+
+	if (dataset_db_query)
+		datastore_dataset_query_cleanup(dataset_db_query);
+	
+	if (dataset_schema_query)
+		datastore_dataset_query_cleanup(dataset_schema_query);
+
 	if (new_dt) {
 		for (i = 0; new_dt[i].name || new_dt[i].type; i++) {
 			if (new_dt[i].name)
@@ -730,26 +863,10 @@ err:
 	if (!res)
 		return NULL;
 
-	//datastore_dataset_destroy(res);
-
 	datastore_dataset_cleanup(res);
 
-	// FIXME remove the datastore from the db if it was already added
-	// or implement begin/commit/rollback
-	
 	return NULL;
 
-}
-
-int datastore_dataset_close(struct dataset *ds) {
-
-	struct datastore *d = ds->dstore;
-
-	pom_mutex_lock(&d->lock);
-	ds->open = 0;
-	pom_mutex_unlock(&d->lock);
-
-	return POM_OK;
 }
 
 struct dataset *datastore_dataset_alloc(struct datastore *d, struct datavalue_template *dt, char *name) {
@@ -803,14 +920,13 @@ int datastore_dataset_cleanup(struct dataset *ds) {
 
 }
 
-int datastore_dataset_create(struct dataset *ds) {
+int datastore_dataset_create(struct dataset *ds, struct datastore_connection *dc) {
 
 	struct datastore *d = ds->dstore;
 
 	int res = DATASET_QUERY_OK;
 
-	if (d->reg->info->dataset_create)
-		res = d->reg->info->dataset_create(ds);
+	res = d->reg->info->dataset_create(ds, dc);
 
 	if (res != DATASET_QUERY_OK) {
 		// TODO error notify
@@ -841,6 +957,30 @@ int datastore_dataset_read(struct dataset_query *dsq) {
 
 }
 
+int datastore_dataset_read_single(struct dataset_query *dsq) {
+	
+	int res = datastore_dataset_read(dsq);
+
+	if (res == DATASET_QUERY_OK) // If nothing found
+		return DATASET_QUERY_OK;
+	
+	if (res == DATASET_QUERY_MORE) {
+		// Got one output
+		res = datastore_dataset_read(dsq);
+		if (res == DATASET_QUERY_OK)
+			return DATASET_QUERY_MORE; // Found exactly one match, good
+
+		if (res == DATASET_QUERY_MORE) { // more than one match :-(
+			while (datastore_dataset_read(dsq) == DATASET_QUERY_MORE);
+			return DATASET_QUERY_ERR;
+		}
+
+	}
+		
+	return res;
+
+}
+
 int datastore_dataset_write(struct dataset_query *dsq) {
 
 	struct datastore *d = dsq->ds->dstore;
@@ -861,8 +1001,29 @@ int datastore_dataset_write(struct dataset_query *dsq) {
 
 }
 
-struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds) {
+int datastore_dataset_delete(struct dataset_query *dsq) {
 
+	struct datastore *d = dsq->ds->dstore;
+
+	if (!dsq->prepared) {
+		if (d->reg->info->dataset_query_prepare) {
+			int res = d->reg->info->dataset_query_prepare(dsq);
+			if (res != DATASET_QUERY_OK)
+				return res;
+		}
+		
+		dsq->prepared = 1;
+	}
+	
+	// FIXME handle error
+	
+	return d->reg->info->dataset_delete(dsq);
+
+}
+
+struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds, struct datastore_connection *dc) {
+
+	struct datastore *d = ds->dstore;
 	struct dataset_query *query = malloc(sizeof(struct dataset_query));
 	if (!query) {
 		pom_oom(sizeof(struct dataset_query));
@@ -870,6 +1031,11 @@ struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds) {
 	}
 	memset(query, 0, sizeof(struct dataset_query));
 	query->ds = ds;
+
+	if (dc)
+		query->con = dc;
+	else
+		query->con = d->con_main;
 
 	int datacount;
 	for (datacount = 0; ds->data_template[datacount].name; datacount++);
@@ -889,12 +1055,16 @@ struct dataset_query *datastore_dataset_query_alloc(struct dataset *ds) {
 			goto err;
 	}
 
-	struct datastore *d = ds->dstore;
 
 	if (d->reg->info->dataset_query_alloc) {
 		if (d->reg->info->dataset_query_alloc(query) != POM_OK)
 			goto err;
 	}
+
+	pom_mutex_lock(&ds->dstore->lock);
+	ds->refcount++;
+	pom_mutex_unlock(&ds->dstore->lock);
+
 	return query;
 
 err:
@@ -909,6 +1079,17 @@ err:
 	free(query);
 	return NULL;
 
+}
+
+struct dataset_query *datastore_dataset_query_open(struct datastore *d, char *name, struct datavalue_template *dt, struct datastore_connection *dc) {
+
+	struct dataset *ds = datastore_dataset_open(d, name, dt, dc);
+	if (!ds)
+		return NULL;
+
+	struct dataset_query *dsq = datastore_dataset_query_alloc(ds, dc);
+
+	return dsq;
 }
 
 int datastore_dataset_query_cleanup(struct dataset_query *dsq) {
@@ -929,9 +1110,16 @@ int datastore_dataset_query_cleanup(struct dataset_query *dsq) {
 		free(dsq->cond);
 	}
 
+	pom_mutex_lock(&dsq->ds->dstore->lock);
+	dsq->ds->refcount--;
+	pom_mutex_unlock(&dsq->ds->dstore->lock);
+
 	free(dsq);
+
 	return POM_OK;
 }
+
+
 
 int datastore_dataset_query_set_condition(struct dataset_query *dsq, short field_id, int ptype_op, struct ptype *value) {
 
@@ -953,14 +1141,55 @@ int datastore_dataset_query_set_condition(struct dataset_query *dsq, short field
 
 	if (cond->value)
 		ptype_cleanup(cond->value);
-	cond->value = ptype_alloc_from(value);
-	if (!cond->value) {
-		free(cond);
-		dsq->cond = NULL;
+	cond->value = value;
+
+	return POM_OK;
+}
+
+int datastore_dataset_query_set_condition_copy(struct dataset_query *dsq, short field_id, int ptype_op, struct ptype *value) {
+
+	struct ptype *new_val = ptype_alloc_from(value);
+	if (!new_val)
+		return POM_ERR;
+	if (datastore_dataset_query_set_condition(dsq, field_id, ptype_op, new_val) != POM_OK) {
+		ptype_cleanup(new_val);
 		return POM_ERR;
 	}
 
 	return POM_OK;
+}
+
+int datastore_dataset_query_set_string_condition(struct dataset_query *dsq, short field_id, int ptype_op, char *value) {
+	
+	struct ptype *str = ptype_alloc("string");
+	if (!str)
+		return POM_ERR;
+
+	PTYPE_STRING_SETVAL(str, value);
+
+	if (datastore_dataset_query_set_condition(dsq, field_id, ptype_op, str) != POM_OK) {
+		ptype_cleanup(str);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+int datastore_dataset_query_set_uint64_condition(struct dataset_query *dsq, short field_id, int ptype_op, uint64_t value) {
+	
+	struct ptype *uint64 = ptype_alloc("uint64");
+	if (!uint64)
+		return POM_ERR;
+
+	PTYPE_UINT64_SETVAL(uint64, value);
+
+	if (datastore_dataset_query_set_condition(dsq, field_id, ptype_op, uint64) != POM_OK) {
+		ptype_cleanup(uint64);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+
 }
 
 int datastore_dataset_query_unset_condition(struct dataset_query *dsq) {
