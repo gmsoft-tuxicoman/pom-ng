@@ -46,6 +46,7 @@
 
 static char* shutdown_reason = NULL;
 static int running = 1, shutdown_in_error = 0;
+static struct datastore *system_store = NULL;
 
 void signal_handler(int signal) {
 
@@ -71,12 +72,77 @@ void print_usage() {
 	printf(	"Usage : " PACKAGE_NAME " [options]\n"
 		"\n"
 		"Options :\n"
-		" -d, --debug=LEVEL	specify the debug level <0-4> (default: 3)\n"
-		" -h, --help		print this usage\n"
-		" -u, --user=USER	drop privilege to this user\n"
-		" -t, --threads=num     number of processing threads to start (default: number of cpu)\n"
+		" -d, --debug=LEVEL		specify the debug level <0-4> (default: 3)\n"
+		" -h, --help			print this usage\n"
+		" -u, --user=USER		drop privilege to this user\n"
+		" -s, --system-store=STORE	URI to use for the system datastore (default: '" POMNG_SYSTEM_DATASTORE "')\n"
+		" -t, --threads=num		number of processing threads to start (default: number of cpu)\n"
 		"\n"
 		);
+}
+
+struct datastore *open_system_datastore(char *dstore_uri) {
+
+	// Parse the URI
+	// Format of the URI : type:datastore_name?param1_name=param1_value&param2_name=param2_value&..."
+
+
+	char my_store[1024] = {0};
+	strncpy(my_store, dstore_uri, sizeof(my_store) - 1);
+	char *type = my_store;
+	char *store = strchr(type, ':');
+	if (!store) {
+		pomlog(POMLOG_ERR "Unparseable config_datastore URI");
+		return NULL;
+	}
+
+	*store = 0;
+	store++;
+
+	char *params = strchr(store, '?');
+	if (params) {
+		*params = 0;
+		params++;
+	}
+
+	// Add the datastore instance
+	if (datastore_instance_add(type, store) != POM_OK) {
+		pomlog(POMLOG_ERR "Unable to create the config datastore instance");
+		return NULL;
+	}
+
+	struct datastore *dstore = datastore_instance_get(store);
+	if (!dstore) {
+		pomlog(POMLOG_ERR "Error while getting the config datastore instance");
+		return NULL;
+	}
+
+	// Set the parameters
+	char *str, *token, *saveptr = NULL;
+	for (str = params; ; str = NULL) {
+		token = strtok_r(str, "&", &saveptr);
+		if (!token)
+			break;
+
+		char *value = strchr(token, '=');
+		if (!value) {
+			pomlog(POMLOG_ERR "No value provided for parameter %s", token);
+			return NULL;
+		}
+
+		*value = 0;
+		value++;
+		
+		if (registry_set_param(dstore->reg_instance, token, value) != POM_OK)
+			return NULL;
+
+	}
+
+	if (datastore_open(dstore) != POM_OK)
+		return NULL;
+
+	return dstore;
+
 }
 
 
@@ -90,17 +156,20 @@ int main(int argc, char *argv[]) {
 	gid_t gid = 0;
 	int num_threads = 0;
 
+	char *system_store_uri = POMNG_SYSTEM_DATASTORE;
+
 	while (1) {
 
 		static struct option long_options[] = {
 			{ "user", 1, 0, 'u' },
 			{ "debug", 1, 0, 'd' },
 			{ "threads", 1, 0, 't' },
+			{ "system-store", 1, 0, 's' },
 			{ "help", 0, 0, 'h' },
 		};
 
 		
-		char *args = "u:d:t:h";
+		char *args = "u:d:t:s:h";
 
 		c = getopt_long(argc, argv, args, long_options, NULL);
 
@@ -142,6 +211,10 @@ int main(int argc, char *argv[]) {
 					print_usage();
 					return -1;
 				}
+				break;
+			}
+			case 's': {
+				system_store_uri = optarg;
 				break;
 			}
 			case 't': {
@@ -223,7 +296,7 @@ int main(int argc, char *argv[]) {
 	// Load all the available modules
 	if (mod_load_all() != POM_OK) { 
 		pomlog(POMLOG_ERR "Error while loading modules. Exiting");
-		goto err_mod;
+		goto err_datastore;
 	}
 
 	if (xmlrpcsrv_init() != POM_OK) {
@@ -240,6 +313,13 @@ int main(int argc, char *argv[]) {
 		pomlog(POMLOG_ERR "Error while initializing core");
 		goto err_core;
 	}
+
+	system_store = open_system_datastore(system_store_uri);
+	if (!system_store) {
+		pomlog(POMLOG_ERR "Unable to open the system datastore");
+		goto err_dstore;
+	}
+
 
 	// Main loop
 	
@@ -268,6 +348,7 @@ int main(int argc, char *argv[]) {
 	output_cleanup();
 	analyzer_cleanup();
 	proto_cleanup();
+	datastore_close(system_store);
 	datastore_cleanup();
 	registry_cleanup();
 	timers_cleanup();
@@ -284,13 +365,13 @@ int main(int argc, char *argv[]) {
 	
 	// Error path below
 
+err_dstore:
+	core_cleanup(1);
 err_core:
 	httpd_cleanup();
 err_httpd:
 	xmlrpcsrv_cleanup();
 err_xmlrpcsrv:
-	mod_unload_all();
-err_mod:
 	datastore_cleanup();
 err_datastore:
 	output_cleanup();
@@ -304,6 +385,7 @@ err_proto:
 	registry_cleanup();
 err_registry:
 	timers_cleanup();
+	mod_unload_all();
 	pomlog_cleanup();
 
 	printf(PACKAGE_NAME " failed to initialize\n");
@@ -329,3 +411,6 @@ int halt_signal(char *reason) {
 	return POM_OK;
 }
 
+struct datastore *system_datastore() {
+	return system_store;
+}
