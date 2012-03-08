@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 6
+#define XMLRPCCMD_REGISTRY_NUM 7
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -70,6 +70,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.help = "Execute an instance function. Arguments are : class, instance, function",
 	},
 
+	{
+		.name = "registry.save",
+		.callback_func = xmlrpccmd_registry_save,
+		.signature = "i:s",
+		.help = "Save the registry in the system datastore",
+
+	},
 
 };
 
@@ -444,3 +451,21 @@ err:
 	return NULL;
 }
 
+xmlrpc_value *xmlrpccmd_registry_save(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *name = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(s)", &name);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	if (registry_save(name) != POM_OK) {
+		free(name);
+		xmlrpc_faultf(envP, "Error while saving the registry");
+		return NULL;
+	}
+	
+	free(name);
+
+	return xmlrpc_int_new(envP, 0);
+}

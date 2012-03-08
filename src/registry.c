@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,8 +22,32 @@
 #include "registry.h"
 #include "core.h"
 #include "xmlrpccmd.h"
+#include "datastore.h"
+#include "main.h"
 #include <pom-ng/ptype.h>
+#include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_timestamp.h>
+#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint32.h>
+#include <pom-ng/ptype_uint64.h>
+
+static struct datavalue_template registry_config_list_dataset_template[] = {
+
+	{ .name = "name", .type = "string" },
+	{ .name = "timestamp", .type = "timestamp" },
+
+	{ 0 }
+
+};
+
+static struct datavalue_template registry_config_dataset_template[] = {
+	{ .name = "config_id", .type = "uint64" },
+	{ .name = "entry", .type = "string" },
+	{ .name = "value", .type = "string" },
+	{ .name = "type", .type = "uint8" },
+
+	{ 0 }
+};
 
 static pthread_mutex_t registry_global_lock;
 static struct registry_class *registry_head = NULL;
@@ -522,6 +546,39 @@ err:
 	return POM_ERR;
 }
 
+int registry_set_param(struct registry_instance *i, char *param, char* value) {
+
+	registry_lock();
+	
+	struct registry_param *p;
+	for (p = i->params; p && strcmp(p->name, param); p = p->next);
+	
+	if (!p) {
+		registry_unlock();
+		pomlog(POMLOG_ERR "Parameter %s doesn't exists for registry instance %s", param, i->name);
+		return POM_ERR;
+	}
+
+	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
+		registry_unlock();
+		pomlog(POMLOG_ERR "Cannot change parameter %s for instance %s as it's marked immutable", param, i->name);
+		return POM_ERR;
+	}
+
+	if (registry_set_param_value(p, value) != POM_OK) {
+		registry_unlock();
+		return POM_ERR;
+	}
+
+	i->serial++;
+	i->parent->serial++;
+	registry_serial_inc();
+
+	registry_unlock();
+
+	return POM_OK;
+}
+
 int registry_set_param_value(struct registry_param *p, char *value) {
 
 	if (!p || !value)
@@ -698,4 +755,182 @@ void registry_serial_inc() {
 
 uint32_t registry_serial_get() {
 	return registry_serial;
+}
+
+
+int registry_save(char *config_name) {
+
+	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
+	
+	struct datastore *sys_dstore = system_datastore();
+	if (!sys_dstore)
+		return POM_ERR;
+
+	struct datastore_connection *dc = datastore_connection_new(sys_dstore);
+	if (!dc)
+		return POM_ERR;
+
+	dsq_config_list = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG_LIST, registry_config_list_dataset_template, dc);
+	if (!dsq_config_list)
+		goto err;
+
+	if (datastore_dataset_query_set_string_condition(dsq_config_list, 0, PTYPE_OP_EQ, config_name) != POM_OK)
+		goto err;
+
+	dsq_config = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG, registry_config_dataset_template, dc);
+	if (!dsq_config)
+		goto err;
+
+	if (datastore_transaction_begin(dc) != POM_OK)
+		goto err;
+
+	// Find out if we already have a config by that name
+	int res = datastore_dataset_read_single(dsq_config_list);
+	if (res == DATASET_QUERY_MORE) {
+
+		// Delete existing stuff about this config
+		if (datastore_dataset_query_set_uint64_condition(dsq_config, 0, PTYPE_OP_EQ, dsq_config_list->data_id) != POM_OK)
+			goto err;
+
+		if (datastore_dataset_delete(dsq_config_list) != DATASET_QUERY_OK)
+			goto err;
+
+		if (datastore_dataset_delete(dsq_config) != DATASET_QUERY_OK)
+			goto err;
+	}
+
+	if (res < 0)
+		goto err;
+
+	// Add the config to the config list
+	PTYPE_STRING_SETVAL(dsq_config_list->values[0].value, config_name);
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	PTYPE_TIMESTAMP_SETVAL(dsq_config_list->values[1].value, now);
+
+	if (datastore_dataset_write(dsq_config_list) != DATASET_QUERY_OK)
+		goto err;
+
+
+
+	PTYPE_UINT64_SETVAL(dsq_config->values[0].value, dsq_config_list->data_id);
+
+	registry_lock();
+	struct registry_class *cls;
+
+	// Browse each class
+	for (cls = registry_head; cls; cls = cls->next) {
+
+		// Browse each instance of the class
+		struct registry_instance *inst;
+		for (inst = cls->instances; inst; inst = inst->next) {
+			
+			// Don't add the instance if it's not added by the user
+			
+			if (cls->instance_add) {
+
+				char *buff = malloc(strlen(cls->name) + 1 + strlen(inst->name) + 1);
+				if (!buff) {
+					pom_oom(strlen(cls->name) + 1 + strlen(inst->name) + 1);
+					goto err_locked;
+				}
+
+				strcpy(buff, cls->name);
+				strcat(buff, ".");
+				strcat(buff, inst->name);
+				PTYPE_STRING_SETVAL_P(dsq_config->values[1].value, buff);
+
+				dsq_config->values[2].is_null = 1;
+
+				PTYPE_UINT8_SETVAL(dsq_config->values[3].value, registry_config_instance);
+
+				if (datastore_dataset_write(dsq_config) != DATASET_QUERY_OK)
+					goto err_locked;
+
+			}
+
+			// Browse the parametrers and add the non default ones
+
+			struct registry_param *param;
+			for (param = inst->params; param; param = param->next) {
+
+				// Check if the parameter value is not the default one anymore
+				if (param->default_value) {
+					struct ptype *defval = ptype_alloc_from(param->value);
+					if (!defval)
+						goto err_locked;
+
+					if (ptype_parse_val(defval, param->default_value) != POM_OK) {
+						pomlog(POMLOG_ERR "Unable to parse default value !");
+						ptype_cleanup(defval);
+						goto err_locked;
+					}
+
+					if (ptype_compare_val(PTYPE_OP_EQ, param->value, defval)) {
+						// Param still has the default value, do nothing
+						ptype_cleanup(defval);
+						continue;
+					}
+
+					ptype_cleanup(defval);
+				}
+
+				char *buff = malloc(strlen(cls->name) + 1 + strlen(inst->name) + 1 + strlen(param->name) + 1);
+				if (!buff) {
+					pom_oom(strlen(cls->name) + 1 + strlen(inst->name) + 1 + strlen(param->name) + 1);
+					goto err_locked;
+				}
+				strcpy(buff, cls->name);
+				strcat(buff, ".");
+				strcat(buff, inst->name);
+				strcat(buff, ".");
+				strcat(buff, param->name);
+				PTYPE_STRING_SETVAL_P(dsq_config->values[1].value, buff);
+
+				char *value = ptype_print_val_alloc(param->value);
+				if (!value)
+					goto err_locked;
+				
+				dsq_config->values[2].is_null = 0;
+				PTYPE_STRING_SETVAL_P(dsq_config->values[2].value, value);
+
+				PTYPE_UINT8_SETVAL(dsq_config->values[3].value, registry_config_instance_param);
+
+				if (datastore_dataset_write(dsq_config) != DATASET_QUERY_OK)
+					goto err_locked;
+			}
+		
+		}
+
+	}
+
+	registry_unlock();
+
+	if (datastore_transaction_commit(dc) != POM_OK)
+		goto err;
+
+	datastore_dataset_query_cleanup(dsq_config_list);
+	datastore_dataset_query_cleanup(dsq_config);
+	
+	datastore_connection_release(dc);
+
+	return POM_OK;
+
+err_locked:
+	registry_unlock();
+
+err:
+	if (dsq_config_list)
+		datastore_dataset_query_cleanup(dsq_config_list);
+
+	if (dsq_config)
+		datastore_dataset_query_cleanup(dsq_config);
+
+	if (dc) {
+		datastore_transaction_rollback(dc);
+		datastore_connection_release(dc);
+	}
+
+	return POM_ERR;
+
 }

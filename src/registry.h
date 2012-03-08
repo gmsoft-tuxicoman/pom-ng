@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,14 @@
 
 #include <pom-ng/registry.h>
 
+#define REGISTRY_CONFIG_LIST	"config_list"
+#define REGISTRY_CONFIG		"config"
+
+enum {
+	registry_config_class_param,
+	registry_config_instance,
+	registry_config_instance_param,
+};
 
 struct registry_function {
 	
@@ -71,6 +79,7 @@ struct registry_instance *registry_add_instance(struct registry_class *c, char *
 int registry_remove_instance(struct registry_instance *i);
 
 int registry_class_add_param(struct registry_class *c, struct registry_param *p);
+int registry_set_param(struct registry_instance *i, char *param, char* value);
 int registry_set_param_value(struct registry_param *p, char *value);
 
 struct registry_class *registry_find_class(char *cls);
@@ -78,4 +87,7 @@ struct registry_instance *registry_find_instance(char *cls, char *instance);
 
 void registry_serial_inc();
 uint32_t registry_serial_get();
+
+int registry_save(char *config_name);
+
 #endif
