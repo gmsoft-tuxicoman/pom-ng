@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,9 +31,7 @@
 #define PTYPE_STRING_SETVAL(x, y) {		\
 	if ((x)->value)				\
 		free((x)->value);		\
-	char *str = malloc(strlen((y)) + 1);	\
-	strcpy(str, (y));			\
-	(x)->value = str;			\
+	(x)->value = strdup(y);			\
 }
 
 /// x is the struct ptype, y the string pointer
