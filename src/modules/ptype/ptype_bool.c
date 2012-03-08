@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -127,8 +127,8 @@ int ptype_bool_print(struct ptype *p, char *val, size_t size) {
 
 int ptype_bool_compare(int op, void *val_a, void* val_b) {
 
-	int *a = val_a;
-	int *b = val_b;
+	char *a = val_a;
+	char *b = val_b;
 
 	if (op == PTYPE_OP_EQ)
 		return *a == *b;
