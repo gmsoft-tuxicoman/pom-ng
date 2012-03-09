@@ -145,7 +145,7 @@ static int proto_udp_process(struct proto *proto, struct packet *p, struct proto
 	s_next->plen = ulen - sizeof(struct udphdr);
 
 	if (dport == 53 || sport == 53)
-		s_next->proto = priv->proto_dns;
+		s_next->proto = priv->proto_dns->proto;
 
 	return PROTO_OK;
 
