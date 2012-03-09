@@ -389,7 +389,8 @@ static int datastore_sqlite_dataset_query_alloc(struct dataset_query *dsq) {
 static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 
 
-	char tmp_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1] = { 0 };
+	char cond_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1] = { 0 };
+	char order_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1] = { 0 };
 	char *read_query = NULL, *delete_query = NULL;
 	char tmp_read_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1], tmp_delete_query[DATASTORE_SQLITE_QUERY_BUFF_LEN + 1];
 
@@ -421,24 +422,24 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 
 		switch (dt[qc->field_id].native_type) {
 			case DATASTORE_SQLITE_PTYPE_BOOL:
-				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_BOOL_GETVAL(qc->value));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_BOOL_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT8:
-				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_UINT8_GETVAL(qc->value));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %hhu", dt[qc->field_id].name, op, *PTYPE_UINT8_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT16:
-				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %hu", dt[qc->field_id].name, op, *PTYPE_UINT16_GETVAL(qc->value));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %hu", dt[qc->field_id].name, op, *PTYPE_UINT16_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT32:
-				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %u", dt[qc->field_id].name, op, *PTYPE_UINT32_GETVAL(qc->value));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %u", dt[qc->field_id].name, op, *PTYPE_UINT32_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT64:
-				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s %lu", dt[qc->field_id].name, op, *PTYPE_UINT64_GETVAL(qc->value));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %lu", dt[qc->field_id].name, op, *PTYPE_UINT64_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_STRING: {
-				snprintf(tmp_query + strlen(tmp_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query), " WHERE %s %s \"", dt[qc->field_id].name, op);
-				datastore_sqlite_escape_string(tmp_query + strlen(tmp_query), PTYPE_STRING_GETVAL(qc->value), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
-				strncat(tmp_query, "\"", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s \"", dt[qc->field_id].name, op);
+				datastore_sqlite_escape_string(cond_query + strlen(cond_query), PTYPE_STRING_GETVAL(qc->value), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query));
+				strncat(cond_query, "\"", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query));
 				break;
 			}
 			default:
@@ -446,49 +447,63 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 				return DATASET_QUERY_ERR;
 		}
 
-		if (strlen(tmp_query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
+		if (strlen(cond_query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
 			pomlog(POMLOG_ERR "Query conditions too long");
 			return DATASET_QUERY_ERR;
 		}
 
 
+
+
 	}
 	
 	if (qro) {
-		strncat(tmp_query, " ORDER BY ", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+		strncat(order_query, " ORDER BY ", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(order_query));
+		strncat(order_query, dsq->ds->data_template[qro->field_id].name, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(order_query));
 		if (qro->direction == DATASET_READ_ORDER_DESC)
-			strncat(tmp_query, " DESC", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+			strncat(order_query, " DESC", DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(order_query));
+
+		if (strlen(order_query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
+			pomlog(POMLOG_ERR "Query order too long");
+			return DATASET_QUERY_ERR;
+		}
 	}
 
-	if (strlen(tmp_query) >= DATASTORE_SQLITE_QUERY_BUFF_LEN) {
-		pomlog(POMLOG_ERR "Query order too long");
-		return DATASET_QUERY_ERR;
-	}
-
-
-	if (qc || qro) {
+	if (qc) {
 		read_query = tmp_read_query;
 		strcpy(tmp_read_query, priv->read_query);
-		strncat(tmp_read_query, tmp_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
+		strncat(tmp_read_query, cond_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query));
 
 		delete_query = tmp_delete_query;
 		strcpy(tmp_delete_query, priv->delete_query);
-		strncat(tmp_delete_query, tmp_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_query));
-	} else {
-		read_query = priv->read_query;
-		delete_query = priv->delete_query;
+		strncat(tmp_delete_query, cond_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query));
+
 	}
+
+	if (qro) {
+		if (!read_query) {
+			read_query = tmp_read_query;
+			strcpy(tmp_read_query, priv->read_query);
+		}
+		strncat(tmp_read_query, order_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(order_query));
+	}
+
+	if (!read_query)
+		read_query = priv->read_query;
+
+	if (!delete_query)
+		delete_query = priv->delete_query;
 		
 
 	int res = sqlite3_prepare_v2(cpriv->db, read_query, -1, &qpriv->read_stmt, NULL);
 	if (res != SQLITE_OK) {
-		pomlog(POMLOG_ERR "Unable to prepare the READ SQL query : %s", sqlite3_errmsg(cpriv->db));
+		pomlog(POMLOG_ERR "Unable to prepare the READ SQL query \"%s\" : %s", read_query, sqlite3_errmsg(cpriv->db));
 		return datastore_sqlite_get_ds_state_error(res);
 	}
 
 	res = sqlite3_prepare_v2(cpriv->db, priv->write_query, -1, &qpriv->write_stmt, NULL);
 	if (res != SQLITE_OK) {
-		pomlog(POMLOG_ERR "Unable to prepare the write SQL query : %s", sqlite3_errmsg(cpriv->db));
+		pomlog(POMLOG_ERR "Unable to prepare the write SQL query \"%s\" : %s", priv->write_query, sqlite3_errmsg(cpriv->db));
 		sqlite3_finalize(qpriv->read_stmt);
 		qpriv->read_stmt = NULL;
 		return datastore_sqlite_get_ds_state_error(res);
@@ -496,7 +511,7 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 
 	res = sqlite3_prepare_v2(cpriv->db, delete_query, -1, &qpriv->delete_stmt, NULL);
 	if (res != SQLITE_OK) {
-		pomlog(POMLOG_ERR "Unable to prepare the delete SQL query : %s", sqlite3_errmsg(cpriv->db));
+		pomlog(POMLOG_ERR "Unable to prepare the delete SQL query \"%s\" : %s", delete_query, sqlite3_errmsg(cpriv->db));
 		sqlite3_finalize(qpriv->read_stmt);
 		sqlite3_finalize(qpriv->write_stmt);
 		qpriv->read_stmt = NULL;

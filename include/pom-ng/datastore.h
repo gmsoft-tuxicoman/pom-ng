@@ -194,4 +194,7 @@ int datastore_dataset_query_set_string_condition(struct dataset_query *dsq, shor
 int datastore_dataset_query_set_uint64_condition(struct dataset_query *dsq, short field_id, int ptype_op, uint64_t value);
 int datastore_dataset_query_unset_condition(struct dataset_query *dsq);
 
+int datastore_dataset_query_set_order(struct dataset_query *dsq, short field_id, int direction);
+int datastore_dataset_query_unset_order(struct dataset_query *dsq);
+
 #endif

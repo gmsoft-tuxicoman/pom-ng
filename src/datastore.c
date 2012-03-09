@@ -1115,8 +1115,6 @@ int datastore_dataset_query_cleanup(struct dataset_query *dsq) {
 	return POM_OK;
 }
 
-
-
 int datastore_dataset_query_set_condition(struct dataset_query *dsq, short field_id, int ptype_op, struct ptype *value) {
 
 	dsq->prepared = 0;
@@ -1197,6 +1195,39 @@ int datastore_dataset_query_unset_condition(struct dataset_query *dsq) {
 		ptype_cleanup(dsq->cond->value);
 	free(dsq->cond);
 	dsq->cond = NULL;
+
+	dsq->prepared = 0;
+
+	return POM_OK;
+}
+
+int datastore_dataset_query_set_order(struct dataset_query *dsq, short field_id, int direction) {
+
+
+	if (!dsq->read_order) {
+		dsq->read_order = malloc(sizeof(struct datavalue_read_order));
+		if (!dsq->read_order) {
+			pom_oom(sizeof(struct datavalue_read_order));
+			return POM_ERR;
+		}
+		memset(dsq->read_order, 0, sizeof(struct datavalue_read_order));
+	}
+
+	dsq->read_order->field_id = field_id;
+	dsq->read_order->direction = direction;
+
+	dsq->prepared = 0;
+
+	return POM_OK;
+}
+
+int datastore_dataset_query_unset_order(struct dataset_query *dsq) {
+
+	if (!dsq->read_order)
+		return POM_OK;
+
+	free(dsq->read_order);
+	dsq->read_order = NULL;
 
 	dsq->prepared = 0;
 
