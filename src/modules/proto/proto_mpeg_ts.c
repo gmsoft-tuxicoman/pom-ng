@@ -106,9 +106,6 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 
 	// Try to find out what type or payload we are dealing with
 
-	enum proto_mpeg_stream_type stream_type;
-
-
 	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_mpeg_ts_field_pid], NULL, NULL, NULL);
 	if (!s->ce)
 		return PROTO_ERR;
