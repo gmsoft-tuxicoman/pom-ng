@@ -28,7 +28,7 @@
 #define REGISTRY_CONFIG_LIST	"config_list"
 #define REGISTRY_CONFIG		"config"
 
-enum {
+enum registry_config_entry_types {
 	registry_config_class_param,
 	registry_config_instance,
 	registry_config_instance_param,
@@ -85,10 +85,12 @@ int registry_set_param_value(struct registry_param *p, char *value);
 struct registry_class *registry_find_class(char *cls);
 struct registry_instance *registry_find_instance(char *cls, char *instance);
 
+int registry_uid_assign(struct registry_instance *instance, char *uid);
 void registry_serial_inc();
 uint32_t registry_serial_get();
 
 int registry_save(char *config_name);
 int registry_reset();
+int registry_load(char *config_name);
 
 #endif

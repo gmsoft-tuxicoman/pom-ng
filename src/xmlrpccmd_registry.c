@@ -25,7 +25,7 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 8
+#define XMLRPCCMD_REGISTRY_NUM 9
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -83,6 +83,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.callback_func = xmlrpccmd_registry_reset,
 		.signature = "i:",
 		.help = "Reset the registry to it's initial state",
+	},
+
+	{
+		.name = "registry.load",
+		.callback_func = xmlrpccmd_registry_load,
+		.signature = "i:s",
+		.help = "Load a saved configuration",
 	},
 
 };
@@ -486,3 +493,23 @@ xmlrpc_value *xmlrpccmd_registry_reset(xmlrpc_env * const envP, xmlrpc_value * c
 
 	return xmlrpc_int_new(envP, 0);
 }
+
+xmlrpc_value *xmlrpccmd_registry_load(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *name = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(s)", &name);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	if (registry_load(name) != POM_OK) {
+		free(name);
+		xmlrpc_faultf(envP, "Error while loading the registry");
+		return NULL;
+	}
+	
+	free(name);
+
+	return xmlrpc_int_new(envP, 0);
+}
+

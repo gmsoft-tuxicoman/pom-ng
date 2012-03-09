@@ -59,6 +59,5 @@ int registry_instance_add_param(struct registry_instance *i, struct registry_par
 int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
 
 int registry_uid_create(struct registry_instance *instance);
-int registry_uid_assign(struct registry_instance *instance, uint32_t uid);
 
 #endif

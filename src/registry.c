@@ -734,20 +734,36 @@ int registry_uid_create(struct registry_instance *instance) {
 
 }
 
-int registry_uid_assign(struct registry_instance *instance, uint32_t uid) {
+int registry_uid_assign(struct registry_instance *instance, char* uid) {
 
 
 	registry_lock();
 	
-	if (registry_uid_check(uid) != POM_OK) {
+	struct registry_param *p;
+	for (p = instance->params; p && strcmp(p->name, "uid"); p = p->next);
+	
+	if (!p) {
+		pomlog(POMLOG_ERR "Could not find the uid parameter");
 		registry_unlock();
 		return POM_ERR;
 	}
 
-	if (registry_uid_add(instance, uid) != POM_OK) {
+	uint32_t old_uid = *PTYPE_UINT32_GETVAL(p->value);
+
+	if (ptype_parse_val(p->value, uid) != POM_OK) {
+		pomlog(POMLOG_ERR "Could not parse the new uid");
 		registry_unlock();
 		return POM_ERR;
 	}
+
+	uint32_t new_uid = *PTYPE_UINT32_GETVAL(p->value);
+
+	size_t i;
+	for (i = 0; registry_uid_table[i] != old_uid && i < registry_uid_table_size; i++);
+	if (i < registry_uid_table_size) {
+		registry_uid_table[i] = new_uid;
+	}
+
 
 	registry_unlock();
 
@@ -836,6 +852,10 @@ int registry_save(char *config_name) {
 			
 			if (cls->instance_add) {
 
+				// The system datastore will always exist
+				if (inst == sys_dstore->reg_instance)
+					continue;
+
 				char *buff = malloc(strlen(cls->name) + 1 + strlen(inst->name) + 1);
 				if (!buff) {
 					pom_oom(strlen(cls->name) + 1 + strlen(inst->name) + 1);
@@ -847,7 +867,16 @@ int registry_save(char *config_name) {
 				strcat(buff, inst->name);
 				PTYPE_STRING_SETVAL_P(dsq_config->values[1].value, buff);
 
-				dsq_config->values[2].is_null = 1;
+				struct registry_param *p;
+				for (p = inst->params; p && strcmp(p->name, "type"); p = p->next);
+
+				if (p) {
+					dsq_config->values[2].is_null = 0;
+					char *type = PTYPE_STRING_GETVAL(p->value);
+					PTYPE_STRING_SETVAL(dsq_config->values[2].value, type);
+				} else {
+					dsq_config->values[2].is_null = 1;
+				}
 
 				PTYPE_UINT8_SETVAL(dsq_config->values[3].value, registry_config_instance);
 
@@ -921,6 +950,8 @@ int registry_save(char *config_name) {
 	
 	datastore_connection_release(dc);
 
+	pomlog("Registry configuration saved as \"%s\"", config_name);
+
 	return POM_OK;
 
 err_locked:
@@ -956,6 +987,8 @@ int registry_reset() {
 	struct registry_class *cls;
 
 	for (cls = registry_head; cls; cls = cls->next) {
+
+		/* TODO : registry parameters */
 		
 		if (cls->instance_remove) {
 		
@@ -1018,4 +1051,193 @@ err:
 	return POM_ERR;
 
 
+}
+
+int registry_load(char *config_name) {
+
+	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
+	
+	struct datastore *sys_dstore = system_datastore();
+	if (!sys_dstore)
+		return POM_ERR;
+
+
+	// Find what is the id corresponding to the name given if any
+	dsq_config_list = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG_LIST, registry_config_list_dataset_template, NULL);
+	if (!dsq_config_list)
+		goto err;
+
+	if (datastore_dataset_query_set_string_condition(dsq_config_list, 0, PTYPE_OP_EQ, config_name) != POM_OK)
+		goto err;
+
+	int res = datastore_dataset_read_single(dsq_config_list);
+
+	if (res < 0)
+		goto err;
+
+	if (res == DATASET_QUERY_OK) {
+		pomlog(POMLOG_ERR "Configuration \"%s\" not found in the database", config_name);
+		goto err;
+	}
+
+	uint64_t config_id = dsq_config_list->data_id;
+
+	datastore_dataset_query_cleanup(dsq_config_list);
+	dsq_config_list = NULL;
+
+	// Fetch the config
+	dsq_config = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG, registry_config_dataset_template, NULL);
+	if (!dsq_config)
+		goto err;
+
+	if (datastore_dataset_query_set_uint64_condition(dsq_config, 0, PTYPE_OP_EQ, config_id) != POM_OK)
+		goto err;
+
+	// Fetch the config in a convenient way
+	if (datastore_dataset_query_set_order(dsq_config, 3, DATASET_READ_ORDER_ASC) != POM_OK)
+		goto err;
+
+	// Reset the registry
+	if (registry_reset() != POM_OK)
+		goto err;
+
+	while ((res = datastore_dataset_read(dsq_config)) != DATASET_QUERY_OK) {
+		if (res < 0)
+			goto err;
+
+		if (dsq_config->values[1].is_null || dsq_config->values[3].is_null) {
+			pomlog(POMLOG_ERR "Got NULL values while they were not supposed to be !");
+			goto err;
+		}
+		enum registry_config_entry_types type = *PTYPE_UINT8_GETVAL(dsq_config->values[3].value);
+		char *entry = PTYPE_STRING_GETVAL(dsq_config->values[1].value);
+		char *value = NULL;
+		if (!dsq_config->values[2].is_null)
+			value = PTYPE_STRING_GETVAL(dsq_config->values[2].value);
+
+		// Parse the entry
+		char *name1 = strdup(entry);
+		if (!name1) {
+			pom_oom(strlen(entry) + 1);
+			goto err;
+		}
+		char *name2 = strchr(name1, '.');
+		if (!name2) {
+			pomlog(POMLOG_ERR "Unparseable entry name \"%s\"", entry);
+			free(name1);
+			goto err;
+		}
+		*name2 = 0;
+		name2++;
+
+		char *name3 = strchr(name2, '.');
+		if (name3) {
+			*name3 = 0;
+			name3++;
+		}
+
+		switch (type) {
+
+			case registry_config_instance: {
+
+				if (!value) {
+					pomlog(POMLOG_WARN "Instance type not provided for entry %s, skipping", entry);
+					break;
+				}
+
+				struct registry_class *cls = registry_find_class(name1);
+				if (!cls) {
+					pomlog(POMLOG_WARN "Cannot add instance %s to class %s as this class doesn't exists. skipping", name2, name1);
+					break;
+				}
+
+				struct registry_instance *inst;
+				for (inst = cls->instances; inst && strcmp(inst->name, name2); inst = inst->next);
+				if (inst) {
+					pomlog(POMLOG_WARN "Cannot add instance %s as it's already in the registry, skipping", entry);
+					break;
+				}
+
+				if (!cls->instance_add) {
+					pomlog(POMLOG_WARN "Cannot add instances to class %s as it doesn't support it. skipping", name1);
+					break;
+				}
+
+				if (cls->instance_add(value, name2) != POM_OK) {
+					pomlog(POMLOG_WARN "Unable to add instance %s of type %s, skipping", entry, value);
+					break;
+				}
+
+				break;
+
+			}
+
+			case registry_config_instance_param: {
+
+				if (!value) {
+					pomlog(POMLOG_WARN "Parameter value not provided for entry %s, skipping", entry);
+					break;
+				}
+
+				if (!name3) {
+					pomlog(POMLOG_WARN "Parameter name not provided for entry %s, skipping", entry);
+					break;
+				}
+
+				struct registry_instance *inst = registry_find_instance(name1, name2);
+				if (!inst) {
+					pomlog(POMLOG_WARN "Cannot find instance %s.%s to set parameter, skipping", name1, name2);
+					break;
+				}
+
+
+				if (!strcmp(name3, "uid")) {
+					// Special handling for uids
+					if (registry_uid_assign(inst, value) != POM_OK) {
+						pomlog(POMLOG_WARN "Error while setting the uid, skipping");
+						break;
+					}
+
+				} else {
+					struct registry_param *p;
+					for (p = inst->params; p && strcmp(p->name, name3); p = p->next);
+					if (!p) {
+						pomlog(POMLOG_WARN "Parameter %s for instance %s.%s not found, skipping", name3, name1, name2);
+						break;
+					}
+
+					if (ptype_parse_val(p->value, value) != POM_OK)
+						pomlog(POMLOG_ERR "Unable to parse value \"%s\" for parameter %s", value, entry);
+
+				}
+
+				break;
+			}
+				
+			
+			default:
+				pomlog(POMLOG_WARN "Unhandled configuration entry type %u for item %s", entry);
+
+		}
+
+		free(name1);
+		
+
+	}
+
+	datastore_dataset_query_cleanup(dsq_config);
+
+	pomlog("Registry configuration \"%s\" loaded", config_name);
+
+	return POM_OK;
+
+err:
+
+	if (dsq_config_list)
+		datastore_dataset_query_cleanup(dsq_config_list);
+
+	if (dsq_config)
+		datastore_dataset_query_cleanup(dsq_config);
+
+	return POM_ERR;
 }
