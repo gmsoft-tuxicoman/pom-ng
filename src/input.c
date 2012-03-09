@@ -52,21 +52,9 @@ int input_init() {
 int input_cleanup() {
 
 
-	while (input_head) {
-		struct input *i = input_head;
-		input_head = input_head->next;
-		if (i->running) {
-			registry_set_param_value(i->reg_param_running, "0");
-		}
-
-
-		if (i->reg->info->cleanup && i->reg->info->cleanup(i) != POM_OK)
-			pomlog(POMLOG_WARN "Error while cleaning up input");
-
-		pthread_mutex_destroy(&i->lock);
-		free(i->name);
-		free(i);
-	}
+	if (input_registry_class)
+		registry_remove_class(input_registry_class);
+	input_registry_class = NULL;
 
 	while (input_reg_head) {
 
@@ -78,9 +66,6 @@ int input_cleanup() {
 	}
 
 
-	if (input_registry_class)
-		registry_remove_class(input_registry_class);
-	input_registry_class = NULL;
 
 	return POM_OK;
 

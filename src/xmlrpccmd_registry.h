@@ -31,6 +31,7 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_registry_instance_function(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_registry_save(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_registry_reset(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
 #endif
 

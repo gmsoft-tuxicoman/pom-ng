@@ -25,7 +25,7 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 7
+#define XMLRPCCMD_REGISTRY_NUM 8
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -76,6 +76,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.signature = "i:s",
 		.help = "Save the registry in the system datastore",
 
+	},
+
+	{
+		.name = "registry.reset",
+		.callback_func = xmlrpccmd_registry_reset,
+		.signature = "i:",
+		.help = "Reset the registry to it's initial state",
 	},
 
 };
@@ -228,9 +235,9 @@ xmlrpc_value *xmlrpccmd_registry_remove_instance(xmlrpc_env * const envP, xmlrpc
 		return NULL;
 	}
 
-	if (i->parent->instance_remove(i) != POM_OK) {
+	if (registry_remove_instance(i) != POM_OK) {
 		registry_unlock();
-		xmlrpc_faultf(envP, "Error while adding the instance");
+		xmlrpc_faultf(envP, "Error while removing the instance");
 		return NULL;
 	}
 	
@@ -466,6 +473,16 @@ xmlrpc_value *xmlrpccmd_registry_save(xmlrpc_env * const envP, xmlrpc_value * co
 	}
 	
 	free(name);
+
+	return xmlrpc_int_new(envP, 0);
+}
+
+xmlrpc_value *xmlrpccmd_registry_reset(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	if (registry_reset() != POM_OK) {
+		xmlrpc_faultf(envP, "Error while resetting the registry");
+		return NULL;
+	}
 
 	return xmlrpc_int_new(envP, 0);
 }

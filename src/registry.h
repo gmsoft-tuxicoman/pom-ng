@@ -89,5 +89,6 @@ void registry_serial_inc();
 uint32_t registry_serial_get();
 
 int registry_save(char *config_name);
+int registry_reset();
 
 #endif

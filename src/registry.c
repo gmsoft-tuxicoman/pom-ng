@@ -318,6 +318,13 @@ int registry_remove_instance(struct registry_instance *i) {
 
 	struct registry_class *c = i->parent;
 
+	if (c->instance_remove && c->instance_remove(i) != POM_OK) {
+		pomlog(POMLOG_ERR "Error while removing the instance %s from class %s", i->name, c->name);
+		registry_unlock();
+		return POM_ERR;
+
+	}
+
 	free(i->name);
 	
 	while (i->params) {
@@ -932,5 +939,83 @@ err:
 	}
 
 	return POM_ERR;
+
+}
+
+int registry_reset() {
+	
+	registry_lock();
+
+	// Reset the UID table
+	size_t old_uid_table_size = registry_uid_table_size;
+	registry_uid_table_size = 0;
+
+	struct datastore *sys_dstore = system_datastore();
+	int restore_sys_dstore = 0;
+
+	struct registry_class *cls;
+
+	for (cls = registry_head; cls; cls = cls->next) {
+		
+		if (cls->instance_remove) {
+		
+			// If we can, remove the instances
+			while (cls->instances) {
+				
+				// Do not remove the system datastore !
+				if (cls->instances == sys_dstore->reg_instance) {
+					cls->instances = cls->instances->next;
+					if (cls->instances)
+						cls->instances->prev = NULL;
+					restore_sys_dstore = 1;
+					continue;
+				}
+
+				if (registry_remove_instance(cls->instances) != POM_OK) {
+					// cls->instances might be invalid at this point so don't reference it
+					pomlog(POMLOG_ERR "Unable to remove an instance from class %s", cls->name);
+					if (restore_sys_dstore) {
+						cls->instances = sys_dstore->reg_instance;
+						cls->instances->prev = NULL;
+						cls->instances->next = NULL;
+						restore_sys_dstore = 0;
+					}
+					goto err;
+				}
+			}
+
+			if (restore_sys_dstore) {
+				cls->instances = sys_dstore->reg_instance;
+				cls->instances->prev = NULL;
+				cls->instances->next = NULL;
+				restore_sys_dstore = 0;
+			}
+
+		} else {
+			// Else reset all the parameters of each instance
+			struct registry_instance *inst;
+			for (inst = cls->instances; inst; inst = inst->next) {
+				struct registry_param *param;
+				for (param = inst->params; param; param = param->next) {
+					if (registry_set_param_value(param, param->default_value) != POM_OK) {
+						pomlog(POMLOG_ERR "Unable to reset the default value of parameter %s.%s.%s", cls->name, inst->name, param->name);
+						goto err;
+					}
+				}
+			}
+
+		}
+	}
+
+
+	registry_unlock();
+
+	return POM_OK;
+
+err:
+
+	registry_uid_table_size = old_uid_table_size;
+	return POM_ERR;
+
 
 }

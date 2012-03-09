@@ -49,10 +49,9 @@ int datastore_init() {
 
 int datastore_cleanup() {
 
-	while (datastore_head) {
-		if (datastore_instance_remove(datastore_head->reg_instance) != POM_OK)
-			return POM_ERR;
-	}
+	if (datastore_registry_class)
+		registry_remove_class(datastore_registry_class);
+	datastore_registry_class = NULL;
 
 	while (datastore_reg_head) {
 		struct datastore_reg *tmp = datastore_reg_head;
@@ -61,9 +60,6 @@ int datastore_cleanup() {
 		free(tmp);
 	}
 
-	if (datastore_registry_class)
-		registry_remove_class(datastore_registry_class);
-	datastore_registry_class = NULL;
 
 	return POM_OK;
 
