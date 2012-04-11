@@ -273,7 +273,7 @@ int main(int argc, char *argv[]) {
 		goto err_proto;
 	}
 
-	if (analyzer_init(DATAROOT "/mime_types.xml") != POM_OK) {
+	if (analyzer_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the analyzers");
 		goto err_analyzer;
 	}

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+
+<resource name="payload_types" version="1">
+	<datasets>
+		<dataset name="payload_types">
+
+			<item><name>javascript</name><description>Javascript</description><extension>js</extension><class>application</class></item>
+			<item><name>json</name><description>Javascript Object Notation</description><extension>json</extension><class>application</class></item>
+			<item><name>msword</name><description>Microsoft Word</description><extension>doc</extension><class>document</class></item>
+			<item><name>binary</name><description>Binary file</description><extension>bin</extension><class>other</class></item>
+			<item><name>pdf</name><description>Portable Document Format</description><extension>pdf</extension><class>document</class></item>
+			<item><name>excel</name><description>Excel Sheet</description><extension>xls</extension><class>document</class></item>
+			<item><name>powerpoint</name><description>Powerpoint presentation</description><extension>ppt</extension><class>document</class></item>
+			<item><name>rar</name><description>RAR file</description><extension>rar</extension><class>application</class></item>
+			<item><name>swf</name><description>Adobe Flash file</description><extension>swf</extension><class>application</class></item>
+			<item><name>form-urlencoded</name><description>URL encoded data</description><extension>txt</extension><class>other</class></item>
+			<item><name>jpeg</name><description>JPEG image</description><extension>jpg</extension><class>image</class></item>
+			<item><name>gif</name><description>GIF image</description><extension>gif</extension><class>image</class></item>
+			<item><name>png</name><description>PNG image</description><extension>png</extension><class>image</class></item>
+
+		</dataset>
+
+		<dataset name="mime_types">
+			<item><name>javascript</name><mime>application/javascript</mime></item>
+			<item><name>json</name><mime>application/json</mime></item>
+			<item><name>msword</name><mime>application/msword</mime></item>
+			<item><name>binary</name><mime>application/octet-stream</mime></item>
+			<item><name>binary</name><mime>application/octetstream</mime></item>
+			<item><name>pdf</name><mime>application/pdf</mime></item>
+			<item><name>excel</name><mime>application/vnd.ms-excel</mime></item>
+			<item><name>powerpoint</name><mime>application/vnd.ms-powerpoint</mime></item>
+			<item><name>javascript</name><mime>application/x-javascript</mime></item>
+			<item><name>json</name><mime>application/x-json</mime></item>
+			<item><name>rar</name><mime>application/x-rar-compressed</mime></item>
+			<item><name>swf</name><mime>application/x-shockwave-flash</mime></item>
+			<item><name>form-urlencoded</name><mime>application/x-www-form-urlencoded</mime></item>
+			<item><name>jpeg</name><mime>image/jpeg</mime></item>
+			<item><name>jpeg</name><mime>image/jpg</mime></item>
+			<item><name>gif</name><mime>image/gif</mime></item>
+			<item><name>png</name><mime>image/png</mime></item>
+		</dataset>
+	</datasets>
+
+</resource>
+
+

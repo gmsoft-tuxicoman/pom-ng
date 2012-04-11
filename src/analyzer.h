@@ -34,7 +34,7 @@ struct analyzer_event_listener_list {
 
 };
 
-int analyzer_init(char *mime_type_database);
+int analyzer_init();
 int analyzer_cleanup();
 int analyzer_pload_output(struct analyzer_pload_buffer *pload);
 

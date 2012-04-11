@@ -22,6 +22,8 @@
 #include "output.h"
 #include "mod.h"
 #include "common.h"
+#include <pom-ng/resource.h>
+#include <pom-ng/ptype_string.h>
 
 #include <libxml/parser.h>
 
@@ -51,8 +53,28 @@ static struct analyzer_pload_class pload_class_def[ANALYZER_PLOAD_CLASS_COUNT] =
 
 };
 
+static struct datavalue_template analyzer_payload_types_template[] = {
+	{ .name = "name", .type = "string" },
+	{ .name = "description", .type = "string" },
+	{ .name = "extension", .type = "string" },
+	{ .name = "class", .type = "string" },
+	{ 0 }
+};
 
-int analyzer_init(char *mime_type_database) {
+static struct datavalue_template analyzer_mime_types_template[] = {
+	{ .name = "name", .type = "string" },
+	{ .name = "mime", .type = "string" },
+	{ 0 }
+};
+
+static struct resource_template analyzer_mime_template[] = {
+	{ "payload_types", analyzer_payload_types_template },
+	{ "mime_types", analyzer_mime_types_template },
+	{ 0 }
+};
+
+
+int analyzer_init() {
 
 #ifdef HAVE_LIBMAGIC
 	magic_cookie = magic_open(MAGIC_MIME);
@@ -67,127 +89,60 @@ int analyzer_init(char *mime_type_database) {
 	}
 #endif
 
-	xmlDocPtr doc;
-	xmlNodePtr root, cur;
-
-	doc = xmlParseFile(mime_type_database);
-
-	if (!doc) {
-		pomlog(POMLOG_ERR "Error while parsing mime type database %s", mime_type_database);
-		return POM_ERR;
-	}
-
-	root = xmlDocGetRootElement(doc);
+	struct resource *r = NULL;
+	struct resource_dataset *pload_types = NULL, *mime_types = NULL;
 	
-	if (!root) {
-		pomlog(POMLOG_ERR "Mime type database empty");
-		xmlFreeDoc(doc);
-		return POM_ERR;
-	}
+	r = resource_open("payload_types", analyzer_mime_template);
+	if (!r)
+		goto err;
 
-	if (xmlStrcmp(root->name, (const xmlChar*) "mime_types")) {
-		pomlog(POMLOG_ERR "The first and only node should be <mime_types> !");
-		xmlFreeDoc(doc);
-		return POM_ERR;
-	}
+	pload_types = resource_dataset_open(r, "payload_types");
+	if (!pload_types)
+		goto err;
 
+	while (1) {
+		struct datavalue *v = NULL;
+		int res = resource_dataset_read(pload_types, &v);
+		if (res == DATASET_QUERY_OK)
+			break;
 
-	// Parse definitions
-	for (cur = root->xmlChildrenNode; cur && xmlStrcmp(cur->name, (const xmlChar *) "definitions"); cur = cur->next);
-	if (!cur) {
-		pomlog(POMLOG_ERR "<definitions> not found in the mime-types database");
-		xmlFreeDoc(doc);
-		return POM_ERR;
-	}
-
-
-	xmlNodePtr defs = cur->xmlChildrenNode;
-	for (; defs; defs = defs->next) {
-
-		if (xmlStrcmp(defs->name, (const xmlChar *) "def"))
-			continue;
-
-		char *cls_name = (char *) xmlGetProp(defs, (const xmlChar *) "class");
-		if (!cls_name) {
-			pomlog(POMLOG_WARN "Class name missing for definition");
-			continue;
+		if (res < 0) {
+			pomlog(POMLOG_ERR "Error while reading payload_types resource");
+			goto err;
 		}
-
-		int cls_id;
-		for (cls_id = 0; cls_id < ANALYZER_PLOAD_CLASS_COUNT && strcmp(pload_class_def[cls_id].name, cls_name); cls_id++);
-		if (cls_id >= ANALYZER_PLOAD_CLASS_COUNT) {
-			pomlog(POMLOG_WARN "Class %s does not exists for definition", cls_name);
-			xmlFree(cls_name);
-			continue;
-		}
-		xmlFree(cls_name);
-
-		char *name = (char *) xmlGetProp(defs, (const xmlChar *) "name");
-		if (!name) {
-			pomlog(POMLOG_WARN "Definition name missing");
-			continue;
-		}
-
-		char *description = (char *) xmlGetProp(defs, (const xmlChar *) "description");
-		if (!description) {
-			pomlog(POMLOG_WARN "Description missing for definition %s", name);
-			xmlFree(name);
-			continue;
-		}
-
-		char *extension = (char *) xmlGetProp(defs, (const xmlChar *) "extension");
-		if (!extension) {
-			pomlog(POMLOG_WARN "Extension missing for definition %s", name);
-			xmlFree(name);
-			xmlFree(description);
-			continue;
-		}
-
 
 		struct analyzer_pload_type *def = malloc(sizeof(struct analyzer_pload_type));
 		if (!def) {
 			pom_oom(sizeof(struct analyzer_pload_type));
-			xmlFree(name);
-			xmlFree(description);
-			xmlFree(extension);
-			continue;
+			goto err;
 		}
 		memset(def, 0, sizeof(struct analyzer_pload_type));
 
+		char *cls_name = PTYPE_STRING_GETVAL(v[3].value);
+		int cls_id;
+		for (cls_id = 0; cls_id < ANALYZER_PLOAD_CLASS_COUNT && strcmp(pload_class_def[cls_id].name, cls_name); cls_id++);
+		if (cls_id >= ANALYZER_PLOAD_CLASS_COUNT) {
+			pomlog(POMLOG_WARN "Class %s does not exists", cls_name);
+			free(def);
+			continue;
+		}
+
+		def->name = strdup(PTYPE_STRING_GETVAL(v[0].value));
+		def->description = strdup(PTYPE_STRING_GETVAL(v[1].value));
+		def->extension = strdup(PTYPE_STRING_GETVAL(v[2].value));
 		def->cls = cls_id;
-		def->name = strdup(name);
-		if (!def->name) {
-			free(def);
-			xmlFree(description);
-			xmlFree(extension);
-			pom_oom(strlen(name) + 1);
-			xmlFree(name);
-			continue;
-		}
-		xmlFree(name);
 
-		def->description = strdup(description);
-		if (!def->description) {
-			free(def->name);
+		if (!def->name || !def->description || !def->extension) {
+			pom_oom(strlen(PTYPE_STRING_GETVAL(v[0].value)));
+			if (def->name)
+				free(def->name);
+			if (def->description)
+				free(def->description);
+			if (def->extension)
+				free(def->extension);
 			free(def);
-			xmlFree(extension);
-			pom_oom(strlen(description) + 1);
-			xmlFree(description);
-			continue;
+			goto err;
 		}
-		xmlFree(description);
-
-		def->extension = strdup(extension);
-		if (!def->extension) {
-			free(def->description);
-			free(def->name);
-			free(def);
-			pom_oom(strlen(extension) + 1);
-			xmlFree(extension);
-			continue;
-
-		}
-		xmlFree(extension);
 
 		def->next = analyzer_pload_types;
 		if (def->next)
@@ -198,57 +153,47 @@ int analyzer_init(char *mime_type_database) {
 
 	}
 
+	resource_dataset_close(pload_types);
+	pload_types = NULL;
 
-	// Parse mime-types
-	for (cur = root->xmlChildrenNode; cur && xmlStrcmp(cur->name, (const xmlChar *) "types"); cur = cur->next);
-	if (!cur) {
-		pomlog(POMLOG_ERR "<types> not found in the mime-types database");
-		return POM_ERR;
-	}
+	mime_types = resource_dataset_open(r, "mime_types");
+	if (!mime_types)
+		goto err;
 
-	xmlNodePtr types = cur->xmlChildrenNode;
-	for (; types; types = types->next) {
+	while (1) {
+		struct datavalue *v = NULL;
+		int res = resource_dataset_read(mime_types, &v);
+		if (res == DATASET_QUERY_OK)
+			break;
 
-		if (xmlStrcmp(types->name, (const xmlChar *) "type"))
-			continue;
-
-		char *def = (char *) xmlGetProp(types, (const xmlChar *) "def");
-		if (!def) {
-			pomlog(POMLOG_WARN "Type definition missing");
-			continue;
+		if (res < 0) {
+			pomlog(POMLOG_ERR "Error while reading mime_types resource");
+			goto err;
 		}
+
+		char *name = PTYPE_STRING_GETVAL(v[0].value);
 
 		struct analyzer_pload_type *defs = analyzer_pload_types;
-		for (; defs && strcmp(defs->name, def); defs = defs->next);
+		for (; defs && strcmp(defs->name, name); defs = defs->next);
 		if (!defs) {
-			pomlog(POMLOG_WARN "Definition %s not known", def);
-			xmlFree(def);
-			continue;
-		}
-		xmlFree(def);
-
-		char *value = (char *) xmlNodeListGetString(doc, types->xmlChildrenNode, 1);
-		if (!value) {
-			pomlog(POMLOG_WARN "Empty mime type");
+			pomlog(POMLOG_WARN "Definition %s not known", name);
 			continue;
 		}
 
 		struct analyzer_pload_mime_type *type = malloc(sizeof(struct analyzer_pload_mime_type));
 		if (!type) {
-			xmlFree(value);
 			pom_oom(sizeof(struct analyzer_pload_mime_type));
-			continue;
+			goto err;
 		}
 		memset(type, 0, sizeof(struct analyzer_pload_mime_type));
-		type->type = defs;
-		type->name = strdup(value);
-		if (!type->name) {
-			pom_oom(strlen(value));
-			xmlFree(value);
-			continue;
-		}
-		xmlFree(value);
 
+		type->type = defs;
+		type->name = strdup(PTYPE_STRING_GETVAL(v[1].value));
+		if (!type->name) {
+			free(type);
+			pom_oom(strlen(PTYPE_STRING_GETVAL(v[1].value)) + 1);
+			goto err;
+		}
 		type->next = analyzer_pload_mime_types;
 		if (type->next)
 			type->next->prev = type;
@@ -258,11 +203,28 @@ int analyzer_init(char *mime_type_database) {
 
 	}
 
-	xmlFreeDoc(doc);
+	resource_dataset_close(mime_types);
+	resource_close(r);
+
 
 	return POM_OK;
 
+err:
 
+	if (mime_types)
+		resource_dataset_close(mime_types);
+
+	if (pload_types)
+		resource_dataset_close(pload_types);
+
+	if (r)
+		resource_close(r);
+
+#ifdef HAVE_LIBMAGIC
+	magic_close(magic_cookie);
+#endif
+
+	return POM_ERR;
 }
 
 int analyzer_register(struct analyzer_reg *reg_info) {
