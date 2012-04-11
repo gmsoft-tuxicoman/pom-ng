@@ -85,8 +85,21 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 
 	if (!reg) {
 		ptype_reg_unlock();
-		pomlog(POMLOG_ERR "Ptype of type %s not found", type);
-		return NULL;
+		// This should only be needed at startup
+		pomlog("Ptype of type %s not found, trying to load module", type);
+		char ptype_mod_name[64] = { 0 };
+		strcat(ptype_mod_name, "ptype_");
+		strncat(ptype_mod_name, type, sizeof(ptype_mod_name) - 1 - strlen(ptype_mod_name));
+		if (!mod_load(ptype_mod_name)) {
+			pomlog(POMLOG_ERR "Ptype of type %s not found", type);
+			return NULL;
+		}
+		for (reg = ptype_reg_head; reg && strcmp(reg->info->name, type); reg = reg->next);
+		if (!reg) {
+			pomlog(POMLOG_ERR "Ptype of type %s not found even after loading module", type);
+			return NULL;
+		}
+		ptype_reg_lock(1);
 	}
 	
 	struct ptype *ret = malloc(sizeof(struct ptype));
