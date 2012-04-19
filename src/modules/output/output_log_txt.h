@@ -23,15 +23,42 @@
 
 #include "output_log.h"
 
-struct output_log_txt_priv {
-	int fd;
-	struct ptype *p_filename;
-	struct ptype *p_source;
-	struct ptype *p_format;
-	struct output_log_parsed_field *parsed_fields;
+#define OUTPUT_LOG_TXT_RESOURCE "output_log_txt"
 
+struct output_log_txt_event_field {
+	int id;
+	uint32_t hash;
+	unsigned int start_off, end_off;
+};
+
+struct output_log_txt_file {
+	char *name;
+	char *path;
+	int fd;
+	struct output_log_txt_file *prev, *next;
+};
+
+struct output_log_txt_event {
 	struct event_reg *evt;
+	struct event_listener listener;
+	struct output_log_txt_priv *output_priv;
+
+	char *format;
+	
+	struct output_log_txt_event_field *fields;
 	unsigned int field_count;
+
+	struct output_log_txt_event *prev, *next;
+	struct output_log_txt_file *file;
+};
+
+struct output_log_txt_priv {
+	struct ptype *p_prefix;
+	struct ptype *p_template;
+
+	struct output_log_txt_file *files;
+	struct output_log_txt_event *events;
+
 };
 
 int output_log_txt_init(struct output *o);

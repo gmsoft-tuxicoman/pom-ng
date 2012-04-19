@@ -24,14 +24,6 @@
 #include <pom-ng/analyzer.h>
 #include <pom-ng/output.h>
 
-struct output_log_parsed_field {
-	int id;
-	uint32_t hash;
-	char *key;
-	unsigned int start_off, end_off;
-};
-
-
 struct mod_reg_info* output_log_reg_info();
 int output_log_mod_register(struct mod_reg *mod);
 int output_log_mod_unregister();

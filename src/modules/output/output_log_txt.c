@@ -22,12 +22,41 @@
 #include "output_log_txt.h"
 
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/resource.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdio.h>
 
 
+static struct datavalue_template output_log_txt_templates_name[] = {
+	{ .name = "name", .type = "string" },
+	{ .name = "description", .type = "string" },
+	{ 0 }
+};
+
+static struct datavalue_template output_log_txt_events[] = {
+	{ .name = "template", .type = "string" },
+	{ .name = "event", .type = "string" },
+	{ .name = "format", .type = "string" },
+	{ .name = "file", .type = "string" },
+	{ 0 }
+};
+
+static struct datavalue_template output_log_txt_files[] = {
+	{ .name = "template", .type = "string" },
+	{ .name = "name", .type = "string" },
+	{ .name = "path", .type = "string" },
+	{ 0 }
+};
+
+static struct resource_template output_log_txt_templates[] = {
+	{ "templates", output_log_txt_templates_name },
+	{ "events", output_log_txt_events },
+	{ "files", output_log_txt_files },
+	{ 0 }
+};
 
 int output_log_txt_init(struct output *o) {
 
@@ -39,26 +68,18 @@ int output_log_txt_init(struct output *o) {
 	memset(priv, 0, sizeof(struct output_log_txt_priv));
 	o->priv = priv;
 
-	priv->fd = -1;
-
-	priv->p_filename = ptype_alloc("string");
-	priv->p_source = ptype_alloc("string");
-	priv->p_format = ptype_alloc("string");
-	if (!priv->p_filename || !priv->p_source || !priv->p_format)
+	priv->p_prefix = ptype_alloc("string");
+	priv->p_template = ptype_alloc("string");
+	if (!priv->p_prefix || !priv->p_template)
 		goto err;
 
-	struct registry_param *p = registry_new_param("filename", "log.txt", priv->p_filename, "Log file", 0);
+	struct registry_param *p = registry_new_param("prefix", "./", priv->p_prefix, "Log files prefix", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
 	
-	p = registry_new_param("source", "", priv->p_source, "Define the type of event being logged", 0);
+	p = registry_new_param("template", "", priv->p_template, "Log template to use", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
-
-	p = registry_new_param("format", "", priv->p_format, "Format of each log line", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
-		goto err;
-
 
 	return POM_OK;
 err:
@@ -71,14 +92,10 @@ int output_log_txt_cleanup(struct output *o) {
 
 	struct output_log_txt_priv *priv = o->priv;
 	if (priv) {
-		if (priv->fd != -1)
-			close(priv->fd);
-		if (priv->p_filename)
-			ptype_cleanup(priv->p_filename);
-		if (priv->p_source)
-			ptype_cleanup(priv->p_source);
-		if (priv->p_format)
-			ptype_cleanup(priv->p_format);
+		if (priv->p_prefix)
+			ptype_cleanup(priv->p_prefix);
+		if (priv->p_template)
+			ptype_cleanup(priv->p_template);
 		free(priv);
 	}
 
@@ -88,116 +105,234 @@ int output_log_txt_cleanup(struct output *o) {
 int output_log_txt_open(struct output *o) {
 
 	struct output_log_txt_priv *priv = o->priv;
-	struct output_log_parsed_field *fields = NULL;
 
-	if (priv->fd != -1) {
-		pomlog(POMLOG_ERR "Output already started");
-		return POM_ERR;
-	}
+	struct resource *r = NULL;
+	struct resource_dataset *r_templates = NULL, *r_events = NULL, *r_files = NULL;
 
-	char *src_name = PTYPE_STRING_GETVAL(priv->p_source);
-	if (!strlen(src_name)) {
-		pomlog(POMLOG_ERR "You need to specify a source for this output");
-		return POM_ERR;
-	}
+	r = resource_open(OUTPUT_LOG_TXT_RESOURCE, output_log_txt_templates);
 
-	priv->evt = event_find(src_name);
-
-	if (!priv->evt) {
-		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
-		return POM_ERR;
-	}
-
-	// Parse the format
-	char *format = PTYPE_STRING_GETVAL(priv->p_format);
-
-	if (!strlen(format)) {
-		pomlog(POMLOG_ERR "You must specify the format of the logs");
+	if (!r)
 		goto err;
+
+	// Check that the given template exists
+	char *template_name = PTYPE_STRING_GETVAL(priv->p_template);
+	if (!strlen(template_name)) {
+		pomlog(POMLOG_ERR "You need to specify a log template");
+		return POM_ERR;
 	}
 
-	unsigned int field_count = 0;
-	char *sep = NULL, *cur = format;
-	while ((sep = strchr(cur, '$'))) {
-		unsigned int start_off = sep - format;
-		sep++;
-		cur = sep;
-		while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || *cur == '_')
-			cur++;
-		unsigned int end_off = cur - format;
-		char name[256];
-		memset(name, 0, sizeof(name));
-		strncpy(name, sep, end_off - start_off - 1);
-		
-		struct event_data_reg *dreg = priv->evt->info->data_reg;
-		int i;
-		for (i = 0; i < priv->evt->info->data_count && strcmp(dreg[i].name, name); i++);
+	r_templates = resource_dataset_open(r, "templates");
+	if (!r_templates)
+		goto err;
 
-		if (!dreg[i].name) {
-			pomlog(POMLOG_WARN "Field %s not found in data source %s", name, src_name);
-			sep = cur + 1;
-			continue;
-		}
-		// TODO add support for arrays
-
-		field_count++;
-		fields = realloc(fields, sizeof(struct output_log_parsed_field) * (field_count + 1));
-		if (!fields) {
-			pom_oom(sizeof(struct output_log_parsed_field *) * (field_count + 1));
+	while (1) {
+		struct datavalue *v;
+		int res = resource_dataset_read(r_templates, &v);
+		if (res < 0)
+			goto err;
+		if (res == DATASET_QUERY_OK) {
+			pomlog(POMLOG_ERR "Log template %s does not exists");
 			goto err;
 		}
-		memset(&fields[field_count - 1], 0, sizeof(struct output_log_parsed_field) * 2);
-		struct output_log_parsed_field *field = &fields[field_count - 1];
-		field->id = i;
-		field->start_off = start_off;
-		field->end_off = end_off;
+		char *name = PTYPE_STRING_GETVAL(v[0].value);
+		if (!strcmp(name, template_name))
+			break;
+	}
+
+	resource_dataset_close(r_templates);
+	r_templates = NULL;
+
+	// Fetch all the files that will be used for this template
+	r_files = resource_dataset_open(r, "files");
+	if (!r_files)
+		goto err;
+
+	while (1) {
+		struct datavalue *v;
+		int res = resource_dataset_read(r_files, &v);
+		if (res < 0)
+			goto err;
+		if (res == DATASET_QUERY_OK)
+			break;
+
+		char *template = PTYPE_STRING_GETVAL(v[0].value);
+		if (strcmp(template, template_name))
+			continue;
+
+		struct output_log_txt_file *file = malloc(sizeof(struct output_log_txt_file));
+		if (!file) {
+			pom_oom(sizeof(struct output_log_txt_file));
+			goto err;
+		}
+		memset(file, 0, sizeof(struct output_log_txt_file));
+		file->fd = -1;
+
+		char *name = PTYPE_STRING_GETVAL(v[1].value);
+		file->name = strdup(name);
+		if (!file->name) {
+			pom_oom(strlen(name) + 1);
+			goto err;
+		}
+
+		char *path = PTYPE_STRING_GETVAL(v[2].value);
+		file->path = strdup(path);
+		if (!file->path) {
+			pom_oom(strlen(path) + 1);
+			goto err;
+		}
+
+		file->next = priv->files;
+		if (file->next)
+			file->next->prev = file;
+
+		priv->files = file;
+
+	}
+
+	resource_dataset_close(r_files);
+	r_files = NULL;
 		
-	}
 
-	if (!fields) {
-		pomlog(POMLOG_ERR "No field found in format string : \"%s\"", format);
+
+	// Check all the events to register for this template
+	r_events = resource_dataset_open(r, "events");
+	if (!r_events)
 		goto err;
-	}
 
-	priv->field_count = field_count;
-	priv->parsed_fields = fields;
+	while (1) {
+		struct datavalue *v;
+		int res = resource_dataset_read(r_events, &v);
+		if (res < 0)
+			goto err;
+		if (res == DATASET_QUERY_OK)
+			break;
 
+		char *template = PTYPE_STRING_GETVAL(v[0].value);
+		if (strcmp(template, template_name))
+			continue;
 
-	char *filename = PTYPE_STRING_GETVAL(priv->p_filename);
-	if (!strlen(filename)) {
-		pomlog(POMLOG_ERR "You must specify a filename where to log the output");
-		goto err;
-	}
-
-	priv->fd = open(filename, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP);
-	if (priv->fd == -1) {
-		pomlog(POMLOG_ERR "Error while opening log file \"%s\" : %s", filename, pom_strerror(errno));
-		goto err;
-	}
-
-	// Register this input as a listener for the right event
-	static struct event_listener listener;
-	memset(&listener, 0, sizeof(struct event_listener));
-	listener.obj = o;
-	listener.process_end = output_log_txt_process;
+		// Find the event
+		char *evt_name = PTYPE_STRING_GETVAL(v[1].value);
+		struct event_reg *evt = event_find(evt_name);
+		if (!evt) {
+			pomlog(POMLOG_ERR "Event %s from template %s doesn't exists", evt_name, template_name);
+			goto err;
+		}
 		
-	if (event_listener_register(priv->evt, &listener) != POM_OK)
-		goto err;
+		// Add this event to our list of events
+		struct output_log_txt_event *log_evt = malloc(sizeof(struct output_log_txt_event));
+		if (!log_evt) {
+			pom_oom(sizeof(struct output_log_txt_event));
+			return POM_ERR;
+		}
+		memset(log_evt, 0, sizeof(struct output_log_txt_event));
+		log_evt->output_priv = priv;
+
+		// Add this event to our list
+		log_evt->next = priv->events;
+		if (log_evt->next)
+			log_evt->next->prev = log_evt;
+
+		priv->events = log_evt;
+
+		log_evt->evt = evt;
+
+		// Find in which file this event will be saved
+		char *file = PTYPE_STRING_GETVAL(v[3].value);
+		for (log_evt->file = priv->files; log_evt->file && strcmp(log_evt->file->name, file); log_evt->file = log_evt->file->next);
+		if (!log_evt->file) {
+			pomlog(POMLOG_ERR "File \"%s\" has not been decladed but it's used in event \"%s\"", file, evt_name);
+			goto err;
+		}
+		
+		// Register our listener to the event
+		log_evt->listener.obj = log_evt;
+		log_evt->listener.process_end = output_log_txt_process;
+
+		if (event_listener_register(evt, &log_evt->listener) != POM_OK)
+			goto err;
+
+		// Parse the format of this event
+		char *format = PTYPE_STRING_GETVAL(v[2].value);
+
+		log_evt->format = strdup(format);
+		if (!log_evt->format)
+			goto err;
+
+		unsigned int field_count = 0;
+		struct output_log_txt_event_field *fields = NULL;
+		char *sep = NULL, *cur = format;
+		while ((sep = strchr(cur, '$'))) {
+			unsigned int start_off = sep - format;
+			sep++;
+			cur = sep;
+			while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || *cur == '_')
+				cur++;
+			unsigned int end_off = cur - format;
+			char name[256];
+			memset(name, 0, sizeof(name));
+			strncpy(name, sep, end_off - start_off - 1);
+			
+			struct event_data_reg *dreg = evt->info->data_reg;
+			int i;
+			for (i = 0; i < evt->info->data_count && strcmp(dreg[i].name, name); i++);
+
+			if (!dreg[i].name) {
+				pomlog(POMLOG_WARN "Field %s not found in event %s", name, evt_name);
+				sep = cur + 1;
+				continue;
+			}
+			// TODO add support for arrays
+
+			field_count++;
+			struct output_log_txt_event_field *old_fields = fields;
+			fields = realloc(fields, sizeof(struct output_log_txt_event_field) * (field_count + 1));
+			if (!fields) {
+				log_evt->fields = old_fields;
+				pom_oom(sizeof(struct output_log_parsed_field *) * (field_count + 1));
+				goto err;
+			}
+			memset(&fields[field_count - 1], 0, sizeof(struct output_log_txt_event_field) * 2);
+			struct output_log_txt_event_field *field = &fields[field_count - 1];
+			field->id = i;
+			field->start_off = start_off;
+			field->end_off = end_off;
+
+			log_evt->fields = fields;
+			
+		}
+		log_evt->field_count = field_count;
+
+		if (!fields) {
+			pomlog(POMLOG_ERR "No field found in format string : \"%s\"", format);
+			goto err;
+		}
+
+
+
+	}
+	resource_dataset_close(r_events);
+	r_events = NULL;
+
+	resource_close(r);
 
 	return POM_OK;
 
 err:
-	if (fields)
-		free(fields);
 
-	if (priv->fd != -1) {
-		close(priv->fd);
-		priv->fd = -1;
-	}
+	if (r_templates)
+		resource_dataset_close(r_templates);
 
-	priv->field_count = 0;
-	priv->parsed_fields = NULL;
-	priv->evt = NULL;
+	if (r_events)
+		resource_dataset_close(r_events);
+
+	if (r_files)
+		resource_dataset_close(r_files);
+
+	if (r)
+		resource_close(r);
+
+	output_log_txt_close(o);
 
 	return POM_ERR;
 }
@@ -205,41 +340,58 @@ err:
 int output_log_txt_close(struct output *o) {
 	
 	struct output_log_txt_priv *priv = o->priv;
-	
-	if (priv->fd == -1) {
-		pomlog(POMLOG_ERR "Output already stopped");
-		return POM_ERR;
+
+
+	while (priv->events) {
+		struct output_log_txt_event *evt = priv->events;
+		priv->events = evt->next;
+
+		if (event_listener_unregister(evt->evt, evt) != POM_OK)
+			pomlog(POMLOG_WARN "Error while unregistering event listener !");
+
+		if (evt->format)
+			free(evt->format);
+
+		if (evt->fields)
+			free(evt->fields);
 	}
 
-	if (priv->parsed_fields) {
-		free(priv->parsed_fields);
-		priv->field_count = 0;
+	while (priv->files) {
+		struct output_log_txt_file *file = priv->files;
+		priv->files = file->next;
+
+		if (file->fd != -1) {
+			if (close(file->fd) < 0) 
+				pomlog(POMLOG_WARN "Error while closing file : %s", pom_strerror(errno));
+		}
+		
+		if (file->name)
+			free(file->name);
+		if (file->path)
+			free(file->path);
+
+		free(file);
+
 	}
 
-	event_listener_unregister(priv->evt, o);
-
-	if (close(priv->fd)) {
-		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
 
 	return POM_OK;
 }	
 
 int output_log_txt_process(struct event *evt, void *obj) {
 
-	struct output *o = obj;
-	struct output_log_txt_priv *priv = o->priv;
+	struct output_log_txt_event *log_evt = obj;
+	struct output_log_txt_priv *priv = log_evt->output_priv;
 
-	char *format = PTYPE_STRING_GETVAL(priv->p_format);
+	char *format = log_evt->format;
 
 	int i;
 	unsigned int pos = 0, format_pos = 0;
 	char buff[4096];
 
-	for (i = 0; i < priv->field_count && pos < sizeof(buff) - 2; i++) {
+	for (i = 0; i < log_evt->field_count && pos < sizeof(buff) - 2; i++) {
 	
-		struct output_log_parsed_field *field = &priv->parsed_fields[i];
+		struct output_log_txt_event_field *field = &log_evt->fields[i];
 		if (format_pos < field->start_off) {
 			unsigned int len = field->start_off - format_pos;
 			if (len > sizeof(buff) - 2 - pos)
@@ -257,7 +409,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 		}
 	}
 
-	if (i == priv->field_count && pos < sizeof(buff) - 2) {
+	if (i == log_evt->field_count && pos < sizeof(buff) - 2) {
 		if (format_pos < strlen(format)) {
 			unsigned int len = strlen(format) - format_pos;
 			if (len > sizeof(buff) - 2 - pos)
@@ -269,7 +421,22 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 	buff[pos] = '\n'; pos++;
 
-	if (pom_write(priv->fd, buff, pos) != POM_OK) {
+	struct output_log_txt_file *file = log_evt->file;
+	if (file->fd == -1) {
+		// File is not open, let's do it
+		char filename[FILENAME_MAX + 1] = {0};
+		char *prefix = PTYPE_STRING_GETVAL(priv->p_prefix);
+		strcpy(filename, prefix);
+		strncat(filename, file->path, FILENAME_MAX - strlen(filename));
+		file->fd = open(filename, O_WRONLY | O_CREAT, 0666);
+
+		if (file->fd == -1) {
+			pomlog(POMLOG_ERR "Error while opening file \"%s\" : %s", pom_strerror(errno));
+			return POM_ERR;
+		}
+	}
+
+	if (pom_write(file->fd, buff, pos) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while writing to log file : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
