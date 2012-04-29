@@ -1100,6 +1100,8 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 					stream->cur_buff_size -= res->plen;
 					packet_pool_release(res->pkt);
 					free(res);
+					res = NULL;
+
 					// Next packet please
 					continue;
 				} else {
