@@ -27,17 +27,32 @@
 
 enum input_pcap_type {
 	input_pcap_type_interface,
-	input_pcap_type_file
+	input_pcap_type_file,
+	input_pcap_type_dir
 
 };
 
 struct input_pcap_interface_priv {
-	struct ptype *interface;
-	struct ptype *promisc;
+	struct ptype *p_interface;
+	struct ptype *p_promisc;
 };
 
 struct input_pcap_file_priv {
-	struct ptype *file;
+	struct ptype *p_file;
+};
+
+
+struct input_pcap_dir_file {
+	char *filename, *full_path;
+	struct timeval first_pkt;
+	struct input_pcap_dir_file *prev, *next;
+};
+
+struct input_pcap_dir_priv {
+	struct ptype *p_dir;
+	struct ptype *p_match;
+	struct input_pcap_dir_file *files;
+	struct input_pcap_dir_file *cur_file;
 };
 
 struct input_pcap_priv {
@@ -47,10 +62,11 @@ struct input_pcap_priv {
 	union {
 		struct input_pcap_interface_priv iface;
 		struct input_pcap_file_priv file;
+		struct input_pcap_dir_priv dir;
 	} tpriv;
 
 	struct proto_dependency *datalink_proto;
-	int datalink_dlt;
+	int datalink_type;
 	unsigned int align_offset;
 };
 
@@ -64,6 +80,11 @@ static int input_pcap_interface_open(struct input *i);
 
 static int input_pcap_file_init(struct input *i);
 static int input_pcap_file_open(struct input *i);
+
+static int input_pcap_dir_init(struct input *i);
+static int input_pcap_dir_open(struct input *i);
+static int input_pcap_dir_browse(struct input_pcap_priv *priv);
+static int input_pcap_dir_open_next(struct input_pcap_priv *p);
 
 static int input_pcap_read(struct input *i);
 static int input_pcap_close(struct input *i);
