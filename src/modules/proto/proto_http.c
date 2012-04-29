@@ -68,10 +68,6 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 	proto_http.post_process = proto_http_post_process;
 	proto_http.cleanup = proto_http_cleanup;
 
-	proto_http.ct_info.default_table_size = 1; // No hashing done here
-	proto_http.ct_info.cleanup_handler = proto_http_conntrack_cleanup;
-
-
 	if (proto_register(&proto_http) == POM_OK)
 		return POM_OK;
 
