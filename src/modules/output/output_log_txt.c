@@ -383,44 +383,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	struct output_log_txt_event *log_evt = obj;
 	struct output_log_txt_priv *priv = log_evt->output_priv;
 
-	char *format = log_evt->format;
-
-	int i;
-	unsigned int pos = 0, format_pos = 0;
-	char buff[4096];
-
-	for (i = 0; i < log_evt->field_count && pos < sizeof(buff) - 2; i++) {
-	
-		struct output_log_txt_event_field *field = &log_evt->fields[i];
-		if (format_pos < field->start_off) {
-			unsigned int len = field->start_off - format_pos;
-			if (len > sizeof(buff) - 2 - pos)
-				len = sizeof(buff) - 2 - pos;
-			strncpy(buff + pos, format + format_pos, len);
-			pos += len;
-		}
-
-		format_pos = field->end_off;
-
-		if (evt->data[field->id].value) {
-			pos += ptype_print_val(evt->data[field->id].value, buff + pos, sizeof(buff) - pos - 1);
-		} else {
-			buff[pos] = '-'; pos++;
-		}
-	}
-
-	if (i == log_evt->field_count && pos < sizeof(buff) - 2) {
-		if (format_pos < strlen(format)) {
-			unsigned int len = strlen(format) - format_pos;
-			if (len > sizeof(buff) - 2 - pos)
-				len = sizeof(buff) - 2 - pos;
-			strncpy(buff + pos, format + format_pos, len);
-			pos += len;
-		}
-	}
-
-	buff[pos] = '\n'; pos++;
-
+	// Open the log file
 	struct output_log_txt_file *file = log_evt->file;
 	if (file->fd == -1) {
 		// File is not open, let's do it
@@ -428,7 +391,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 		char *prefix = PTYPE_STRING_GETVAL(priv->p_prefix);
 		strcpy(filename, prefix);
 		strncat(filename, file->path, FILENAME_MAX - strlen(filename));
-		file->fd = open(filename, O_WRONLY | O_CREAT, 0666);
+		file->fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0666);
 
 		if (file->fd == -1) {
 			pomlog(POMLOG_ERR "Error while opening file \"%s\" : %s", pom_strerror(errno));
@@ -436,10 +399,53 @@ int output_log_txt_process(struct event *evt, void *obj) {
 		}
 	}
 
-	if (pom_write(file->fd, buff, pos) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while writing to log file : %s", pom_strerror(errno));
-		return POM_ERR;
+	char *format = log_evt->format;
+
+	int i;
+	unsigned int format_pos = 0;
+
+	// Write to the log file
+	for (i = 0; i < log_evt->field_count; i++) {
+	
+		struct output_log_txt_event_field *field = &log_evt->fields[i];
+		if (format_pos < field->start_off) {
+			unsigned int len = field->start_off - format_pos;
+			if (pom_write(file->fd, format + format_pos, len) != POM_OK)
+				goto write_err;
+		}
+
+		format_pos = field->end_off;
+
+		if (evt->data[field->id].value) {
+			char *value = ptype_print_val_alloc(evt->data[field->id].value);
+			if (!value)
+				return POM_ERR;
+			if (pom_write(file->fd, value, strlen(value)) != POM_OK) {
+				free(value);
+				goto write_err;
+			}
+			free(value);
+		} else {
+			pom_write(file->fd, "-", 1);
+		}
 	}
 
+	// Write the last part after the last field
+	if (i == log_evt->field_count) {
+		if (format_pos < strlen(format)) {
+			unsigned int len = strlen(format) - format_pos;
+			if (pom_write(file->fd, format + format_pos, len) != POM_OK)
+				goto write_err;
+		}
+	}
+
+	if (pom_write(file->fd, "\n", 1) != POM_OK)
+		goto write_err;
+
 	return POM_OK;
+
+write_err:
+	pomlog(POMLOG_ERR "Error while writing to log file : %s", file->path);
+	return POM_ERR;
+
 }
