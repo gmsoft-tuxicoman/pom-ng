@@ -33,6 +33,12 @@
 
 #include <libxml/parser.h>
 
+#if 0
+#define debug_analyzer(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_analyzer(x ...)
+#endif
+
 
 #ifdef HAVE_LIBMAGIC
 #include <magic.h>
@@ -382,8 +388,7 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_
 	}
 	memset(pload, 0, sizeof(struct analyzer_pload_buffer));
 	
-	char *type_str = (type ? type->name : "unknown");
-	pomlog(POMLOG_DEBUG "Got new pload of type %s", type_str);
+	debug_analyzer(POMLOG_DEBUG "Got new pload of type %s", (type ? type->name : "unknown"));
 
 	pload->expected_size = expected_size;
 	pload->type = type;
@@ -578,7 +583,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 			// If magic found something different, use that instead
 			if (magic_pload_type && (magic_pload_type != pload->type)) {
-				pomlog(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_mime_type);
+				debug_analyzer(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_mime_type);
 				pload->type = magic_pload_type;
 			}
 
