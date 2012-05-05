@@ -208,6 +208,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 		}
 		memset(priv, 0, sizeof(struct proto_http_conntrack_priv));
 		priv->state = HTTP_QUERY_HEADER;
+		priv->client_direction = CT_DIR_UNK;
 
 		s->ce->priv = priv;
 
@@ -265,7 +266,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					// Header are parsed
 					
 					if ((priv->info.flags & (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) == (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) {
-						pomlog(POMLOG_DEBUG "Ignoring Content-Lenght because transfer type is chunked");
+						pomlog(POMLOG_DEBUG "Ignoring Content-Length because transfer type is chunked");
 						priv->info.flags &= ~HTTP_FLAG_HAVE_CLEN;
 						priv->info.content_len = 0;
 					}
@@ -349,11 +350,6 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					if (sscanf(value, "%zu", &priv->info.content_len) != 1)
 						return PROTO_INVALID;
 					priv->info.flags |= HTTP_FLAG_HAVE_CLEN;
-				} else if (!(priv->info.flags & (HTTP_FLAG_GZIP|HTTP_FLAG_DEFLATE)) && !strcasecmp(name, "Content-Encoding")) {
-					if (!strcasecmp(value, "gzip"))
-						priv->info.flags |= HTTP_FLAG_GZIP;
-					else if (!strcasecmp(value, "deflate"))
-						priv->info.flags |= HTTP_FLAG_DEFLATE;
 				} else if (!(priv->info.flags & HTTP_FLAG_CHUNKED) && !strcasecmp(name, "Transfer-Encoding")) {
 					if (!strcasecmp(value, "chunked"))
 						priv->info.flags |= HTTP_FLAG_CHUNKED;
@@ -366,6 +362,21 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 			case HTTP_BODY_QUERY: 
 			case HTTP_BODY_RESPONSE : {
 
+				unsigned int remaining_size = 0;
+				void *pload = NULL;
+
+				// If it was a HEAD request, we might think there is some payload
+				// while there actually isn't any. Check for that
+				if (priv->client_direction == s->direction) {
+					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
+					if (remaining_size >= strlen("HTTP/") && !strncasecmp(pload, "HTTP/", sizeof("HTTP/"))) {
+						debug_http("Found reply to HEAD request");
+						if (proto_http_conntrack_reset(s->ce) != POM_OK)
+							return PROTO_ERR;
+						priv->state = HTTP_RESPONSE_HEADER;
+						break;
+					}
+				}
 
 				if (priv->info.flags & HTTP_FLAG_CHUNKED) {
 					if (!priv->info.chunk_len) {
@@ -383,24 +394,23 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						}
 
 						memcpy(int_str, line, len);
-						if (sscanf(line, "%x", &priv->info.chunk_len) != 1) {
+						if (sscanf(int_str, "%x", &priv->info.chunk_len) != 1) {
 							pomlog(POMLOG_DEBUG "Unparseable chunk size provided : %s", int_str);
 							priv->state = HTTP_INVALID;
 							return PROTO_INVALID;
 						}
 					}
 
-					unsigned int remaining_size = 0;
-					void *pload = NULL;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
+					packet_stream_parser_empty(parser);
 					unsigned int chunk_remaining = priv->info.chunk_len - priv->info.chunk_pos;
 					s_next->pload = pload;
 					if (remaining_size > chunk_remaining) {
 						// There is the start of another chunk in this packet
 						s_next->plen = chunk_remaining;
 						remaining_size -= chunk_remaining;
-						pload += chunk_remaining;
-						if (remaining_size >= 2) {
+						pload += chunk_remaining; if
+						(remaining_size >= 2) {
 							// Remove last CRLF
 							remaining_size -= 2;
 							pload += 2;
@@ -429,11 +439,13 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					}
 					priv->info.chunk_pos += remaining_size;
 
-				} 
+				}  else {
 
-				// Set the right payload in the next stack index
-				packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
-				priv->info.content_pos += s_next->plen;
+					// Set the right payload in the next stack index
+					packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
+					packet_stream_parser_empty(parser);
+					priv->info.content_pos += s_next->plen;
+				}
 
 				debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
 
@@ -562,8 +574,18 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 				}
 
 				if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
-					priv->state = HTTP_RESPONSE;
 
+					// Check the response direction
+					if (priv->client_direction == CT_DIR_UNK) {
+						priv->client_direction = direction;
+					} else {
+						if (priv->client_direction != direction) {
+							debug_http("Received response in the wrong direction !");
+							return PROTO_INVALID;
+						}
+					}
+
+					priv->state = HTTP_RESPONSE;
 					priv->event = event_alloc(ppriv->evt_response);
 					if (!priv->event)
 						return PROTO_ERR;
@@ -589,6 +611,18 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 							return PROTO_INVALID;
 						}
 					}
+
+					// Check the query direction
+					if (priv->client_direction == CT_DIR_UNK) {
+						priv->client_direction = CT_OPPOSITE_DIR(direction);
+					} else {
+						if (priv->client_direction != CT_OPPOSITE_DIR(direction)) {
+							debug_http("Received query in the wrong direction !");
+							return PROTO_INVALID;
+						}
+					}
+
+
 					char *request_method = malloc(tok_len + 1);
 					if (!request_method) {
 						pom_oom(tok_len + 1);

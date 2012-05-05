@@ -35,8 +35,6 @@
 
 #define HTTP_FLAG_HAVE_CLEN	0x01
 #define HTTP_FLAG_CHUNKED	0x04
-#define HTTP_FLAG_GZIP		0x08
-#define HTTP_FLAG_DEFLATE	0x10
 
 #define HTTP_MAX_HEADER_LINE	4096
 
@@ -63,6 +61,7 @@ struct proto_http_conntrack_priv {
 	struct packet_stream_parser *parser[CT_DIR_TOT];
 	struct http_info info;
 	unsigned int state;
+	int client_direction;
 	struct event *event;
 };
 
