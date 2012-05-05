@@ -673,6 +673,11 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 
 int packet_stream_cleanup(struct packet_stream *stream) {
 
+	
+	pom_mutex_lock(&stream->lock);
+	timer_cleanup(stream->t);
+	pom_mutex_unlock(&stream->lock);
+
 	pom_mutex_lock(&stream->lock);
 	while (stream->head[0] || stream->head[1]) {
 		if (packet_stream_force_dequeue(stream) == POM_ERR) {
@@ -684,8 +689,6 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	pom_mutex_unlock(&stream->lock);
 
 	pthread_mutex_destroy(&stream->lock);
-
-	timer_cleanup(stream->t);
 
 	free(stream);
 
@@ -1157,11 +1160,34 @@ struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_si
 
 int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len) {
 
-	if (sp->pload || sp->plen)
-		pomlog(POMLOG_WARN "Warning, payload of last packet not entirely consumed !");
+	if (!sp->pload && sp->buff) {
+		// Payload was fully used, we can discard the buffer
+		free(sp->buff);
+		sp->buff = NULL;
+		sp->buff_len = 0;
+		sp->buff_pos = 0;
 
-	sp->pload = pload;
-	sp->plen = len;
+	}
+
+	if (sp->buff) {
+		// There is some leftovers, append the new payload
+		if (sp->buff_len - sp->buff_pos < len) {
+			sp->buff = realloc(sp->buff, sp->buff_pos + len);
+			if (!sp->buff) {
+				pom_oom(sp->buff_pos + len);
+				return POM_ERR;
+			}
+			sp->buff_len = sp->buff_pos + len;
+		}
+		memcpy(sp->buff + sp->buff_pos, pload, len);
+		sp->buff_pos += len;
+		sp->pload = sp->buff;
+		sp->plen = sp->buff_pos;
+	} else {
+		// No need to buffer anything, let's just process it
+		sp->pload = pload;
+		sp->plen = len;
+	}
 
 	debug_stream_parser("entry %p, added pload %p with len %u", sp, pload, len);
 
@@ -1170,19 +1196,20 @@ int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *ploa
 
 int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, unsigned int *len) {
 
-	if (!sp->pload)
-		return POM_OK;
-
 	debug_stream_parser("entry %p, providing remaining pload %p with len %u", sp, sp->pload, sp->plen);
-
 	*pload = sp->pload;
 	*len = sp->plen;
+
+	return POM_OK;
+}
+
+int packet_stream_parser_empty(struct packet_stream_parser *sp) {
+
 	sp->pload = NULL;
 	sp->plen = 0;
 
 	return POM_OK;
 };
-
 
 int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len) {
 
@@ -1196,58 +1223,41 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 	int str_len = sp->plen, tmp_len = 0;
 	
 	char *lf = memchr(pload, '\n', sp->plen);
-	if (lf) {
-		tmp_len = lf - pload;
-		str_len = tmp_len + 1;
-		if (lf > pload && *(lf - 1) == '\r')
-			tmp_len--;
-	}
+	if (!lf) {
 
-	if (sp->buffpos || !lf) {
-		// If there is a buffer or line return is not found, we need to add to the buffer
-		unsigned int new_len = sp->buffpos + tmp_len;
-		if (sp->bufflen < new_len) {
-			sp->buff = realloc(sp->buff, new_len);
+		if (sp->buff) {
+			memmove(sp->buff, sp->pload, sp->plen);
+			sp->buff_pos = sp->plen;
+		} else {
+			sp->buff = malloc(sp->plen);
 			if (!sp->buff) {
-				pom_oom(new_len + 1);
+				pom_oom(sp->plen);
 				return POM_ERR;
 			}
-			sp->bufflen = new_len + 1;
+			memcpy(sp->buff, sp->pload, sp->plen);
+			sp->buff_len = sp->plen;
+			sp->buff_pos = sp->plen;
 		}
-		memcpy(sp->buff + sp->buffpos, sp->pload, tmp_len);
-		sp->buffpos += tmp_len;
 
-		if (sp->buffpos > sp->max_line_size) {
-			// What to do ? discard it and send new partial line ?
-			// Send it as is and send a new line afterwards ?
-			// I'll take option two
-			pomlog(POMLOG_DEBUG "Line longer than max size : %u , max %u", sp->buffpos, sp->max_line_size);
-		}
-	}
-
-	if (!lf) {
 		// \n not found
 		*line = NULL;
 		*len = 0;
-		sp->pload = NULL;
-		sp->plen = 0;
 		debug_stream_parser("entry %p, no line found", sp);
 		return POM_OK;
 	}
 
+
+	tmp_len = lf - pload;
+	str_len = tmp_len + 1;
+	if (lf > pload && *(lf - 1) == '\r')
+		tmp_len--;
+
 	
-	if (sp->buffpos) {
-		pload = sp->buff;
-		tmp_len = sp->buffpos;
-		sp->buffpos = 0;
-		return POM_OK;
-	} else {
-		sp->plen -= str_len;
-		if (!sp->plen)
-			sp->pload = NULL;
-		else
-			sp->pload += str_len;
-	}
+	sp->plen -= str_len;
+	if (!sp->plen)
+		sp->pload = NULL;
+	else
+		sp->pload += str_len;
 
 	// Trim the string
 	while (*pload == ' ' && tmp_len) {

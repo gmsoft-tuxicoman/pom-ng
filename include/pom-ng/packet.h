@@ -112,8 +112,8 @@ struct packet_stream {
 struct packet_stream_parser {
 	unsigned int max_line_size;
 	char *buff;
-	unsigned int bufflen;
-	unsigned int buffpos;
+	unsigned int buff_len;
+	unsigned int buff_pos;
 	char *pload;
 	unsigned int plen;
 };
@@ -137,5 +137,6 @@ struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_si
 int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len);
 int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len);
 int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, unsigned int *len);
+int packet_stream_parser_empty(struct packet_stream_parser *sp);
 int packet_stream_parser_cleanup(struct packet_stream_parser *sp);
 #endif
