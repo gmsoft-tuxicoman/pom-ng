@@ -55,14 +55,15 @@ struct analyzer_http_request_event_priv {
 	int query_dir;
 
 	
-	// Original events from which we base our
+	// Original events from which we base ours
 	struct event *query_event;
 	struct event *response_event;
 
 	// Payload information
-	struct analyzer_pload_buffer *pload[2];
-	char *content_type[2];
-	size_t content_len[2];
+	struct analyzer_pload_buffer *pload[CT_DIR_TOT];
+	char *content_type[CT_DIR_TOT];
+	size_t content_len[CT_DIR_TOT];
+	unsigned int content_flags[CT_DIR_TOT];
 
 };
 

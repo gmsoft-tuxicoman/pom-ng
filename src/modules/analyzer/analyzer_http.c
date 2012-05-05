@@ -377,6 +377,12 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 			epriv->content_len[s->direction] = content_len;
 		} else if (!strcasecmp(headers->key, "Content-Type")) {
 			epriv->content_type[s->direction] = PTYPE_STRING_GETVAL(headers->value);
+		} else if (!strcasecmp(headers->key, "Content-Encoding")) {
+			char *val = PTYPE_STRING_GETVAL(headers->value);
+			if (!strcasecmp(val, "gzip"))
+				epriv->content_flags[s->direction] |= ANALYZER_PLOAD_BUFFER_IS_GZIP;
+			else if (!strcasecmp(val, "deflate"))
+				epriv->content_flags[s->direction] |= ANALYZER_PLOAD_BUFFER_IS_DEFLATE;
 		}
 		
 
@@ -542,10 +548,14 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 
 	struct analyzer_http_request_event_priv *epriv = cpriv->evt->priv;
 
-	struct analyzer_pload_type *type = analyzer_pload_type_get_by_mime_type(epriv->content_type[dir]);
+	struct analyzer_pload_type *type = NULL;
+	if (!epriv->content_type[dir])
+		pomlog(POMLOG_DEBUG "Content-Type not provided !");
+	else
+		type = analyzer_pload_type_get_by_mime_type(epriv->content_type[dir]);
 
 	if (!epriv->pload[dir]) {
-		epriv->pload[dir] = analyzer_pload_buffer_alloc(type, epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
+		epriv->pload[dir] = analyzer_pload_buffer_alloc(type, epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC | epriv->content_flags[dir]);
 		if (!epriv->pload[dir])
 			return POM_ERR;
 
