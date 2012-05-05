@@ -24,9 +24,12 @@
 
 #include <pom-ng/base.h>
 
+#define CT_DIR_UNK -1
 #define CT_DIR_FWD 0
 #define CT_DIR_REV 1
 #define CT_DIR_TOT 2 // Total number of possible directions
+
+#define CT_OPPOSITE_DIR(x) ((x) == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD)
 
 #define CT_CONNTRACK_INFO_BIDIR			0x1
 #define CT_CONNTRACK_INFO_LIST			0x2
