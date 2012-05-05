@@ -55,6 +55,7 @@ static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo);
 static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_bytes);
 static boolean analyzer_jpeg_lib_fill_input_buffer(j_decompress_ptr cinfo);
 static void analyzer_jpeg_lib_term_source(j_decompress_ptr cinfo);
+static void analyzer_jpeg_lib_error_exit(j_common_ptr cinfo);
 
 
 #endif
