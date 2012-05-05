@@ -22,6 +22,12 @@
 
 #include <arpa/inet.h>
 
+#if 0
+#define debug_png(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_png(x ...)
+#endif
+
 struct mod_reg_info* analyzer_png_reg_info() {
 
 	static struct mod_reg_info reg_info;
@@ -92,7 +98,7 @@ static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer
 
 			pload->state = analyzer_pload_buffer_state_analyzed;
 		
-			pomlog(POMLOG_DEBUG "Got PNG image with height %u and width %u", height, width);
+			debug_png(POMLOG_DEBUG "Got PNG of %ux%u", width, height);
 
 		} else {
 			pomlog(POMLOG_DEBUG "IHDR not found where it was supposed to be");
