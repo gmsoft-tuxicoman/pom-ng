@@ -468,15 +468,6 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (!s_next->pload)
 			break;
 	
-		if ((s_next->pload > s_next->pload + s_next->plen) || // Check if next payload is further than the end of current paylod
-			(s_next->pload < s->pload) || // Check if next payload is before the start of the current payload
-			(s_next->pload + s_next->plen > s->pload + s->plen) || // Check if the end of the next payload is after the end of the current payload
-			(s_next->pload + s_next->plen < s_next->pload)) { // Check for integer overflow
-			// Invalid packet
-			pomlog(POMLOG_INFO "Invalid parsing detected for proto %s", s->proto->info->name);
-			return PROTO_OK;
-		}
-
 		if (proto_process_payload(p, stack, i) != POM_OK)
 			return PROTO_ERR;
 
