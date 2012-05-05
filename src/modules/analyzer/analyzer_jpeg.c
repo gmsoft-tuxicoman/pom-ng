@@ -20,6 +20,12 @@
 
 #include "analyzer_jpeg.h"
 
+#if 0
+#define debug_jpeg(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_jpeg(x ...)
+#endif
+
 struct mod_reg_info* analyzer_jpeg_reg_info() {
 
 	static struct mod_reg_info reg_info;
@@ -129,7 +135,7 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 		if (res == JPEG_SUSPENDED) // Headers are incomplete
 			return POM_OK;
 		
-		pomlog("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
+		debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
 		free(priv->cinfo.src);
 		jpeg_destroy_decompress(&priv->cinfo);
