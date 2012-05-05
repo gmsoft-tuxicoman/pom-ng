@@ -359,24 +359,36 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				break;
 			}
 
-			case HTTP_BODY_QUERY: 
-			case HTTP_BODY_RESPONSE : {
-
-				unsigned int remaining_size = 0;
-				void *pload = NULL;
-
-				// If it was a HEAD request, we might think there is some payload
-				// while there actually isn't any. Check for that
+			case HTTP_BODY_RESPONSE:
 				if (priv->client_direction == s->direction) {
+					// We were expecting a response but we had a new query
+					debug_http("entry %p, found query while expecting body, probably a HEAD request", s->ce);
+					event_process_end(priv->event);
+					priv->event = NULL;
+					if (proto_http_conntrack_reset(s->ce) != POM_OK)
+						return PROTO_ERR;
+					priv->state = HTTP_QUERY_HEADER;
+					break;
+				} else  if (priv->info.content_pos == 0 && priv->client_direction == CT_OPPOSITE_DIR(s->direction)) {
+					// If it was a HEAD request, we might think there is some payload
+					// while there actually isn't any. Check for that
+					unsigned int remaining_size = 0;
+					void *pload = NULL;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
 					if (remaining_size >= strlen("HTTP/") && !strncasecmp(pload, "HTTP/", sizeof("HTTP/"))) {
-						debug_http("Found reply to HEAD request");
+						debug_http("entry %p, found reply to HEAD request", s->ce);
+						event_process_end(priv->event);
+						priv->event = NULL;
 						if (proto_http_conntrack_reset(s->ce) != POM_OK)
 							return PROTO_ERR;
 						priv->state = HTTP_RESPONSE_HEADER;
 						break;
 					}
 				}
+
+
+			case HTTP_BODY_QUERY:
+
 
 				if (priv->info.flags & HTTP_FLAG_CHUNKED) {
 					if (!priv->info.chunk_len) {
@@ -401,6 +413,8 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						}
 					}
 
+					void *pload = NULL;
+					unsigned int remaining_size = 0;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
 					packet_stream_parser_empty(parser);
 					unsigned int chunk_remaining = priv->info.chunk_len - priv->info.chunk_pos;
@@ -451,8 +465,6 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 
 				return PROTO_OK;
-
-			}
 
 			default:
 				return PROTO_OK;
@@ -577,9 +589,9 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 					// Check the response direction
 					if (priv->client_direction == CT_DIR_UNK) {
-						priv->client_direction = direction;
+						priv->client_direction = CT_OPPOSITE_DIR(direction);
 					} else {
-						if (priv->client_direction != direction) {
+						if (priv->client_direction != CT_OPPOSITE_DIR(direction)) {
 							debug_http("Received response in the wrong direction !");
 							return PROTO_INVALID;
 						}
@@ -614,9 +626,9 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 					// Check the query direction
 					if (priv->client_direction == CT_DIR_UNK) {
-						priv->client_direction = CT_OPPOSITE_DIR(direction);
+						priv->client_direction = direction;
 					} else {
-						if (priv->client_direction != CT_OPPOSITE_DIR(direction)) {
+						if (priv->client_direction != direction) {
 							debug_http("Received query in the wrong direction !");
 							return PROTO_INVALID;
 						}
