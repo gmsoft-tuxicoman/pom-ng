@@ -27,6 +27,10 @@
 #include <pom-ng/conntrack.h>
 #include <pom-ng/output.h>
 
+#ifdef HAVE_ZLIB
+#include <zlib.h>
+#endif
+
 // Current analyzer API version
 #define ANALYZER_API_VER 1
 
@@ -39,6 +43,9 @@
 
 // Payload buffer flags
 #define ANALYZER_PLOAD_BUFFER_NEED_MAGIC	0x1
+#define ANALYZER_PLOAD_BUFFER_IS_GZIP		0x2
+#define ANALYZER_PLOAD_BUFFER_IS_DEFLATE	0x4
+#define ANALYZER_PLOAD_BUFFER_IS_BASE64		0x8
 
 struct analyzer {
 
@@ -142,6 +149,10 @@ struct analyzer_pload_buffer {
 	struct event *rel_event;
 	struct analyzer_pload_output_list *output_list;
 	void *analyzer_priv;
+
+#ifdef HAVE_ZLIB
+	z_stream *zbuff;
+#endif
 
 };
 

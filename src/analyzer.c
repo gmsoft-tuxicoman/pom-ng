@@ -18,6 +18,12 @@
  *
  */
 
+#include "config.h"
+
+#ifdef HAVE_ZLIB
+#include <zlib.h>
+#endif
+
 #include "analyzer.h"
 #include "output.h"
 #include "mod.h"
@@ -26,6 +32,7 @@
 #include <pom-ng/ptype_string.h>
 
 #include <libxml/parser.h>
+
 
 #ifdef HAVE_LIBMAGIC
 #include <magic.h>
@@ -386,6 +393,27 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_
 
 }
 
+static int analyzer_pload_buffer_grow(struct analyzer_pload_buffer *pload) {
+
+	long pagesize = sysconf(_SC_PAGESIZE);
+	if (!pagesize)
+		pagesize = 4096;
+
+	size_t new_size = pload->buff_size + pagesize;
+
+	void *new_buff = realloc(pload->buff, new_size);
+	if (!new_buff) {
+		pom_oom(new_size);
+		pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
+		pload->state = analyzer_pload_buffer_state_error;
+		return POM_ERR;
+	}
+
+	pload->buff = new_buff;
+	pload->buff_size = new_size;
+	return POM_OK;
+}
+
 static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pload, void *data, size_t size) {
 
 	if (!pload->buff_size) {
@@ -398,34 +426,60 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 			return POM_ERR;
 		}
 	}
-	if (pload->expected_size && pload->expected_size < pload->buff_pos + size) {
-		pomlog(POMLOG_DEBUG "Pload larger than expected size. Dropping");
-		pload->state = analyzer_pload_buffer_state_error;
-		return POM_OK;
-	}
 
-	if (pload->buff_size < pload->buff_pos + size) {
-		// Buffer is too small, add a page
-		long pagesize = sysconf(_SC_PAGESIZE);
-		if (!pagesize)
-			pagesize = 4096;
+#ifdef HAVE_ZLIB
+	
+	if (pload->zbuff) {
+		// Handle zlib compression
+		pload->zbuff->next_in = data;
+		pload->zbuff->avail_in = size;
+		pload->zbuff->avail_out = pload->buff_size - pload->buff_pos;
 
-		size_t new_size = pload->buff_size + pagesize;
+		do {
 
-		void *new_buff = realloc(pload->buff, new_size);
-		if (!new_buff) {
-			pom_oom(new_size);
-			pomlog(POMLOG_ERR "Could not allocate enough memory to hold the buffer");
-			pload->state = analyzer_pload_buffer_state_error;
-			return POM_ERR;
+			if (!pload->zbuff->avail_out) {
+				if (analyzer_pload_buffer_grow(pload) != POM_OK)
+					return POM_OK;
+				pload->zbuff->avail_out = pload->buff_size - pload->buff_pos;
+			}
+			pload->zbuff->next_out = pload->buff + pload->buff_pos;
+
+			int res = inflate(pload->zbuff, Z_SYNC_FLUSH);
+			if (res == Z_STREAM_END) {
+				inflateEnd(pload->zbuff);
+				free(pload->zbuff);
+				pload->zbuff = NULL;
+				break;
+			} else if (res != Z_OK) {
+				char *msg = pload->zbuff->msg;
+				if (!msg)
+					msg = "Unknown error";
+				pomlog(POMLOG_DEBUG "Error while uncompressing the gzip content : %s", msg);
+				pload->state = analyzer_pload_buffer_state_error;
+				inflateEnd(pload->zbuff);
+				free(pload->zbuff);
+				pload->zbuff = NULL;
+				return POM_OK;
+			}
+
+		} while (pload->zbuff->avail_in);
+
+	} else {
+#endif /* HAVE_ZLIB */
+
+		// Uncompressed stuff
+		if (pload->buff_size < pload->buff_pos + size) {
+			// Buffer is too small, add a page
+			if (analyzer_pload_buffer_grow(pload) != POM_OK)
+				return POM_OK;
 		}
 
-		pload->buff = new_buff;
-		pload->buff_size = new_size;
-	}
+		memcpy(pload->buff + pload->buff_pos, data, size);
+		pload->buff_pos += size;
 
-	memcpy(pload->buff + pload->buff_pos, data, size);
-	pload->buff_pos += size;
+#ifdef HAVE_ZLIB
+	}
+#endif
 
 	return POM_OK;
 }
@@ -437,6 +491,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		if (pload->buff_size) {
 			// Remove the buffer if still present
 			pload->buff_size = 0;
+			pload->buff_pos = 0;
 			free(pload->buff);
 			pload->buff = NULL;
 		}
@@ -444,10 +499,47 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	}
 
 	if (pload->state == analyzer_pload_buffer_state_empty) {
+		if (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_GZIP | ANALYZER_PLOAD_BUFFER_IS_DEFLATE)) {
+#ifdef HAVE_ZLIB
+			pload->zbuff = malloc(sizeof(z_stream));
+			if (!pload->zbuff) {
+				pom_oom(sizeof(z_stream));
+				pload->state = analyzer_pload_buffer_state_error;
+				return POM_OK;
+			}
+			memset(pload->zbuff, 0, sizeof(z_stream));
+			int window_bits = 15 + 32; // 15, default window bits. 32, magic value to enable header detection
+			if (pload->flags & ANALYZER_PLOAD_BUFFER_IS_DEFLATE)
+				window_bits = -15; // Raw data
 
-		// Use the current data as the buffer
-		pload->buff_pos = size;
-		pload->buff = data;
+			if (inflateInit2(pload->zbuff, window_bits) != Z_OK) {
+				if (pload->zbuff->msg)
+					pomlog(POMLOG_ERR "Unable to init Zlib : %s", pload->zbuff->msg);
+				else
+					pomlog(POMLOG_ERR "Unable to init Zlib : Unknown error");
+				free(pload->zbuff);
+				pload->zbuff = NULL;
+
+				pload->state = analyzer_pload_buffer_state_error;
+				return POM_OK;
+			}
+
+#else /* HAVE_ZLIB */
+			pomlog(POMLOG_DEBUG "Got a zlib compressed payload but no zlib support. Ignoring");
+			pload->state = analyzer_pload_buffer_state_done;
+			return POM_OK;
+#endif /* HAVE_ZLIB */
+
+		} else if (pload->flags & ANALYZER_PLOAD_BUFFER_IS_BASE64) {
+			pomlog(POMLOG_DEBUG "Got a base64 payload but no support for that encoding yet");
+			pload->state = analyzer_pload_buffer_state_done;
+			return POM_OK;
+		} else {
+			// Use the current data as the buffer
+			pload->buff_pos = size;
+			pload->buff = data;
+		}
+
 
 		// We need to allocate the buffer for this payload
 #ifdef HAVE_LIBMAGIC
@@ -496,6 +588,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		} else {
 			if (!pload->buff_size) {
 				// Not enough data. We need to buffer what we have
+				pload->buff = NULL;
+				pload->buff_pos = 0;
 				return analyzer_pload_buffer_append_to_buff(pload, data, size);
 			} else {
 				// We already appended the data
@@ -526,6 +620,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				// The analyzer needs the full buffer
 				if (!pload->buff_size) {
 					// Not enough data. We need to buffer what we have
+					pload->buff = NULL;
+					pload->buff_pos = 0;
 					return analyzer_pload_buffer_append_to_buff(pload, data, size);
 				} else {
 					// We already appended the data
@@ -578,11 +674,12 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			}
 			if (!pload->output_list) {
 				pload->state = analyzer_pload_buffer_state_done;
-				if (pload->buff_size) {
+				if (pload->buff_size) 
 					free(pload->buff);
-					pload->buff = NULL;
-					pload->buff_size = 0;
-				}
+				
+				pload->buff = NULL;
+				pload->buff_size = 0;
+				pload->buff_pos = 0;
 				return POM_OK;
 			}
 
@@ -646,7 +743,12 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 		free(lst);
 
 	}
-
+#ifdef HAVE_ZLIB
+	if (pload->zbuff) {
+		inflateEnd(pload->zbuff);
+		free(pload->zbuff);
+	}
+#endif
 	if (pload->buff_size && pload->buff)
 		free(pload->buff);
 	free(pload);
