@@ -90,8 +90,9 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 		memset(priv, 0, sizeof(struct analyzer_jpeg_pload_priv));
 		
 		// Setup error handler
-		static struct jpeg_error_mgr jerr;
+		struct jpeg_error_mgr jerr;
 		priv->cinfo.err = jpeg_std_error(&jerr);
+		priv->cinfo.err->error_exit = analyzer_jpeg_lib_error_exit;
 
 		// Allocate the decompressor
 		jpeg_create_decompress(&priv->cinfo);
@@ -128,8 +129,6 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 		if (res == JPEG_SUSPENDED) // Headers are incomplete
 			return POM_OK;
 		
-		// TODO add error handlers
-
 		pomlog("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
 		free(priv->cinfo.src);
@@ -176,21 +175,13 @@ static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_b
 	if (num_bytes <= 0)
 		return;
 
-	struct analyzer_pload_buffer *pload = cinfo->client_data;
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
-
-	// Remove whatever wasn't used
-	priv->jpeg_lib_pos -= cinfo->src->bytes_in_buffer;
-
-	size_t remaining = pload->buff_pos - priv->jpeg_lib_pos;
-
-	if (num_bytes >= remaining) {
+	// Find out remaining bytes
+	if (num_bytes >= cinfo->src->bytes_in_buffer) {
 		cinfo->src->bytes_in_buffer = 0;
 	} else {
 		cinfo->src->next_input_byte += num_bytes;
 		cinfo->src->bytes_in_buffer -= num_bytes;
 	}
-	priv->jpeg_lib_pos += num_bytes;
 
 }
 
@@ -200,7 +191,6 @@ static boolean analyzer_jpeg_lib_fill_input_buffer(j_decompress_ptr cinfo) {
 	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
 
 	// Remove whatever wasn't used
-	priv->jpeg_lib_pos -= cinfo->src->bytes_in_buffer;
 
 	if (priv->jpeg_lib_pos >= pload->buff_pos)
 		return FALSE;
@@ -217,5 +207,9 @@ static boolean analyzer_jpeg_lib_fill_input_buffer(j_decompress_ptr cinfo) {
 static void analyzer_jpeg_lib_term_source(j_decompress_ptr cinfo) {
 
 	// Never called according to documentation
-	pomlog(POMLOG_ERR "analyzer_jpeg_lib_term_source() called while not supposed to !");
+	pomlog(POMLOG_WARN "analyzer_jpeg_lib_term_source() called while not supposed to !");
+}
+
+static void analyzer_jpeg_lib_error_exit(j_common_ptr cinfo) {
+	pomlog(POMLOG_WARN "Fatal exit error from libjpeg");
 }
