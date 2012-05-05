@@ -20,6 +20,12 @@
 
 #include "analyzer_gif.h"
 
+#if 0
+#define debug_gif(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_gif(x ...)
+#endif
+
 struct mod_reg_info* analyzer_gif_reg_info() {
 
 	static struct mod_reg_info reg_info;
@@ -90,7 +96,7 @@ static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer
 
 		pload->state = analyzer_pload_buffer_state_analyzed;
 
-		pomlog(POMLOG_DEBUG "Got GIF image with height %u and width %u", height, width);
+		debug_gif(POMLOG_DEBUG "Got GIF image of %ux%u", width, height);
 	} else {
 		pomlog(POMLOG_DEBUG "GIF signature not found");
 		pload->type = NULL;
