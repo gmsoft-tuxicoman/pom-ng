@@ -62,8 +62,8 @@ int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct anal
 
 		if (amp && amp < eq) {
 			// Parameter without value, skip to next param
-			data = amp + 1;
 			len -= amp - data + 1;
+			data = amp + 1;
 			continue;
 		}
 
