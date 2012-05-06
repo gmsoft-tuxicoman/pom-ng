@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/conntrack.h>
 #include <pom-ng/ptype_ipv4.h>
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint32.h>
@@ -40,8 +41,8 @@ static struct ptype *ptype_uint8 = NULL, *ptype_ipv4 = NULL;
 static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
 struct mod_reg_info* proto_ipv4_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ipv4_mod_register;
 	reg_info.unregister_func = proto_ipv4_mod_unregister;
@@ -68,8 +69,12 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 		return POM_ERR;
 	}
 
-	static struct proto_pkt_field fields[PROTO_IPV4_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_IPV4_FIELD_NUM + 1));
+	static struct proto_reg_info proto_ipv4 = { 0 };
+	proto_ipv4.name = "ipv4";
+	proto_ipv4.api_ver = PROTO_API_VER;
+	proto_ipv4.mod = mod;
+
+	static struct proto_pkt_field fields[PROTO_IPV4_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "src";
 	fields[0].value_template = ptype_ipv4;
 	fields[0].description = "Source address";
@@ -82,18 +87,14 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	fields[3].name = "ttl";
 	fields[3].value_template = ptype_uint8;
 	fields[3].description = "Time to live";
-
-	static struct proto_reg_info proto_ipv4;
-	memset(&proto_ipv4, 0, sizeof(struct proto_reg_info));
-	proto_ipv4.name = "ipv4";
-	proto_ipv4.api_ver = PROTO_API_VER;
-	proto_ipv4.mod = mod;
-
 	proto_ipv4.pkt_fields = fields;
-	proto_ipv4.ct_info.default_table_size = 20000;
-	proto_ipv4.ct_info.fwd_pkt_field_id = proto_ipv4_field_src;
-	proto_ipv4.ct_info.rev_pkt_field_id = proto_ipv4_field_dst;
-	proto_ipv4.ct_info.cleanup_handler = proto_ipv4_conntrack_cleanup;
+
+	static struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 20000;
+	ct_info.fwd_pkt_field_id = proto_ipv4_field_src;
+	ct_info.rev_pkt_field_id = proto_ipv4_field_dst;
+	ct_info.cleanup_handler = proto_ipv4_conntrack_cleanup;
+	proto_ipv4.ct_info = &ct_info;
 	
 	proto_ipv4.init = proto_ipv4_init;
 	proto_ipv4.process = proto_ipv4_process;

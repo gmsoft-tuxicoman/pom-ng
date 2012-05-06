@@ -79,8 +79,8 @@ int proto_register(struct proto_reg_info *reg_info) {
 	}
 
 	// Allocate the conntrack table
-	if (reg_info->ct_info.default_table_size) {
-		proto->ct = conntrack_tables_alloc(reg_info->ct_info.default_table_size, (reg_info->ct_info.rev_pkt_field_id == -1 ? 0 : 1));
+	if (reg_info->ct_info) {
+		proto->ct = conntrack_tables_alloc(reg_info->ct_info->default_table_size, (reg_info->ct_info->rev_pkt_field_id == -1 ? 0 : 1));
 		if (!proto->ct) {
 			pomlog(POMLOG_ERR "Error while allocating conntrack tables");
 			goto err_packet_info;

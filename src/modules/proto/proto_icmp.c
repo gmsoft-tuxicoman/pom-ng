@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,8 +31,8 @@
 static struct ptype *ptype_uint8 = NULL;
 
 struct mod_reg_info* proto_icmp_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_icmp_mod_register;
 	reg_info.unregister_func = proto_icmp_mod_unregister;
@@ -49,8 +49,7 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 	if (!ptype_uint8)
 		return POM_ERR;
 
-	static struct proto_pkt_field fields[PROTO_ICMP_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_ICMP_FIELD_NUM + 1));
+	static struct proto_pkt_field fields[PROTO_ICMP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "type";
 	fields[0].value_template = ptype_uint8;
 	fields[0].description = "Type";
@@ -58,8 +57,7 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 	fields[1].value_template = ptype_uint8;
 	fields[1].description = "Code";
 
-	static struct proto_reg_info proto_icmp;
-	memset(&proto_icmp, 0, sizeof(struct proto_reg_info));
+	static struct proto_reg_info proto_icmp = { 0 };
 	proto_icmp.name = "icmp";
 	proto_icmp.api_ver = PROTO_API_VER;
 	proto_icmp.mod = mod;

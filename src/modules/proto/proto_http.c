@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,8 +39,8 @@
 #endif
 
 struct mod_reg_info* proto_http_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_http_mod_register;
 	reg_info.unregister_func = proto_http_mod_unregister;
@@ -54,14 +54,16 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 
 
 
-	static struct proto_reg_info proto_http;
-	memset(&proto_http, 0, sizeof(struct proto_reg_info));
+	static struct proto_reg_info proto_http = { 0 };
 	proto_http.name = "http";
 	proto_http.api_ver = PROTO_API_VER;
 	proto_http.mod = mod;
 
-	proto_http.ct_info.default_table_size = 1; // No hashing done here
-	proto_http.ct_info.cleanup_handler = proto_http_conntrack_cleanup;
+	static struct conntrack_info ct_info = { 0 };
+
+	ct_info.default_table_size = 1; // No hashing done here
+	ct_info.cleanup_handler = proto_http_conntrack_cleanup;
+	proto_http.ct_info = &ct_info;
 	
 	proto_http.init = proto_http_init;
 	proto_http.process = proto_http_process;

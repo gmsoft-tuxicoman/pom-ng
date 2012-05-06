@@ -20,6 +20,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/core.h>
+#include <pom-ng/conntrack.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_uint16.h>
 

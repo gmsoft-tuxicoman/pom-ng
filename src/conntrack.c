@@ -616,8 +616,8 @@ int conntrack_cleanup(void *conntrack) {
 	struct proto *proto = ce->proto;
 	ce->proto = NULL;
 
-	if (ce->priv && proto->info->ct_info.cleanup_handler) {
-		if (proto->info->ct_info.cleanup_handler(ce) != POM_OK)
+	if (ce->priv && proto->info->ct_info->cleanup_handler) {
+		if (proto->info->ct_info->cleanup_handler(ce) != POM_OK)
 			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
 	}
 	

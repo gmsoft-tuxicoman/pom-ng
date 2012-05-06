@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,8 +31,8 @@
 static struct ptype *ptype_mac = NULL, *ptype_uint16 = NULL, *ptype_ipv4 = NULL;
 
 struct mod_reg_info* proto_arp_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_arp_mod_register;
 	reg_info.unregister_func = proto_arp_mod_unregister;
@@ -51,8 +51,7 @@ static int proto_arp_mod_register(struct mod_reg *mod) {
 	if (!ptype_mac || !ptype_uint16 || !ptype_ipv4)
 		goto err;
 
-	static struct proto_pkt_field fields[PROTO_ARP_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_ARP_FIELD_NUM + 1));
+	static struct proto_pkt_field fields[PROTO_ARP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "oper";
 	fields[0].value_template = ptype_uint16;
 	fields[0].description = "Operation";
@@ -70,8 +69,7 @@ static int proto_arp_mod_register(struct mod_reg *mod) {
 	fields[4].description = "Target protocol address";
 
 
-	static struct proto_reg_info proto_arp;
-	memset(&proto_arp, 0, sizeof(struct proto_reg_info));
+	static struct proto_reg_info proto_arp = { 0 };
 	proto_arp.name = "arp";
 	proto_arp.api_ver = PROTO_API_VER;
 	proto_arp.mod = mod;

@@ -25,7 +25,6 @@
 #include <pom-ng/base.h>
 #include <pom-ng/mod.h>
 #include <pom-ng/ptype.h>
-#include <pom-ng/conntrack.h>
 #include <pom-ng/packet.h>
 #include <pom-ng/registry.h>
 
@@ -95,7 +94,7 @@ struct proto_reg_info {
 	char *name;
 	struct mod_reg *mod;
 	struct proto_pkt_field *pkt_fields;
-	struct conntrack_info ct_info;
+	struct conntrack_info *ct_info;
 	struct proto_event_reg *events;
 
 	int (*init) (struct proto *proto, struct registry_instance *i);

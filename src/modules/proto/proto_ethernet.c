@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,8 +33,8 @@
 static struct ptype *ptype_mac = NULL;
 
 struct mod_reg_info* proto_ethernet_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ethernet_mod_register;
 	reg_info.unregister_func = proto_ethernet_mod_unregister;
@@ -51,8 +51,7 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	if (!ptype_mac)
 		return POM_ERR;
 
-	static struct proto_pkt_field fields[PROTO_ETHERNET_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_ETHERNET_FIELD_NUM + 1));
+	static struct proto_pkt_field fields[PROTO_ETHERNET_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "src";
 	fields[0].value_template = ptype_mac;
 	fields[0].description = "Source address";
@@ -60,8 +59,7 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	fields[1].value_template = ptype_mac;
 	fields[1].description = "Destination address";
 
-	static struct proto_reg_info proto_ethernet;
-	memset(&proto_ethernet, 0, sizeof(struct proto_reg_info));
+	static struct proto_reg_info proto_ethernet = { 0 };
 	proto_ethernet.name = "ethernet";
 	proto_ethernet.api_ver = PROTO_API_VER;
 	proto_ethernet.mod = mod;

@@ -20,6 +20,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/conntrack.h>
 #include <pom-ng/ptype_uint16.h>
 #include <arpa/inet.h>
 
@@ -33,8 +34,8 @@
 static struct ptype *ptype_uint16 = NULL;
 
 struct mod_reg_info* proto_udp_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_udp_mod_register;
 	reg_info.unregister_func = proto_udp_mod_unregister;
@@ -51,25 +52,25 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 	if (!ptype_uint16)
 		return POM_ERR;
 
-	static struct proto_pkt_field fields[PROTO_UDP_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_UDP_FIELD_NUM + 1));
+	static struct proto_reg_info proto_udp = { 0 };
+	proto_udp.name = "udp";
+	proto_udp.api_ver = PROTO_API_VER;
+	proto_udp.mod = mod;
+
+	static struct proto_pkt_field fields[PROTO_UDP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "sport";
 	fields[0].value_template = ptype_uint16;
 	fields[0].description = "Source port";
 	fields[1].name = "dport";
 	fields[1].value_template = ptype_uint16;
 	fields[1].description = "Destination port";
-
-	static struct proto_reg_info proto_udp;
-	memset(&proto_udp, 0, sizeof(struct proto_reg_info));
-	proto_udp.name = "udp";
-	proto_udp.api_ver = PROTO_API_VER;
-	proto_udp.mod = mod;
 	proto_udp.pkt_fields = fields;
 
-	proto_udp.ct_info.default_table_size = 2048;
-	proto_udp.ct_info.fwd_pkt_field_id = proto_udp_field_sport;
-	proto_udp.ct_info.rev_pkt_field_id = proto_udp_field_dport;
+	static struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 2048;
+	ct_info.fwd_pkt_field_id = proto_udp_field_sport;
+	ct_info.rev_pkt_field_id = proto_udp_field_dport;
+	proto_udp.ct_info = &ct_info;
 
 	proto_udp.init = proto_udp_init;
 	proto_udp.process = proto_udp_process;

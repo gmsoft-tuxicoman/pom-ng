@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/conntrack.h>
 #include <pom-ng/core.h>
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
@@ -44,8 +45,8 @@
 static struct ptype *ptype_uint8 = NULL, *ptype_uint16 = NULL, *ptype_uint32 = NULL;
 
 struct mod_reg_info* proto_tcp_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_tcp_mod_register;
 	reg_info.unregister_func = proto_tcp_mod_unregister;
@@ -77,8 +78,12 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 		return POM_ERR;
 	}
 
-	static struct proto_pkt_field fields[PROTO_TCP_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_TCP_FIELD_NUM + 1));
+	static struct proto_reg_info proto_tcp = { 0 };
+	proto_tcp.name = "tcp";
+	proto_tcp.api_ver = PROTO_API_VER;
+	proto_tcp.mod = mod;
+	
+	static struct proto_pkt_field fields[PROTO_TCP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "sport";
 	fields[0].value_template = ptype_uint16;
 	fields[0].description = "Source port";
@@ -97,19 +102,14 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	fields[5].name = "win";
 	fields[5].value_template = ptype_uint16;
 	fields[5].description = "Window";
-
-
-	static struct proto_reg_info proto_tcp;
-	memset(&proto_tcp, 0, sizeof(struct proto_reg_info));
-	proto_tcp.name = "tcp";
-	proto_tcp.api_ver = PROTO_API_VER;
-	proto_tcp.mod = mod;
 	proto_tcp.pkt_fields = fields;
-	
-	proto_tcp.ct_info.default_table_size = 20000;
-	proto_tcp.ct_info.fwd_pkt_field_id = proto_tcp_field_sport;
-	proto_tcp.ct_info.rev_pkt_field_id = proto_tcp_field_dport;
-	proto_tcp.ct_info.cleanup_handler = proto_tcp_conntrack_cleanup;
+
+	static struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 20000;
+	ct_info.fwd_pkt_field_id = proto_tcp_field_sport;
+	ct_info.rev_pkt_field_id = proto_tcp_field_dport;
+	ct_info.cleanup_handler = proto_tcp_conntrack_cleanup;
+	proto_tcp.ct_info = &ct_info;
 	
 	proto_tcp.init = proto_tcp_init;
 	proto_tcp.process = proto_tcp_process;

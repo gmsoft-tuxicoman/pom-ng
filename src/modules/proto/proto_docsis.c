@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,8 +33,8 @@
 static struct ptype *ptype_bool = NULL, *ptype_uint8 = NULL;
 
 struct mod_reg_info* proto_docsis_reg_info() {
-	static struct mod_reg_info reg_info;
-	memset(&reg_info, 0, sizeof(struct mod_reg_info));
+
+	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_docsis_mod_register;
 	reg_info.unregister_func = proto_docsis_mod_unregister;
@@ -56,8 +56,7 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 		return POM_ERR;
 	}
 
-	static struct proto_pkt_field fields[PROTO_DOCSIS_FIELD_NUM + 1];
-	memset(fields, 0, sizeof(struct proto_pkt_field) * (PROTO_DOCSIS_FIELD_NUM + 1));
+	static struct proto_pkt_field fields[PROTO_DOCSIS_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "fc_type";
 	fields[0].value_template = ptype_uint8;
 	fields[0].description = "Frame control type";
@@ -68,8 +67,7 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 	fields[2].value_template = ptype_bool;
 	fields[2].description = "Extended header present";
 
-	static struct proto_reg_info proto_docsis;
-	memset(&proto_docsis, 0, sizeof(struct proto_reg_info));
+	static struct proto_reg_info proto_docsis = { 0 };
 	proto_docsis.name = "docsis";
 	proto_docsis.api_ver = PROTO_API_VER;
 	proto_docsis.mod = mod;
