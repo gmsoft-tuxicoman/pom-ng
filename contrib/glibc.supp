@@ -22,9 +22,10 @@
 }
 
 {
-  libdl leak2
+  lbdl dlopen leak
   Memcheck:Leak
-  fun:calloc
-  obj:/lib/libdl-2.*.so
+  ...
+  fun:dlopen*
   ...
 }
+
