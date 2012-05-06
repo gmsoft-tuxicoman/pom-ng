@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2006-2009 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,18 +26,6 @@
 
 #include <time.h>
 #include <sys/time.h>
-
-struct timer {
-
-	struct timeval expires;
-	void *priv;
-	int (*handler) (void *);
-	struct timer_queue *queue;
-	struct timer *next;
-	struct timer *prev;
-
-};
-
 
 struct timer *timer_alloc(void* priv, int (*handler) (void*));
 int timer_cleanup(struct timer *t);
