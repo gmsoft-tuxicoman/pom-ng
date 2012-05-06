@@ -398,7 +398,13 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						if (!line) // No more full line in this packet
 							return PROTO_OK;
 
-						char int_str[6] = {0};
+						// Remove trailing spaces
+						for (; len > 0 && line[len - 1] == ' '; len--);
+
+						// Remove leading '0' and spaces
+						for (; len > 1 && (*line == '0' || *line == ' '); len--, line++);
+
+						char int_str[10] = {0};
 						if (len >= sizeof(int_str) || !len) {
 							pomlog(POMLOG_DEBUG "Invalid chunk size of len %u", len);
 							priv->state = HTTP_INVALID;
@@ -482,9 +488,9 @@ static int proto_http_post_process(struct proto *proto, struct packet *p, struct
 
 	struct proto_http_conntrack_priv *priv = ce->priv;
 
-	if (
+	if ( (priv->state == HTTP_BODY_QUERY || priv->state == HTTP_BODY_RESPONSE) && (
 		((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) // End of payload reached
-		|| ((priv->info.flags & HTTP_FLAG_CHUNKED) && !priv->info.chunk_len) // Last chunk was processed
+		|| ((priv->info.flags & HTTP_FLAG_CHUNKED) && !priv->info.chunk_len)) // Last chunk was processed
 		
 		) {
 		// Payload done
@@ -536,7 +542,7 @@ static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
 
 	if (priv->event) {
 		if (priv->event->flags & EVENT_FLAG_PROCESS_BEGAN) {
-			pomlog(POMLOG_DEBUG "Processing event on cleanup !");
+			debug_http("entry %p, processing event on cleanup !", ce);
 			event_process_end(priv->event);
 		} else {
 			event_cleanup(priv->event);
