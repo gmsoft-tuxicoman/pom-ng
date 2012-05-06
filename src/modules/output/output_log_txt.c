@@ -354,6 +354,8 @@ int output_log_txt_close(struct output *o) {
 
 		if (evt->fields)
 			free(evt->fields);
+
+		free(evt);
 	}
 
 	while (priv->files) {
