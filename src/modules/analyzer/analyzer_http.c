@@ -549,9 +549,7 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 	struct analyzer_http_request_event_priv *epriv = cpriv->evt->priv;
 
 	struct analyzer_pload_type *type = NULL;
-	if (!epriv->content_type[dir])
-		pomlog(POMLOG_DEBUG "Content-Type not provided !");
-	else
+	if (epriv->content_type[dir])
 		type = analyzer_pload_type_get_by_mime_type(epriv->content_type[dir]);
 
 	if (!epriv->pload[dir]) {
