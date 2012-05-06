@@ -673,11 +673,6 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 
 int packet_stream_cleanup(struct packet_stream *stream) {
 
-	
-	pom_mutex_lock(&stream->lock);
-	timer_cleanup(stream->t);
-	pom_mutex_unlock(&stream->lock);
-
 	pom_mutex_lock(&stream->lock);
 	while (stream->head[0] || stream->head[1]) {
 		if (packet_stream_force_dequeue(stream) == POM_ERR) {
@@ -689,6 +684,8 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	pom_mutex_unlock(&stream->lock);
 
 	pthread_mutex_destroy(&stream->lock);
+
+	timer_cleanup(stream->t);
 
 	free(stream);
 
