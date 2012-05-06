@@ -649,7 +649,7 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 	if (!res->t)
 		return NULL;
 
-	int rev_direction = (direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
+	int rev_direction = POM_DIR_REVERSE(direction);
 	res->cur_seq[direction] = start_seq;
 	res->cur_ack[direction] = start_ack;
 	res->cur_seq[rev_direction] = start_ack;
@@ -746,7 +746,7 @@ static int packet_stream_remove_dupe_bytes(struct packet_stream *stream, struct 
 
 static int packet_stream_is_packet_next(struct packet_stream *stream, struct packet_stream_pkt *pkt, int direction) {
 
-	int rev_direction = (direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
+	int rev_direction = POM_DIR_REVERSE(direction);
 	uint32_t cur_seq = stream->cur_seq[direction];
 	uint32_t rev_seq = stream->cur_seq[rev_direction];
 
@@ -799,9 +799,9 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	if (stream->flags & PACKET_FLAG_STREAM_BIDIR) {
 
 		// Update flags
-		if (direction == CT_DIR_FWD && !(stream->flags & PACKET_FLAG_STREAM_GOT_FWD_DIR)) {
+		if (direction == POM_DIR_FWD && !(stream->flags & PACKET_FLAG_STREAM_GOT_FWD_DIR)) {
 			stream->flags |= PACKET_FLAG_STREAM_GOT_FWD_DIR;
-		} else if (direction == CT_DIR_REV && !(stream->flags & PACKET_FLAG_STREAM_GOT_REV_DIR)) {
+		} else if (direction == POM_DIR_REV && !(stream->flags & PACKET_FLAG_STREAM_GOT_REV_DIR)) {
 			stream->flags |= PACKET_FLAG_STREAM_GOT_REV_DIR;
 		}
 
@@ -972,15 +972,15 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 int packet_stream_force_dequeue(struct packet_stream *stream) {
 
-	if (!stream->head[CT_DIR_FWD] && !stream->head[CT_DIR_REV])
+	if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
 		return POM_OK;
 
 	unsigned int next_dir;
 
-	if (!stream->head[CT_DIR_FWD]) {
-		next_dir = CT_DIR_REV;
-	} else if (!stream->head[CT_DIR_REV]) {
-		next_dir = CT_DIR_FWD;
+	if (!stream->head[POM_DIR_FWD]) {
+		next_dir = POM_DIR_REV;
+	} else if (!stream->head[POM_DIR_REV]) {
+		next_dir = POM_DIR_FWD;
 	} else {
 		// We have packets in both direction, lets see which one we'll process first
 		int i;
@@ -1060,7 +1060,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 
 	struct packet_stream_pkt *res = NULL;
 
-	int dirs[2] = { *direction, (*direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD) };
+	int dirs[2] = { *direction, POM_DIR_REVERSE(*direction) };
 
 	int i, cur_dir;
 	for (i = 0; i < 2 && !res; i++) {

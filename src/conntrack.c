@@ -346,7 +346,7 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 		res = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, parent);
 		if (res) {
 			if (direction)
-				*direction = CT_DIR_FWD;
+				*direction = POM_DIR_FWD;
 			pom_mutex_unlock(&ct->lock);
 			return res;
 		}
@@ -358,7 +358,7 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 		res = conntrack_find(ct->rev_table[hash_fwd], rev_value, fwd_value, parent);
 		if (res) {
 			if (direction)
-				*direction = CT_DIR_REV;
+				*direction = POM_DIR_REV;
 			pom_mutex_unlock(&ct->lock);
 			return res;
 		}

@@ -60,10 +60,10 @@ struct analyzer_http_request_event_priv {
 	struct event *response_event;
 
 	// Payload information
-	struct analyzer_pload_buffer *pload[CT_DIR_TOT];
-	char *content_type[CT_DIR_TOT];
-	size_t content_len[CT_DIR_TOT];
-	unsigned int content_flags[CT_DIR_TOT];
+	struct analyzer_pload_buffer *pload[POM_DIR_TOT];
+	char *content_type[POM_DIR_TOT];
+	size_t content_len[POM_DIR_TOT];
+	unsigned int content_flags[POM_DIR_TOT];
 
 };
 

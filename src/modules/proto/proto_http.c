@@ -208,7 +208,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 		}
 		memset(priv, 0, sizeof(struct proto_http_conntrack_priv));
 		priv->state = HTTP_QUERY_HEADER;
-		priv->client_direction = CT_DIR_UNK;
+		priv->client_direction = POM_DIR_UNK;
 
 		s->ce->priv = priv;
 
@@ -369,7 +369,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						return PROTO_ERR;
 					priv->state = HTTP_QUERY_HEADER;
 					break;
-				} else  if (priv->info.content_pos == 0 && priv->client_direction == CT_OPPOSITE_DIR(s->direction)) {
+				} else  if (priv->info.content_pos == 0 && priv->client_direction == POM_DIR_REVERSE(s->direction)) {
 					// If it was a HEAD request, we might think there is some payload
 					// while there actually isn't any. Check for that
 					unsigned int remaining_size = 0;
@@ -535,7 +535,7 @@ static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
 		return POM_OK;
 
 	int i;
-	for (i = 0; i < CT_DIR_TOT; i++) {
+	for (i = 0; i < POM_DIR_TOT; i++) {
 		if (priv->parser[i])
 			packet_stream_parser_cleanup(priv->parser[i]);
 	}
@@ -594,10 +594,10 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 				if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
 
 					// Check the response direction
-					if (priv->client_direction == CT_DIR_UNK) {
-						priv->client_direction = CT_OPPOSITE_DIR(direction);
+					if (priv->client_direction == POM_DIR_UNK) {
+						priv->client_direction = POM_DIR_REVERSE(direction);
 					} else {
-						if (priv->client_direction != CT_OPPOSITE_DIR(direction)) {
+						if (priv->client_direction != POM_DIR_REVERSE(direction)) {
 							debug_http("Received response in the wrong direction !");
 							return PROTO_INVALID;
 						}
@@ -631,7 +631,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 
 					// Check the query direction
-					if (priv->client_direction == CT_DIR_UNK) {
+					if (priv->client_direction == POM_DIR_UNK) {
 						priv->client_direction = direction;
 					} else {
 						if (priv->client_direction != direction) {

@@ -26,6 +26,14 @@
 #define POM_OK 0
 #define POM_ERR -1
 
+// Defines for packet directions
+#define POM_DIR_UNK -1
+#define POM_DIR_FWD 0
+#define POM_DIR_REV 1
+#define POM_DIR_TOT 2 // Total number of possible directions
+
+#define POM_DIR_REVERSE(x) ((x) == POM_DIR_FWD ? POM_DIR_REV : POM_DIR_FWD)
+
 #include <pom-ng/pomlog.h>
 #include <unistd.h>
 #include <pthread.h>

@@ -23,7 +23,6 @@
 #define __POM_NG_PACKET_H__
 
 #include <pom-ng/base.h>
-#include <pom-ng/conntrack.h>
 #include <pom-ng/timer.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
@@ -97,12 +96,12 @@ struct packet_stream_pkt {
 
 struct packet_stream {
 
-	uint32_t cur_seq[CT_DIR_TOT];
-	uint32_t cur_ack[CT_DIR_TOT];
+	uint32_t cur_seq[POM_DIR_TOT];
+	uint32_t cur_ack[POM_DIR_TOT];
 	uint32_t cur_buff_size, max_buff_size;
 	unsigned int flags;
 	pthread_mutex_t lock;
-	struct packet_stream_pkt *head[CT_DIR_TOT], *tail[CT_DIR_TOT];
+	struct packet_stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
 	int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 	void *priv;
 	struct timer *t;

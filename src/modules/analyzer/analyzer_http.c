@@ -338,7 +338,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 		event_refcount_inc(evt);
 		epriv->response_event = evt;
-		epriv->query_dir = (s->direction == CT_DIR_FWD ? CT_DIR_REV : CT_DIR_FWD);
+		epriv->query_dir = POM_DIR_REVERSE(s->direction);
 
 		dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
 		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
