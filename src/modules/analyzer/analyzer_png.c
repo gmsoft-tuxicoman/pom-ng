@@ -98,7 +98,7 @@ static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer
 
 			pload->state = analyzer_pload_buffer_state_analyzed;
 		
-			debug_png(POMLOG_DEBUG "Got PNG of %ux%u", width, height);
+			debug_png("Got PNG of %ux%u", width, height);
 
 		} else {
 			pomlog(POMLOG_DEBUG "IHDR not found where it was supposed to be");

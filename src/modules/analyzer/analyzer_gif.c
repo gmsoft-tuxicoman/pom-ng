@@ -96,7 +96,7 @@ static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer
 
 		pload->state = analyzer_pload_buffer_state_analyzed;
 
-		debug_gif(POMLOG_DEBUG "Got GIF image of %ux%u", width, height);
+		debug_gif("Got GIF image of %ux%u", width, height);
 	} else {
 		pomlog(POMLOG_DEBUG "GIF signature not found");
 		pload->type = NULL;
