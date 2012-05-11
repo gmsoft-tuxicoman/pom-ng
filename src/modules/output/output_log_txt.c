@@ -170,6 +170,7 @@ int output_log_txt_open(struct output *o) {
 		char *name = PTYPE_STRING_GETVAL(v[1].value);
 		file->name = strdup(name);
 		if (!file->name) {
+			free(file);
 			pom_oom(strlen(name) + 1);
 			goto err;
 		}
@@ -177,7 +178,17 @@ int output_log_txt_open(struct output *o) {
 		char *path = PTYPE_STRING_GETVAL(v[2].value);
 		file->path = strdup(path);
 		if (!file->path) {
+			free(file->name);
+			free(file);
 			pom_oom(strlen(path) + 1);
+			goto err;
+		}
+
+		if (pthread_mutex_init(&file->lock, NULL)) {
+			free(file->path);
+			free(file->name);
+			free(file);
+			pomlog(POMLOG_ERR "Error while initializing file lock : %s", pom_strerror(errno));
 			goto err;
 		}
 
@@ -372,6 +383,9 @@ int output_log_txt_close(struct output *o) {
 		if (file->path)
 			free(file->path);
 
+		if (pthread_mutex_destroy(&file->lock))
+			pomlog(POMLOG_WARN "Error while destroying file lock : %s", pom_strerror(errno)); 
+
 		free(file);
 
 	}
@@ -387,6 +401,8 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 	// Open the log file
 	struct output_log_txt_file *file = log_evt->file;
+
+	pom_mutex_lock(&file->lock);
 	if (file->fd == -1) {
 		// File is not open, let's do it
 		char filename[FILENAME_MAX + 1] = {0};
@@ -397,6 +413,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 		if (file->fd == -1) {
 			pomlog(POMLOG_ERR "Error while opening file \"%s\" : %s", pom_strerror(errno));
+			pom_mutex_unlock(&file->lock);
 			return POM_ERR;
 		}
 	}
@@ -420,8 +437,10 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 		if (evt->data[field->id].value) {
 			char *value = ptype_print_val_alloc(evt->data[field->id].value);
-			if (!value)
+			if (!value) {
+				pom_mutex_unlock(&file->lock);
 				return POM_ERR;
+			}
 			if (pom_write(file->fd, value, strlen(value)) != POM_OK) {
 				free(value);
 				goto write_err;
@@ -444,9 +463,12 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	if (pom_write(file->fd, "\n", 1) != POM_OK)
 		goto write_err;
 
+	pom_mutex_unlock(&file->lock);
+
 	return POM_OK;
 
 write_err:
+	pom_mutex_unlock(&file->lock);
 	pomlog(POMLOG_ERR "Error while writing to log file : %s", file->path);
 	return POM_ERR;
 

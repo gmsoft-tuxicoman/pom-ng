@@ -35,6 +35,7 @@ struct output_log_txt_file {
 	char *name;
 	char *path;
 	int fd;
+	pthread_mutex_t lock;
 	struct output_log_txt_file *prev, *next;
 };
 
