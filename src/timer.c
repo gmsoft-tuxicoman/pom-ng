@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2006-2009 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,9 +24,9 @@
 
 
 #if 0
-#define timer_tshoot(x...) pomlog(POMLOG_DEBUG x)
+#define debug_timer(x...) pomlog(POMLOG_DEBUG x)
 #else
-#define timer_tshoot(x...)
+#define debug_timer(x...)
 #endif
 
 static pthread_mutex_t timer_main_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -60,7 +60,7 @@ int timers_process() {
 				pom_mutex_unlock(&timer_main_lock);
 
 				// Process it
-				timer_tshoot( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
+				debug_timer( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
 				if ((*tmp->handler) (tmp->priv) != POM_OK) {
 					return POM_ERR;
 				}
