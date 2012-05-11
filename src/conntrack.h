@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,12 +33,28 @@ struct conntrack_priv_list {
 	struct conntrack_priv_list *prev, *next;
 };
 
+struct conntrack_timer {
+
+	struct timer *timer;
+	struct conntrack_entry *ce;
+	struct proto *proto;
+	uint32_t fwd_hash;
+	int (*handler) (struct conntrack_entry *ce, void *priv);
+	void *priv;
+
+	struct conntrack_timer *prev, *next;
+};
+
 struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev);
 int conntrack_tables_empty(struct conntrack_tables *ct);
 int conntrack_tables_cleanup(struct conntrack_tables *ct);
 int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
-struct conntrack_con_info *conntrack_con_info_alloc(struct proto *proto);
-int conntrack_cleanup(void *conntrack);
+int conntrack_timed_cleanup(void *timer);
+int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct conntrack_entry *ce);
+int conntrack_destroy(struct conntrack_entry *ce);
+
+
+int conntrack_timer_process(void *priv);
 
 #endif

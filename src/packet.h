@@ -40,6 +40,40 @@ struct packet_buffer_pool {
 
 };
 
+struct packet_stream_pkt {
+
+	struct packet *pkt;
+	struct proto_process_stack *stack;
+	uint32_t seq, ack, plen;
+	unsigned int stack_index;
+	unsigned int flags;
+	struct packet_stream_pkt *prev, *next;
+
+};
+
+struct packet_stream {
+
+	uint32_t cur_seq[POM_DIR_TOT];
+	uint32_t cur_ack[POM_DIR_TOT];
+	uint32_t cur_buff_size, max_buff_size;
+	unsigned int flags;
+	unsigned int same_dir_timeout, rev_dir_timeout;
+	struct packet_stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
+	int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+	struct conntrack_timer *t;
+	struct conntrack_entry *ce;
+};
+
+struct packet_stream_parser {
+	unsigned int max_line_size;
+	char *buff;
+	unsigned int buff_len;
+	unsigned int buff_pos;
+	char *pload;
+	unsigned int plen;
+};
+
+
 void packet_buffer_pool_release(struct packet_buffer *pb);
 int packet_buffer_pool_cleanup();
 
@@ -50,7 +84,7 @@ int packet_pool_cleanup();
 int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
 int packet_info_pool_cleanup(struct packet_info_pool *pool);
 
-int packet_stream_timeout(void *priv);
+int packet_stream_timeout(struct conntrack_entry *ce, void *priv);
 int packet_stream_force_dequeue(struct packet_stream *stream);
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction);
 

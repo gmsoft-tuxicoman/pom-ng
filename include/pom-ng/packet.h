@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 
 #include <pom-ng/base.h>
 #include <pom-ng/timer.h>
+#include <pom-ng/conntrack.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
 #define PACKET_FLAG_STREAM_BIDIR	0x2
@@ -83,40 +84,6 @@ struct packet_multipart {
 	struct proto_dependency *proto;
 };
 
-struct packet_stream_pkt {
-
-	struct packet *pkt;
-	struct proto_process_stack *stack;
-	uint32_t seq, ack, plen;
-	unsigned int stack_index;
-	unsigned int flags;
-	struct packet_stream_pkt *prev, *next;
-
-};
-
-struct packet_stream {
-
-	uint32_t cur_seq[POM_DIR_TOT];
-	uint32_t cur_ack[POM_DIR_TOT];
-	uint32_t cur_buff_size, max_buff_size;
-	unsigned int flags;
-	pthread_mutex_t lock;
-	struct packet_stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
-	int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-	void *priv;
-	struct timer *t;
-};
-
-
-struct packet_stream_parser {
-	unsigned int max_line_size;
-	char *buff;
-	unsigned int buff_len;
-	unsigned int buff_pos;
-	char *pload;
-	unsigned int plen;
-};
-
 int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset);
 
 struct packet *packet_pool_get();
@@ -128,7 +95,8 @@ int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int timeout, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index), void *priv);
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, struct conntrack_entry *ce, unsigned int flags);
+int packet_stream_set_timeout(struct packet_stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout, int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index));
 int packet_stream_cleanup(struct packet_stream *stream);
 int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack);
 

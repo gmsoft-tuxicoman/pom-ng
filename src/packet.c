@@ -634,7 +634,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 }
 
 
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, unsigned int timeout, unsigned int flags, int (*handler) (void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index), void *priv) {
+struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, struct conntrack_entry *ce, unsigned int flags) {
 	
 	struct packet_stream *res = malloc(sizeof(struct packet_stream));
 	if (!res) {
@@ -644,25 +644,13 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 
 	memset(res, 0, sizeof(struct packet_stream));
 	
-	res->t = timer_alloc(res, packet_stream_timeout);
-
-	if (!res->t)
-		return NULL;
-
 	int rev_direction = POM_DIR_REVERSE(direction);
 	res->cur_seq[direction] = start_seq;
 	res->cur_ack[direction] = start_ack;
 	res->cur_seq[rev_direction] = start_ack;
 	res->cur_ack[rev_direction] = start_seq;
 	res->max_buff_size = max_buff_size;
-	res->handler = handler;
-	res->priv = priv;
-
-	if (pthread_mutex_init(&res->lock, NULL)) {
-		timer_cleanup(res->t);
-		pomlog(POMLOG_ERR "Error while initializing packet_stream list mutex : %s", pom_strerror(errno));
-		return NULL;
-	}
+	res->ce = ce;
 
 	res->flags = flags;
 
@@ -671,21 +659,32 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 	return res;
 }
 
+int packet_stream_set_timeout(struct packet_stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout, int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index)) {
+
+
+	if (!stream->t) {
+		stream->t = conntrack_timer_alloc(stream->ce, packet_stream_timeout, stream);
+		if (!stream->t)
+			return POM_ERR;
+	}
+	stream->handler = handler;
+	stream->same_dir_timeout = same_dir_timeout;
+	stream->rev_dir_timeout = rev_dir_timeout;
+
+	return POM_OK;
+}
+
 int packet_stream_cleanup(struct packet_stream *stream) {
 
-	pom_mutex_lock(&stream->lock);
 	while (stream->head[0] || stream->head[1]) {
 		if (packet_stream_force_dequeue(stream) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while processing remaining packets in the stream");
 			break;
 		}
 	}
-	
-	pom_mutex_unlock(&stream->lock);
 
-	pthread_mutex_destroy(&stream->lock);
-
-	timer_cleanup(stream->t);
+	if (stream->t)
+		conntrack_timer_cleanup(stream->t);
 
 	free(stream);
 
@@ -694,14 +693,12 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	return POM_OK;
 }
 
-int packet_stream_timeout(void *priv) {
+int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
 
 	struct packet_stream *stream = priv;
 	int res = POM_OK;
 	
-	pom_mutex_lock(&stream->lock);
 	res = packet_stream_force_dequeue(stream);
-	pom_mutex_unlock(&stream->lock);
 
 	return res;
 }
@@ -764,7 +761,8 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 		if ((rev_seq < pkt->ack && pkt->ack - rev_seq < PACKET_HALF_SEQ)
 			|| (rev_seq > pkt->ack && rev_seq - pkt->ack > PACKET_HALF_SEQ)) {
 			// The host processed data in the reverse direction which we haven't processed yet
-			timer_queue(stream->t, 2); // Only wait 2 seconds for the reverse direction
+			if (stream->t)
+				conntrack_timer_queue(stream->t, stream->rev_dir_timeout); // Only wait 2 seconds for the reverse direction
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
 			return 0;
 		}
@@ -783,8 +781,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	if (!stream || !pkt || !stack)
 		return PROTO_ERR;
-
-	pom_mutex_lock(&stream->lock);
 
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : start", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
@@ -820,7 +816,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		if (packet_stream_is_packet_old_dupe(stream, &spkt, direction)) {
 			// cur_seq is after the end of the packet, discard it
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : discard", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
-			pom_mutex_unlock(&stream->lock);
 			return PROTO_OK;
 		}
 
@@ -839,9 +834,8 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		stream->cur_ack[direction] = ack;
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
-		int res = stream->handler(stream->priv, pkt, stack, stack_index);
+		int res = stream->handler(stream->ce, pkt, stack, stack_index);
 		if (res == PROTO_ERR) {
-			pom_mutex_unlock(&stream->lock);
 			return PROTO_ERR;
 		}
 
@@ -853,8 +847,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process additional", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
-			if (stream->handler(stream->priv, p->pkt, p->stack, p->stack_index) == POM_ERR) {
-				pom_mutex_unlock(&stream->lock);
+			if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR) {
 				return PROTO_ERR;
 			}
 
@@ -871,7 +864,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			free(p);
 		}
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
-		pom_mutex_unlock(&stream->lock);
 		return res;
 	}
 
@@ -881,7 +873,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	struct packet_stream_pkt *p = malloc(sizeof(struct packet_stream_pkt));
 	if (!p) {
-		pom_mutex_unlock(&stream->lock);
 		pom_oom(sizeof(struct packet_stream_pkt));
 		return PROTO_ERR;
 	}
@@ -892,13 +883,11 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// No need to backup this if there is no payload
 		p->pkt = packet_clone(pkt, stream->flags);
 		if (!p->pkt) {
-			pom_mutex_unlock(&stream->lock);
 			free(p);
 			return PROTO_ERR;
 		}
 		p->stack = core_stack_backup(stack, pkt, p->pkt);
 		if (!p->stack) {
-			pom_mutex_unlock(&stream->lock);
 			packet_pool_release(p->pkt);
 			free(p);
 			return PROTO_ERR;
@@ -957,13 +946,15 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// Buffer overflow
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		if (packet_stream_force_dequeue(stream) != POM_OK) {
-			pom_mutex_unlock(&stream->lock);
 			return POM_ERR;
 		}
 	}
 
+	// Add timeout
+	if (stream->t) 
+		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
+
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
-	pom_mutex_unlock(&stream->lock);
 	return PROTO_OK;
 }
 
@@ -1006,7 +997,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 		return POM_ERR;
 
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->ts.tv_sec, p->ts.tv_usec, p->seq, p->ack);
-	int res = stream->handler(stream->priv, p->pkt, p->stack, p->stack_index);
+	int res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
 
 	int i;
 	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
@@ -1032,10 +1023,8 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process additional", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
-		if (stream->handler(stream->priv, p->pkt, p->stack, p->stack_index) == POM_ERR) {
-			pom_mutex_unlock(&stream->lock);
+		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR)
 			return POM_ERR;
-		}
 
 		for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
 			packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);

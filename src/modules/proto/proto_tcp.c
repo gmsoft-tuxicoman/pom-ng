@@ -253,8 +253,6 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 	if (!s->ce)
 		return PROTO_ERR;
 
-	pom_mutex_lock(&s->ce->lock);
-
 	struct proto_tcp_priv *ppriv = proto->priv;
 	struct proto_tcp_conntrack_priv *priv = s->ce->priv;
 
@@ -263,7 +261,7 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 	if (!priv) {
 		priv = malloc(sizeof(struct proto_tcp_conntrack_priv));
 		if (!priv) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
 			pom_oom(sizeof(struct proto_tcp_conntrack_priv));
 			return POM_ERR;
 		}
@@ -310,7 +308,7 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 			priv->state = STATE_TCP_TIME_WAIT;
 			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_time_wait_t);
 		} else if (priv->state == STATE_TCP_TIME_WAIT) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
 			return POM_OK;
 		} else {
 			priv->state = STATE_TCP_ESTABLISHED;
@@ -319,13 +317,13 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 	}
 
 	if (conntrack_delayed_cleanup(s->ce, *delay) != POM_OK) {
-		pom_mutex_unlock(&s->ce->lock);
+		conntrack_unlock(s->ce);
 		return PROTO_ERR;
 	}
 
 
 	if (!priv->proto || !priv->proto->proto) {
-		pom_mutex_unlock(&s->ce->lock);
+		conntrack_unlock(s->ce);
 		return PROTO_OK;
 	}
 
@@ -338,15 +336,18 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 
 		uint32_t ack = ntohl(hdr->th_ack);
 
-		// FIXME only create bidir stream if we actually get packet from the other direction
-		priv->stream = packet_stream_alloc(seq, ack, s->direction, 65535, 30, PACKET_FLAG_STREAM_BIDIR, proto_tcp_process_payload, priv);
+		priv->stream = packet_stream_alloc(seq, ack, s->direction, 65535, s->ce, PACKET_FLAG_STREAM_BIDIR);
 		if (!priv->stream) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
+			return PROTO_ERR;
+		}
+		if (packet_stream_set_timeout(priv->stream, 600, 2, proto_tcp_process_payload) != POM_OK) {
+			conntrack_unlock(s->ce);
+			packet_stream_cleanup(priv->stream);
 			return PROTO_ERR;
 		}
 		
 	}
-	pom_mutex_unlock(&s->ce->lock);
 
 
 	if (plen) {
@@ -356,17 +357,21 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 		s_next->plen = s->plen - hdr_len;
 		s_next->direction = s->direction;
 		int res = packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack));
-		if (res == PROTO_OK)
+		if (res == PROTO_OK) {
+			conntrack_unlock(s->ce);
 			return PROTO_STOP;
+		}
+		conntrack_unlock(s->ce);
 		return res;
 	}
+	conntrack_unlock(s->ce);
 	
 	return PROTO_OK;
 }
 
-static int proto_tcp_process_payload(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	struct proto_tcp_conntrack_priv *cp = priv;
+	struct proto_tcp_conntrack_priv *cp = ce->priv;
 
 	if (cp->proto) {
 		stack[stack_index].proto = cp->proto->proto;

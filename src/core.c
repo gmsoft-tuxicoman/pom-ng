@@ -43,7 +43,7 @@ static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREA
 static int core_num_threads = 0;
 static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-static struct timeval core_clock;
+static struct timeval core_clock[CORE_PROCESS_THREAD_MAX];
 static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Packet queue
@@ -62,8 +62,11 @@ int core_init(int num_threads) {
 		return POM_ERR;
 	}
 
+	// Initialize the clock table
+	memset(core_clock, 0, sizeof(core_clock));
+
 	// Start the processing threads
-	int num_cpu = sysconf(_SC_NPROCESSORS_ONLN);
+	int num_cpu = sysconf(_SC_NPROCESSORS_ONLN) - 1;
 	if (num_cpu < 1) {
 		pomlog(POMLOG_WARN "Could not find the number of CPU, assuming %u", CORE_PROCESS_THREAD_DEFAULT);
 		num_cpu = CORE_PROCESS_THREAD_DEFAULT;
@@ -315,11 +318,7 @@ void *core_processing_thread_func(void *priv) {
 
 		// Update the current clock
 		pom_mutex_lock(&core_clock_lock);
-		if ((pkt->ts.tv_sec > core_clock.tv_sec) ||
-			((pkt->ts.tv_sec == core_clock.tv_sec) && (pkt->ts.tv_usec > core_clock.tv_sec))) {
-
-			memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
-		}
+		memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
 		pom_mutex_unlock(&core_clock_lock);
 
 		// Lock the processing thread
@@ -328,17 +327,16 @@ void *core_processing_thread_func(void *priv) {
 			abort();
 			return NULL;
 		}
-	
-		// Process timers
-		if (timers_process() != POM_OK) {
-			pthread_rwlock_unlock(&core_processing_lock);
-			return NULL;
-		}
-
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
 			halt("Packet processing encountered an error");
+			pthread_rwlock_unlock(&core_processing_lock);
+			return NULL;
+		}
+
+		// Process timers
+		if (timers_process() != POM_OK) {
 			pthread_rwlock_unlock(&core_processing_lock);
 			return NULL;
 		}
@@ -429,9 +427,11 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 		core_process_dump_info(s, p, res);
 #endif
 	int i;
-	// Cleanup pkt_info
-	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
+	// Cleanup pkt_info and remove refcount
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++) {
+		conntrack_refcount_dec(s[i].ce);
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
+	}
 	
 	// Clean the stack
 	memset(&s[stack_index], 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX - stack_index));
@@ -442,7 +442,7 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 
 int core_process_packet_stack(struct proto_process_stack *stack, unsigned int stack_index, struct packet *p) {
 
-	unsigned int i;
+	unsigned int i, res = PROTO_OK;
 
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {
 
@@ -456,41 +456,44 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 		int res = proto_process(p, stack, i);
 
-		if (res == PROTO_ERR) {
+		if (res == PROTO_ERR)
 			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s->proto->info->name);
-			return PROTO_ERR;
-		} else if (res < 0) {
-			return res;
-		}
+
+		if (res < 0)
+			break;
 
 		struct proto_process_stack *s_next = &stack[i + 1];
 
 		if (!s_next->pload)
 			break;
 	
-		if (proto_process_payload(p, stack, i) != POM_OK)
-			return PROTO_ERR;
+		if (proto_process_payload(p, stack, i) != POM_OK) {
+			res = PROTO_ERR;
+			break;
+		}
+
 
 	}
 
 	if (proto_process_payload(p, stack, i) != POM_OK)
-		return PROTO_ERR;
+		res = PROTO_ERR;
 
 	for (; i >= stack_index; i--) {
 
 		if (!stack[i].proto)
 			continue;
-
-		int res = proto_post_process(p, stack, i);
-
-		if (res == POM_ERR) {
-			pomlog(POMLOG_ERR "Error while post processing packet for proto %s", stack[stack_index].proto->info->name);
-			return PROTO_ERR;
-		}
-	}
 		
+		if (res >= 0) {
+			res = proto_post_process(p, stack, i);
+			if (res == POM_ERR)
+				pomlog(POMLOG_ERR "Error while post processing packet for proto %s", stack[stack_index].proto->info->name);
+		}
+
+		if (stack[i].ce)
+			conntrack_refcount_dec(stack[i].ce);
+	}
 	
-	return PROTO_OK;
+	return res;
 
 }
 
@@ -544,7 +547,18 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 void core_get_clock(struct timeval *now) {
 
 	pom_mutex_lock(&core_clock_lock);
-	memcpy(now, &core_clock, sizeof(struct timeval));
+
+	memcpy(now, &core_clock[0], sizeof(struct timeval));
+
+	// Take only the least recent time
+	int i;
+	for (i = 1; i < core_num_threads; i++) {
+		if ((now->tv_sec > core_clock[i].tv_sec) ||
+			((now->tv_sec == core_clock[i].tv_sec) && (now->tv_usec > core_clock[i].tv_sec))) {
+			memcpy(now, &core_clock, sizeof(struct timeval));
+		}
+	}
+
 	pom_mutex_unlock(&core_clock_lock);
 
 }
