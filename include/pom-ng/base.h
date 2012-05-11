@@ -68,4 +68,7 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 // Wrapper for write() that writes the whole buffer
 int pom_write(int fd, const void *buf, size_t count);
 
+// Init a mutex with a specific type
+int pom_mutex_init_type(pthread_mutex_t *lock, int type);
+
 #endif

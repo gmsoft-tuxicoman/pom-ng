@@ -52,3 +52,32 @@ int pom_write(int fd, const void *buf, size_t count) {
 
 	return POM_OK;
 }
+
+int pom_mutex_init_type(pthread_mutex_t *lock, int type) {
+
+	pthread_mutexattr_t attr;
+	if (pthread_mutexattr_init(&attr)) {
+		pomlog(POMLOG_ERR "Error while initializing mutex attribute : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	if (pthread_mutexattr_settype(&attr, type)) {
+		pomlog(POMLOG_ERR "Error while setting mutex attribute type : %s", pom_strerror(errno));
+		pthread_mutexattr_destroy(&attr);
+		return POM_ERR;
+	}
+
+	if(pthread_mutex_init(lock, &attr)) {
+		pomlog(POMLOG_ERR "Error while initializing a lock : %s", pom_strerror(errno));
+		pthread_mutexattr_destroy(&attr);
+		return POM_ERR;
+	}
+
+	if (pthread_mutexattr_destroy(&attr)) {
+		pomlog(POMLOG_WARN "Error while destroying conntrack mutex attribute : %s", pom_strerror(errno));
+		pthread_mutex_destroy(lock);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
