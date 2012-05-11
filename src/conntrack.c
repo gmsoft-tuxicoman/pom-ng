@@ -446,12 +446,13 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 
 	res->fwd_hash = full_hash_fwd;
 
+	struct conntrack_list *lst_fwd = NULL, *lst_rev = NULL;
+
 	res->fwd_value = ptype_alloc_from(fwd_value);
 	if (!res->fwd_value)
 		goto err;
 
 	// Alloc the forward list
-	struct conntrack_list *lst_fwd = NULL;
 	lst_fwd = malloc(sizeof(struct conntrack_list));
 	if (!lst_fwd) {
 		ptype_cleanup(res->fwd_value);
@@ -462,7 +463,6 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 	lst_fwd->ce = res;
 
 	// Alloc the reverse list
-	struct conntrack_list *lst_rev = NULL;
 	if (rev_value) {
 		if (!direction || !*direction) { // Hash rev was already computed if we had to reverse the direction
 			if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
@@ -779,6 +779,8 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 		}
 
 		pom_mutex_unlock(&ce->parent->ct->lock);
+
+		free(ce->parent);
 	}
 
 	// No need to lock ourselves at this point this there shouldn't be any reference
