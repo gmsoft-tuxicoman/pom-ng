@@ -814,6 +814,11 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 int conntrack_destroy(struct conntrack_entry *ce) {
 
 	struct conntrack_priv_list *priv_lst = ce->priv_list;
+	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
+		if (ce->proto->info->ct_info->cleanup_handler(ce) != POM_OK)
+			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
+	}
+
 	while (priv_lst) {
 		if (priv_lst->cleanup) {
 			if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
@@ -823,11 +828,6 @@ int conntrack_destroy(struct conntrack_entry *ce) {
 		free(priv_lst);
 		priv_lst = ce->priv_list;
 
-	}
-
-	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
-		if (ce->proto->info->ct_info->cleanup_handler(ce) != POM_OK)
-			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
 	}
 
 	if (ce->cleanup_timer) {
