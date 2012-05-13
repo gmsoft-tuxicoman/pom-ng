@@ -316,11 +316,6 @@ void *core_processing_thread_func(void *priv) {
 
 		pom_mutex_unlock(&core_pkt_queue_mutex);
 
-		// Update the current clock
-		pom_mutex_lock(&core_clock_lock);
-		memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
-		pom_mutex_unlock(&core_clock_lock);
-
 		// Lock the processing thread
 		if (pthread_rwlock_rdlock(&core_processing_lock)) {
 			pomlog(POMLOG_ERR "Error while locking the processing lock : %s", pom_strerror(errno));
@@ -334,6 +329,11 @@ void *core_processing_thread_func(void *priv) {
 			pthread_rwlock_unlock(&core_processing_lock);
 			return NULL;
 		}
+
+		// Update the current clock
+		pom_mutex_lock(&core_clock_lock);
+		memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
+		pom_mutex_unlock(&core_clock_lock);
 
 		// Process timers
 		if (timers_process() != POM_OK) {
