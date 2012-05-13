@@ -166,6 +166,7 @@ int main(int argc, char *argv[]) {
 			{ "threads", 1, 0, 't' },
 			{ "system-store", 1, 0, 's' },
 			{ "help", 0, 0, 'h' },
+			{ 0 }
 		};
 
 		
