@@ -38,23 +38,22 @@ struct analyzer_http_priv {
 	struct proto_packet_listener *http_packet_listener;
 };
 
-#define ANALYZER_HTTP_EVT_QUERY_END	1
-#define ANALYZER_HTTP_EVT_RESPONSE_END	2
+struct analyzer_http_event_list {
+
+	struct event *evt;
+	struct analyzer_http_event_list *prev, *next;
+};
 
 struct analyzer_http_ce_priv {
 
-	// Our http_request event
-	struct event *evt;
-	unsigned int flags;
+	struct analyzer_http_event_list *evt_head, *evt_tail;
+
+	int client_direction;
 
 };
 
 struct analyzer_http_request_event_priv {
 
-	// Used to tag the payloads
-	int query_dir;
-
-	
 	// Original events from which we base ours
 	struct event *query_event;
 	struct event *response_event;

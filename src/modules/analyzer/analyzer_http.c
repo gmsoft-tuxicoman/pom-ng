@@ -201,10 +201,12 @@ int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
 	struct analyzer_http_ce_priv *cpriv = priv;
 
 	int res = POM_OK;
-	if (cpriv->evt)
-		res = analyzer_http_event_finalize_process(cpriv);
+
+	while (cpriv->evt_head)
+		res += analyzer_http_event_finalize_process(cpriv);
 
 	free(priv);
+
 	return res;
 }
 
@@ -260,6 +262,8 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 			return POM_ERR;
 		}
 		memset(cpriv, 0, sizeof(struct analyzer_http_ce_priv));
+		cpriv->client_direction = POM_DIR_UNK;
+
 
 		if (conntrack_add_priv(s->ce, analyzer, cpriv, analyzer_http_ce_priv_cleanup) != POM_OK) {
 			free(cpriv);
@@ -268,58 +272,62 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 	}
 
-	if (!cpriv->evt) {
-		cpriv->evt = event_alloc(apriv->evt_request);
-		
-		if (!cpriv->evt)
+	// Remember if we created a new event of not
+	int start_process = 0; 
+
+	// If it's a new query or if there is no ongoing query and we got a response, allocate a new event
+	struct analyzer_http_event_list *elist = cpriv->evt_head;
+	if (evt->reg == apriv->evt_query || !elist) {
+
+		elist = malloc(sizeof(struct analyzer_http_event_list));
+		if (!elist) {
+			pom_oom(sizeof(struct analyzer_http_event_list));
 			return POM_ERR;
+		}
+		memset(elist, 0, sizeof(struct analyzer_http_event_list));
+
+		elist->prev = cpriv->evt_tail;
+		if (elist->prev)
+			elist->prev->next = elist;
+		else
+			cpriv->evt_head = elist;
+
+		cpriv->evt_tail = elist;
+
+		elist->evt = event_alloc(apriv->evt_request);
+		if (!elist->evt)
+			return POM_ERR;
+
+		start_process = 1;
+
 	}
 
-	struct analyzer_http_request_event_priv *epriv = cpriv->evt->priv;
+	struct analyzer_http_request_event_priv *epriv = elist->evt->priv;
 
 	if (!epriv) {
 		epriv = malloc(sizeof(struct analyzer_http_request_event_priv));
 		if (!epriv) {
-			event_cleanup(cpriv->evt);
-			cpriv->evt = NULL;
 			pom_oom(sizeof(struct analyzer_http_request_event_priv));
 			return POM_ERR;
 		}
 		memset(epriv, 0, sizeof(struct analyzer_http_request_event_priv));
-		cpriv->evt->priv = epriv;
-	}
-
-	if ((epriv->response_event && evt->reg == apriv->evt_response) || (epriv->query_event && evt->reg == apriv->evt_query)) {
-		if (analyzer_http_event_finalize_process(cpriv) != POM_OK)
-			return POM_ERR;
-		cpriv->evt = event_alloc(apriv->evt_request);
-		
-		if (!cpriv->evt)
-			return POM_ERR;
-
-		epriv = malloc(sizeof(struct analyzer_http_request_event_priv));
-		if (!epriv) {
-			event_cleanup(cpriv->evt);
-			cpriv->evt = NULL;
-			pom_oom(sizeof(struct analyzer_http_request_event_priv));
-			return POM_ERR;
-		}
-		memset(epriv, 0, sizeof(struct analyzer_http_request_event_priv));
-		cpriv->evt->priv = epriv;
+		elist->evt->priv = epriv;
 	}
 
 	// Do the mapping, no flag checking or other, we just know how :)
 
 	struct event_data *src_data = evt->data;
-	struct event_data *dst_data = cpriv->evt->data;
+	struct event_data *dst_data = elist->evt->data;
 
 	struct event_data_item *headers = NULL;
 
 	if (evt->reg == apriv->evt_query) {
 
+		if (cpriv->client_direction == POM_DIR_UNK)
+			cpriv->client_direction = s->direction;
+
 		event_refcount_inc(evt);
 		epriv->query_event = evt;
-		epriv->query_dir = s->direction;
 
 		// Copy data contained into the query event
 		dst_data[analyzer_http_request_first_line].value = src_data[proto_http_query_first_line].value;
@@ -336,9 +344,11 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 	} else if (evt->reg == apriv->evt_response) {
 
+		if (cpriv->client_direction == POM_DIR_UNK)
+			cpriv->client_direction = POM_DIR_REVERSE(s->direction);
+
 		event_refcount_inc(evt);
 		epriv->response_event = evt;
-		epriv->query_dir = POM_DIR_REVERSE(s->direction);
 
 		dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
 		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
@@ -444,11 +454,10 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				dst_data[analyzer_http_request_client_addr].value = ptype_alloc_from(dst);
 		}
 	}
-
-	if (!(epriv->query_event && epriv->response_event)) {
-		// We have one of the two event, event processing begins
-		return event_process_begin(cpriv->evt, stack, stack_index);
-	}
+	
+	// Start processing our meta-event
+	if (start_process)
+		return event_process_begin(elist->evt, stack, stack_index);
 
 	return POM_OK;
 }
@@ -465,26 +474,51 @@ int analyzer_http_event_process_end(struct event *evt, void *obj) {
 		return POM_OK;
 	}
 
-	if (evt->reg == apriv->evt_query)
-		cpriv->flags |= ANALYZER_HTTP_EVT_QUERY_END;
-	else
-		cpriv->flags |= ANALYZER_HTTP_EVT_RESPONSE_END;
 
-	if (cpriv->flags == (ANALYZER_HTTP_EVT_QUERY_END | ANALYZER_HTTP_EVT_RESPONSE_END))
-		return analyzer_http_event_finalize_process(cpriv);
+	if (evt->reg == apriv->evt_query) {
+		// Queries are only processed when we get the corresponding
+		// response back or on timeout
+		return POM_OK;
+	}
 
-	return POM_OK;
+	// Let's process the response
+
+	struct analyzer_http_event_list *elist = cpriv->evt_head;
+	if (!elist) {
+		pomlog(POMLOG_ERR "No event found !");
+		return POM_ERR;
+	}
+
+	struct analyzer_http_request_event_priv *epriv = elist->evt->priv;
+
+	if (epriv->response_event != evt) {
+		pomlog(POMLOG_ERR "Internal error, not the response event expected");
+		return POM_ERR;
+	}
+
+	return analyzer_http_event_finalize_process(cpriv);
 }
 
 int analyzer_http_event_finalize_process(struct analyzer_http_ce_priv *cpriv) {
 
-	struct event *evt = cpriv->evt;
+
+	struct analyzer_http_event_list *elist = cpriv->evt_head;
+	struct event *evt = elist->evt;
+	struct analyzer_http_request_event_priv *epriv = evt->priv;
+
+	if (!epriv->query_event || !epriv->response_event)
+		pomlog(POMLOG_DEBUG "Processing incomplete event !");
+
+	cpriv->evt_head = cpriv->evt_head->next;
+	if (cpriv->evt_head)
+		cpriv->evt_head->prev = NULL;
+	else
+		cpriv->evt_tail = NULL;
+	
+	free(elist);
 
 	if (event_process_end(evt) != POM_OK)
 		return POM_ERR;
-
-	cpriv->evt = NULL;
-	cpriv->flags = 0;
 
 	return POM_OK;
 }
@@ -539,14 +573,22 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 		return POM_ERR;
 
 	struct analyzer_http_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
-	if (!cpriv) {
+	if (!cpriv || !cpriv->evt_head || !cpriv->evt_tail) {
 		pomlog(POMLOG_ERR "No private data attached to this connection. Ignoring payload.");
 		return POM_ERR;
 	}
-
+	
 	int dir = s->direction;
+	struct event *evt = NULL;
+	if (dir == cpriv->client_direction) {
+		// We need to use the latest query we've received
+		evt = cpriv->evt_tail->evt;
+	} else {
+		// We need to use the first response
+		evt = cpriv->evt_head->evt;
+	}
 
-	struct analyzer_http_request_event_priv *epriv = cpriv->evt->priv;
+	struct analyzer_http_request_event_priv *epriv = evt->priv;
 
 	struct analyzer_pload_type *type = NULL;
 	if (epriv->content_type[dir])
@@ -557,7 +599,7 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 		if (!epriv->pload[dir])
 			return POM_ERR;
 
-		epriv->pload[dir]->rel_event = cpriv->evt;
+		epriv->pload[dir]->rel_event = evt;
 
 	}
 

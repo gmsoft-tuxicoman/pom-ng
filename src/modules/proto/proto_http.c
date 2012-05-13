@@ -209,7 +209,8 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 			return PROTO_ERR;
 		}
 		memset(priv, 0, sizeof(struct proto_http_conntrack_priv));
-		priv->state = HTTP_QUERY_HEADER;
+		priv->state[POM_DIR_FWD] = HTTP_STATE_FIRST_LINE;
+		priv->state[POM_DIR_REV] = HTTP_STATE_FIRST_LINE;
 		priv->client_direction = POM_DIR_UNK;
 
 		s->ce->priv = priv;
@@ -218,7 +219,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 	debug_http("entry %p, current state %u, packet %u.%u", s->ce, priv->state, (int)p->ts.tv_sec, (int)p->ts.tv_usec);
 
-	if (priv->state == HTTP_INVALID)
+	if (priv->is_invalid)
 		return PROTO_INVALID;
 
 	if (!priv->parser[s->direction]) {
@@ -236,28 +237,25 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 	while (1) {
 
-		switch (priv->state) {
-			case HTTP_QUERY_HEADER: 
-				if (proto_http_conntrack_reset(s->ce) != POM_OK)
-					return PROTO_ERR;
-			case HTTP_RESPONSE_HEADER: {
-
+		switch (priv->state[s->direction]) {
+			case HTTP_STATE_FIRST_LINE:
 				if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
 					return PROTO_ERR;
 
 				if (!line) // No more full lines in this packet
 					return PROTO_OK;
 
+				if (!len) // Ignore empty lines at this stage
+					break;
+
 				int res = proto_http_parse_query_response(s->ce, line, len, s->direction, p);
 				if (res == PROTO_INVALID) {
-					priv->state = HTTP_INVALID;
+					priv->is_invalid = 1;
 					return PROTO_INVALID;
 				}
 				break;
-			}
 
-			case HTTP_RESPONSE:
-			case HTTP_QUERY: {
+			case HTTP_STATE_HEADERS: {
 				// Parse headers
 				if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
 					return PROTO_ERR;
@@ -266,40 +264,35 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 				if (!len) {
 					// Header are parsed
+					struct http_info *info = &priv->info[s->direction];
 					
-					if ((priv->info.flags & (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) == (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) {
+					if ((info->flags & (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) == (HTTP_FLAG_CHUNKED | HTTP_FLAG_HAVE_CLEN)) {
 						pomlog(POMLOG_DEBUG "Ignoring Content-Length because transfer type is chunked");
-						priv->info.flags &= ~HTTP_FLAG_HAVE_CLEN;
-						priv->info.content_len = 0;
+						info->flags &= ~HTTP_FLAG_HAVE_CLEN;
+						info->content_len = 0;
 					}
 					
 					// If there is no payload
-					if ( ((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !priv->info.content_len) ||
+					if ( ((info->flags & HTTP_FLAG_HAVE_CLEN) && !info->content_len) ||
 						// Or if the response is not supposed to contain any payload
-						(priv->state == HTTP_RESPONSE && ((priv->info.last_err_code >= 100 && priv->info.last_err_code < 200) || priv->info.last_err_code == 204 || priv->info.last_err_code == 304)) ||
+						(s->direction == POM_DIR_REVERSE(priv->client_direction) && ((info->last_err_code >= 100 && info->last_err_code < 200) || info->last_err_code == 204 || info->last_err_code == 304)) ||
 						
 						// Or if its a query, forget about having CLEN
-						(priv->state == HTTP_QUERY && (!(priv->info.flags & HTTP_FLAG_HAVE_CLEN)))
+						(s->direction == priv->client_direction && (!(info->flags & HTTP_FLAG_HAVE_CLEN)))
 						
 						) {
 							// Process the event
-							event_process_begin(priv->event, stack, stack_index);
-							event_process_end(priv->event);
-							priv->event = NULL;
+							event_process_begin(priv->event[s->direction], stack, stack_index);
+							event_process_end(priv->event[s->direction]);
+							priv->event[s->direction] = NULL;
 						
-							int old_state = priv->state;
-							proto_http_conntrack_reset(s->ce);
-							if (old_state == HTTP_QUERY) {
-								priv->state = HTTP_RESPONSE_HEADER;
-							} else {
-								priv->state = HTTP_QUERY_HEADER;
-							}
-							return POM_OK;
+							proto_http_conntrack_reset(s->ce, s->direction);
+							break;
 					} 
 
 					// There is some payload, switch to the right state and process the begining of the event
-					priv->state++;
-					event_process_begin(priv->event, stack, stack_index);
+					priv->state[s->direction]++;
+					event_process_begin(priv->event[s->direction], stack, stack_index);
 
 					continue;
 				}
@@ -308,7 +301,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				char *colon = memchr(line, ':', len);
 				if (!colon) {
 					pomlog(POMLOG_DEBUG "Header line without colon");
-					priv->state = HTTP_INVALID;
+					priv->is_invalid = 1;
 					return PROTO_INVALID;
 				}
 
@@ -337,7 +330,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				value[value_len] = 0;
 
 
-				struct ptype *data_val = event_data_item_add(priv->event, (priv->state == HTTP_QUERY ? proto_http_query_headers : proto_http_response_headers), name);
+				struct ptype *data_val = event_data_item_add(priv->event[s->direction], (priv->client_direction == s->direction ? proto_http_query_headers : proto_http_response_headers), name);
 				if (!data_val) {
 					free(name);
 					free(value);
@@ -348,52 +341,38 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 				
 				// Parse a few useful headers
-				if (!(priv->info.flags & HTTP_FLAG_HAVE_CLEN) && !strcasecmp(name, "Content-Length")) {
-					if (sscanf(value, "%zu", &priv->info.content_len) != 1)
+				if (!(priv->info[s->direction].flags & HTTP_FLAG_HAVE_CLEN) && !strcasecmp(name, "Content-Length")) {
+					if (sscanf(value, "%zu", &priv->info[s->direction].content_len) != 1)
 						return PROTO_INVALID;
-					priv->info.flags |= HTTP_FLAG_HAVE_CLEN;
-				} else if (!(priv->info.flags & HTTP_FLAG_CHUNKED) && !strcasecmp(name, "Transfer-Encoding")) {
+					priv->info[s->direction].flags |= HTTP_FLAG_HAVE_CLEN;
+				} else if (!(priv->info[s->direction].flags & HTTP_FLAG_CHUNKED) && !strcasecmp(name, "Transfer-Encoding")) {
 					if (!strcasecmp(value, "chunked"))
-						priv->info.flags |= HTTP_FLAG_CHUNKED;
+						priv->info[s->direction].flags |= HTTP_FLAG_CHUNKED;
 				}
 
 
 				break;
 			}
 
-			case HTTP_BODY_RESPONSE:
-				if (priv->client_direction == s->direction) {
-					// We were expecting a response but we had a new query
-					debug_http("entry %p, found query while expecting body, probably a HEAD request", s->ce);
-					event_process_end(priv->event);
-					priv->event = NULL;
-					if (proto_http_conntrack_reset(s->ce) != POM_OK)
-						return PROTO_ERR;
-					priv->state = HTTP_QUERY_HEADER;
-					break;
-				} else  if (priv->info.content_pos == 0 && priv->client_direction == POM_DIR_REVERSE(s->direction)) {
+			case HTTP_STATE_BODY:
+				if (priv->client_direction == POM_DIR_REVERSE(s->direction) && priv->info[s->direction].content_pos == 0) {
 					// If it was a HEAD request, we might think there is some payload
 					// while there actually isn't any. Check for that
 					unsigned int remaining_size = 0;
 					void *pload = NULL;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
-					if (remaining_size >= strlen("HTTP/") && !strncasecmp(pload, "HTTP/", sizeof("HTTP/"))) {
+					if (remaining_size >= strlen("HTTP/") && !strncasecmp(pload, "HTTP/", strlen("HTTP/"))) {
 						debug_http("entry %p, found reply to HEAD request", s->ce);
-						event_process_end(priv->event);
-						priv->event = NULL;
-						if (proto_http_conntrack_reset(s->ce) != POM_OK)
+						event_process_end(priv->event[s->direction]);
+						priv->event[s->direction] = NULL;
+						if (proto_http_conntrack_reset(s->ce, s->direction) != POM_OK)
 							return PROTO_ERR;
-						priv->state = HTTP_RESPONSE_HEADER;
 						break;
 					}
 				}
 
-
-			case HTTP_BODY_QUERY:
-
-
-				if (priv->info.flags & HTTP_FLAG_CHUNKED) {
-					if (!priv->info.chunk_len) {
+				if (priv->info[s->direction].flags & HTTP_FLAG_CHUNKED) {
+					if (!priv->info[s->direction].chunk_len) {
 
 						if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
 							return PROTO_ERR;
@@ -409,14 +388,14 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						char int_str[10] = {0};
 						if (len >= sizeof(int_str) || !len) {
 							pomlog(POMLOG_DEBUG "Invalid chunk size of len %u", len);
-							priv->state = HTTP_INVALID;
+							priv->is_invalid = 1;
 							return PROTO_INVALID;
 						}
 
 						memcpy(int_str, line, len);
-						if (sscanf(int_str, "%x", &priv->info.chunk_len) != 1) {
+						if (sscanf(int_str, "%x", &priv->info[s->direction].chunk_len) != 1) {
 							pomlog(POMLOG_DEBUG "Unparseable chunk size provided : %s", int_str);
-							priv->state = HTTP_INVALID;
+							priv->is_invalid = 1;
 							return PROTO_INVALID;
 						}
 					}
@@ -425,7 +404,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					unsigned int remaining_size = 0;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
 					packet_stream_parser_empty(parser);
-					unsigned int chunk_remaining = priv->info.chunk_len - priv->info.chunk_pos;
+					unsigned int chunk_remaining = priv->info[s->direction].chunk_len - priv->info[s->direction].chunk_pos;
 					s_next->pload = pload;
 					if (remaining_size > chunk_remaining) {
 						// There is the start of another chunk in this packet
@@ -439,8 +418,8 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						}
 						debug_http("entry %p, got %u bytes of chunked payload", s->ce, s_next->plen);
 						
-						priv->info.chunk_pos = 0;
-						priv->info.chunk_len = 0;
+						priv->info[s->direction].chunk_pos = 0;
+						priv->info[s->direction].chunk_len = 0;
 
 						if (s_next->plen) {
 
@@ -451,7 +430,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 							packet_stream_parser_add_payload(parser, pload, remaining_size);
 						} else {
 							// This is the last chunk
-							return PROTO_OK;
+							break;
 						}
 
 						// Continue parsing the next chunk
@@ -459,22 +438,19 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					} else {
 						s_next->plen = remaining_size;
 					}
-					priv->info.chunk_pos += remaining_size;
+					priv->info[s->direction].chunk_pos += remaining_size;
 
 				}  else {
 
 					// Set the right payload in the next stack index
 					packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
 					packet_stream_parser_empty(parser);
-					priv->info.content_pos += s_next->plen;
+					priv->info[s->direction].content_pos += s_next->plen;
 				}
 
 				debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
 
 
-				return PROTO_OK;
-
-			default:
 				return PROTO_OK;
 		}
 	}
@@ -487,44 +463,38 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct conntrack_entry *ce = stack[stack_index].ce;
+	int direction = stack[stack_index].direction;
 
 	struct proto_http_conntrack_priv *priv = ce->priv;
+	struct http_info *info = &priv->info[direction];
 
-	if ( (priv->state == HTTP_BODY_QUERY || priv->state == HTTP_BODY_RESPONSE) && (
-		((priv->info.flags & HTTP_FLAG_HAVE_CLEN) && (priv->info.content_pos >= priv->info.content_len)) // End of payload reached
-		|| ((priv->info.flags & HTTP_FLAG_CHUNKED) && !priv->info.chunk_len)) // Last chunk was processed
-		
+	if (priv->state[direction] == HTTP_STATE_BODY && (
+		((info->flags & HTTP_FLAG_HAVE_CLEN) && (info->content_pos >= info->content_len)) // End of payload reached
+		|| ((info->flags & HTTP_FLAG_CHUNKED) && !info->chunk_len)) // Last chunk was processed
 		) {
+
 		// Payload done
-		event_process_end(priv->event);
-		priv->event = NULL;
+		event_process_end(priv->event[direction]);
+		priv->event[direction] = NULL;
 
-		if (priv->state == HTTP_BODY_QUERY) {
-			proto_http_conntrack_reset(ce);
-			priv->state = HTTP_RESPONSE_HEADER;
-
-		} else { // HTTP_BODY_RESPONSE
-			proto_http_conntrack_reset(ce);
-			priv->state = HTTP_QUERY_HEADER;
-
-		}
+		proto_http_conntrack_reset(ce, direction);
 
 	}
 	return PROTO_OK;
 }
 
-static int proto_http_conntrack_reset(struct conntrack_entry *ce) {
+static int proto_http_conntrack_reset(struct conntrack_entry *ce, int direction) {
 
 	struct proto_http_conntrack_priv *priv = ce->priv;
 
 	debug_http("entry %p, reset", ce);
-	
-	priv->state = HTTP_QUERY_HEADER;
-	memset(&priv->info, 0, sizeof(struct http_info));
 
-	if (priv->event) {
-		event_cleanup(priv->event);
-		priv->event = NULL;
+	priv->state[direction] = HTTP_STATE_FIRST_LINE;
+	memset(priv->info, 0, sizeof(struct http_info) * POM_DIR_TOT);
+
+	if (priv->event[direction]) {
+		event_cleanup(priv->event[direction]);
+		priv->event[direction] = NULL;
 	}
 
 	return POM_OK;
@@ -542,12 +512,24 @@ static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
 			packet_stream_parser_cleanup(priv->parser[i]);
 	}
 
-	if (priv->event) {
-		if (priv->event->flags & EVENT_FLAG_PROCESS_BEGAN) {
-			debug_http("entry %p, processing event on cleanup !", ce);
-			event_process_end(priv->event);
-		} else {
-			event_cleanup(priv->event);
+
+	for (i = 0; i < POM_DIR_TOT; i++) {
+		// We must cleanup the client direction first
+		int direction = i;
+		if (priv->client_direction != POM_DIR_UNK) {
+			if (i == 0)
+				direction = priv->client_direction;
+			else
+				direction = POM_DIR_REVERSE(priv->client_direction);
+		}
+
+		if (priv->event[direction]) {
+			if (priv->event[direction]->flags & EVENT_FLAG_PROCESS_BEGAN) {
+				debug_http("entry %p, processing event on cleanup !", ce);
+				event_process_end(priv->event[direction]);
+			} else {
+				event_cleanup(priv->event[direction]);
+			}
 		}
 	}
 	
@@ -576,6 +558,9 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 	char *token = line, *space = NULL;;
 	unsigned int line_len = len;
 
+	// Response protocol
+	char *response_proto = NULL;
+
 	while (len) {
 		space = memchr(token, ' ', len);
 		
@@ -588,9 +573,9 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		switch (tok_num) {
 			case 0:
 				
-				if (priv->event) {
-					pomlog(POMLOG_WARN "Internal error : http event still exist");
-					event_cleanup(priv->event);
+				if (priv->event[direction]) {
+					pomlog(POMLOG_WARN "Internal error : http event still exist for direction %u", direction);
+					event_cleanup(priv->event[direction]);
 				}
 
 				if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
@@ -605,23 +590,17 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 						}
 					}
 
-					priv->state = HTTP_RESPONSE;
-					priv->event = event_alloc(ppriv->evt_response);
-					if (!priv->event)
-						return PROTO_ERR;
-
-					char *request_proto = malloc(tok_len + 1);
-					if (!request_proto) {
+					response_proto = malloc(tok_len + 1);
+					if (!response_proto) {
 						pom_oom(tok_len + 1);
 						return PROTO_ERR;
 					}
-					memcpy(request_proto, token, tok_len);
-					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_response_proto].value, request_proto);
+					memcpy(response_proto, token, tok_len);
+					response_proto[tok_len] = 0;
 				} else {
 
-					priv->event = event_alloc(ppriv->evt_query);
-					if (!priv->event)
+					priv->event[direction] = event_alloc(ppriv->evt_query);
+					if (!priv->event[direction])
 						return POM_ERR;
 
 					int i;
@@ -650,12 +629,20 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_method, token, tok_len);
 					request_method[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_method].value, request_method);
-					priv->state = HTTP_QUERY;
+					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_method].value, request_method);
 				}
 				break;
 			case 1:
-				if (priv->state == HTTP_RESPONSE) {
+				if (priv->client_direction == direction) {
+					char *url = malloc(tok_len + 1);
+					if (!url) {
+						pom_oom(tok_len + 1);
+						return PROTO_ERR;
+					}
+					memcpy(url, token, tok_len);
+					url[tok_len] = 0;
+					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_url].value, url);
+				} else {
 					// Get the status code
 					uint16_t err_code = 0;
 					char errcode[4];
@@ -666,23 +653,27 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 						return PROTO_INVALID;
 					}
 
-					PTYPE_UINT16_SETVAL(priv->event->data[proto_http_response_status].value, err_code);
-					priv->info.last_err_code = err_code;
-
-				} else if (priv->state == HTTP_QUERY) {
-					char *url = malloc(tok_len + 1);
-					if (!url) {
-						pom_oom(tok_len + 1);
-						return PROTO_ERR;
+					// Do not save stuff about 100 Continue replies as it's not an response in itself
+					if (err_code == 100) {
+						if (response_proto)
+							free(response_proto);
+						return POM_OK;
 					}
-					memcpy(url, token, tok_len);
-					url[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_url].value, url);
 
+					priv->event[direction] = event_alloc(ppriv->evt_response);
+					if (!priv->event[direction])
+						return PROTO_ERR;
+
+					PTYPE_UINT16_SETVAL(priv->event[direction]->data[proto_http_response_status].value, err_code);
+					priv->info[direction].last_err_code = err_code;
+
+					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_response_proto].value, response_proto);
+					response_proto = NULL;
 				}
+
 				break;
 			case 2:
-				if (priv->state == HTTP_QUERY) {
+				if (priv->client_direction == direction) {
 					// This payload was identified as a possible query
 					if (tok_len < strlen("HTTP/"))
 						return PROTO_INVALID;
@@ -698,12 +689,12 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_proto].value, request_proto);
-
+					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_proto].value, request_proto);
 				}
+
 				break;
 			default:
-				if (priv->state == HTTP_QUERY) {
+				if (priv->client_direction == direction) {
 					// No more than 3 tokens are expected for a query
 					pomlog(POMLOG_DEBUG "More than 3 tokens found in the HTTP query");
 					// FIXME do the cleanup
@@ -721,11 +712,15 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 	}
 
 	if (tok_num < 2) {
+
+		if (response_proto)
+			free(response_proto);
+
 		pomlog(POMLOG_DEBUG "Unable to parse the query/response");
 		return PROTO_INVALID;
 	}
 
-	if (priv->state == HTTP_QUERY) {
+	if (priv->client_direction == direction) {
 		
 		if (tok_num < 3) {
 			pomlog(POMLOG_DEBUG "Missing token for query");
@@ -740,17 +735,19 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 		memcpy(first_line, line, line_len);
 		first_line[line_len] = 0;
-		PTYPE_STRING_SETVAL_P(priv->event->data[proto_http_query_first_line].value, first_line);
+		PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_first_line].value, first_line);
 
-		PTYPE_TIMESTAMP_SETVAL(priv->event->data[proto_http_query_start_time].value, p->ts);
+		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_query_start_time].value, p->ts);
 
 		debug_http("entry %p, found query : \"%s\"", ce, first_line);
 
 	} else {
-		debug_http("entry %p, response with status %u", ce, priv->info.last_err_code);
+		debug_http("entry %p, response with status %u", ce, priv->info[s->direction].last_err_code);
 
-		PTYPE_TIMESTAMP_SETVAL(priv->event->data[proto_http_response_start_time].value, p->ts);
+		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_response_start_time].value, p->ts);
 	}
+
+	priv->state[direction]++;
 
 	return PROTO_OK;
 }

@@ -25,6 +25,11 @@
 #include <pom-ng/packet.h>
 #include <pom-ng/proto_http.h>
 
+#define HTTP_STATE_FIRST_LINE	1 // First line of a query/response
+#define HTTP_STATE_HEADERS	2 // Receiving the headers of the query/response
+#define HTTP_STATE_BODY		3 // Receiving the body (payload) of a query/response
+
+/*
 #define HTTP_QUERY_HEADER	1 ///< Looking for the query line
 #define HTTP_QUERY		2 ///< This is a query
 #define HTTP_BODY_QUERY		3 ///< Handling the body
@@ -32,6 +37,7 @@
 #define HTTP_RESPONSE		5 ///< This is a response
 #define HTTP_BODY_RESPONSE	6 ///< Handling the body of a response (e.g. POST)
 #define HTTP_INVALID		9 ///< Invalid HTTP message, will discard the rest of the connection
+*/
 
 #define HTTP_FLAG_HAVE_CLEN	0x01
 #define HTTP_FLAG_CHUNKED	0x04
@@ -59,10 +65,11 @@ struct proto_http_priv {
 struct proto_http_conntrack_priv {
 
 	struct packet_stream_parser *parser[POM_DIR_TOT];
-	struct http_info info;
-	unsigned int state;
+	struct http_info info[POM_DIR_TOT];
+	unsigned int state[POM_DIR_TOT];
+	struct event *event[POM_DIR_TOT];
 	int client_direction;
-	struct event *event;
+	int is_invalid;
 };
 
 struct mod_reg_info* proto_http_reg_info();
@@ -71,7 +78,7 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri);
 int proto_http_cleanup(struct proto *proto);
 static int proto_http_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int proto_http_conntrack_reset(struct conntrack_entry *ce);
+static int proto_http_conntrack_reset(struct conntrack_entry *ce, int direction);
 static int proto_http_conntrack_cleanup(struct conntrack_entry *ce);
 static int proto_http_mod_unregister();
 
