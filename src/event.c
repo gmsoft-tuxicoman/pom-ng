@@ -135,7 +135,8 @@ int event_cleanup(struct event *evt) {
 	}
 
 	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN && !(evt->flags & EVENT_FLAG_PROCESS_DONE)) {
-		pomlog(POMLOG_ERR "Internal error: event %s processing began but never ended, cleaning up anyway", evt->reg->info->name);
+		pomlog(POMLOG_ERR "Internal error: event %s processing began but never ended", evt->reg->info->name);
+		return POM_ERR;
 	}
 	if (evt->reg->info->cleanup && evt->reg->info->cleanup(evt) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while cleaning up the event %s", evt->reg->info->name);
