@@ -29,6 +29,7 @@
 struct analyzer_http_priv {
 	
 	struct ptype *ptype_string;
+	struct ptype *ptype_uint64;
 	struct event_reg *evt_request;
 
 	struct event_reg *evt_query;

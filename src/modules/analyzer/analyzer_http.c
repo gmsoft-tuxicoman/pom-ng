@@ -24,6 +24,7 @@
 #include "analyzer_http_post.h"
 #include <pom-ng/proto_http.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint64.h>
 #include <pom-ng/ptype_string.h>
 
 struct mod_reg_info* analyzer_http_reg_info() {
@@ -77,7 +78,8 @@ int analyzer_http_init(struct analyzer *analyzer) {
 		goto err;
 
 	priv->ptype_string = ptype_alloc("string");
-	if (!priv->ptype_string)
+	priv->ptype_uint64 = ptype_alloc("uint64");
+	if (!priv->ptype_string || !priv->ptype_uint64)
 		goto err;
 
 	static struct event_data_reg evt_request_data[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT];
@@ -151,6 +153,11 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	evt_request_data[analyzer_http_request_post_data].flags = EVENT_DATA_REG_FLAG_LIST;
 	evt_request_data[analyzer_http_request_post_data].value_template = priv->ptype_string;
 
+	evt_request_data[analyzer_http_request_query_size].name = "query_size";
+	evt_request_data[analyzer_http_request_query_size].value_template = priv->ptype_uint64;
+
+	evt_request_data[analyzer_http_request_response_size].name = "response_size";
+	evt_request_data[analyzer_http_request_response_size].value_template = priv->ptype_uint64;
 
 	static struct event_reg_info analyzer_http_evt_request;
 	memset(&analyzer_http_evt_request, 0, sizeof(struct event_reg_info));
@@ -187,6 +194,9 @@ int analyzer_http_cleanup(struct analyzer *analyzer) {
 
 	if (priv->ptype_string)
 		ptype_cleanup(priv->ptype_string);
+
+	if (priv->ptype_uint64)
+		ptype_cleanup(priv->ptype_uint64);
 
 	if (priv->evt_request)
 		event_unregister(priv->evt_request);
@@ -353,6 +363,9 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
 		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
 		dst_data[analyzer_http_request_response_time].value = src_data[proto_http_response_start_time].value;
+
+		if (!dst_data[analyzer_http_request_query_time].value) // If we don't know when we started, use the reply time instead
+			dst_data[analyzer_http_request_query_time].value = src_data[proto_http_response_start_time].value;
 
 		dst_data[analyzer_http_request_response_headers].items = src_data[proto_http_response_headers].items;
 		dst_data[analyzer_http_request_response_headers].flags = EVENT_DATA_FLAG_NO_CLEAN;
@@ -583,9 +596,15 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 	if (dir == cpriv->client_direction) {
 		// We need to use the latest query we've received
 		evt = cpriv->evt_tail->evt;
+
+		uint64_t *query_size = PTYPE_UINT64_GETVAL(evt->data[analyzer_http_request_query_size].value);
+		*query_size += pload_stack->plen;
 	} else {
 		// We need to use the first response
 		evt = cpriv->evt_head->evt;
+
+		uint64_t *response_size = PTYPE_UINT64_GETVAL(evt->data[analyzer_http_request_response_size].value);
+		*response_size += pload_stack->plen;
 	}
 
 	struct analyzer_http_request_event_priv *epriv = evt->priv;
