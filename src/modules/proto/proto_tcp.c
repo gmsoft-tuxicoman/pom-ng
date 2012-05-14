@@ -307,10 +307,10 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 		} else if (priv->state == STATE_TCP_LAST_ACK && hdr->th_flags & TH_ACK) {
 			priv->state = STATE_TCP_TIME_WAIT;
 			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_time_wait_t);
-		} else if (priv->state == STATE_TCP_TIME_WAIT) {
+/*		} else if (priv->state == STATE_TCP_TIME_WAIT) {
 			conntrack_unlock(s->ce);
 			return POM_OK;
-		} else {
+*/		} else {
 			priv->state = STATE_TCP_ESTABLISHED;
 			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_established_t);
 		}
