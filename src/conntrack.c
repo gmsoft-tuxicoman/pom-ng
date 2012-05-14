@@ -87,9 +87,7 @@ int conntrack_tables_empty(struct conntrack_tables *ct) {
 		for (i = 0; i < ct->tables_size; i++) {
 			while (ct->fwd_table[i]) {
 				struct conntrack_list *tmp = ct->fwd_table[i];
-				ct->fwd_table[i] = tmp->next;
-				conntrack_destroy(tmp->ce);
-				free(tmp);
+				conntrack_cleanup(ct, tmp->ce->fwd_hash, tmp->ce);
 			}
 
 		}
@@ -100,9 +98,7 @@ int conntrack_tables_empty(struct conntrack_tables *ct) {
 		for (i = 0; i < ct->tables_size; i++) {
 			while (ct->rev_table[i]) {
 				struct conntrack_list *tmp = ct->rev_table[i];
-				ct->rev_table[i] = tmp->next;
-				//conntrack_destroy(tmp->ce);
-				free(tmp);
+				conntrack_cleanup(ct, tmp->ce->fwd_hash, tmp->ce);
 			}
 		}
 	}
@@ -810,52 +806,6 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 
 	return POM_OK;
 }
-
-int conntrack_destroy(struct conntrack_entry *ce) {
-
-	struct conntrack_priv_list *priv_lst = ce->priv_list;
-	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
-		if (ce->proto->info->ct_info->cleanup_handler(ce) != POM_OK)
-			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
-	}
-
-	while (priv_lst) {
-		if (priv_lst->cleanup) {
-			if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
-				pomlog(POMLOG_WARN "Error while cleaning up private objects in conntrack_entry");
-		}
-		ce->priv_list = priv_lst->next;
-		free(priv_lst);
-		priv_lst = ce->priv_list;
-
-	}
-
-	if (ce->cleanup_timer) {
-		timer_cleanup(ce->cleanup_timer->timer);
-		free(ce->cleanup_timer);
-	}
-
-	if (ce->parent)
-		free(ce->parent);
-
-	while (ce->children) {
-		struct conntrack_node_list *tmp = ce->children;
-		ce->children = ce->children->next;
-		free(tmp);
-	}
-
-	if (ce->fwd_value)
-		ptype_cleanup(ce->fwd_value);
-	if (ce->rev_value)
-		ptype_cleanup(ce->rev_value);
-
-	pthread_mutex_destroy(&ce->lock);
-
-	free(ce);
-
-	return POM_OK;
-}
-
 
 struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*handler) (struct conntrack_entry *ce, void *priv), void *priv) {
 
