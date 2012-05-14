@@ -996,7 +996,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	if (packet_stream_remove_dupe_bytes(stream, p, next_dir) == POM_ERR)
 		return POM_ERR;
 
-	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->ts.tv_sec, p->ts.tv_usec, p->seq, p->ack);
+	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 	int res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
 
 	int i;
