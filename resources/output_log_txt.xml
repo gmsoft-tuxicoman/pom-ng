@@ -7,7 +7,7 @@
 		</dataset>
 
 		<dataset name="events">
-			<item><template>http_apache</template><event>http_request</event><format>$server_name $client_addr $url $query_time "$first_line" $status todo_response_size</format><file>http_apache_log</file></item>
+			<item><template>http_apache</template><event>http_request</event><format>$server_name $client_addr $username $url [$query_time] "$first_line" $status $response_size</format><file>http_apache_log</file></item>
 		</dataset>
 
 		<dataset name="files">
