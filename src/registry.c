@@ -59,25 +59,8 @@ static uint32_t registry_serial = 0;
 
 int registry_init() {
 
-	pthread_mutexattr_t attr;
-
-	if (pthread_mutexattr_init(&attr)) {
-		pomlog(POMLOG_ERR "Error while initializing conntrack mutex attribute");
+	if (pom_mutex_init_type(&registry_global_lock, PTHREAD_MUTEX_RECURSIVE) != POM_OK)
 		return POM_ERR;
-	}
-
-	if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
-		pomlog(POMLOG_ERR "Error while setting registry mutex attribute to recursive");
-		return POM_ERR;
-	}
-
-	if (pthread_mutex_init(&registry_global_lock, &attr)) {
-		pthread_mutexattr_destroy(&attr);
-		pomlog(POMLOG_ERR "Error while initializing the registry lock : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
-
-	pthread_mutexattr_destroy(&attr);
 
 
 	// Init random numbers for UIDs
