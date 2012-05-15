@@ -429,7 +429,8 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	int i;
 	// Cleanup pkt_info and remove refcount
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++) {
-		conntrack_refcount_dec(s[i].ce);
+		if (s[i].ce)
+			conntrack_refcount_dec(s[i].ce);
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	}
 	
