@@ -651,6 +651,11 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 	res->cur_ack[rev_direction] = start_seq;
 	res->max_buff_size = max_buff_size;
 	res->ce = ce;
+	if (pthread_mutex_init(&res->lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing stream lock : %s", pom_strerror(errno));
+		free(res);
+		return NULL;
+	}
 
 	res->flags = flags;
 
@@ -686,6 +691,9 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	if (stream->t)
 		conntrack_timer_cleanup(stream->t);
 
+	if (pthread_mutex_destroy(&stream->lock)) 
+		pomlog(POMLOG_ERR "Error while destroying stream lock : %s", pom_strerror(errno));
+
 	free(stream);
 
 	debug_stream("entry %p, released", stream);
@@ -698,7 +706,9 @@ int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
 	struct packet_stream *stream = priv;
 	int res = POM_OK;
 	
+	pom_mutex_lock(&stream->lock);
 	res = packet_stream_force_dequeue(stream);
+	pom_mutex_unlock(&stream->lock);
 
 	return res;
 }
@@ -787,6 +797,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	struct proto_process_stack *cur_stack = &stack[stack_index];
 	int direction = cur_stack->direction;
 
+	pom_mutex_lock(&stream->lock);
 
 	// Update the stream flags
 	if (stream->flags & PACKET_FLAG_STREAM_BIDIR) {
@@ -815,12 +826,15 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	if (cur_seq != seq) {
 		if (packet_stream_is_packet_old_dupe(stream, &spkt, direction)) {
 			// cur_seq is after the end of the packet, discard it
+			pom_mutex_unlock(&stream->lock);
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : discard", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 			return PROTO_OK;
 		}
 
-		if (packet_stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR)
+		if (packet_stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR) {
+			pom_mutex_unlock(&stream->lock);
 			return PROTO_ERR;
+		}
 	}
 
 
@@ -836,6 +850,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 		int res = stream->handler(stream->ce, pkt, stack, stack_index);
 		if (res == PROTO_ERR) {
+			pom_mutex_unlock(&stream->lock);
 			return PROTO_ERR;
 		}
 
@@ -848,6 +863,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process additional", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
 			if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR) {
+				pom_mutex_unlock(&stream->lock);
 				return PROTO_ERR;
 			}
 
@@ -863,6 +879,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 			free(p);
 		}
+		pom_mutex_unlock(&stream->lock);
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		return res;
 	}
@@ -874,6 +891,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	struct packet_stream_pkt *p = malloc(sizeof(struct packet_stream_pkt));
 	if (!p) {
 		pom_oom(sizeof(struct packet_stream_pkt));
+		pom_mutex_unlock(&stream->lock);
 		return PROTO_ERR;
 	}
 	memset(p, 0 , sizeof(struct packet_stream_pkt));
@@ -883,11 +901,13 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// No need to backup this if there is no payload
 		p->pkt = packet_clone(pkt, stream->flags);
 		if (!p->pkt) {
+			pom_mutex_unlock(&stream->lock);
 			free(p);
 			return PROTO_ERR;
 		}
 		p->stack = core_stack_backup(stack, pkt, p->pkt);
 		if (!p->stack) {
+			pom_mutex_unlock(&stream->lock);
 			packet_pool_release(p->pkt);
 			free(p);
 			return PROTO_ERR;
@@ -946,6 +966,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// Buffer overflow
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		if (packet_stream_force_dequeue(stream) != POM_OK) {
+			pom_mutex_unlock(&stream->lock);
 			return POM_ERR;
 		}
 	}
@@ -953,6 +974,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	// Add timeout
 	if (stream->t) 
 		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
+	pom_mutex_unlock(&stream->lock);
 
 	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 	return PROTO_OK;
@@ -960,6 +982,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 int packet_stream_force_dequeue(struct packet_stream *stream) {
 
+	
 	if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
 		return POM_OK;
 
@@ -1012,7 +1035,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	free(p);
 
 
-	if (res == POM_ERR)
+	if (res == POM_ERR) 
 		return POM_ERR;
 
 	// See if we can process additional packets
@@ -1039,7 +1062,6 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	}
 
 	return POM_OK;
-
 }
 
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction) {

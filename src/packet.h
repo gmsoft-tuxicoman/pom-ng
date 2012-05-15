@@ -62,6 +62,7 @@ struct packet_stream {
 	int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 	struct conntrack_timer *t;
 	struct conntrack_entry *ce;
+	pthread_mutex_t lock;
 };
 
 struct packet_stream_parser {
