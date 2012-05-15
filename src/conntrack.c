@@ -880,12 +880,17 @@ int conntrack_timer_process(void *priv) {
 		pom_mutex_unlock(&ct->lock);
 		return POM_OK;
 	}
-	
-	conntrack_lock(t->ce);
-	pom_mutex_unlock(&ct->lock);
 
-	int res = t->handler(t->ce, t->priv);
-	conntrack_unlock(t->ce);
+
+	// Save the reference to the conntrack as the timer might get cleaned up
+	struct conntrack_entry *ce = t->ce;
+
+	conntrack_lock(ce);
+	pom_mutex_unlock(&ct->lock);
+	
+	int res = t->handler(ce, t->priv);
+	
+	conntrack_unlock(ce);
 
 	return res;
 }
