@@ -333,6 +333,8 @@ int main(int argc, char *argv[]) {
 	free(shutdown_reason);
 	shutdown_reason = NULL;
 
+	input_stop_all();
+
 	if (!shutdown_in_error)
 		core_wait_state(core_state_idle);
 

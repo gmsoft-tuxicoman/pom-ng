@@ -114,5 +114,6 @@ struct input_reg;
 int input_register(struct input_reg_info *reg_info);
 int input_unregister(char *name);
 
+int input_stop(struct input *i);
 
 #endif

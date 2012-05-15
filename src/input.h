@@ -50,6 +50,7 @@ int input_cleanup();
 int input_instance_add(char *type, char *name);
 int input_instance_remove(struct registry_instance *ri);
 int input_instance_start_stop_handler(void *priv, struct ptype *run);
+int input_stop_all();
 
 void *input_process_thread(void *param);
 

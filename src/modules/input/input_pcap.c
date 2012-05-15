@@ -583,8 +583,7 @@ static int input_pcap_read(struct input *i) {
 
 			if (!p->tpriv.dir.cur_file) {
 				// No more file
-				// FIXME, tell core we are done in a nice way
-				return POM_ERR;
+				return input_stop(i);
 			}
 
 			result = pcap_next_ex(p->p, &phdr, &data);

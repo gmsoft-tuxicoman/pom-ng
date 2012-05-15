@@ -352,6 +352,28 @@ int input_instance_start_stop_handler(void *priv, struct ptype *run) {
 
 }
 
+int input_stop(struct input *i) {
+
+	return registry_set_param_value(i->reg_param_running, "no");
+}
+
+int input_stop_all() {
+
+	registry_lock();
+
+	int res = POM_OK;
+
+	struct input *tmp;
+	for (tmp = input_head; tmp ; tmp = tmp->next) {
+		if (tmp->running == INPUT_RUN_RUNNING) {
+			res += input_stop(tmp);
+		}
+	}
+
+	registry_unlock();
+
+	return (res == POM_OK ? POM_OK : POM_ERR);
+}
 
 
 void *input_process_thread(void *param) {
