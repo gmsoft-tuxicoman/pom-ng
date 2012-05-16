@@ -130,6 +130,11 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 
 	if (priv->jpeg_lib_pos < pload->buff_pos) {
 
+		if (setjmp(priv->jmp_buff)) {
+			pomlog(POMLOG_WARN "Error while parsing JPEG headers");
+			return POM_ERR;
+		}
+
 		int res = jpeg_read_header(&priv->cinfo, TRUE);
 
 		if (res == JPEG_SUSPENDED) // Headers are incomplete
@@ -217,5 +222,10 @@ static void analyzer_jpeg_lib_term_source(j_decompress_ptr cinfo) {
 }
 
 static void analyzer_jpeg_lib_error_exit(j_common_ptr cinfo) {
+	
+	struct analyzer_pload_buffer *pload = cinfo->client_data;
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
 	pomlog(POMLOG_WARN "Fatal exit error from libjpeg");
+	longjmp(priv->jmp_buff, 1);
 }

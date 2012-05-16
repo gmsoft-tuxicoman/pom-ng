@@ -25,6 +25,7 @@
 #include <pom-ng/analyzer.h>
 #include <stdio.h>
 #include <jpeglib.h>
+#include <setjmp.h>
 
 #define ANALYZER_JPEG_PLOAD_TYPE "jpeg"
 
@@ -39,6 +40,8 @@ struct analyzer_jpeg_pload_priv {
 
 	struct jpeg_decompress_struct cinfo;
 	size_t jpeg_lib_pos;
+
+	jmp_buf jmp_buff;
 
 };
 
