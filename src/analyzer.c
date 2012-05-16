@@ -772,6 +772,8 @@ struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name) {
 
 struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type) {
 
+	if (!mime_type || !strlen(mime_type))
+		return NULL;
 
 	size_t len;
 	char *end = strchr(mime_type, ';');
