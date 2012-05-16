@@ -403,19 +403,24 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					void *pload = NULL;
 					unsigned int remaining_size = 0;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
-					packet_stream_parser_empty(parser);
 					unsigned int chunk_remaining = priv->info[s->direction].chunk_len - priv->info[s->direction].chunk_pos;
 					s_next->pload = pload;
 					if (remaining_size > chunk_remaining) {
 						// There is the start of another chunk in this packet
 						s_next->plen = chunk_remaining;
 						remaining_size -= chunk_remaining;
-						pload += chunk_remaining; if
-						(remaining_size >= 2) {
+						pload += chunk_remaining;
+						if (remaining_size >= 2) {
 							// Remove last CRLF
 							remaining_size -= 2;
 							pload += 2;
+							chunk_remaining += 2;
 						}
+						if (packet_stream_parser_skip_bytes(parser, chunk_remaining) != POM_OK) {
+							pomlog(POMLOG_ERR "Error while skipping %u bytes from the stream", chunk_remaining);
+							return PROTO_ERR;
+						}
+
 						debug_http("entry %p, got %u bytes of chunked payload", s->ce, s_next->plen);
 						
 						priv->info[s->direction].chunk_pos = 0;
@@ -427,15 +432,16 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 							if (res == PROTO_ERR)
 								return PROTO_ERR;
 
-							packet_stream_parser_add_payload(parser, pload, remaining_size);
 						} else {
-							// This is the last chunk
+							// This is the last chunk as it's size is 0
+							packet_stream_parser_empty(parser);
 							break;
 						}
 
 						// Continue parsing the next chunk
 						continue;
 					} else {
+						packet_stream_parser_empty(parser);
 						s_next->plen = remaining_size;
 					}
 					priv->info[s->direction].chunk_pos += remaining_size;
