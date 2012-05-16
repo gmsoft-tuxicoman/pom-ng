@@ -1202,6 +1202,17 @@ int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *ploa
 	return POM_OK;
 }
 
+int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, unsigned int len) {
+
+	if (sp->plen < len)
+		return POM_ERR;
+	
+	sp->pload += len;
+	sp->plen -= len;
+
+	return POM_OK;
+}
+
 int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, unsigned int *len) {
 
 	debug_stream_parser("entry %p, providing remaining pload %p with len %u", sp, sp->pload, sp->plen);
