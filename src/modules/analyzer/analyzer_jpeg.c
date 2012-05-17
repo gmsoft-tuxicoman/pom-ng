@@ -226,6 +226,5 @@ static void analyzer_jpeg_lib_error_exit(j_common_ptr cinfo) {
 	struct analyzer_pload_buffer *pload = cinfo->client_data;
 	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
 
-	pomlog(POMLOG_WARN "Fatal exit error from libjpeg");
 	longjmp(priv->jmp_buff, 1);
 }
