@@ -282,6 +282,11 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 	}
 
+	if (cpriv->conversation_error) {
+		pomlog(POMLOG_DEBUG "Not accepting more events after conversation error");
+		return POM_OK;
+	}
+
 	// Remember if we created a new event of not
 	int start_process = 0; 
 
@@ -507,6 +512,12 @@ int analyzer_http_event_process_end(struct event *evt, void *obj) {
 	if (epriv->response_event != evt) {
 		pomlog(POMLOG_ERR "Internal error, not the response event expected");
 		return POM_ERR;
+	}
+
+	if (epriv->query_event && !(epriv->query_event->flags & EVENT_FLAG_PROCESS_DONE)) {
+		pomlog(POMLOG_DEBUG "Conversation error, response ended before the query");
+		cpriv->conversation_error = 1;
+		return POM_OK;
 	}
 
 	return analyzer_http_event_finalize_process(cpriv);

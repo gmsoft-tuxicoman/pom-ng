@@ -50,6 +50,7 @@ struct analyzer_http_ce_priv {
 	struct analyzer_http_event_list *evt_head, *evt_tail;
 
 	int client_direction;
+	int conversation_error;
 
 };
 
