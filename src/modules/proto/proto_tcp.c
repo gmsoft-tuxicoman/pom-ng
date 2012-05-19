@@ -40,10 +40,6 @@
 #define tcp_tshoot(x...)
 #endif
 
-
-// ptypes for fields value template
-static struct ptype *ptype_uint8 = NULL, *ptype_uint16 = NULL, *ptype_uint32 = NULL;
-
 struct mod_reg_info* proto_tcp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -55,28 +51,7 @@ struct mod_reg_info* proto_tcp_reg_info() {
 	return &reg_info;
 }
 
-
 static int proto_tcp_mod_register(struct mod_reg *mod) {
-
-	ptype_uint8 = ptype_alloc("uint8");
-	ptype_uint16 = ptype_alloc("uint16");
-	ptype_uint32 = ptype_alloc("uint32");
-	
-	if (!ptype_uint8 || !ptype_uint16 || !ptype_uint32) {
-		if (ptype_uint8) {
-			ptype_cleanup(ptype_uint8);
-			ptype_uint8 = NULL;
-		}
-		if (ptype_uint16) {
-			ptype_cleanup(ptype_uint16);
-			ptype_uint16 = NULL;
-		}
-		if (ptype_uint32) {
-			ptype_cleanup(ptype_uint32);
-			ptype_uint32 = NULL;
-		}
-		return POM_ERR;
-	}
 
 	static struct proto_reg_info proto_tcp = { 0 };
 	proto_tcp.name = "tcp";
@@ -85,22 +60,22 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	
 	static struct proto_pkt_field fields[PROTO_TCP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "sport";
-	fields[0].value_template = ptype_uint16;
+	fields[0].value_type = ptype_get_type("uint16");
 	fields[0].description = "Source port";
 	fields[1].name = "dport";
-	fields[1].value_template = ptype_uint16;
+	fields[1].value_type = ptype_get_type("uint16");
 	fields[1].description = "Destination port";
 	fields[2].name = "flags";
-	fields[2].value_template = ptype_uint8;
+	fields[2].value_type = ptype_get_type("uint8");
 	fields[2].description = "Flags";
 	fields[3].name = "seq";
-	fields[3].value_template = ptype_uint32;
+	fields[3].value_type = ptype_get_type("uint32");
 	fields[3].description = "Sequence";
 	fields[4].name = "ack";
-	fields[4].value_template = ptype_uint32;
+	fields[4].value_type = ptype_get_type("uint32");
 	fields[4].description = "Sequence ACK";
 	fields[5].name = "win";
-	fields[5].value_template = ptype_uint16;
+	fields[5].value_type = ptype_get_type("uint16");
 	fields[5].description = "Window";
 	proto_tcp.pkt_fields = fields;
 
@@ -426,14 +401,5 @@ static int proto_tcp_cleanup(struct proto *proto) {
 
 static int proto_tcp_mod_unregister() {
 	
-	int res = proto_unregister("tcp");
-
-	ptype_cleanup(ptype_uint8);
-	ptype_uint8 = NULL;
-	ptype_cleanup(ptype_uint16);
-	ptype_uint16 = NULL;
-	ptype_cleanup(ptype_uint32);
-	ptype_uint32 = NULL;
-
-	return res;
+	return proto_unregister("tcp");
 }

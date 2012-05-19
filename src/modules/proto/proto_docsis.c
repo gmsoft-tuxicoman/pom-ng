@@ -29,9 +29,6 @@
 
 #include "proto_docsis.h"
 
-// ptype for fields value template
-static struct ptype *ptype_bool = NULL, *ptype_uint8 = NULL;
-
 struct mod_reg_info* proto_docsis_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -46,25 +43,15 @@ struct mod_reg_info* proto_docsis_reg_info() {
 
 static int proto_docsis_mod_register(struct mod_reg *mod) {
 
-	ptype_bool = ptype_alloc("bool");
-	if (!ptype_bool)
-		return POM_ERR;
-
-	ptype_uint8 = ptype_alloc("uint8");
-	if (!ptype_uint8) {
-		ptype_cleanup(ptype_bool);
-		return POM_ERR;
-	}
-
 	static struct proto_pkt_field fields[PROTO_DOCSIS_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "fc_type";
-	fields[0].value_template = ptype_uint8;
+	fields[0].value_type = ptype_get_type("uint8");
 	fields[0].description = "Frame control type";
 	fields[1].name = "fc_parm";
-	fields[1].value_template = ptype_uint8;
+	fields[1].value_type = ptype_get_type("uint8");
 	fields[1].description = "Frame parameters";
 	fields[2].name = "ehdr_on";
-	fields[2].value_template = ptype_bool;
+	fields[2].value_type = ptype_get_type("bool");
 	fields[2].description = "Extended header present";
 
 	static struct proto_reg_info proto_docsis = { 0 };
@@ -79,12 +66,7 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 	proto_docsis.process = proto_docsis_process;
 	proto_docsis.cleanup = proto_docsis_cleanup;
 
-	if (proto_register(&proto_docsis) == POM_OK)
-		return POM_OK;
-
-
-	return POM_ERR;
-
+	return proto_register(&proto_docsis);
 }
 
 
@@ -184,12 +166,5 @@ static int proto_docsis_cleanup(struct proto *proto) {
 
 static int proto_docsis_mod_unregister() {
 
-	int res = proto_unregister("docsis");
-
-	res += ptype_cleanup(ptype_bool);
-	ptype_bool = NULL;
-	res += ptype_cleanup(ptype_uint8);
-	ptype_bool = NULL;
-
-	return res;
+	return proto_unregister("docsis");
 }

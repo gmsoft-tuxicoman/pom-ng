@@ -358,7 +358,7 @@ struct packet_info *packet_info_pool_get(struct proto *p) {
 		memset(info->fields_value, 0, sizeof(struct ptype*) * (i + 1));
 
 		for (; i--; ){
-			info->fields_value[i] = ptype_alloc_from(fields[i].value_template);
+			info->fields_value[i] = ptype_alloc_from_type(fields[i].value_type);
 			if (!info->fields_value[i]) {
 				i++;
 				for (; fields[i].name; i++)

@@ -28,10 +28,6 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-
-// ptype for fields value template
-static struct ptype *ptype_mac = NULL;
-
 struct mod_reg_info* proto_ethernet_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -43,20 +39,14 @@ struct mod_reg_info* proto_ethernet_reg_info() {
 	return &reg_info;
 }
 
-
 static int proto_ethernet_mod_register(struct mod_reg *mod) {
-
-	ptype_mac = ptype_alloc("mac");
-	
-	if (!ptype_mac)
-		return POM_ERR;
 
 	static struct proto_pkt_field fields[PROTO_ETHERNET_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "src";
-	fields[0].value_template = ptype_mac;
+	fields[0].value_type = ptype_get_type("mac");
 	fields[0].description = "Source address";
 	fields[1].name = "dst";
-	fields[1].value_template = ptype_mac;
+	fields[1].value_type = ptype_get_type("mac");
 	fields[1].description = "Destination address";
 
 	static struct proto_reg_info proto_ethernet = { 0 };
@@ -176,10 +166,5 @@ static int proto_ethernet_cleanup(struct proto *proto) {
 
 static int proto_ethernet_mod_unregister() {
 
-	int res = proto_unregister("ethernet");
-
-	ptype_cleanup(ptype_mac);
-	ptype_mac = NULL;
-
-	return res;
+	return proto_unregister("ethernet");
 }

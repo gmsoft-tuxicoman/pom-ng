@@ -30,10 +30,6 @@
 #include "proto_mpeg_sect.h"
 #include "proto_mpeg_dvb_mpe.h"
 
-// ptype for fields value template
-static struct ptype *ptype_mac = NULL, *ptype_uint8 = NULL, *ptype_uint16 = NULL;
-
-
 struct mod_reg_info* proto_mpeg_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -45,19 +41,7 @@ struct mod_reg_info* proto_mpeg_reg_info() {
 	return &reg_info;
 }
 
-
 static int proto_mpeg_mod_register(struct mod_reg *mod) {
-
-	ptype_mac = ptype_alloc("mac");
-	ptype_uint8 = ptype_alloc("uint8");
-	ptype_uint16 = ptype_alloc("uint16");
-	if (!ptype_mac || !ptype_uint8 || !ptype_uint16) {
-		proto_mpeg_mod_unregister();
-		return POM_ERR;
-	}
-
-	ptype_uint8->flags |= PTYPE_UINT8_PRINT_HEX;
-	ptype_uint16->flags |= PTYPE_UINT16_PRINT_HEX;
 
 	static struct proto_reg_info proto_mpeg_ts = { 0 };
 	proto_mpeg_ts.name = "mpeg_ts";
@@ -66,7 +50,7 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 
 	static struct proto_pkt_field proto_mpeg_ts_fields[PROTO_MPEG_TS_FIELD_NUM + 1] = { { 0 } };
 	proto_mpeg_ts_fields[0].name = "pid";
-	proto_mpeg_ts_fields[0].value_template = ptype_uint16;
+	proto_mpeg_ts_fields[0].value_type = ptype_get_type("uint16");
 	proto_mpeg_ts_fields[0].description = "PID";
 	proto_mpeg_ts.pkt_fields = proto_mpeg_ts_fields;
 
@@ -85,7 +69,7 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 
 	static struct proto_pkt_field proto_mpeg_sect_fields[PROTO_MPEG_SECT_FIELD_NUM + 1] = { { 0 } };
 	proto_mpeg_sect_fields[0].name = "table_id";
-	proto_mpeg_sect_fields[0].value_template = ptype_uint8;
+	proto_mpeg_sect_fields[0].value_type = ptype_get_type("uint8");
 	proto_mpeg_sect_fields[0].description = "Table ID";
 
 	static struct proto_reg_info proto_mpeg_sect = { 0 };
@@ -105,7 +89,7 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 
 	static struct proto_pkt_field proto_mpeg_dvb_mpe_fields[PROTO_MPEG_DVB_MPE_FIELD_NUM + 1] = { { 0 } };
 	proto_mpeg_dvb_mpe_fields[0].name = "dst";
-	proto_mpeg_dvb_mpe_fields[0].value_template = ptype_mac;
+	proto_mpeg_dvb_mpe_fields[0].value_type = ptype_get_type("mac");
 	proto_mpeg_dvb_mpe_fields[0].description = "Destination MAC address";
 
 	static struct proto_reg_info proto_mpeg_dvb_mpe = { 0 };
@@ -136,22 +120,6 @@ static int proto_mpeg_mod_unregister() {
 	res += proto_unregister("mpeg_ts");
 	res += proto_unregister("mpeg_sect");
 	res += proto_unregister("mpeg_dvb_mpe");
-
-	if (ptype_uint8) {
-		res += ptype_cleanup(ptype_uint8);
-		ptype_uint8 = NULL;
-	}
-
-	if (ptype_uint16) {
-		res += ptype_cleanup(ptype_uint16);
-		ptype_uint16 = NULL;
-	}
-
-	if (ptype_mac) {
-		res += ptype_cleanup(ptype_mac);
-		ptype_mac = NULL;
-	}
-
 
 	return res;
 }

@@ -29,10 +29,6 @@
 #define __FAVOR_BSD // We use BSD favor of the udp header
 #include <netinet/udp.h>
 
-
-// ptype for fields value template
-static struct ptype *ptype_uint16 = NULL;
-
 struct mod_reg_info* proto_udp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -44,13 +40,7 @@ struct mod_reg_info* proto_udp_reg_info() {
 	return &reg_info;
 }
 
-
 static int proto_udp_mod_register(struct mod_reg *mod) {
-
-	ptype_uint16 = ptype_alloc("uint16");
-	
-	if (!ptype_uint16)
-		return POM_ERR;
 
 	static struct proto_reg_info proto_udp = { 0 };
 	proto_udp.name = "udp";
@@ -59,10 +49,10 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 
 	static struct proto_pkt_field fields[PROTO_UDP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "sport";
-	fields[0].value_template = ptype_uint16;
+	fields[0].value_type = ptype_get_type("uint16");
 	fields[0].description = "Source port";
 	fields[1].name = "dport";
-	fields[1].value_template = ptype_uint16;
+	fields[1].value_type = ptype_get_type("uint16");
 	fields[1].description = "Destination port";
 	proto_udp.pkt_fields = fields;
 
@@ -154,10 +144,5 @@ static int proto_udp_process(struct proto *proto, struct packet *p, struct proto
 
 static int proto_udp_mod_unregister() {
 
-	int res = proto_unregister("udp");
-
-	ptype_cleanup(ptype_uint16);
-	ptype_uint16 = NULL;
-
-	return res;
+	return proto_unregister("udp");
 }

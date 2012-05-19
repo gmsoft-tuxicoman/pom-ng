@@ -26,10 +26,6 @@
 
 #include <string.h>
 
-
-// ptype for fields value template
-static struct ptype *ptype_uint8 = NULL;
-
 struct mod_reg_info* proto_icmp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -41,20 +37,14 @@ struct mod_reg_info* proto_icmp_reg_info() {
 	return &reg_info;
 }
 
-
 static int proto_icmp_mod_register(struct mod_reg *mod) {
-
-	ptype_uint8 = ptype_alloc("uint8");
-	
-	if (!ptype_uint8)
-		return POM_ERR;
 
 	static struct proto_pkt_field fields[PROTO_ICMP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "type";
-	fields[0].value_template = ptype_uint8;
+	fields[0].value_type = ptype_get_type("uint8");
 	fields[0].description = "Type";
 	fields[1].name = "code";
-	fields[1].value_template = ptype_uint8;
+	fields[1].value_type = ptype_get_type("uint8");
 	fields[1].description = "Code";
 
 	static struct proto_reg_info proto_icmp = { 0 };
@@ -84,16 +74,10 @@ static int proto_icmp_process(struct proto *proto, struct packet *p, struct prot
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_icmp_field_type], ihdr->icmp_type);
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_icmp_field_code], ihdr->icmp_code);
 
-
 	return PROTO_OK;
 }
 
 static int proto_icmp_mod_unregister() {
 
-	int res = proto_unregister("icmp");
-
-	ptype_cleanup(ptype_uint8);
-	ptype_uint8 = NULL;
-
-	return res;
+	return proto_unregister("icmp");
 }

@@ -36,8 +36,6 @@
 
 static struct proto_dependency *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp = NULL, *proto_ipv6 = NULL, *proto_gre = NULL;
 
-static struct ptype *ptype_uint8 = NULL, *ptype_ipv4 = NULL;
-
 static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
 struct mod_reg_info* proto_ipv4_reg_info() {
@@ -54,21 +52,6 @@ struct mod_reg_info* proto_ipv4_reg_info() {
 
 static int proto_ipv4_mod_register(struct mod_reg *mod) {
 
-	ptype_uint8 = ptype_alloc("uint8");
-	ptype_ipv4 = ptype_alloc("ipv4");
-
-	if (!ptype_uint8 || !ptype_ipv4) {
-		if (ptype_uint8) {
-			ptype_cleanup(ptype_uint8);
-			ptype_uint8 = NULL;
-		}
-		if (ptype_ipv4) {
-			ptype_cleanup(ptype_ipv4);
-			ptype_ipv4 = NULL;
-		}
-		return POM_ERR;
-	}
-
 	static struct proto_reg_info proto_ipv4 = { 0 };
 	proto_ipv4.name = "ipv4";
 	proto_ipv4.api_ver = PROTO_API_VER;
@@ -76,16 +59,16 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 
 	static struct proto_pkt_field fields[PROTO_IPV4_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "src";
-	fields[0].value_template = ptype_ipv4;
+	fields[0].value_type = ptype_get_type("ipv4");
 	fields[0].description = "Source address";
 	fields[1].name = "dst";
-	fields[1].value_template = ptype_ipv4;
+	fields[1].value_type = ptype_get_type("ipv4");
 	fields[1].description = "Destination address";
 	fields[2].name = "tos";
-	fields[2].value_template = ptype_uint8;
+	fields[2].value_type = ptype_get_type("uint8");
 	fields[2].description = "Type of service";
 	fields[3].name = "ttl";
-	fields[3].value_template = ptype_uint8;
+	fields[3].value_type = ptype_get_type("uint8");
 	fields[3].description = "Time to live";
 	proto_ipv4.pkt_fields = fields;
 
@@ -425,13 +408,5 @@ static int proto_ipv4_cleanup(struct proto *proto) {
 
 static int proto_ipv4_mod_unregister() {
 
-	int res = proto_unregister("ipv4");
-
-	ptype_cleanup(ptype_uint8);
-	ptype_uint8 = NULL;
-	ptype_cleanup(ptype_ipv4);
-	ptype_ipv4 = NULL;
-
-
-	return res;
+	return proto_unregister("ipv4");
 }

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -84,7 +84,7 @@ struct proto_process_stack {
 
 struct proto_pkt_field {
 	char *name;
-	struct ptype *value_template;
+	struct ptype_reg *value_type;
 	char *description;
 
 };

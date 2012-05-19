@@ -26,10 +26,6 @@
 
 #include "proto_arp.h"
 
-
-// ptype for fields value template
-static struct ptype *ptype_mac = NULL, *ptype_uint16 = NULL, *ptype_ipv4 = NULL;
-
 struct mod_reg_info* proto_arp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -44,28 +40,21 @@ struct mod_reg_info* proto_arp_reg_info() {
 
 static int proto_arp_mod_register(struct mod_reg *mod) {
 
-	ptype_mac = ptype_alloc("mac");
-	ptype_uint16 = ptype_alloc("uint16");
-	ptype_ipv4 = ptype_alloc("ipv4");
-	
-	if (!ptype_mac || !ptype_uint16 || !ptype_ipv4)
-		goto err;
-
 	static struct proto_pkt_field fields[PROTO_ARP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "oper";
-	fields[0].value_template = ptype_uint16;
+	fields[0].value_type = ptype_get_type("uint16");
 	fields[0].description = "Operation";
 	fields[1].name = "sender_hw_addr";
-	fields[1].value_template = ptype_mac;
+	fields[1].value_type = ptype_get_type("mac");
 	fields[1].description = "Sender hardware address";
 	fields[2].name = "sender_proto_addr";
-	fields[2].value_template = ptype_ipv4;
+	fields[2].value_type = ptype_get_type("ipv4");
 	fields[2].description = "Sender protocol address";
 	fields[3].name = "target_hw_addr";
-	fields[3].value_template = ptype_mac;
+	fields[3].value_type = ptype_get_type("mac");
 	fields[3].description = "Target hardware address";
 	fields[4].name = "target_proto_addr";
-	fields[4].value_template = ptype_ipv4;
+	fields[4].value_type = ptype_get_type("ipv4");
 	fields[4].description = "Target protocol address";
 
 
@@ -79,12 +68,7 @@ static int proto_arp_mod_register(struct mod_reg *mod) {
 
 	proto_arp.process = proto_arp_process;
 
-	if (proto_register(&proto_arp) == POM_OK)
-		return POM_OK;
-
-err:
-	proto_arp_mod_unregister();
-	return POM_ERR;
+	return proto_register(&proto_arp);
 
 }
 
@@ -127,22 +111,5 @@ static int proto_arp_process(struct proto *proto, struct packet *p, struct proto
 
 static int proto_arp_mod_unregister() {
 
-	int res = proto_unregister("arp");
-
-	if (ptype_mac) {
-		ptype_cleanup(ptype_mac);
-		ptype_mac = NULL;
-	}
-
-	if (ptype_uint16) {
-		ptype_cleanup(ptype_uint16);
-		ptype_uint16 = NULL;
-	}
-
-	if (ptype_ipv4) {
-		ptype_cleanup(ptype_ipv4);
-		ptype_ipv4 = NULL;
-	}
-		
-	return res;
+	return proto_unregister("arp");
 }
