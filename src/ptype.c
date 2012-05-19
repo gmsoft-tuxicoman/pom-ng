@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -134,58 +134,72 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 
 struct ptype* ptype_alloc_from(struct ptype *pt) {
 
-	struct ptype *ret = malloc(sizeof(struct ptype));
-	if (!ret) {
-		pom_oom(sizeof(struct ptype));
+	struct ptype *res = ptype_alloc_from_type(pt->type);
+
+	if (!res)
 		return NULL;
-	}
 
-	memset(ret, 0, sizeof(struct ptype));
-	ret->type = pt->type;
-
-	ret->flags = pt->flags;
-
-	if (pt->type->info->alloc) {
-		if (pt->type->info->alloc(ret) != POM_OK) {
-			pomlog(POMLOG_ERR "Ptype allocation failed while copying from another ptype");
-			goto err;
-		}
-	}
-
+	res->flags = pt->flags;
+	
 	if (pt->type->info->copy) {
-		if (pt->type->info->copy(ret, pt) != POM_OK) {
+		if (pt->type->info->copy(res, pt) != POM_OK) {
 			pomlog(POMLOG_ERR "Ptype copy failed while copying from another ptype");
 			goto err;
 		}
 	}
 
 	if (pt->unit) {
-		ret->unit = strdup(pt->unit);
-		if (!ret->unit) {
+		res->unit = strdup(pt->unit);
+		if (!res->unit) {
 			pom_oom(strlen(pt->unit));
 			goto err;
 		}
 	}
 
-
-	ptype_reg_lock(1);
-	pt->type->refcount++;
-	ptype_reg_unlock();
-
-	return ret;
+	return res;
 
 err:
 
-	if (ret->type->info->cleanup)
-		ret->type->info->cleanup(ret);
+	if (res->type->info->cleanup)
+		res->type->info->cleanup(res);
 	
 	if (pt->unit)
 		free(pt->unit);
 
-	free(ret);
+	free(res);
 
-	
+	ptype_reg_lock(1);
+	pt->type->refcount--;
+	ptype_reg_unlock();
 	return NULL;
+}
+
+struct ptype *ptype_alloc_from_type(struct ptype_reg *type) {
+
+	struct ptype *res = malloc(sizeof(struct ptype));
+	if (!res) {
+		pom_oom(sizeof(struct ptype));
+		return NULL;
+	}
+
+	memset(res, 0, sizeof(struct ptype));
+	res->type = type;
+
+
+	if (type->info->alloc) {
+		if (type->info->alloc(res) != POM_OK) {
+			pomlog(POMLOG_ERR "Ptype allocation failed");
+			free(res);
+			return NULL;
+		}
+	}
+
+	ptype_reg_lock(1);
+	type->refcount++;
+	ptype_reg_unlock();
+
+	return res;
+
 }
 
 int ptype_parse_val(struct ptype *pt, char *val) {
@@ -424,6 +438,16 @@ void ptype_reg_unlock() {
 char *ptype_get_name(struct ptype *p) {
 
 	return p->type->info->name;
+}
+
+struct ptype_reg *ptype_get_type(char *name) {
+	ptype_reg_lock(0);
+	struct ptype_reg *tmp;
+	
+	for (tmp = ptype_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
+	ptype_reg_unlock();
+
+	return tmp;
 }
 
 size_t ptype_get_value_size(struct ptype *pt) {

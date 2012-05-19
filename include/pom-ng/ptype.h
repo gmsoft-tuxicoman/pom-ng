@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -176,6 +176,9 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit);
 /// Allocate a clone of a given ptype.
 struct ptype* ptype_alloc_from(struct ptype *pt);
 
+/// Allocate a new struct ptype.
+struct ptype *ptype_alloc_from_type(struct ptype_reg *type);
+
 /// Parse a string into a useable value.
 int ptype_parse_val(struct ptype *pt, char *val);
 
@@ -217,6 +220,9 @@ int ptype_unregister(char *name);
 
 /// Get the ptype name
 char *ptype_get_name(struct ptype *p);
+
+/// Get the ptype registered type
+struct ptype_reg *ptype_get_type(char *name);
 
 /// Get the size of pt->value
 size_t ptype_get_value_size(struct ptype *pt);
