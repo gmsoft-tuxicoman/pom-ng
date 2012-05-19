@@ -34,7 +34,7 @@ struct data *data_alloc_table(struct data_reg *d_reg) {
 	int i;
 	for (i = 0; i < d_reg->data_count; i++) {
 		if (!(d_reg->items[i].flags & (DATA_REG_FLAG_LIST | DATA_REG_FLAG_NO_ALLOC))) {
-			d[i].value = ptype_alloc_from(d_reg->items[i].value_template);
+			d[i].value = ptype_alloc_from_type(d_reg->items[i].value_type);
 			if (!d[i].value)
 				goto err;
 		}
@@ -89,7 +89,7 @@ struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int
 	
 	item->key = key;
 
-	item->value = ptype_alloc_from(d_reg->items[data_id].value_template);
+	item->value = ptype_alloc_from_type(d_reg->items[data_id].value_type);
 	if (!item->value) {
 		free(item);
 		return NULL;

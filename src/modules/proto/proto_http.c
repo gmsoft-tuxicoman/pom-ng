@@ -89,28 +89,22 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 
 	proto->priv = priv;
 
-	priv->ptype_string = ptype_alloc("string");
-	priv->ptype_uint16 = ptype_alloc("uint16");
-	priv->ptype_timestamp = ptype_alloc("timestamp");
-	if (!priv->ptype_string || !priv->ptype_uint16 || !priv->ptype_timestamp)
-		goto err;
-
 	// Register the http_query event
 	static struct data_item_reg evt_query_data_items[PROTO_HTTP_EVT_QUERY_DATA_COUNT] = { { 0 } };
 	evt_query_data_items[proto_http_query_first_line].name = "first_line";
-	evt_query_data_items[proto_http_query_first_line].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_first_line].value_type = ptype_get_type("string");
 	evt_query_data_items[proto_http_query_proto].name = "proto_version";
-	evt_query_data_items[proto_http_query_proto].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_proto].value_type = ptype_get_type("string");
 	evt_query_data_items[proto_http_query_method].name = "method";
-	evt_query_data_items[proto_http_query_method].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_method].value_type = ptype_get_type("string");
 	evt_query_data_items[proto_http_query_url].name = "url";
-	evt_query_data_items[proto_http_query_url].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_url].value_type = ptype_get_type("string");
 	evt_query_data_items[proto_http_query_start_time].name = "start_time";
-	evt_query_data_items[proto_http_query_start_time].value_template = priv->ptype_timestamp;
+	evt_query_data_items[proto_http_query_start_time].value_type = ptype_get_type("timestamp");
 	evt_query_data_items[proto_http_query_end_time].name = "end_time";
-	evt_query_data_items[proto_http_query_end_time].value_template = priv->ptype_timestamp;
+	evt_query_data_items[proto_http_query_end_time].value_type = ptype_get_type("timestamp");
 	evt_query_data_items[proto_http_query_headers].name = "headers";
-	evt_query_data_items[proto_http_query_headers].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_headers].value_type = ptype_get_type("string");
 	evt_query_data_items[proto_http_query_headers].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_reg evt_query_data = {
@@ -134,15 +128,15 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 	// Register the http_response event
 	static struct data_item_reg evt_response_data_items[PROTO_HTTP_EVT_RESPONSE_DATA_COUNT] = { { 0 } };
 	evt_response_data_items[proto_http_response_status].name = "status";
-	evt_response_data_items[proto_http_response_status].value_template = priv->ptype_uint16;
+	evt_response_data_items[proto_http_response_status].value_type = ptype_get_type("uint16");
 	evt_response_data_items[proto_http_response_proto].name = "proto_version";
-	evt_response_data_items[proto_http_response_proto].value_template = priv->ptype_string;
+	evt_response_data_items[proto_http_response_proto].value_type = ptype_get_type("string");
 	evt_response_data_items[proto_http_response_start_time].name = "start_time";
-	evt_response_data_items[proto_http_response_start_time].value_template = priv->ptype_timestamp;
+	evt_response_data_items[proto_http_response_start_time].value_type = ptype_get_type("timestamp");
 	evt_response_data_items[proto_http_response_end_time].name = "end_time";
-	evt_response_data_items[proto_http_response_end_time].value_template = priv->ptype_timestamp;
+	evt_response_data_items[proto_http_response_end_time].value_type = ptype_get_type("timestamp");
 	evt_response_data_items[proto_http_response_headers].name = "headers";
-	evt_response_data_items[proto_http_response_headers].value_template = priv->ptype_string;
+	evt_response_data_items[proto_http_response_headers].value_type = ptype_get_type("string");
 	evt_response_data_items[proto_http_response_headers].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_reg evt_response_data = {
@@ -174,13 +168,6 @@ int proto_http_cleanup(struct proto * proto) {
 
 	if (proto->priv) {
 		struct proto_http_priv *priv = proto->priv;
-		if (priv->ptype_string)
-			ptype_cleanup(priv->ptype_string);
-		if (priv->ptype_uint16)
-			ptype_cleanup(priv->ptype_uint16);
-		if (priv->ptype_timestamp)
-			ptype_cleanup(priv->ptype_timestamp);
-		
 		if (priv->evt_query)
 			event_unregister(priv->evt_query);
 		if (priv->evt_response)

@@ -39,16 +39,11 @@ enum analyzer_gif_pload_data {
 	analyzer_gif_pload_height,
 };
 
-struct analyzer_gif_priv {
-	struct ptype *ptype_uint16;
-};
-
 struct mod_reg_info* analyzer_gif_reg_info();
 static int analyzer_gif_mod_register(struct mod_reg *mod);
 static int analyzer_gif_mod_unregister();
 
 static int analyzer_gif_init(struct analyzer *analyzer);
-static int analyzer_gif_cleanup(struct analyzer *analyzer);
 static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 #endif

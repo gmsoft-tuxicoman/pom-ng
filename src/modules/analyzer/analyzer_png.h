@@ -39,16 +39,11 @@ enum analyzer_png_pload_data {
 	analyzer_png_pload_height,
 };
 
-struct analyzer_png_priv {
-	struct ptype *ptype_uint16;
-};
-
 struct mod_reg_info* analyzer_png_reg_info();
 static int analyzer_png_mod_register(struct mod_reg *mod);
 static int analyzer_png_mod_unregister();
 
 static int analyzer_png_init(struct analyzer *analyzer);
-int analyzer_png_cleanup(struct analyzer *analyzer);
 static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 #endif

@@ -53,9 +53,6 @@ struct http_info {
 };
 
 struct proto_http_priv {
-	struct ptype *ptype_string;
-	struct ptype *ptype_uint16;
-	struct ptype *ptype_timestamp;
 
 	struct event_reg *evt_query;
 	struct event_reg *evt_response;

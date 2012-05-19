@@ -45,16 +45,11 @@ struct analyzer_jpeg_pload_priv {
 
 };
 
-struct analyzer_jpeg_priv {
-	struct ptype *ptype_uint16;
-};
-
 struct mod_reg_info* analyzer_jpeg_reg_info();
 static int analyzer_jpeg_mod_register(struct mod_reg *mod);
 static int analyzer_jpeg_mod_unregister();
 
 static int analyzer_jpeg_init(struct analyzer *analyzer);
-static int analyzer_jpeg_cleanup(struct analyzer *analyzer);
 static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 

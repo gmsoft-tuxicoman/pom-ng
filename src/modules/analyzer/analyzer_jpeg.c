@@ -34,6 +34,7 @@ struct mod_reg_info* analyzer_jpeg_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_jpeg_mod_register;
 	reg_info.unregister_func = analyzer_jpeg_mod_unregister;
+	reg_info.dependencies = "ptype_uint16";
 
 	return &reg_info;
 }
@@ -46,7 +47,6 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod) {
 	analyzer_jpeg.api_ver = ANALYZER_API_VER;
 	analyzer_jpeg.mod = mod;
 	analyzer_jpeg.init = analyzer_jpeg_init;
-	analyzer_jpeg.cleanup = analyzer_jpeg_cleanup;
 
 	return analyzer_register(&analyzer_jpeg);
 
@@ -66,26 +66,11 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
-	struct analyzer_jpeg_priv *priv = malloc(sizeof(struct analyzer_jpeg_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct analyzer_jpeg_priv));
-		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct analyzer_jpeg_priv));
-
-	priv->ptype_uint16 = ptype_alloc("uint16");
-	if (!priv->ptype_uint16) {
-		free(priv);
-		return POM_ERR;
-	}
-
-	analyzer->priv = priv;
-
 	static struct data_item_reg pload_jpeg_data_items[ANALYZER_JPEG_PLOAD_DATA_COUNT] = { { 0 } };
 	pload_jpeg_data_items[analyzer_jpeg_pload_width].name = "width";
-	pload_jpeg_data_items[analyzer_jpeg_pload_width].value_template = priv->ptype_uint16;
+	pload_jpeg_data_items[analyzer_jpeg_pload_width].value_type = ptype_get_type("uint16");
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].name = "height";
-	pload_jpeg_data_items[analyzer_jpeg_pload_height].value_template = priv->ptype_uint16;
+	pload_jpeg_data_items[analyzer_jpeg_pload_height].value_type = ptype_get_type("uint16");
 
 	static struct data_reg pload_jpeg_data = {
 		.items = pload_jpeg_data_items,
@@ -101,15 +86,6 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
 	return analyzer_pload_register(pload_type, &pload_reg);
-}
-
-static int analyzer_jpeg_cleanup(struct analyzer *analyzer) {
-
-	struct analyzer_jpeg_priv *priv = analyzer->priv;
-	ptype_cleanup(priv->ptype_uint16);
-	free(priv);
-
-	return POM_OK;
 }
 
 static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
