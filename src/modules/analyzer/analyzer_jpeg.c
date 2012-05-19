@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
  */
 
 #include "analyzer_jpeg.h"
+#include <pom-ng/ptype_uint16.h>
 
 #if 0
 #define debug_jpeg(x ...) pomlog(POMLOG_DEBUG x)
@@ -45,6 +46,7 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod) {
 	analyzer_jpeg.api_ver = ANALYZER_API_VER;
 	analyzer_jpeg.mod = mod;
 	analyzer_jpeg.init = analyzer_jpeg_init;
+	analyzer_jpeg.cleanup = analyzer_jpeg_cleanup;
 
 	return analyzer_register(&analyzer_jpeg);
 
@@ -64,22 +66,50 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
+	struct analyzer_jpeg_priv *priv = malloc(sizeof(struct analyzer_jpeg_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct analyzer_jpeg_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct analyzer_jpeg_priv));
 
-	static struct analyzer_data_reg pload_jpeg_data[ANALYZER_JPEG_PLOAD_DATA_COUNT + 1];
-	memset(&pload_jpeg_data, 0, sizeof(struct analyzer_data_reg) * (ANALYZER_JPEG_PLOAD_DATA_COUNT + 1));
-	pload_jpeg_data[analyzer_jpeg_pload_width].name = "width";
-	pload_jpeg_data[analyzer_jpeg_pload_height].name = "height";
+	priv->ptype_uint16 = ptype_alloc("uint16");
+	if (!priv->ptype_uint16) {
+		free(priv);
+		return POM_ERR;
+	}
+
+	analyzer->priv = priv;
+
+	static struct data_item_reg pload_jpeg_data_items[ANALYZER_JPEG_PLOAD_DATA_COUNT] = { { 0 } };
+	pload_jpeg_data_items[analyzer_jpeg_pload_width].name = "width";
+	pload_jpeg_data_items[analyzer_jpeg_pload_width].value_template = priv->ptype_uint16;
+	pload_jpeg_data_items[analyzer_jpeg_pload_height].name = "height";
+	pload_jpeg_data_items[analyzer_jpeg_pload_height].value_template = priv->ptype_uint16;
+
+	static struct data_reg pload_jpeg_data = {
+		.items = pload_jpeg_data_items,
+		.data_count = ANALYZER_JPEG_PLOAD_DATA_COUNT
+	};
 
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
 	pload_reg.process = analyzer_jpeg_pload_process;
 	pload_reg.cleanup = analyzer_jpeg_pload_cleanup;
-	pload_reg.data = pload_jpeg_data;
+	pload_reg.data_reg = &pload_jpeg_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
-
 	return analyzer_pload_register(pload_type, &pload_reg);
+}
+
+static int analyzer_jpeg_cleanup(struct analyzer *analyzer) {
+
+	struct analyzer_jpeg_priv *priv = analyzer->priv;
+	ptype_cleanup(priv->ptype_uint16);
+	free(priv);
+
+	return POM_OK;
 }
 
 static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
@@ -139,7 +169,9 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 
 		if (res == JPEG_SUSPENDED) // Headers are incomplete
 			return POM_OK;
-		
+	
+		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
+		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
 		debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
 		free(priv->cinfo.src);

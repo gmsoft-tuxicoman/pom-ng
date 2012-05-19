@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -89,42 +89,15 @@ struct event *event_alloc(struct event_reg *evt_reg) {
 	struct event_reg_info *info = evt_reg->info;
 	evt->reg = evt_reg;
 
-	struct event_data *data = malloc(sizeof(struct event_data) * info->data_count);
-	if (!data) {
-		pom_oom(sizeof(struct event_data) * info->data_count);
+	evt->data = data_alloc_table(info->data_reg);
+	if (!evt->data) {
 		free(evt);
 		return NULL;
 	}
-	memset(data, 0, sizeof(struct event_data) * info->data_count);
-	
-	int i;
-	for (i = 0; i < info->data_count; i++) {
-		// Allocate a ptype for each non list items
-		if (!(info->data_reg[i].flags & (EVENT_DATA_REG_FLAG_LIST | EVENT_DATA_REG_FLAG_NO_ALLOC))) {
-			data[i].value = ptype_alloc_from(info->data_reg[i].value_template);
-			if (!data[i].value)
-				goto err;
-		}
-		// Automatically set the non cleanup flag for not allocated data
-		if (info->data_reg[i].flags & EVENT_DATA_REG_FLAG_NO_ALLOC)
-			data[i].flags = EVENT_DATA_FLAG_NO_CLEAN;
-	}
-	evt->data = data;
 
 	debug_event("Event %s allocated", evt_reg->info->name);
 
 	return evt;
-err:
-
-	for (i = 0; i < info->data_count; i++) {
-		if (data[i].value)
-			ptype_cleanup(data[i].value);
-	}
-
-	free(data);
-	free(evt);
-
-	return NULL;
 }
 
 int event_cleanup(struct event *evt) {
@@ -143,27 +116,7 @@ int event_cleanup(struct event *evt) {
 		return POM_ERR;
 	}
 
-	int i;
-	for (i = 0; i < evt->reg->info->data_count; i++) {
-		if (evt->data[i].flags & EVENT_DATA_FLAG_NO_CLEAN)
-			continue;
-		if (evt->reg->info->data_reg[i].flags & EVENT_DATA_REG_FLAG_LIST) {
-			struct event_data_item *itm = evt->data[i].items;
-			while (itm) {
-				struct event_data_item *next = itm->next;
-				free(itm->key);
-				ptype_cleanup(itm->value);
-				free(itm);
-				itm = next;
-			}
-
-		} else {
-			ptype_cleanup(evt->data[i].value);
-		}
-
-	}
-
-	free(evt->data);
+	data_cleanup_table(evt->data, evt->reg->info->data_reg);
 	free(evt);
 	return POM_OK;
 }
@@ -173,28 +126,6 @@ struct event_reg *event_find(char *name) {
 	struct event_reg *tmp;
 	for (tmp = event_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
 	return tmp;
-}
-
-struct ptype *event_data_item_add(struct event *evt, unsigned int data_id, char *key) {
-
-	struct event_data_item *itm = malloc(sizeof(struct event_data_item));
-	if (!itm) {
-		pom_oom(sizeof(struct event_data_item));
-		return NULL;
-	}
-	memset(itm, 0, sizeof(struct event_data_item));
-	
-	itm->key = key;
-
-	itm->value = ptype_alloc_from(evt->reg->info->data_reg[data_id].value_template);
-	if (!itm->value) {
-		free(itm);
-		return NULL;
-	}
-
-	itm->next = evt->data[data_id].items;
-	evt->data[data_id].items = itm;
-	return itm->value;
 }
 
 int event_listener_register(struct event_reg *evt_reg, struct event_listener *listener) {

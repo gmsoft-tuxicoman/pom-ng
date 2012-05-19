@@ -615,12 +615,34 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			// Have the analyzer look at the payload
 			// The analyzer will either leave the state as it is or change it to error or analyzed
 			if ((pload_analyzer->flags & ANALYZER_PLOAD_PROCESS_PARTIAL) || (pload->expected_size && (pload->buff_pos >= pload->expected_size))) {
-				if (pload->type->analyzer->process(pload->type->analyzer->analyzer, pload) != POM_OK) {
+
+				// Allocate the pload data
+				if (!pload->data && pload_analyzer->data_reg) {
+					pload->data = data_alloc_table(pload_analyzer->data_reg);
+					if (!pload->data) {
+						pload->state = analyzer_pload_buffer_state_error;		
+						return POM_OK;
+					}
+				}
+
+				if (pload_analyzer->process(pload_analyzer->analyzer, pload) != POM_OK) {
 					// The analyzer enountered an error. Not sure what is the best course of action here.
 					pomlog(POMLOG_DEBUG "Error while analyzing pload of type %s", pload->type->name);
+
 					// For now, remove the type from the payload
 					pload->type = NULL;
 				}
+	
+				if (!pload->type) {
+					// The analyzer did not recognize the payload, nothing more to do
+					pload->state = analyzer_pload_buffer_state_analyzed;
+
+					if (pload->data) {
+						data_cleanup_table(pload->data, pload_analyzer->data_reg);
+						pload->data = NULL;
+					}
+				}
+
 			} else {
 				// The analyzer needs the full buffer
 				if (!pload->buff_size) {
@@ -634,10 +656,6 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				}
 			}
 		
-			if (!pload->type) {
-				// The analyzer did not recognize the payload, nothing more to do
-				pload->state = analyzer_pload_buffer_state_analyzed;
-			} 
 
 		} else {
 			// Nothing to analyze
@@ -737,6 +755,12 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 			if (pload_analyzer->cleanup(pload_analyzer->analyzer, pload) != POM_OK)
 				pomlog(POMLOG_WARN "Error while cleaning up payload buffer of type %s", pload->type->name);
 		}
+
+		if (pload->data) {
+			data_cleanup_table(pload->data, pload_analyzer->data_reg);
+			pload->data = NULL;
+		}
+
 	}
 
 	while (pload->output_list) {
@@ -756,6 +780,7 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 #endif
 	if (pload->buff_size && pload->buff)
 		free(pload->buff);
+
 	free(pload);
 
 	return POM_OK;

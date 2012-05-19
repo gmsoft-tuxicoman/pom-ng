@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -93,7 +93,7 @@ int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct anal
 		*(value + value_size) = 0;
 
 
-		struct ptype *value_pt = event_data_item_add(pload->rel_event, analyzer_http_request_post_data, name);
+		struct ptype *value_pt = data_item_add(pload->rel_event->data, pload->rel_event->reg->info->data_reg, analyzer_http_request_post_data, name);
 
 		if (!value_pt) {
 			free(name);

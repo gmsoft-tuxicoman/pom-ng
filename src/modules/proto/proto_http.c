@@ -96,23 +96,27 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 		goto err;
 
 	// Register the http_query event
-	static struct event_data_reg evt_query_data[PROTO_HTTP_EVT_QUERY_DATA_COUNT];
-	memset(evt_query_data, 0, sizeof(struct event_data_reg) * PROTO_HTTP_EVT_QUERY_DATA_COUNT);
-	evt_query_data[proto_http_query_first_line].name = "first_line";
-	evt_query_data[proto_http_query_first_line].value_template = priv->ptype_string;
-	evt_query_data[proto_http_query_proto].name = "proto_version";
-	evt_query_data[proto_http_query_proto].value_template = priv->ptype_string;
-	evt_query_data[proto_http_query_method].name = "method";
-	evt_query_data[proto_http_query_method].value_template = priv->ptype_string;
-	evt_query_data[proto_http_query_url].name = "url";
-	evt_query_data[proto_http_query_url].value_template = priv->ptype_string;
-	evt_query_data[proto_http_query_start_time].name = "start_time";
-	evt_query_data[proto_http_query_start_time].value_template = priv->ptype_timestamp;
-	evt_query_data[proto_http_query_end_time].name = "end_time";
-	evt_query_data[proto_http_query_end_time].value_template = priv->ptype_timestamp;
-	evt_query_data[proto_http_query_headers].name = "headers";
-	evt_query_data[proto_http_query_headers].value_template = priv->ptype_string;
-	evt_query_data[proto_http_query_headers].flags = EVENT_DATA_REG_FLAG_LIST;
+	static struct data_item_reg evt_query_data_items[PROTO_HTTP_EVT_QUERY_DATA_COUNT] = { { 0 } };
+	evt_query_data_items[proto_http_query_first_line].name = "first_line";
+	evt_query_data_items[proto_http_query_first_line].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_proto].name = "proto_version";
+	evt_query_data_items[proto_http_query_proto].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_method].name = "method";
+	evt_query_data_items[proto_http_query_method].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_url].name = "url";
+	evt_query_data_items[proto_http_query_url].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_start_time].name = "start_time";
+	evt_query_data_items[proto_http_query_start_time].value_template = priv->ptype_timestamp;
+	evt_query_data_items[proto_http_query_end_time].name = "end_time";
+	evt_query_data_items[proto_http_query_end_time].value_template = priv->ptype_timestamp;
+	evt_query_data_items[proto_http_query_headers].name = "headers";
+	evt_query_data_items[proto_http_query_headers].value_template = priv->ptype_string;
+	evt_query_data_items[proto_http_query_headers].flags = DATA_REG_FLAG_LIST;
+
+	static struct data_reg evt_query_data = {
+		.items = evt_query_data_items,
+		.data_count = PROTO_HTTP_EVT_QUERY_DATA_COUNT
+	};
 
 	
 	static struct event_reg_info proto_http_evt_query;
@@ -121,27 +125,30 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 	proto_http_evt_query.source_obj = proto;
 	proto_http_evt_query.name = "http_query";
 	proto_http_evt_query.description = "HTTP query (client side only)";
-	proto_http_evt_query.data_reg = evt_query_data;
-	proto_http_evt_query.data_count = PROTO_HTTP_EVT_QUERY_DATA_COUNT;
+	proto_http_evt_query.data_reg = &evt_query_data;
 
 	priv->evt_query = event_register(&proto_http_evt_query);
 	if (!priv->evt_query)
 		goto err;
 
 	// Register the http_response event
-	static struct event_data_reg evt_response_data[PROTO_HTTP_EVT_RESPONSE_DATA_COUNT];
-	memset(evt_response_data, 0, sizeof(struct event_data_reg) * PROTO_HTTP_EVT_RESPONSE_DATA_COUNT);
-	evt_response_data[proto_http_response_status].name = "status";
-	evt_response_data[proto_http_response_status].value_template = priv->ptype_uint16;
-	evt_response_data[proto_http_response_proto].name = "proto_version";
-	evt_response_data[proto_http_response_proto].value_template = priv->ptype_string;
-	evt_response_data[proto_http_response_start_time].name = "start_time";
-	evt_response_data[proto_http_response_start_time].value_template = priv->ptype_timestamp;
-	evt_response_data[proto_http_response_end_time].name = "end_time";
-	evt_response_data[proto_http_response_end_time].value_template = priv->ptype_timestamp;
-	evt_response_data[proto_http_response_headers].name = "headers";
-	evt_response_data[proto_http_response_headers].value_template = priv->ptype_string;
-	evt_response_data[proto_http_response_headers].flags = EVENT_DATA_REG_FLAG_LIST;
+	static struct data_item_reg evt_response_data_items[PROTO_HTTP_EVT_RESPONSE_DATA_COUNT] = { { 0 } };
+	evt_response_data_items[proto_http_response_status].name = "status";
+	evt_response_data_items[proto_http_response_status].value_template = priv->ptype_uint16;
+	evt_response_data_items[proto_http_response_proto].name = "proto_version";
+	evt_response_data_items[proto_http_response_proto].value_template = priv->ptype_string;
+	evt_response_data_items[proto_http_response_start_time].name = "start_time";
+	evt_response_data_items[proto_http_response_start_time].value_template = priv->ptype_timestamp;
+	evt_response_data_items[proto_http_response_end_time].name = "end_time";
+	evt_response_data_items[proto_http_response_end_time].value_template = priv->ptype_timestamp;
+	evt_response_data_items[proto_http_response_headers].name = "headers";
+	evt_response_data_items[proto_http_response_headers].value_template = priv->ptype_string;
+	evt_response_data_items[proto_http_response_headers].flags = DATA_REG_FLAG_LIST;
+
+	static struct data_reg evt_response_data = {
+		.items = evt_response_data_items,
+		.data_count = PROTO_HTTP_EVT_RESPONSE_DATA_COUNT
+	};
 
 	static struct event_reg_info proto_http_evt_response;
 	memset(&proto_http_evt_response, 0, sizeof(struct event_reg_info));
@@ -149,8 +156,7 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 	proto_http_evt_response.source_obj = proto;
 	proto_http_evt_response.name = "http_response";
 	proto_http_evt_response.description = "HTTP response (server side only)";
-	proto_http_evt_response.data_reg = evt_response_data;
-	proto_http_evt_response.data_count = PROTO_HTTP_EVT_RESPONSE_DATA_COUNT;
+	proto_http_evt_response.data_reg = &evt_response_data;
 
 	priv->evt_response = event_register(&proto_http_evt_response);
 	if (!priv->evt_response)
@@ -330,7 +336,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				value[value_len] = 0;
 
 
-				struct ptype *data_val = event_data_item_add(priv->event[s->direction], (priv->client_direction == s->direction ? proto_http_query_headers : proto_http_response_headers), name);
+				struct ptype *data_val = data_item_add(priv->event[s->direction]->data, priv->event[s->direction]->reg->info->data_reg, (priv->client_direction == s->direction ? proto_http_query_headers : proto_http_response_headers), name);
 				if (!data_val) {
 					free(name);
 					free(value);

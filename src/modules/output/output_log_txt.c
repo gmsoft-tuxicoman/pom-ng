@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -284,11 +284,11 @@ int output_log_txt_open(struct output *o) {
 			memset(name, 0, sizeof(name));
 			strncpy(name, sep, end_off - start_off - 1);
 			
-			struct event_data_reg *dreg = evt->info->data_reg;
+			struct data_reg *dreg = evt->info->data_reg;
 			int i;
-			for (i = 0; i < evt->info->data_count && strcmp(dreg[i].name, name); i++);
+			for (i = 0; i < dreg->data_count && strcmp(dreg->items[i].name, name); i++);
 
-			if (!dreg[i].name) {
+			if (!dreg->items[i].name) {
 				pomlog(POMLOG_WARN "Field %s not found in event %s", name, evt_name);
 				sep = cur + 1;
 				continue;

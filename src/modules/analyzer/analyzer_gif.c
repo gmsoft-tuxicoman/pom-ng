@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,8 @@
  */
 
 #include "analyzer_gif.h"
+
+#include <pom-ng/ptype_uint16.h>
 
 #if 0
 #define debug_gif(x ...) pomlog(POMLOG_DEBUG x)
@@ -45,6 +47,7 @@ static int analyzer_gif_mod_register(struct mod_reg *mod) {
 	analyzer_gif.api_ver = ANALYZER_API_VER;
 	analyzer_gif.mod = mod;
 	analyzer_gif.init = analyzer_gif_init;
+	analyzer_gif.cleanup = analyzer_gif_cleanup;
 
 	return analyzer_register(&analyzer_gif);
 
@@ -64,21 +67,50 @@ static int analyzer_gif_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
+	struct analyzer_gif_priv *priv = malloc(sizeof(struct analyzer_gif_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct analyzer_gif_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct analyzer_gif_priv));
 
-	static struct analyzer_data_reg pload_gif_data[ANALYZER_GIF_PLOAD_DATA_COUNT + 1];
-	memset(&pload_gif_data, 0, sizeof(struct analyzer_data_reg) * (ANALYZER_GIF_PLOAD_DATA_COUNT + 1));
-	pload_gif_data[analyzer_gif_pload_width].name = "width";
-	pload_gif_data[analyzer_gif_pload_height].name = "height";
+	priv->ptype_uint16 = ptype_alloc("uint16");
+	if (!priv->ptype_uint16) {
+		free(priv);
+		return POM_ERR;
+	}
+
+	analyzer->priv = priv;
+
+	static struct data_item_reg pload_gif_data_items[ANALYZER_GIF_PLOAD_DATA_COUNT] = { { 0 } };
+	pload_gif_data_items[analyzer_gif_pload_width].name = "width";
+	pload_gif_data_items[analyzer_gif_pload_width].value_template = priv->ptype_uint16;
+	pload_gif_data_items[analyzer_gif_pload_height].name = "height";
+	pload_gif_data_items[analyzer_gif_pload_height].value_template = priv->ptype_uint16;
+
+	static struct data_reg pload_gif_data = {
+		.items = pload_gif_data_items,
+		.data_count = ANALYZER_GIF_PLOAD_DATA_COUNT
+	};
 
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
 	pload_reg.process = analyzer_gif_pload_process;
-	pload_reg.data = pload_gif_data;
+	pload_reg.data_reg = &pload_gif_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
 
 	return analyzer_pload_register(pload_type, &pload_reg);
+}
+
+static int analyzer_gif_cleanup(struct analyzer *analyzer) {
+
+	struct analyzer_gif_priv *priv = analyzer->priv;
+	ptype_cleanup(priv->ptype_uint16);
+	free(priv);
+
+	return POM_OK;
 }
 
 static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
@@ -96,7 +128,11 @@ static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer
 
 		pload->state = analyzer_pload_buffer_state_analyzed;
 
+		PTYPE_UINT16_SETVAL(pload->data[analyzer_gif_pload_width].value, width);
+		PTYPE_UINT16_SETVAL(pload->data[analyzer_gif_pload_height].value, height);
+
 		debug_gif("Got GIF image of %ux%u", width, height);
+
 	} else {
 		pomlog(POMLOG_DEBUG "GIF signature not found");
 		pload->type = NULL;
@@ -104,5 +140,4 @@ static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer
 
 	return POM_OK;
 }
-
 

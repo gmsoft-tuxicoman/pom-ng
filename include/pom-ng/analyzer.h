@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include <pom-ng/event.h>
 #include <pom-ng/conntrack.h>
 #include <pom-ng/output.h>
+#include <pom-ng/data.h>
 
 #ifdef HAVE_ZLIB
 #include <zlib.h>
@@ -66,25 +67,6 @@ struct analyzer_reg {
 	int (*cleanup) (struct analyzer *analyzer);
 
 };
-
-typedef struct event_data_item analyzer_data_item_t;
-
-struct analyzer_data {
-	
-	union {
-		struct ptype *value;
-		analyzer_data_item_t *items;
-	};
-};
-
-
-struct analyzer_data_reg {
-	int flags;
-	char *name;
-	struct ptype *value_template;
-
-};
-
 
 struct analyzer_pload_class {
 
@@ -145,7 +127,7 @@ struct analyzer_pload_buffer {
 	enum analyzer_pload_buffer_state state;
 	unsigned int flags;
 
-	struct analyzer_data *data;
+	struct data *data;
 	struct event *rel_event;
 	struct analyzer_pload_output_list *output_list;
 	void *analyzer_priv;
@@ -159,7 +141,7 @@ struct analyzer_pload_buffer {
 struct analyzer_pload_reg {
 
 	struct analyzer *analyzer;
-	struct analyzer_data_reg *data;
+	struct data_reg *data_reg;
 	unsigned int flags;
 
 	int (*process) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,41 +24,12 @@
 
 #include <pom-ng/proto.h>
 #include <pom-ng/conntrack.h>
-
-// Indicate that the data will be an array
-#define EVENT_DATA_REG_FLAG_LIST	0x1
-// Indicate that the data should not be allocated automatically
-#define EVENT_DATA_REG_FLAG_NO_ALLOC	0x2
+#include <pom-ng/data.h>
 
 // Indicate that the event processing has started
 #define EVENT_FLAG_PROCESS_BEGAN	0x1
 // Indicate that the event processing is done
 #define EVENT_FLAG_PROCESS_DONE		0x2
-
-// Indicate that the event data shouldn't be cleaned up by the API
-#define EVENT_DATA_FLAG_NO_CLEAN	0x1
-
-struct event_data_item {
-	char *key;
-	struct ptype *value;
-	struct event_data_item *next;
-};
-
-struct event_data {
-
-	union {
-		struct ptype *value;
-		struct event_data_item *items;
-	};
-	unsigned int flags;
-
-};
-
-struct event_data_reg {
-	int flags;
-	char *name;
-	struct ptype *value_template;
-};
 
 struct event {
 	struct event_reg *reg;
@@ -66,7 +37,7 @@ struct event {
 	struct conntrack_entry *ce;
 	void *priv;
 	unsigned int refcount;
-	struct event_data *data;
+	struct data *data;
 };
 
 struct event_listener {
@@ -92,8 +63,7 @@ struct event_reg_info {
 	void *source_obj;
 	char *name;
 	char *description;
-	struct event_data_reg *data_reg;
-	unsigned int data_count;
+	struct data_reg *data_reg;
 	int (*listeners_notify) (void *obj, struct event_reg *evt_reg, int has_listeners);
 	int (*cleanup) (struct event *evt);
 };
@@ -105,7 +75,7 @@ struct event *event_alloc(struct event_reg *evt_reg);
 int event_cleanup(struct event *evt);
 
 struct event_reg *event_find(char *name);
-struct ptype *event_data_item_add(struct event *evt, unsigned int data_id, char *key);
+//struct ptype *event_data_item_add(struct event *evt, unsigned int data_id, char *key);
 
 int event_listener_register(struct event_reg *evt_reg, struct event_listener *listener);
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);

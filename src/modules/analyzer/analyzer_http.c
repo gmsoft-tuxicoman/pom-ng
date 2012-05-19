@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -82,82 +82,86 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	if (!priv->ptype_string || !priv->ptype_uint64)
 		goto err;
 
-	static struct event_data_reg evt_request_data[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT];
-	memset(&evt_request_data, 0, sizeof(struct event_data_reg) * ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT);
+	static struct data_item_reg evt_request_data_items[ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT] = { { 0 } };
 
-	evt_request_data[analyzer_http_request_server_name].name = "server_name";
-	evt_request_data[analyzer_http_request_server_name].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_server_name].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_server_name].name = "server_name";
+	evt_request_data_items[analyzer_http_request_server_name].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_server_name].value_template = priv->ptype_string;
 
-	evt_request_data[analyzer_http_request_server_addr].name = "server_addr";
-	evt_request_data[analyzer_http_request_server_addr].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_server_addr].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_server_addr].name = "server_addr";
+	evt_request_data_items[analyzer_http_request_server_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_server_addr].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_server_port].name = "server_port";
-	evt_request_data[analyzer_http_request_server_port].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_server_port].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_server_port].name = "server_port";
+	evt_request_data_items[analyzer_http_request_server_port].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_server_port].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_client_addr].name = "client_addr";
-	evt_request_data[analyzer_http_request_client_addr].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_client_addr].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_client_addr].name = "client_addr";
+	evt_request_data_items[analyzer_http_request_client_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_client_addr].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_client_port].name = "client_port";
-	evt_request_data[analyzer_http_request_client_port].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_client_port].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_client_port].name = "client_port";
+	evt_request_data_items[analyzer_http_request_client_port].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_client_port].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_request_proto].name = "request_proto";
-	evt_request_data[analyzer_http_request_request_proto].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_request_proto].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_request_proto].name = "request_proto";
+	evt_request_data_items[analyzer_http_request_request_proto].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_request_proto].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_request_method].name = "request_method";
-	evt_request_data[analyzer_http_request_request_method].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_request_method].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_request_method].name = "request_method";
+	evt_request_data_items[analyzer_http_request_request_method].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_request_method].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_first_line].name = "first_line";
-	evt_request_data[analyzer_http_request_first_line].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_first_line].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_first_line].name = "first_line";
+	evt_request_data_items[analyzer_http_request_first_line].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_first_line].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_url].name = "url";
-	evt_request_data[analyzer_http_request_url].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_url].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_url].name = "url";
+	evt_request_data_items[analyzer_http_request_url].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_url].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_query_time].name = "query_time";
-	evt_request_data[analyzer_http_request_query_time].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_query_time].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_query_time].name = "query_time";
+	evt_request_data_items[analyzer_http_request_query_time].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_query_time].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_response_time].name = "response_time";
-	evt_request_data[analyzer_http_request_response_time].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_response_time].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_response_time].name = "response_time";
+	evt_request_data_items[analyzer_http_request_response_time].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_response_time].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_username].name = "username";
-	evt_request_data[analyzer_http_request_username].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_username].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_username].name = "username";
+	evt_request_data_items[analyzer_http_request_username].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_username].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_password].name = "password";
-	evt_request_data[analyzer_http_request_password].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_password].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_password].name = "password";
+	evt_request_data_items[analyzer_http_request_password].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_password].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_status].name = "status";
-	evt_request_data[analyzer_http_request_status].flags = EVENT_DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data[analyzer_http_request_status].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_status].name = "status";
+	evt_request_data_items[analyzer_http_request_status].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_request_data_items[analyzer_http_request_status].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_query_headers].name = "query_headers";
-	evt_request_data[analyzer_http_request_query_headers].flags = EVENT_DATA_REG_FLAG_LIST;
-	evt_request_data[analyzer_http_request_query_headers].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_query_headers].name = "query_headers";
+	evt_request_data_items[analyzer_http_request_query_headers].flags = DATA_REG_FLAG_LIST;
+	evt_request_data_items[analyzer_http_request_query_headers].value_template = priv->ptype_string;
 
-	evt_request_data[analyzer_http_request_response_headers].name = "response_headers";
-	evt_request_data[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
-	evt_request_data[analyzer_http_request_response_headers].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_response_headers].name = "response_headers";
+	evt_request_data_items[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
+	evt_request_data_items[analyzer_http_request_response_headers].value_template = priv->ptype_string;
 	
-	evt_request_data[analyzer_http_request_post_data].name = "post_data";
-	evt_request_data[analyzer_http_request_post_data].flags = EVENT_DATA_REG_FLAG_LIST;
-	evt_request_data[analyzer_http_request_post_data].value_template = priv->ptype_string;
+	evt_request_data_items[analyzer_http_request_post_data].name = "post_data";
+	evt_request_data_items[analyzer_http_request_post_data].flags = DATA_REG_FLAG_LIST;
+	evt_request_data_items[analyzer_http_request_post_data].value_template = priv->ptype_string;
 
-	evt_request_data[analyzer_http_request_query_size].name = "query_size";
-	evt_request_data[analyzer_http_request_query_size].value_template = priv->ptype_uint64;
+	evt_request_data_items[analyzer_http_request_query_size].name = "query_size";
+	evt_request_data_items[analyzer_http_request_query_size].value_template = priv->ptype_uint64;
 
-	evt_request_data[analyzer_http_request_response_size].name = "response_size";
-	evt_request_data[analyzer_http_request_response_size].value_template = priv->ptype_uint64;
+	evt_request_data_items[analyzer_http_request_response_size].name = "response_size";
+	evt_request_data_items[analyzer_http_request_response_size].value_template = priv->ptype_uint64;
+
+	static struct data_reg evt_request_data = {
+		.items = evt_request_data_items,
+		.data_count = ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT
+	};
 
 	static struct event_reg_info analyzer_http_evt_request;
 	memset(&analyzer_http_evt_request, 0, sizeof(struct event_reg_info));
@@ -165,8 +169,7 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	analyzer_http_evt_request.source_obj = analyzer;
 	analyzer_http_evt_request.name = "http_request";
 	analyzer_http_evt_request.description = "HTTP request (compound event of http_query and http_response)";
-	analyzer_http_evt_request.data_reg = evt_request_data;
-	analyzer_http_evt_request.data_count = ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT;
+	analyzer_http_evt_request.data_reg = &evt_request_data;
 	analyzer_http_evt_request.listeners_notify = analyzer_http_event_listeners_notify;
 	analyzer_http_evt_request.cleanup = analyzer_http_request_event_cleanup;
 
@@ -331,10 +334,10 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 	// Do the mapping, no flag checking or other, we just know how :)
 
-	struct event_data *src_data = evt->data;
-	struct event_data *dst_data = elist->evt->data;
+	struct data *src_data = evt->data;
+	struct data *dst_data = elist->evt->data;
 
-	struct event_data_item *headers = NULL;
+	struct data_item *headers = NULL;
 
 	if (evt->reg == apriv->evt_query) {
 
@@ -352,7 +355,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		dst_data[analyzer_http_request_query_time].value = src_data[proto_http_query_start_time].value;
 
 		dst_data[analyzer_http_request_query_headers].items = src_data[proto_http_query_headers].items;
-		dst_data[analyzer_http_request_query_headers].flags = EVENT_DATA_FLAG_NO_CLEAN;
+		dst_data[analyzer_http_request_query_headers].flags = DATA_FLAG_NO_CLEAN;
 
 		headers = src_data[proto_http_query_headers].items;
 
@@ -373,7 +376,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 			dst_data[analyzer_http_request_query_time].value = src_data[proto_http_response_start_time].value;
 
 		dst_data[analyzer_http_request_response_headers].items = src_data[proto_http_response_headers].items;
-		dst_data[analyzer_http_request_response_headers].flags = EVENT_DATA_FLAG_NO_CLEAN;
+		dst_data[analyzer_http_request_response_headers].flags = DATA_FLAG_NO_CLEAN;
 
 		headers = src_data[proto_http_response_headers].items;
 

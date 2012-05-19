@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
  */
 
 #include "analyzer_png.h"
+#include <pom-ng/ptype_uint16.h>
 
 #include <arpa/inet.h>
 
@@ -47,6 +48,7 @@ static int analyzer_png_mod_register(struct mod_reg *mod) {
 	analyzer_png.api_ver = ANALYZER_API_VER;
 	analyzer_png.mod = mod;
 	analyzer_png.init = analyzer_png_init;
+	analyzer_png.cleanup = analyzer_png_cleanup;
 
 	return analyzer_register(&analyzer_png);
 
@@ -66,21 +68,49 @@ static int analyzer_png_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
+	struct analyzer_png_priv *priv = malloc(sizeof(struct analyzer_png_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct analyzer_png_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct analyzer_png_priv));
 
-	static struct analyzer_data_reg pload_png_data[ANALYZER_PNG_PLOAD_DATA_COUNT + 1];
-	memset(&pload_png_data, 0, sizeof(struct analyzer_data_reg) * (ANALYZER_PNG_PLOAD_DATA_COUNT + 1));
-	pload_png_data[analyzer_png_pload_width].name = "width";
-	pload_png_data[analyzer_png_pload_height].name = "height";
+	priv->ptype_uint16 = ptype_alloc("uint16");
+	if (!priv->ptype_uint16) {
+		free(priv);
+		return POM_ERR;
+	}
+
+	analyzer->priv = priv;
+
+	static struct data_item_reg pload_png_data_items[ANALYZER_PNG_PLOAD_DATA_COUNT] = { { 0 } };
+	pload_png_data_items[analyzer_png_pload_width].name = "width";
+	pload_png_data_items[analyzer_png_pload_width].value_template = priv->ptype_uint16;
+	pload_png_data_items[analyzer_png_pload_height].name = "height";
+	pload_png_data_items[analyzer_png_pload_height].value_template = priv->ptype_uint16;
+
+	static struct data_reg pload_png_data = {
+		.items = pload_png_data_items,
+		.data_count = ANALYZER_PNG_PLOAD_DATA_COUNT
+	};
 
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
 	pload_reg.process = analyzer_png_pload_process;
-	pload_reg.data = pload_png_data;
+	pload_reg.data_reg = &pload_png_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
-
 	return analyzer_pload_register(pload_type, &pload_reg);
+}
+
+int analyzer_png_cleanup(struct analyzer *analyzer) {
+
+	struct analyzer_png_priv *priv = analyzer->priv;
+	ptype_cleanup(priv->ptype_uint16);
+	free(priv);
+
+	return POM_OK;
 }
 
 static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
@@ -97,7 +127,9 @@ static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer
 			height = ntohl(*(unsigned int*)(pload->buff + 20));
 
 			pload->state = analyzer_pload_buffer_state_analyzed;
-		
+	
+			PTYPE_UINT16_SETVAL(pload->data[analyzer_png_pload_width].value, width);
+			PTYPE_UINT16_SETVAL(pload->data[analyzer_png_pload_height].value, height);
 			debug_png("Got PNG of %ux%u", width, height);
 
 		} else {

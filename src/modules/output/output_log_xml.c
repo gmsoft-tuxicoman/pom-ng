@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -186,8 +186,8 @@ int output_log_xml_process(struct event *evt, void *obj) {
 		goto err;
 
 	unsigned int i;
-	for (i = 0; i < evt->reg->info->data_count; i++) {
-		if (evt->reg->info->data_reg[i].flags & ANALYZER_DATA_FLAG_LIST) {
+	for (i = 0; i < evt->reg->info->data_reg->data_count; i++) {
+		if (evt->reg->info->data_reg->items[i].flags & ANALYZER_DATA_FLAG_LIST) {
 			// Got a data_list
 		
 			if (!evt->data[i].items)
@@ -196,11 +196,11 @@ int output_log_xml_process(struct event *evt, void *obj) {
 			// <data_list name="data_name">
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
 				xmlTextWriterStartElement(writer, BAD_CAST "data_list") < 0 ||
-				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg[i].name) < 0)
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg->items[i].name) < 0)
 				goto err;
 
 			// <value key="key1">
-			analyzer_data_item_t *itm = evt->data[i].items;
+			struct data_item *itm = evt->data[i].items;
 			for (; itm; itm = itm->next) {
 				if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t\t") < 0 ||
 					xmlTextWriterStartElement(writer, BAD_CAST "value") < 0 ||
@@ -242,7 +242,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
 				xmlTextWriterStartElement(writer, BAD_CAST "data") < 0 ||
-				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg[i].name) < 0)
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg->items[i].name) < 0)
 				goto err;
 
 			char *value = ptype_print_val_alloc(evt->data[i].value);
