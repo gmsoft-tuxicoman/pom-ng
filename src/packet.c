@@ -1100,9 +1100,10 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 						pomlog(POMLOG_WARN "Dequeing packet which wasn't the first in the list. This shouldn't happen !");
 						res->prev->next = res->next;
 					}
-
-					for (i = 1; i < CORE_PROTO_STACK_MAX && res->stack[i].pkt_info; i ++)
-						packet_info_pool_release(&res->stack[i].proto->pkt_info_pool, res->stack[i].pkt_info);
+					
+					int j;
+					for (j = 1; j < CORE_PROTO_STACK_MAX && res->stack[j].pkt_info; j++)
+						packet_info_pool_release(&res->stack[j].proto->pkt_info_pool, res->stack[j].pkt_info);
 					free(res->stack);
 					
 					stream->cur_buff_size -= res->plen;
