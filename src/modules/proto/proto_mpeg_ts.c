@@ -55,8 +55,8 @@ int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i) {
 
 	p = NULL;
 
-	priv->proto_docsis = proto_add_dependency("docsis");
-	priv->proto_mpeg_sect = proto_add_dependency("mpeg_sect");
+	priv->proto_docsis = proto_get("docsis");
+	priv->proto_mpeg_sect = proto_get("mpeg_sect");
 
 	if (!priv->proto_docsis || !priv->proto_mpeg_sect)
 		goto err;
@@ -252,15 +252,17 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 	}
 
 	// Get the right payload protocol
-	struct proto_dependency *next_proto;
+	struct proto *next_proto = NULL;
 	switch (stream->type) {
 		case proto_mpeg_stream_type_docsis:
 			next_proto = ppriv->proto_docsis;
+			break;
 		case proto_mpeg_stream_type_sect:
 			next_proto = ppriv->proto_mpeg_sect;
 			break;
 		default:
 			next_proto = NULL;
+			break;
 	}
 
 	// We have the begining of a new packets, there are some stuff to do ...
@@ -343,7 +345,7 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 			// Process the packet
 			s_next->pload = buff + pos;
 			s_next->plen = pkt_len;
-			s_next->proto = next_proto->proto;
+			s_next->proto = next_proto;
 			int res = core_process_multi_packet(stack, stack_index + 1, p);
 			if (res == PROTO_ERR)
 				return PROTO_ERR;
@@ -473,13 +475,6 @@ int proto_mpeg_ts_cleanup(struct proto *proto) {
 
 		if (priv->param_mpeg_ts_stream_timeout)
 			ptype_cleanup(priv->param_mpeg_ts_stream_timeout);
-
-
-		if (priv->proto_docsis)
-			proto_remove_dependency(priv->proto_docsis);
-		
-		if (priv->proto_mpeg_sect)
-			proto_remove_dependency(priv->proto_mpeg_sect);
 
 		free(priv);
 	}

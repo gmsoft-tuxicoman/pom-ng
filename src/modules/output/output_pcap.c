@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -34,7 +34,7 @@ struct mod_reg_info *output_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = output_pcap_mod_register;
 	reg_info.unregister_func = output_pcap_mod_unregister;
-	reg_info.dependencies = "ptype_string, ptype_bool, ptype_uint16";
+	reg_info.dependencies = "proto_docsis, proto_ethernet, proto_ipv4, ptype_string, ptype_bool, ptype_uint16";
 
 	return &reg_info;
 }
@@ -61,7 +61,6 @@ static int output_pcap_mod_register(struct mod_reg *mod) {
 static int output_pcap_mod_unregister() {
 
 	return output_unregister("pcap_file");
-
 }
 
 
@@ -142,23 +141,23 @@ static int output_pcap_file_open(struct output *o) {
 
 	if (!strcasecmp("ethernet", proto)) {
 		linktype = DLT_EN10MB;
-	} else if (!strcasecmp("linux_cooked", proto)) {
+/*	} else if (!strcasecmp("linux_cooked", proto)) {
 		linktype = DLT_LINUX_SLL;
-	} else if (!strcasecmp("ipv4", proto)) {
+*/	} else if (!strcasecmp("ipv4", proto)) {
 		linktype = DLT_RAW;
 #ifdef DLT_DOCSIS
 	} else if (!strcasecmp("docsis", proto)) {
 		linktype = DLT_DOCSIS;
 #endif
-	} else if (!strcasecmp("80211", proto)) {
+/*	} else if (!strcasecmp("80211", proto)) {
 		linktype = DLT_IEEE802_11;
-	} else {
+*/	} else {
 		pomlog(POMLOG_ERR "Protocol %s is not supported", proto);
 		return POM_ERR;
 	}
 
-	priv->proto_dep = proto_add_dependency(proto);
-	if (!priv->proto_dep->proto) {
+	priv->proto = proto_get(proto);
+	if (!priv->proto) {
 		pomlog(POMLOG_ERR "Protocol %s not yet implemented", proto);
 		goto err;
 	}
@@ -177,16 +176,22 @@ static int output_pcap_file_open(struct output *o) {
 	}
 
 
-	priv->listener = proto_packet_listener_register(priv->proto_dep->proto, 0, o, output_pcap_file_process);
+	priv->listener = proto_packet_listener_register(priv->proto, 0, o, output_pcap_file_process);
 	if (!priv->listener) 
 		goto err;
 
 	return POM_OK;
 
 err:
-	if (priv->proto_dep) {
-		proto_remove_dependency(priv->proto_dep);
-		priv->proto_dep = NULL;
+
+	if (priv->pdump) {
+		pcap_dump_close(priv->pdump);
+		priv->pdump = NULL;
+	}
+
+	if (priv->p) {
+		pcap_close(priv->p);
+		priv->p = NULL;
 	}
 
 	return POM_ERR;
@@ -204,12 +209,6 @@ static int output_pcap_file_close(struct output *o) {
 		return POM_ERR;
 
 	priv->listener = NULL;
-
-
-	if (priv->proto_dep) {
-		proto_remove_dependency(priv->proto_dep);
-		priv->proto_dep = NULL;
-	}
 
 	if (priv->pdump) {
 		pcap_dump_close(priv->pdump);

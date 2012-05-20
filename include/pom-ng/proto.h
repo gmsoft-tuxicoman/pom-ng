@@ -44,7 +44,6 @@
 struct proto {
 
 	struct proto_reg_info *info;
-	struct proto_dependency *dep; // Corresponding dependency
 	
 	/// Conntrack tables
 	struct conntrack_tables *ct;
@@ -61,13 +60,6 @@ struct proto {
 
 	struct proto *next, *prev;
 
-};
-
-struct proto_dependency {
-	char *name;
-	unsigned int refcount;
-	struct proto *proto;
-	struct proto_dependency *next, *prev;
 };
 
 struct proto_process_stack {
@@ -124,12 +116,8 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 /// Unregister a protocol
 int proto_unregister(char *name);
 
-/// Get a dependency for a specific protocol
-struct proto_dependency *proto_add_dependency(char *dep);
-
-/// Release a dependency record
-int proto_remove_dependency(struct proto_dependency *dep);
-
+/// Get a struct proto from the name
+struct proto *proto_get(char *name);
 
 // Register a packet listener
 struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object,  int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index));

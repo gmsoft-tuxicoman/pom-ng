@@ -27,9 +27,7 @@
 
 static struct proto *proto_head = NULL;
 
-static struct proto_dependency *proto_dependency_head = NULL;
 static pthread_mutex_t proto_list_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t proto_dependency_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct registry_class *proto_registry_class = NULL;
 
@@ -110,16 +108,6 @@ int proto_register(struct proto_reg_info *reg_info) {
 	proto_head = proto;
 
 	pom_mutex_unlock(&proto_list_lock);
-
-	pom_mutex_lock(&proto_dependency_list_lock);
-	// Update dependencies
-	struct proto_dependency *dep;
-	for (dep = proto_dependency_head; dep && strcmp(dep->name, reg_info->name); dep = dep->next);
-	if (dep) {
-		dep->proto = proto;
-		proto->dep = dep;
-	}
-	pom_mutex_unlock(&proto_dependency_list_lock);
 
 	pomlog(POMLOG_DEBUG "Proto %s registered", reg_info->name);
 
@@ -218,10 +206,7 @@ int proto_unregister(char *name) {
 	if (proto->reg_instance)
 		registry_remove_instance(proto->reg_instance);
 
-	if (proto->dep)
-		proto->dep->proto = NULL;
-
-	conntrack_tables_cleanup(proto->ct);
+		conntrack_tables_cleanup(proto->ct);
 
 	packet_info_pool_cleanup(&proto->pkt_info_pool);
 	
@@ -241,95 +226,15 @@ int proto_unregister(char *name) {
 	return POM_OK;
 }
 
-struct proto_dependency *proto_add_dependency(char *name) {
-
-
-	pom_mutex_lock(&proto_dependency_list_lock);
-
-	struct proto_dependency *dep = proto_dependency_head;
-
-	for (; dep && strcmp(dep->name, name); dep = dep->next);
-	if (!dep) {
-		dep = malloc(sizeof(struct proto_dependency));
-		if (!dep) {
-			pom_mutex_unlock(&proto_dependency_list_lock);
-			pom_oom(sizeof(struct proto_dependency));
-			return NULL;
-		}
-		memset(dep, 0, sizeof(struct proto_dependency));
-		dep->name = strdup(name);
-		if (!dep->name) {
-			pom_mutex_unlock(&proto_dependency_list_lock);
-			pom_oom(strlen(name));
-			free(dep);
-			return NULL;
-
-		}
-		strcpy(dep->name, name);
-		
-		struct proto *proto;
-		for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
-		if (proto) {
-			if (proto->dep) {
-				pom_mutex_unlock(&proto_dependency_list_lock);
-				pomlog(POMLOG_ERR "Internal error, the proto should have a dependency already");
-				free(dep->name);
-				free(dep);
-				return NULL;
-			}
-			proto->dep = dep;
-			dep->proto = proto;
-		}
-
-		dep->next = proto_dependency_head;
-		if (dep->next)
-			dep->next->prev = dep;
-		proto_dependency_head = dep;
-	}
-	dep->refcount++;
-	pom_mutex_unlock(&proto_dependency_list_lock);
+struct proto *proto_get(char *name) {
 	
-	return dep;
-}
+	struct proto *tmp;
+	for (tmp = proto_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
 
-void proto_dependency_refcount_inc(struct proto_dependency *proto_dep) {
-	
-	pom_mutex_lock(&proto_dependency_list_lock);
-	proto_dep->refcount++;
-	pom_mutex_unlock(&proto_dependency_list_lock);
+	if (!tmp)
+		pomlog(POMLOG_WARN "Proto %s not found !", name);
 
-}
-
-int proto_remove_dependency(struct proto_dependency *dep) {
-
-	if (!dep)
-		return POM_ERR;
-
-	pom_mutex_lock(&proto_dependency_list_lock);
-
-	if (!dep->refcount)
-		pomlog(POMLOG_WARN "Warning, refcount already at 0 for dependency %s", dep->name);
-	else
-		dep->refcount--;
-/*
-	if (!dep->refcount) {
-		if (dep->next)
-			dep->next->prev = dep->prev;
-		if (dep->prev)
-			dep->prev->next = dep->next;
-		else
-			proto_dependency_head = dep->next;
-
-		if (dep->proto)
-			dep->proto->dep = NULL;
-	
-		free(dep->name);
-		free(dep);
-	}
-*/
-	pom_mutex_unlock(&proto_dependency_list_lock);
-
-	return POM_OK;
+	return tmp;
 }
 
 int proto_empty_conntracks() {
@@ -350,20 +255,7 @@ int proto_cleanup() {
 
 	
 	struct proto *proto = proto_head;
-	int forced = 0;
 	while (proto_head) {
-		if (!forced && proto->dep && proto->dep->refcount) {
-			proto = proto->next;
-			if (!proto) {
-				pomlog(POMLOG_ERR "Some proto are still in use, forcing cleanup anyway");
-				forced = 1;
-				proto = proto_head;
-			}
-			continue;
-		}
-
-		if (forced && proto->dep->refcount)
-			pomlog(POMLOG_WARN "Proto %s still has a refcount of %u", proto->dep->name, proto->dep->refcount);
 			
 		if (proto->info->cleanup && proto->info->cleanup(proto) == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
@@ -388,32 +280,6 @@ int proto_cleanup() {
 		proto = proto_head;
 	}
 	pom_mutex_unlock(&proto_list_lock);
-
-	pom_mutex_lock(&proto_dependency_list_lock);
-
-	struct proto_dependency *dep = proto_dependency_head;
-	while (dep) {
-		if (dep->refcount) {
-			pomlog(POMLOG_WARN "Cannot remove dep for %s, refcount is %u", dep->name, dep->refcount);
-			dep = dep->next;
-			continue;
-		}
-
-		struct proto_dependency *tmp = dep;
-		dep = tmp->next;
-
-		if (tmp->next)
-			tmp->next->prev = tmp->prev;
-		if (tmp->prev)
-			tmp->prev->next = tmp->next;
-		else
-			proto_dependency_head = tmp->next;
-	
-		free(tmp->name);
-		free(tmp);
-	}
-
-	pom_mutex_unlock(&proto_dependency_list_lock);
 
 	if (proto_registry_class)
 		registry_remove_class(proto_registry_class);

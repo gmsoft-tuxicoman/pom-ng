@@ -29,13 +29,15 @@
 
 #include "proto_docsis.h"
 
+static struct proto *proto_ethernet = NULL;
+
 struct mod_reg_info* proto_docsis_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_docsis_mod_register;
 	reg_info.unregister_func = proto_docsis_mod_unregister;
-	reg_info.dependencies = "ptype_bool, ptype_uint8";
+	reg_info.dependencies = "proto_ethernet, ptype_bool, ptype_uint8";
 
 	return &reg_info;
 }
@@ -64,7 +66,6 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 
 	proto_docsis.init = proto_docsis_init;
 	proto_docsis.process = proto_docsis_process;
-	proto_docsis.cleanup = proto_docsis_cleanup;
 
 	return proto_register(&proto_docsis);
 }
@@ -72,23 +73,10 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 
 static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 
-	struct proto_docsis_priv *priv = malloc(sizeof(struct proto_docsis_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct proto_docsis_priv));
+	proto_ethernet = proto_get("ethernet");
+
+	if (!proto_ethernet)
 		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct proto_docsis_priv));
-
-	proto->priv = priv;
-
-	priv->proto_ethernet = proto_add_dependency("ethernet");
-	priv->proto_docsis_mgmt = proto_add_dependency("docsis_mgmt");
-
-	if (!priv->proto_ethernet || !priv->proto_docsis_mgmt) {
-		proto_docsis_cleanup(proto);
-		return POM_ERR;
-	}
-
 
 	return POM_OK;
 
@@ -96,7 +84,6 @@ static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 
 static int proto_docsis_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	struct proto_docsis_priv *priv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	struct docsis_hdr *dhdr = s->pload;
@@ -133,35 +120,23 @@ static int proto_docsis_process(struct proto *proto, struct packet *p, struct pr
 		case FC_TYPE_ISOLATION_PKT_MAC:
 			// We don't need the 4 bytes of ethernet checksum
 			s_next->plen -= 4;
-			s_next->proto = priv->proto_ethernet->proto;
+			s_next->proto = proto_ethernet;
 			break;
-		case FC_TYPE_MAC_SPC:
+/*		case FC_TYPE_MAC_SPC:
 			if (dhdr->fc_parm == FCP_MGMT) {
-				s_next->proto = priv->proto_docsis_mgmt->proto;
+				s_next->proto = priv->proto_docsis_mgmt;
 				break;
 			}
+			break;
+*/
+		default:
+			s_next->proto = NULL;
 			break;
 
 	}
 
 	return PROTO_OK;
 
-}
-
-static int proto_docsis_cleanup(struct proto *proto) {
-
-	if (proto->priv) {
-		struct proto_docsis_priv *priv = proto->priv;
-
-		if (priv->proto_ethernet)
-			proto_remove_dependency(priv->proto_ethernet);
-		if (priv->proto_docsis_mgmt)
-			proto_remove_dependency(priv->proto_docsis_mgmt);
-
-		free(priv);
-	}
-
-	return POM_OK;
 }
 
 static int proto_docsis_mod_unregister() {

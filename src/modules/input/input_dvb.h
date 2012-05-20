@@ -45,7 +45,7 @@ struct input_dvb_priv {
 
 	enum input_dvb_type type;
 
-	struct proto_dependency *proto_mpeg_ts;
+	struct proto *proto_mpeg_ts;
 
 	// Some (mostly) common params
 	struct ptype *adapter, *frontend, *freq, *symbol_rate, *tuning_timeout, *filter_null_pid;

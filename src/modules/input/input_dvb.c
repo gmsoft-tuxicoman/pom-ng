@@ -65,7 +65,7 @@ struct mod_reg_info* input_dvb_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_dvb_mod_register;
 	reg_info.unregister_func = input_dvb_mod_unregister;
-	reg_info.dependencies = "ptype_bool, ptype_string, ptype_uint16, ptype_uint32";
+	reg_info.dependencies = "proto_mpeg, ptype_bool, ptype_string, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 
@@ -144,8 +144,8 @@ static int input_dvb_common_init(struct input *i) {
 	priv->demux_fd = -1;
 	priv->dvr_fd = -1;
 
-	priv->proto_mpeg_ts = proto_add_dependency("mpeg_ts");
-	if (!priv->proto_mpeg_ts || !priv->proto_mpeg_ts->proto) {
+	priv->proto_mpeg_ts = proto_get("mpeg_ts");
+	if (!priv->proto_mpeg_ts) {
 		pomlog(POMLOG_ERR "Cannot initialize input DVB : protocol mpeg_ts not registered");
 		goto err;
 	}
@@ -167,8 +167,6 @@ err:
 	if (priv->filter_null_pid)
 		ptype_cleanup(priv->filter_null_pid);
 
-	if (priv->proto_mpeg_ts)
-		proto_remove_dependency(priv->proto_mpeg_ts);
 	free(priv);
 	return POM_ERR;
 
@@ -672,7 +670,7 @@ static int input_dvb_read(struct input *i) {
 	}
 
 	pkt->input = i;
-	pkt->datalink = p->proto_mpeg_ts->proto;
+	pkt->datalink = p->proto_mpeg_ts;
 
 	do {
 
@@ -773,9 +771,6 @@ static int input_dvb_cleanup(struct input *i) {
 		default:
 			return POM_ERR;
 	}
-
-	if (p->proto_mpeg_ts)
-		proto_remove_dependency(p->proto_mpeg_ts);
 
 	free(p);
 

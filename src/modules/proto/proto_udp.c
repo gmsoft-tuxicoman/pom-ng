@@ -64,7 +64,6 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 
 	proto_udp.init = proto_udp_init;
 	proto_udp.process = proto_udp_process;
-	proto_udp.cleanup = proto_udp_cleanup;
 
 	if (proto_register(&proto_udp) == POM_OK)
 		return POM_OK;
@@ -76,44 +75,12 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 
 static int proto_udp_init(struct proto *proto, struct registry_instance *i) {
 
-	struct proto_udp_priv *priv = malloc(sizeof(struct proto_udp_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct proto_udp_priv));
-		return POM_ERR;
-	}
-
-	memset(priv, 0, sizeof(struct proto_udp_priv));
-
-	proto->priv = priv;
-
-	priv->proto_dns = proto_add_dependency("dns");
-
-	if (!priv->proto_dns)	{
-		proto_udp_cleanup(proto);
-		return POM_ERR;
-	}
-
-	return POM_OK;
-}
-
-static int proto_udp_cleanup(struct proto *proto) {
-	
-	if (proto->priv) {
-		struct proto_udp_priv *priv = proto->priv;
-		if (priv->proto_dns)
-			proto_remove_dependency(priv->proto_dns);
-
-
-		free(priv);
-	}
-
 	return POM_OK;
 }
 
 static int proto_udp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_udp_priv *priv = proto->priv;
 
 	if (sizeof(struct udphdr) > s->plen)
 		return PROTO_INVALID;
@@ -135,9 +102,9 @@ static int proto_udp_process(struct proto *proto, struct packet *p, struct proto
 	s_next->pload = s->pload + sizeof(struct udphdr);
 	s_next->plen = ulen - sizeof(struct udphdr);
 
-	if (dport == 53 || sport == 53)
+/*	if (dport == 53 || sport == 53)
 		s_next->proto = priv->proto_dns->proto;
-
+*/
 	return PROTO_OK;
 
 }

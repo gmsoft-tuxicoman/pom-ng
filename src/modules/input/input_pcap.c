@@ -44,7 +44,7 @@ struct mod_reg_info* input_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_pcap_mod_register;
 	reg_info.unregister_func = input_pcap_mod_unregister;
-	reg_info.dependencies = "ptype_string, ptype_bool";
+	reg_info.dependencies = "proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, ptype_string, ptype_bool";
 
 	return &reg_info;
 }
@@ -125,10 +125,10 @@ static int input_pcap_common_open(struct input *i) {
 			datalink = "docsis";
 			break;
 
-		case DLT_LINUX_SLL:
+/*		case DLT_LINUX_SLL:
 			datalink = "linux_cooked";
 			break;
-
+*/
 		case DLT_RAW:
 			datalink = "ipv4";
 			break;
@@ -136,11 +136,14 @@ static int input_pcap_common_open(struct input *i) {
 		case DLT_MPEGTS: // FIXME update this when upstream add it
 			datalink = "mpeg_ts";
 			break;
+
+		default:
+			pomlog(POMLOG_ERR "Datalink %s (%u) is not supported", pcap_datalink_val_to_name(priv->datalink_type), priv->datalink_type);
 	}
 
-	priv->datalink_proto = proto_add_dependency(datalink);
+	priv->datalink_proto = proto_get(datalink);
 
-	if (!priv->datalink_proto || !priv->datalink_proto->proto) {
+	if (!priv->datalink_proto) {
 		pomlog(POMLOG_ERR "Cannot open input pcap : protocol %s not registered", datalink);
 		input_pcap_close(i);
 		return POM_ERR;
@@ -609,7 +612,7 @@ static int input_pcap_read(struct input *i) {
 	}
 
 	pkt->input = i;
-	pkt->datalink = p->datalink_proto->proto;
+	pkt->datalink = p->datalink_proto;
 	memcpy(&pkt->ts, &phdr->ts, sizeof(struct timeval));
 	memcpy(pkt->buff, data, phdr->caplen);
 
@@ -633,7 +636,6 @@ static int input_pcap_close(struct input *i) {
 		priv->p = NULL;
 	}
 
-	proto_remove_dependency(priv->datalink_proto);
 	priv->datalink_proto = NULL;
 	priv->align_offset = 0;
 

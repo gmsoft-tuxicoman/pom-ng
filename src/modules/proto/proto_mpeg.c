@@ -36,12 +36,48 @@ struct mod_reg_info* proto_mpeg_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_mpeg_mod_register;
 	reg_info.unregister_func = proto_mpeg_mod_unregister;
-	reg_info.dependencies = "ptype_mac, ptype_uint8, ptype_uint16";
+	reg_info.dependencies = "proto_ipv4, proto_docsis, ptype_mac, ptype_uint8, ptype_uint16";
 
 	return &reg_info;
 }
 
 static int proto_mpeg_mod_register(struct mod_reg *mod) {
+
+	static struct proto_pkt_field proto_mpeg_dvb_mpe_fields[PROTO_MPEG_DVB_MPE_FIELD_NUM + 1] = { { 0 } };
+	proto_mpeg_dvb_mpe_fields[0].name = "dst";
+	proto_mpeg_dvb_mpe_fields[0].value_type = ptype_get_type("mac");
+	proto_mpeg_dvb_mpe_fields[0].description = "Destination MAC address";
+
+	static struct proto_reg_info proto_mpeg_dvb_mpe = { 0 };
+	proto_mpeg_dvb_mpe.name = "mpeg_dvb_mpe";
+	proto_mpeg_dvb_mpe.api_ver = PROTO_API_VER;
+	proto_mpeg_dvb_mpe.mod = mod;
+	proto_mpeg_dvb_mpe.pkt_fields = proto_mpeg_dvb_mpe_fields;
+
+	proto_mpeg_dvb_mpe.init = proto_mpeg_dvb_mpe_init;
+	proto_mpeg_dvb_mpe.process = proto_mpeg_dvb_mpe_process;
+
+	if (proto_register(&proto_mpeg_dvb_mpe) != POM_OK) 
+		return POM_ERR;
+
+	static struct proto_pkt_field proto_mpeg_sect_fields[PROTO_MPEG_SECT_FIELD_NUM + 1] = { { 0 } };
+	proto_mpeg_sect_fields[0].name = "table_id";
+	proto_mpeg_sect_fields[0].value_type = ptype_get_type("uint8");
+	proto_mpeg_sect_fields[0].description = "Table ID";
+
+	static struct proto_reg_info proto_mpeg_sect = { 0 };
+	proto_mpeg_sect.name = "mpeg_sect";
+	proto_mpeg_sect.api_ver = PROTO_API_VER;
+	proto_mpeg_sect.mod = mod;
+	proto_mpeg_sect.pkt_fields = proto_mpeg_sect_fields;
+
+	proto_mpeg_sect.init = proto_mpeg_sect_init;
+	proto_mpeg_sect.process = proto_mpeg_sect_process;
+
+	if (proto_register(&proto_mpeg_sect) != POM_OK) {
+		proto_mpeg_mod_unregister();
+		return POM_ERR;
+	}
 
 	static struct proto_reg_info proto_mpeg_ts = { 0 };
 	proto_mpeg_ts.name = "mpeg_ts";
@@ -64,49 +100,10 @@ static int proto_mpeg_mod_register(struct mod_reg *mod) {
 	proto_mpeg_ts.process = proto_mpeg_ts_process;
 	proto_mpeg_ts.cleanup = proto_mpeg_ts_cleanup;
 
-	if (proto_register(&proto_mpeg_ts) != POM_OK)
-		return POM_ERR;
-
-	static struct proto_pkt_field proto_mpeg_sect_fields[PROTO_MPEG_SECT_FIELD_NUM + 1] = { { 0 } };
-	proto_mpeg_sect_fields[0].name = "table_id";
-	proto_mpeg_sect_fields[0].value_type = ptype_get_type("uint8");
-	proto_mpeg_sect_fields[0].description = "Table ID";
-
-	static struct proto_reg_info proto_mpeg_sect = { 0 };
-	proto_mpeg_sect.name = "mpeg_sect";
-	proto_mpeg_sect.api_ver = PROTO_API_VER;
-	proto_mpeg_sect.mod = mod;
-	proto_mpeg_sect.pkt_fields = proto_mpeg_sect_fields;
-
-	proto_mpeg_sect.init = proto_mpeg_sect_init;
-	proto_mpeg_sect.process = proto_mpeg_sect_process;
-	proto_mpeg_sect.cleanup = proto_mpeg_sect_cleanup;
-
-	if (proto_register(&proto_mpeg_sect) != POM_OK) {
+	if (proto_register(&proto_mpeg_ts) != POM_OK) {
 		proto_mpeg_mod_unregister();
 		return POM_ERR;
 	}
-
-	static struct proto_pkt_field proto_mpeg_dvb_mpe_fields[PROTO_MPEG_DVB_MPE_FIELD_NUM + 1] = { { 0 } };
-	proto_mpeg_dvb_mpe_fields[0].name = "dst";
-	proto_mpeg_dvb_mpe_fields[0].value_type = ptype_get_type("mac");
-	proto_mpeg_dvb_mpe_fields[0].description = "Destination MAC address";
-
-	static struct proto_reg_info proto_mpeg_dvb_mpe = { 0 };
-	proto_mpeg_dvb_mpe.name = "mpeg_dvb_mpe";
-	proto_mpeg_dvb_mpe.api_ver = PROTO_API_VER;
-	proto_mpeg_dvb_mpe.mod = mod;
-	proto_mpeg_dvb_mpe.pkt_fields = proto_mpeg_dvb_mpe_fields;
-
-	proto_mpeg_dvb_mpe.init = proto_mpeg_dvb_mpe_init;
-	proto_mpeg_dvb_mpe.process = proto_mpeg_dvb_mpe_process;
-	proto_mpeg_dvb_mpe.cleanup = proto_mpeg_dvb_mpe_cleanup;
-
-	if (proto_register(&proto_mpeg_dvb_mpe) != POM_OK) {
-		proto_mpeg_mod_unregister();
-		return POM_ERR;
-	}
-
 
 	return POM_OK;
 

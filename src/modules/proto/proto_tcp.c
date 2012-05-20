@@ -46,7 +46,7 @@ struct mod_reg_info* proto_tcp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_tcp_mod_register;
 	reg_info.unregister_func = proto_tcp_mod_unregister;
-	reg_info.dependencies = "ptype_bool, ptype_uint8, ptype_uint16, ptype_uint32";
+	reg_info.dependencies = "proto_http, ptype_bool, ptype_uint8, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 }
@@ -163,7 +163,7 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 
 	p = NULL;
 
-	priv->proto_http = proto_add_dependency("http");
+	priv->proto_http = proto_get("http");
 	if (!priv->proto_http)
 		goto err;
 
@@ -297,7 +297,7 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 	}
 
 
-	if (!priv->proto || !priv->proto->proto) {
+	if (!priv->proto) {
 		conntrack_unlock(s->ce);
 		return PROTO_OK;
 	}
@@ -346,7 +346,7 @@ static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *
 	struct proto_tcp_conntrack_priv *cp = ce->priv;
 
 	if (cp->proto) {
-		stack[stack_index].proto = cp->proto->proto;
+		stack[stack_index].proto = cp->proto;
 		return core_process_multi_packet(stack, stack_index, p);
 	}
 	return PROTO_OK;
@@ -389,9 +389,6 @@ static int proto_tcp_cleanup(struct proto *proto) {
 			ptype_cleanup(priv->param_tcp_established_t);
 		if (priv->param_tcp_reuse_handling)
 			ptype_cleanup(priv->param_tcp_reuse_handling);
-
-		if (priv->proto_http)
-			proto_remove_dependency(priv->proto_http);
 
 		free(priv);
 	}

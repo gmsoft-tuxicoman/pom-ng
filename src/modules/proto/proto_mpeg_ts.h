@@ -43,10 +43,9 @@ enum proto_mpeg_stream_type {
 };
 
 struct proto_mpeg_ts_priv {
-	struct proto_dependency *proto_docsis;
-	struct proto_dependency *proto_mpeg_sect;
+	struct proto *proto_docsis;
+	struct proto *proto_mpeg_sect;
 
-	struct ptype *param_force_no_copy;
 	struct ptype *param_mpeg_ts_stream_timeout;
 };
 

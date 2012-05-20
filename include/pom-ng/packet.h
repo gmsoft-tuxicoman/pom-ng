@@ -81,7 +81,7 @@ struct packet_multipart {
 	unsigned int gaps; // Number of gaps
 	unsigned int flags;
 	struct packet_multipart_pkt *head, *tail;
-	struct proto_dependency *proto;
+	struct proto *proto;
 };
 
 int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset);
@@ -90,7 +90,7 @@ struct packet *packet_pool_get();
 struct packet *packet_clone(struct packet *src, unsigned int flags);
 int packet_pool_release(struct packet *p);
 
-struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep, unsigned int flags);
+struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags);
 int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);

@@ -34,7 +34,7 @@
 #define IP_MORE_FRAG 0x2000
 #define IP_OFFSET_MASK 0x1fff
 
-static struct proto_dependency *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp = NULL, *proto_ipv6 = NULL, *proto_gre = NULL;
+static struct proto *proto_icmp = NULL, *proto_tcp = NULL, *proto_udp = NULL;
 
 static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
@@ -44,7 +44,7 @@ struct mod_reg_info* proto_ipv4_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ipv4_mod_register;
 	reg_info.unregister_func = proto_ipv4_mod_unregister;
-	reg_info.dependencies = "ptype_ipv4, ptype_uint8, ptype_uint32";
+	reg_info.dependencies = "proto_icmp, proto_tcp, proto_udp, ptype_ipv4, ptype_uint8, ptype_uint32";
 
 	return &reg_info;
 }
@@ -108,13 +108,11 @@ static int proto_ipv4_init(struct proto *proto, struct registry_instance *i) {
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	proto_icmp = proto_add_dependency("icmp");
-	proto_tcp = proto_add_dependency("tcp");
-	proto_udp = proto_add_dependency("udp");
-	proto_ipv6 = proto_add_dependency("ipv6");
-	proto_gre = proto_add_dependency("gre");
+	proto_icmp = proto_get("icmp");
+	proto_tcp = proto_get("tcp");
+	proto_udp = proto_get("udp");
 
-	if (!proto_icmp || !proto_tcp || !proto_udp || !proto_ipv6 || !proto_gre) {
+	if (!proto_icmp || !proto_tcp || !proto_udp) {
 		proto_ipv4_cleanup(proto);
 		return POM_ERR;
 	}
@@ -170,28 +168,31 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 	s_next->plen = ntohs(hdr->ip_len) - hdr_len;
 	s_next->direction = s->direction;
 
+	struct proto *next_proto = NULL;
 	switch (hdr->ip_p) {
 		case IPPROTO_ICMP: // 1
-			s_next->proto = proto_icmp->proto;
+			next_proto = proto_icmp;
 			break;
 		case IPPROTO_TCP: // 6
-			s_next->proto = proto_tcp->proto;
+			next_proto = proto_tcp;
 			break;
 		case IPPROTO_UDP: // 17
-			s_next->proto = proto_udp->proto;
+			next_proto = proto_udp;
 			break;
-		case IPPROTO_IPV6: // 41
-			s_next->proto = proto_ipv6->proto;
+/*		case IPPROTO_IPV6: // 41
+			next_proto = proto_ipv6;
 			break;
 		case IPPROTO_GRE: // 47
-			s_next->proto = proto_gre->proto;
+			next_proto = proto_gre;
 			break;
-
+*/
 		default:
-			s_next->proto = NULL;
+			next_proto = NULL;
 			break;
 
 	}
+
+	s_next->proto = next_proto;
 
 
 	int res = POM_ERR;
@@ -256,26 +257,7 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 		
 		tmp->id = hdr->ip_id;
 
-		struct proto_dependency *proto = NULL;
-		switch (hdr->ip_p) {
-			case IPPROTO_ICMP: // 1
-				proto = proto_icmp;
-				break;
-			case IPPROTO_TCP: // 6
-				proto = proto_tcp;
-				break;
-			case IPPROTO_UDP: // 17
-				proto = proto_udp;
-				break;
-			case IPPROTO_IPV6: // 41
-				proto = proto_ipv6;
-				break;
-			case IPPROTO_GRE: // 47
-				proto = proto_gre;
-				break;
-		}
-
-		if (!proto || !proto->proto) {
+		if (!next_proto) {
 			// Set processed flag so no attempt to process this will be done
 			tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
 			conntrack_unlock(s->ce);
@@ -284,7 +266,7 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 			return PROTO_STOP;
 		}
 
-		tmp->multipart = packet_multipart_alloc(proto, 0);
+		tmp->multipart = packet_multipart_alloc(next_proto, 0);
 		if (!tmp->multipart) {
 			conntrack_unlock(s->ce);
 			conntrack_timer_cleanup(tmp->t);
@@ -396,12 +378,6 @@ static int proto_ipv4_cleanup(struct proto *proto) {
 
 	res += ptype_cleanup(param_frag_timeout);
 	res += ptype_cleanup(param_conntrack_timeout);
-
-	res += proto_remove_dependency(proto_icmp);
-	res += proto_remove_dependency(proto_udp);
-	res += proto_remove_dependency(proto_tcp);
-	res += proto_remove_dependency(proto_ipv6);
-	res += proto_remove_dependency(proto_gre);
 
 	return res;
 }

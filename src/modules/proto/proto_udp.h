@@ -28,14 +28,9 @@ enum proto_udp_fields {
 	proto_udp_field_dport,
 };
 
-struct proto_udp_priv {
-	struct proto_dependency *proto_dns;
-};
-
 struct mod_reg_info* proto_udp_reg_info();
 static int proto_udp_mod_register(struct mod_reg *mod);
 static int proto_udp_init(struct proto *proto, struct registry_instance *i);
-static int proto_udp_cleanup(struct proto *proto);
 static int proto_udp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_udp_mod_unregister();
 

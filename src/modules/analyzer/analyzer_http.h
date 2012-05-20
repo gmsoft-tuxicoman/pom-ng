@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ struct analyzer_http_priv {
 	struct event_reg *evt_query;
 	struct event_reg *evt_response;
 
-	struct proto_dependency *proto_http;
+	struct proto *proto_http;
 	struct proto_packet_listener *http_packet_listener;
 };
 

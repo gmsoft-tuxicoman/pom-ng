@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,12 +27,7 @@ enum proto_mpeg_dvb_mpe_fields {
 	proto_mpeg_dvb_mpe_field_dst,
 };
 
-struct proto_mpeg_dvb_mpe_priv {
-	struct proto_dependency *proto_ipv4;
-};
-
 int proto_mpeg_dvb_mpe_init(struct proto *proto,struct registry_instance *i);
 int proto_mpeg_dvb_mpe_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-int proto_mpeg_dvb_mpe_cleanup(struct proto *proto);
 
 #endif

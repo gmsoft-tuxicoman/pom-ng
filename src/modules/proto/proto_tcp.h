@@ -55,7 +55,7 @@ struct proto_tcp_priv {
 	struct ptype *param_tcp_time_wait_t;
 	struct ptype *param_tcp_established_t;
 	struct ptype *param_tcp_reuse_handling;
-	struct proto_dependency *proto_http;
+	struct proto *proto_http;
 
 };
 
@@ -63,7 +63,7 @@ struct proto_tcp_conntrack_priv {
 
 	unsigned int state;
 	struct packet_stream *stream;
-	struct proto_dependency *proto;
+	struct proto *proto;
 };
 
 struct mod_reg_info* proto_tcp_reg_info();

@@ -172,7 +172,7 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	if (!priv->evt_request)
 		goto err;
 
-	priv->proto_http = proto_add_dependency("http");
+	priv->proto_http = proto_get("http");
 	if (!priv->proto_http)
 		goto err;
 
@@ -188,7 +188,6 @@ err:
 int analyzer_http_cleanup(struct analyzer *analyzer) {
 
 	struct analyzer_http_priv *priv = analyzer->priv;
-	proto_remove_dependency(priv->proto_http);
 
 	if (priv->evt_request)
 		event_unregister(priv->evt_request);
@@ -230,7 +229,7 @@ int analyzer_http_event_listeners_notify(void *obj, struct event_reg *evt_reg, i
 			return POM_ERR;
 		}
 
-		priv->http_packet_listener = proto_packet_listener_register(priv->proto_http->proto, PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_http_proto_packet_process);
+		priv->http_packet_listener = proto_packet_listener_register(priv->proto_http, PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_http_proto_packet_process);
 		if (!priv->http_packet_listener) {
 			event_listener_unregister(priv->evt_query, analyzer);
 			event_listener_unregister(priv->evt_response, analyzer);

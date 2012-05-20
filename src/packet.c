@@ -454,7 +454,7 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 }
 
 
-struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_dep, unsigned int flags) {
+struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags) {
 
 	struct packet_multipart *res = malloc(sizeof(struct packet_multipart));
 	if (!res) {
@@ -463,8 +463,7 @@ struct packet_multipart *packet_multipart_alloc(struct proto_dependency *proto_d
 	}
 	memset(res, 0, sizeof(struct packet_multipart));
 
-	proto_dependency_refcount_inc(proto_dep);
-	res->proto = proto_dep;
+	res->proto = proto;
 	if (!res->proto) {
 		free(res);
 		res = NULL;
@@ -490,8 +489,6 @@ int packet_multipart_cleanup(struct packet_multipart *m) {
 		free(tmp);
 
 	}
-
-	proto_remove_dependency(m->proto);
 
 	free(m);
 
@@ -621,7 +618,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	
 	p->multipart = multipart;
 	p->len = multipart->cur;
-	p->datalink = multipart->proto->proto;
+	p->datalink = multipart->proto;
 	stack[stack_index].pload = p->buff;
 	stack[stack_index].plen = p->len;
 	stack[stack_index].proto = p->datalink;

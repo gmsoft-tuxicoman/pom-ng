@@ -447,6 +447,9 @@ struct ptype_reg *ptype_get_type(char *name) {
 	for (tmp = ptype_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
 	ptype_reg_unlock();
 
+	if (!tmp)
+		pomlog(POMLOG_WARN "Ptype %s not found", name);
+
 	return tmp;
 }
 

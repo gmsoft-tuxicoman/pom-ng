@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,29 +24,19 @@
 
 #include "proto_mpeg_dvb_mpe.h"
 
+static struct proto *proto_ipv4 = NULL;
+
 int proto_mpeg_dvb_mpe_init(struct proto *proto, struct registry_instance *i) {
 
-	struct proto_mpeg_dvb_mpe_priv *priv = malloc(sizeof(struct proto_mpeg_dvb_mpe_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct proto_mpeg_dvb_mpe_priv));
+	proto_ipv4 = proto_get("ipv4");
+	if (!proto_ipv4)
 		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct proto_mpeg_dvb_mpe_priv));
-
-	proto->priv = priv;
-
-	priv->proto_ipv4 = proto_add_dependency("ipv4");
-	if (!priv->proto_ipv4) {
-		free(priv);
-		return POM_ERR;
-	}
 
 	return POM_OK;
 }
 
 int proto_mpeg_dvb_mpe_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	struct proto_mpeg_dvb_mpe_priv *priv = proto->priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
@@ -95,22 +85,10 @@ int proto_mpeg_dvb_mpe_process(struct proto *proto, struct packet *p, struct pro
 
 	}
 
-	s_next->proto = priv->proto_ipv4->proto;
+	s_next->proto = proto_ipv4;
 	s_next->pload = s->pload + 12;
 	s_next->plen = s->plen - 12;
 
 	return PROTO_OK;
 
-}
-
-int proto_mpeg_dvb_mpe_cleanup(struct proto *proto) {
-
-	if (proto->priv) {
-	
-		struct proto_mpeg_dvb_mpe_priv *priv = proto->priv;
-		proto_remove_dependency(priv->proto_ipv4);
-		free(priv);
-	}
-
-	return POM_OK;
 }

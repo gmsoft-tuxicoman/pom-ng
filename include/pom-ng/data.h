@@ -56,7 +56,7 @@ struct data_reg {
 struct data_item_reg {
 	int flags;
 	char *name;
-	struct ptype *value_template;
+	struct ptype_reg *value_type;
 };
 
 struct data *data_alloc_table(struct data_reg *d_reg);
