@@ -188,9 +188,6 @@ int ptype_print_val(struct ptype *pt, char *val, size_t size);
 /// Allocate a new string and save it's value
 char *ptype_print_val_alloc(struct ptype *pt);
 
-/// Give the refcount of the ptype
-unsigned int ptype_get_refcount(struct ptype_reg *pt_reg);
-
 /// Give the ptype operation identifier from it's string representation.
 int ptype_get_op(struct ptype *pt, char *op);
 

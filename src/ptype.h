@@ -36,7 +36,6 @@ struct ptype_reg {
 
 	struct ptype_reg_info *info;
 	struct mod_reg *module;
-	unsigned int refcount;
 
 	struct ptype_reg *next, *prev;
 	
