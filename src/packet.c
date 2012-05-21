@@ -44,7 +44,7 @@ static struct packet *packet_head, *packet_unused_head;
 static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
-#define PACKET_BUFFER_POOL_COUNT 8
+#define PACKET_BUFFER_POOL_COUNT 9
 static size_t packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT] = {
 	80, // For small packets
 	200, // Special one for MPEG packets which are 188 bytes long
@@ -54,6 +54,7 @@ static size_t packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT] = {
 	2048, // Big packets
 	4096, // Even bigger packets
 	9100, // Jumbo frames
+	65535, // Very rare situations where captured packets are not downsized to MTU yet
 };
 static struct packet_buffer_pool packet_buffer_pool[PACKET_BUFFER_POOL_COUNT] = {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}};
 static pthread_mutex_t packet_buffer_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
