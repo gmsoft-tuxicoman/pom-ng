@@ -524,11 +524,23 @@ static int input_pcap_dir_open_next(struct input_pcap_priv *p) {
 
 	struct input_pcap_dir_priv *dp = &p->tpriv.dir;
 
+	int rescanned = 0;
 	do {
+		if (!dp->cur_file->next) { // No more file
+			if (!rescanned) {
+				// Rescan the directory for possible new files
+				if (input_pcap_dir_browse(p) != POM_OK)
+					return POM_ERR;
+				rescanned = 1;
+				continue;
+			} else {
+				dp->cur_file = NULL;
+				return POM_OK;
+			}
+		}
+
 		dp->cur_file = dp->cur_file->next;
 
-		if (!dp->cur_file) // No more file
-			return POM_OK;
 
 		char errbuf[PCAP_ERRBUF_SIZE + 1] = { 0 };
 		p->p = pcap_open_offline(dp->cur_file->full_path, errbuf);
@@ -575,11 +587,6 @@ static int input_pcap_read(struct input *i) {
 
 			if (result != -2)
 				pomlog(POMLOG_WARN "Error while reading packet from file %s. Moving on the next file ...", p->tpriv.dir.cur_file->filename);
-
-			// Rescan the directory for possible new files
-			if (input_pcap_dir_browse(p) != POM_OK)
-				return POM_ERR;
-
 			
 			if (input_pcap_dir_open_next(p) != POM_OK)
 				return POM_ERR;
