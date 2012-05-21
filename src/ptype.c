@@ -27,7 +27,6 @@
 #include <pthread.h>
 #include <string.h>
 
-static pthread_rwlock_t ptype_reg_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 static struct ptype_reg *ptype_reg_head = NULL;
 
 int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
@@ -46,14 +45,11 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 	}
 	memset(reg, 0, sizeof(struct ptype_reg));
 
-	ptype_reg_lock(1);
-
 	struct ptype_reg *tmp;
 	for (tmp = ptype_reg_head; tmp && strcmp(tmp->info->name, reg_info->name); tmp = tmp->next);
 	if (tmp) {
 		pomlog(POMLOG_ERR "Ptype %s already registered", reg_info->name);
 		free(reg);
-		ptype_reg_unlock();
 		return POM_ERR;
 	}
 
@@ -66,7 +62,6 @@ int ptype_register(struct ptype_reg_info *reg_info, struct mod_reg *mod) {
 	ptype_reg_head = reg;
 	if (reg->next)
 		reg->next->prev = reg;
-	ptype_reg_unlock();
 
 	return POM_OK;
 }
@@ -78,13 +73,10 @@ struct ptype *ptype_alloc(const char* type) {
 
 struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 
-	ptype_reg_lock(1);
-
 	struct ptype_reg *reg;
 	for (reg = ptype_reg_head; reg && strcmp(reg->info->name, type); reg = reg->next);
 
 	if (!reg) {
-		ptype_reg_unlock();
 		// This should only be needed at startup
 		pomlog("Ptype of type %s not found, trying to load module", type);
 		char ptype_mod_name[64] = { 0 };
@@ -99,12 +91,10 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 			pomlog(POMLOG_ERR "Ptype of type %s not found even after loading module", type);
 			return NULL;
 		}
-		ptype_reg_lock(1);
 	}
 	
 	struct ptype *ret = malloc(sizeof(struct ptype));
 	if (!ret) {
-		ptype_reg_unlock();
 		pom_oom(sizeof(struct ptype));
 		return NULL;
 	}
@@ -113,15 +103,11 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 	ret->type = reg;
 	if (reg->info->alloc) {
 		if (reg->info->alloc(ret) != POM_OK) {
-			ptype_reg_unlock();
 			pomlog(POMLOG_ERR "Error while allocating ptype %s", type);
 			free(ret);
 			return NULL;
 		}
 	}
-
-	reg->refcount++;
-	ptype_reg_unlock();
 
 	if (unit) {
 		ret->unit = strdup(unit);
@@ -168,9 +154,6 @@ err:
 
 	free(res);
 
-	ptype_reg_lock(1);
-	pt->type->refcount--;
-	ptype_reg_unlock();
 	return NULL;
 }
 
@@ -193,10 +176,6 @@ struct ptype *ptype_alloc_from_type(struct ptype_reg *type) {
 			return NULL;
 		}
 	}
-
-	ptype_reg_lock(1);
-	type->refcount++;
-	ptype_reg_unlock();
 
 	return res;
 
@@ -353,10 +332,6 @@ int ptype_cleanup(struct ptype* pt) {
 	if (pt->unit)
 		free(pt->unit);
 	
-	ptype_reg_lock(1);
-	pt->type->refcount--;
-	ptype_reg_unlock();
-
 	free(pt);
 
 	return POM_OK;
@@ -364,20 +339,12 @@ int ptype_cleanup(struct ptype* pt) {
 
 int ptype_unregister(char *name) {
 
-	ptype_reg_lock(1);
 	struct ptype_reg *reg;
 
 	for (reg = ptype_reg_head; reg && strcmp(reg->info->name, name); reg = reg->next);
 	if (!reg) {
 		pomlog(POMLOG_WARN "Ptype %s is not registered, cannot unregister it.", name);
-		ptype_reg_unlock();
 		return POM_OK; // Do not return an error so module unloading proceeds
-	}
-
-	if (reg->refcount) {
-		pomlog(POMLOG_WARN "Cannot unregister ptype %s as it's still in use", name);
-		ptype_reg_unlock();
-		return POM_ERR;
 	}
 
 	if (reg->prev)
@@ -395,44 +362,7 @@ int ptype_unregister(char *name) {
 
 	free(reg);
 
-	ptype_reg_unlock();
-
 	return POM_OK;
-}
-
-unsigned int ptype_get_refcount(struct ptype_reg *reg) {
-
-	unsigned int refcount = 0;
-	ptype_reg_lock(0);
-	refcount = reg->refcount;
-	ptype_reg_unlock();
-	return refcount;
-}
-
-
-void ptype_reg_lock(int write) {
-	
-	int res = 0;
-	
-	if (write)
-		res = pthread_rwlock_wrlock(&ptype_reg_rwlock);
-	else
-		res = pthread_rwlock_rdlock(&ptype_reg_rwlock);
-
-	if (res) {
-		pomlog(POMLOG_ERR "Error while locking the ptype_reg lock");
-		abort();
-	}
-
-}
-
-void ptype_reg_unlock() {
-
-	if (pthread_rwlock_unlock(&ptype_reg_rwlock)) {
-		pomlog(POMLOG_ERR "Error while unlocking the ptype_reg lock");
-		abort();
-	}
-
 }
 
 char *ptype_get_name(struct ptype *p) {
@@ -441,11 +371,9 @@ char *ptype_get_name(struct ptype *p) {
 }
 
 struct ptype_reg *ptype_get_type(char *name) {
-	ptype_reg_lock(0);
 	struct ptype_reg *tmp;
 	
 	for (tmp = ptype_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
-	ptype_reg_unlock();
 
 	if (!tmp)
 		pomlog(POMLOG_WARN "Ptype %s not found", name);
