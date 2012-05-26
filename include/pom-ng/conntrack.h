@@ -92,6 +92,7 @@ int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
 
 struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*handler) (struct conntrack_entry *ce, void *priv), void *priv);
 int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry);
+int conntrack_timer_dequeue(struct conntrack_timer *t);
 int conntrack_timer_cleanup(struct conntrack_timer *t);
 
 #endif

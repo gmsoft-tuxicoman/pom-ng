@@ -840,6 +840,10 @@ int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry) {
 	return timer_queue(t->timer, expiry);
 }
 
+int conntrack_timer_dequeue(struct conntrack_timer *t) {
+	return timer_dequeue(t->timer);
+}
+
 int conntrack_timer_cleanup(struct conntrack_timer *t) {
 
 #ifdef DEBUG_CONNTRACK
