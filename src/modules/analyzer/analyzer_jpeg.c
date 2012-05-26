@@ -134,32 +134,34 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 
 	}
 
+	int res = POM_OK;
+
 	if (priv->jpeg_lib_pos < pload->buff_pos) {
 
-		if (setjmp(priv->jmp_buff)) {
+		if (!setjmp(priv->jmp_buff)) {
+
+			if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
+				return POM_OK; // Headers are incomplete
+
+			PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
+			PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
+			debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
+			pload->state = analyzer_pload_buffer_state_analyzed;
+
+		} else {
 			pomlog(POMLOG_WARN "Error while parsing JPEG headers");
-			return POM_ERR;
+			res = POM_ERR;
 		}
-
-		int res = jpeg_read_header(&priv->cinfo, TRUE);
-
-		if (res == JPEG_SUSPENDED) // Headers are incomplete
-			return POM_OK;
-	
-		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
-		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
-		debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
 		free(priv->cinfo.src);
 		jpeg_destroy_decompress(&priv->cinfo);
 		free(priv);
 		pload->analyzer_priv = NULL;
 
-		pload->state = analyzer_pload_buffer_state_analyzed;
 
 	}
 
-	return POM_OK;
+	return res;
 }
 
 static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
