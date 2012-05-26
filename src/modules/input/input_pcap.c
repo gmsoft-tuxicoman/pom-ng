@@ -586,7 +586,7 @@ static int input_pcap_read(struct input *i) {
 			p->p = NULL;
 
 			if (result != -2)
-				pomlog(POMLOG_WARN "Error while reading packet from file %s. Moving on the next file ...", p->tpriv.dir.cur_file->filename);
+				pomlog(POMLOG_WARN "Error while reading packet from file %s : . Moving on the next file ...", pcap_geterr(p->p), p->tpriv.dir.cur_file->filename);
 			
 			if (input_pcap_dir_open_next(p) != POM_OK)
 				return POM_ERR;
@@ -602,6 +602,10 @@ static int input_pcap_read(struct input *i) {
 				return POM_ERR;
 			}
 		} else {
+			if (result == -2) // EOF
+				return input_stop(i);
+
+			pomlog(POMLOG_ERR "Error while reading file : %s", pcap_geterr(p->p));
 			return POM_ERR;
 		}
 	}
