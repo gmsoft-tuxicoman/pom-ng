@@ -582,12 +582,13 @@ static int input_pcap_read(struct input *i) {
 	if (result < 0) { // End of file or error 
 
 		if (p->type == input_pcap_type_dir) {
+
+			if (result != -2)
+				pomlog(POMLOG_WARN "Error while reading packet from file : %s. Moving on the next file ...", pcap_geterr(p->p), p->tpriv.dir.cur_file->filename);
+			
 			pcap_close(p->p);
 			p->p = NULL;
 
-			if (result != -2)
-				pomlog(POMLOG_WARN "Error while reading packet from file %s : . Moving on the next file ...", pcap_geterr(p->p), p->tpriv.dir.cur_file->filename);
-			
 			if (input_pcap_dir_open_next(p) != POM_OK)
 				return POM_ERR;
 
