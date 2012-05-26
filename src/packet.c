@@ -1121,7 +1121,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 			
 			res = stream->head[cur_dir];
 
-			if (!packet_stream_is_packet_next(stream, res, *direction)) {
+			if (!packet_stream_is_packet_next(stream, res, cur_dir)) {
 				res = NULL;
 				break;
 			}
@@ -1131,7 +1131,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 			// Check for duplicate bytes
 			if (cur_seq != seq) {
 
-				if (packet_stream_is_packet_old_dupe(stream, res, i)) {
+				if (packet_stream_is_packet_old_dupe(stream, res, cur_dir)) {
 					// Packet is a duplicate, remove it
 					stream->head[cur_dir] = res->next;
 					if (res->next) {
@@ -1158,7 +1158,7 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 					// Next packet please
 					continue;
 				} else {
-					if (packet_stream_remove_dupe_bytes(stream, res, *direction) == POM_ERR)
+					if (packet_stream_remove_dupe_bytes(stream, res, cur_dir) == POM_ERR)
 						return NULL;
 
 				}
