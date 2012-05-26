@@ -770,7 +770,7 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 			|| (rev_seq > pkt->ack && rev_seq - pkt->ack > PACKET_HALF_SEQ)) {
 			// The host processed data in the reverse direction which we haven't processed yet
 			if (stream->t)
-				conntrack_timer_queue(stream->t, stream->rev_dir_timeout); // Only wait 2 seconds for the reverse direction
+				conntrack_timer_queue(stream->t, stream->rev_dir_timeout);
 			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
 			return 0;
 		}
@@ -854,7 +854,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 		// Check if additional packets can be processed
 		struct packet_stream_pkt *p = NULL;
-		unsigned int cur_dir = direction;
+		unsigned int cur_dir = direction, additional_processed = 0;
 		while ((p = packet_stream_get_next(stream, &cur_dir))) {
 
 
@@ -876,7 +876,17 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			stream->cur_ack[cur_dir] = p->ack;
 
 			free(p);
+
+			additional_processed = 1;
 		}
+
+		if (additional_processed) {
+			if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
+				conntrack_timer_dequeue(stream->t);
+			else
+				conntrack_timer_queue(stream->t, stream->same_dir_timeout);
+		}
+
 		pom_mutex_unlock(&stream->lock);
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : done", stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		return res;
@@ -926,8 +936,8 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 		struct packet_stream_pkt *tmp = stream->tail[direction];
 		while ( tmp && 
-			((tmp->seq > seq && tmp->seq - seq < PACKET_HALF_SEQ)
-			|| (tmp->seq < seq && seq - tmp->seq > PACKET_HALF_SEQ))) {
+			((tmp->seq >= seq && tmp->seq - seq < PACKET_HALF_SEQ)
+			|| (tmp->seq <= seq && seq - tmp->seq > PACKET_HALF_SEQ))) {
 
 			tmp = tmp->prev;
 
@@ -967,10 +977,13 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			pom_mutex_unlock(&stream->lock);
 			return POM_ERR;
 		}
+
+		if (stream->t)
+			conntrack_timer_dequeue(stream->t);
 	}
 
 	// Add timeout
-	if (stream->t) 
+	if (stream->t && (stream->head[POM_DIR_FWD] || stream->head[POM_DIR_REV])) 
 		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
 	pom_mutex_unlock(&stream->lock);
 
@@ -980,39 +993,70 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 int packet_stream_force_dequeue(struct packet_stream *stream) {
 
-	
-	if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
-		return POM_OK;
+	struct packet_stream_pkt *p = NULL;
+	unsigned int next_dir = 0;
 
-	unsigned int next_dir;
+	while (1) {
 
-	if (!stream->head[POM_DIR_FWD]) {
-		next_dir = POM_DIR_REV;
-	} else if (!stream->head[POM_DIR_REV]) {
-		next_dir = POM_DIR_FWD;
-	} else {
-		// We have packets in both direction, lets see which one we'll process first
-		int i;
-		for (i = 0; i < 2; i++) {
-			int r = 1 - i;
-			struct packet_stream_pkt *a = stream->head[i], *b = stream->head[r];
-			uint32_t end_seq = a->seq + a->plen;
-			if ((end_seq <= b->ack && b->ack - end_seq < PACKET_HALF_SEQ) ||
-				(b->ack > end_seq && end_seq - b->ack > PACKET_HALF_SEQ))
-				break;
+		if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
+			return POM_OK;
 
+
+		if (!stream->head[POM_DIR_FWD]) {
+			next_dir = POM_DIR_REV;
+		} else if (!stream->head[POM_DIR_REV]) {
+			next_dir = POM_DIR_FWD;
+		} else {
+			// We have packets in both direction, lets see which one we'll process first
+			int i;
+			for (i = 0; i < POM_DIR_TOT; i++) {
+				int r = POM_DIR_REVERSE(i);
+				struct packet_stream_pkt *a = stream->head[i], *b = stream->head[r];
+				uint32_t end_seq = a->seq + a->plen;
+				if ((end_seq <= b->ack && b->ack - end_seq < PACKET_HALF_SEQ) ||
+					(b->ack > end_seq && end_seq - b->ack > PACKET_HALF_SEQ))
+					break;
+
+			}
+			if (i == POM_DIR_TOT) {
+				// There is a gap in both direction
+				// Process the first packet received
+				struct packet *a = stream->head[POM_DIR_FWD]->pkt, *b = stream->head[POM_DIR_REV]->pkt;
+				if (a->ts.tv_sec < b->ts.tv_sec || 
+					(a->ts.tv_sec == b->ts.tv_sec && a->ts.tv_usec < b->ts.tv_usec)) {
+					next_dir = POM_DIR_FWD;
+				} else {
+					next_dir = POM_DIR_REV;
+				}
+				debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : processing next by timestamp", stream, stream->head[next_dir]->pkt->ts.tv_sec, stream->head[next_dir]->pkt->ts.tv_usec, stream->head[next_dir]->seq, stream->head[next_dir]->ack);
+			} else {
+				next_dir = i;
+			}
 		}
-		next_dir = i;
 
+		p = stream->head[next_dir];
+		if (p->next)
+			p->next->prev = NULL;
+		else
+			stream->tail[next_dir] = NULL;
+		
+		stream->head[next_dir] = p->next;
+		stream->cur_buff_size -= p->plen;
+
+
+		if (packet_stream_is_packet_old_dupe(stream, p, next_dir)) {
+
+			int i;
+			for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i++)
+				packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
+			free(p->stack);
+			packet_pool_release(p->pkt);
+			free(p);
+
+		} else {
+			break;
+		}
 	}
-
-	struct packet_stream_pkt *p = stream->head[next_dir];
-	if (p->next)
-		p->next->prev = NULL;
-	else
-		stream->tail[next_dir] = NULL;
-	
-	stream->head[next_dir] = p->next;
 
 	if (packet_stream_remove_dupe_bytes(stream, p, next_dir) == POM_ERR)
 		return POM_ERR;
@@ -1028,7 +1072,6 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	packet_pool_release(p->pkt);
 	stream->cur_seq[next_dir] = p->seq + p->plen;
 	stream->cur_ack[next_dir] = p->ack;
-	stream->cur_buff_size -= p->plen;
 
 	free(p);
 
