@@ -797,7 +797,7 @@ struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name) {
 
 struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type) {
 
-	if (!mime_type || !strlen(mime_type))
+	if (!mime_type)
 		return NULL;
 
 	size_t len;
@@ -806,6 +806,10 @@ struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type
 		len = end - mime_type;
 	else
 		len = strlen(mime_type);
+
+	if (!len)
+		return NULL;
+
 	while (*mime_type == ' ')
 		mime_type++;
 	while (*(mime_type + len - 1) == ' ' && len >= 0)
