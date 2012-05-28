@@ -210,10 +210,12 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 	}
 
-	debug_http("entry %p, current state %u, packet %u.%u", s->ce, priv->state, (int)p->ts.tv_sec, (int)p->ts.tv_usec);
+	debug_http("entry %p, current state %u, packet %u.%u", s->ce, priv->state[s->direction], (int)p->ts.tv_sec, (int)p->ts.tv_usec);
 
-	if (priv->is_invalid)
+	if (priv->is_invalid) {
+		debug_http("entry %p, packet %u.%u : invalid", s->ce, (int)p->ts.tv_sec, (int)p->ts.tv_usec);
 		return PROTO_INVALID;
+	}
 
 	if (!priv->parser[s->direction]) {
 		priv->parser[s->direction] = packet_stream_parser_alloc(HTTP_MAX_HEADER_LINE);
@@ -335,8 +337,10 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				
 				// Parse a few useful headers
 				if (!(priv->info[s->direction].flags & HTTP_FLAG_HAVE_CLEN) && !strcasecmp(name, "Content-Length")) {
-					if (sscanf(value, "%zu", &priv->info[s->direction].content_len) != 1)
+					if (sscanf(value, "%zu", &priv->info[s->direction].content_len) != 1) {
+						pomlog(POMLOG_DEBUG "Invalid Content-Length : \"%s\"", value);
 						return PROTO_INVALID;
+					}
 					priv->info[s->direction].flags |= HTTP_FLAG_HAVE_CLEN;
 				} else if (!(priv->info[s->direction].flags & HTTP_FLAG_CHUNKED) && !strcasecmp(name, "Transfer-Encoding")) {
 					if (!strcasecmp(value, "chunked"))
@@ -443,14 +447,30 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 					// Set the right payload in the next stack index
 					packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
-					packet_stream_parser_empty(parser);
-					priv->info[s->direction].content_pos += s_next->plen;
+
+					unsigned int pload_remaining = priv->info[s->direction].content_len - priv->info[s->direction].content_pos;
+					if (pload_remaining < s_next->plen) {
+						if (packet_stream_parser_skip_bytes(parser, pload_remaining) != POM_OK) {
+							pomlog(POMLOG_ERR "Error while skipping %u bytes from the stream", pload_remaining);
+							return PROTO_ERR;
+						}
+						s_next->plen = pload_remaining;
+						priv->info[s->direction].content_pos = priv->info[s->direction].content_pos;
+
+						// Do the post processing
+						if (proto_http_post_process(proto, p, stack, stack_index) != POM_OK)
+							return POM_ERR;
+					} else {
+						packet_stream_parser_empty(parser);
+						priv->info[s->direction].content_pos += s_next->plen;
+					}
 				}
 
 				debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
 
+				if (!s_next->plen)
+					return PROTO_OK;
 
-				return PROTO_OK;
 		}
 	}
 
@@ -489,7 +509,7 @@ static int proto_http_conntrack_reset(struct conntrack_entry *ce, int direction)
 	debug_http("entry %p, reset", ce);
 
 	priv->state[direction] = HTTP_STATE_FIRST_LINE;
-	memset(priv->info, 0, sizeof(struct http_info) * POM_DIR_TOT);
+	memset(&priv->info[direction], 0, sizeof(struct http_info));
 
 	if (priv->event[direction]) {
 		event_cleanup(priv->event[direction]);
@@ -606,6 +626,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					for (i = 0; i < tok_len; i++) {
 						if ((token[i]) < 'A' || (token[i] > 'Z' && token[i] < 'a') || (token[i] > 'z')) {
 							// Definitely not a HTTP method
+							pomlog(POMLOG_DEBUG "Not identified as an HTTP method");
 							return PROTO_INVALID;
 						}
 					}
@@ -674,10 +695,13 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 			case 2:
 				if (priv->client_direction == direction) {
 					// This payload was identified as a possible query
-					if (tok_len < strlen("HTTP/"))
+					if (tok_len < strlen("HTTP/")) {
+						pomlog(POMLOG_DEBUG "HTTP version string too short");
 						return PROTO_INVALID;
+					}
 					if (strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
 						// Doesn't seem to be a valid HTTP version
+						pomlog(POMLOG_DEBUG "Invalid HTTP version string");
 						return PROTO_INVALID;
 					}
 
@@ -741,7 +765,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		debug_http("entry %p, found query : \"%s\"", ce, first_line);
 
 	} else {
-		debug_http("entry %p, response with status %u", ce, priv->info[s->direction].last_err_code);
+		debug_http("entry %p, response with status %u", ce, priv->info[direction].last_err_code);
 
 		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_response_start_time].value, p->ts);
 	}
