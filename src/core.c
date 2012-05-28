@@ -323,17 +323,17 @@ void *core_processing_thread_func(void *priv) {
 			return NULL;
 		}
 
+		// Update the current clock
+		pom_mutex_lock(&core_clock_lock);
+		memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
+		pom_mutex_unlock(&core_clock_lock);
+
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
 			halt("Packet processing encountered an error");
 			pthread_rwlock_unlock(&core_processing_lock);
 			return NULL;
 		}
-
-		// Update the current clock
-		pom_mutex_lock(&core_clock_lock);
-		memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
-		pom_mutex_unlock(&core_clock_lock);
 
 		// Process timers
 		if (timers_process() != POM_OK) {
