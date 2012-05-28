@@ -56,7 +56,6 @@ struct proto_tcp_priv {
 	struct ptype *param_tcp_established_t;
 	struct ptype *param_tcp_reuse_handling;
 	struct proto *proto_http;
-
 };
 
 struct proto_tcp_conntrack_priv {
@@ -64,6 +63,7 @@ struct proto_tcp_conntrack_priv {
 	unsigned int state;
 	struct packet_stream *stream;
 	struct proto *proto;
+	uint32_t start_seq[POM_DIR_TOT];
 };
 
 struct mod_reg_info* proto_tcp_reg_info();

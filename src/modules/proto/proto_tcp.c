@@ -304,24 +304,28 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 
 
 	if (!priv->stream) {
-		
-		uint32_t seq = ntohl(hdr->th_seq);
-		if ((hdr->th_flags & TH_SYN) || (hdr->th_flags & TH_FIN))
-			seq++;
+	
 
-		uint32_t ack = ntohl(hdr->th_ack);
+		if (hdr->th_flags & TH_SYN || (!priv->start_seq[s->direction] && plen)) {
+			priv->start_seq[s->direction] = ntohl(hdr->th_seq);
+			if ((hdr->th_flags & TH_SYN) || (hdr->th_flags & TH_FIN))
+				priv->start_seq[s->direction]++;
+			
+			priv->start_seq[POM_DIR_REVERSE(s->direction)] = ntohl(hdr->th_ack);
+		}
 
-		priv->stream = packet_stream_alloc(seq, ack, s->direction, 65535, s->ce, PACKET_FLAG_STREAM_BIDIR);
-		if (!priv->stream) {
-			conntrack_unlock(s->ce);
-			return PROTO_ERR;
+		if (plen) {
+			priv->stream = packet_stream_alloc(priv->start_seq[s->direction], priv->start_seq[POM_DIR_REVERSE(s->direction)], s->direction, 65535, s->ce, PACKET_FLAG_STREAM_BIDIR);
+			if (!priv->stream) {
+				conntrack_unlock(s->ce);
+				return PROTO_ERR;
+			}
+			if (packet_stream_set_timeout(priv->stream, 600, 2, proto_tcp_process_payload) != POM_OK) {
+				conntrack_unlock(s->ce);
+				packet_stream_cleanup(priv->stream);
+				return PROTO_ERR;
+			}
 		}
-		if (packet_stream_set_timeout(priv->stream, 600, 2, proto_tcp_process_payload) != POM_OK) {
-			conntrack_unlock(s->ce);
-			packet_stream_cleanup(priv->stream);
-			return PROTO_ERR;
-		}
-		
 	}
 
 	conntrack_unlock(s->ce);
