@@ -1061,8 +1061,59 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	if (packet_stream_remove_dupe_bytes(stream, p, next_dir) == POM_ERR)
 		return POM_ERR;
 
-	debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
-	int res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
+
+	uint32_t gap = p->seq - stream->cur_seq[next_dir];
+
+	int res = POM_OK;
+
+	if (gap) {
+		
+		if (gap < stream->max_buff_size) {
+		
+			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack, gap);
+			uint32_t gap_step = gap;
+			if (gap_step > 2048)
+				gap_step = 2048;
+
+			void *zero = malloc(gap_step);
+			if (!zero) {
+				pom_oom(gap_step);
+				return POM_ERR;
+			}
+			memset(zero, 0, gap_step);
+			
+			struct proto_process_stack *s = &p->stack[p->stack_index];
+			uint32_t plen_old = s->plen;
+			void *pload_old = s->pload;
+
+
+			uint32_t pos;
+			for (pos = 0; pos < gap; pos += gap_step) {
+				if (pos + gap_step < gap)
+					s->plen = gap_step;
+				else
+					s->plen = gap - pos;
+				s->pload = zero;
+				res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
+				if (res != POM_OK)
+					break;
+			}
+
+			free(zero);
+
+			s->pload = pload_old;
+			s->plen = plen_old;
+
+		} else {
+			debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : gap of %u too big. not filling", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack, gap);
+		}
+		
+	}
+
+	if (res == POM_OK) {
+		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
+		res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
+	}
 
 	int i;
 	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
@@ -1076,7 +1127,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	free(p);
 
 
-	if (res == POM_ERR) 
+	if (res != POM_OK) 
 		return POM_ERR;
 
 	// See if we can process additional packets
