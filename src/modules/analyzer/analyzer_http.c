@@ -281,8 +281,19 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 	// Remember if we created a new event of not
 	int start_process = 0; 
 
-	// If it's a new query or if there is no ongoing query and we got a response, allocate a new event
 	struct analyzer_http_event_list *elist = cpriv->evt_head;
+
+	if (evt->reg == apriv->evt_response && elist) {
+		// Skip requests which already have a response
+		struct analyzer_http_request_event_priv *epriv = elist->evt->priv;
+		if (epriv->response_event && elist->next) {
+			cpriv->conversation_error = 1;
+			pomlog(POMLOG_DEBUG "Conversation error. Received second response without query.");
+			return POM_OK;
+		}
+	}
+
+	// If it's a new query or if there is no ongoing query and we got a response, allocate a new event
 	if (evt->reg == apriv->evt_query || !elist) {
 
 		elist = malloc(sizeof(struct analyzer_http_event_list));
@@ -483,15 +494,6 @@ int analyzer_http_event_process_end(struct event *evt, void *obj) {
 		return POM_OK;
 	}
 
-
-	if (evt->reg == apriv->evt_query) {
-		// Queries are only processed when we get the corresponding
-		// response back or on timeout
-		return POM_OK;
-	}
-
-	// Let's process the response
-
 	struct analyzer_http_event_list *elist = cpriv->evt_head;
 	if (!elist) {
 		pomlog(POMLOG_ERR "No event found !");
@@ -500,15 +502,24 @@ int analyzer_http_event_process_end(struct event *evt, void *obj) {
 
 	struct analyzer_http_request_event_priv *epriv = elist->evt->priv;
 
-	if (epriv->response_event != evt) {
-		pomlog(POMLOG_ERR "Internal error, not the response event expected");
-		return POM_ERR;
-	}
+	// Rarely, reponse are not parsed entirely and response are already sent
+	if (evt->reg == apriv->evt_query) {
 
-	if (epriv->query_event && !(epriv->query_event->flags & EVENT_FLAG_PROCESS_DONE)) {
-		pomlog(POMLOG_DEBUG "Conversation error, response ended before the query");
-		cpriv->conversation_error = 1;
-		return POM_OK;
+		if (!epriv->response_event || !(epriv->response_event->flags & EVENT_FLAG_PROCESS_DONE)) {
+			// Do not process as there was no finalized response to this event
+			// It will be finalized when the response is received
+			return POM_OK;
+		}
+
+	} else {
+		if (epriv->response_event != evt) {
+			pomlog(POMLOG_ERR "Internal error, not the response event expected");
+			return POM_ERR;
+		}
+		
+		// Server replied without waiting for the end of the query
+		if (epriv->query_event && !(epriv->query_event->flags & EVENT_FLAG_PROCESS_DONE))
+			return POM_OK;
 	}
 
 	return analyzer_http_event_finalize_process(cpriv);
