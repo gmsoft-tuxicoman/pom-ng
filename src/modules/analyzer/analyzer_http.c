@@ -474,6 +474,9 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				dst_data[analyzer_http_request_client_addr].value = ptype_alloc_from(dst);
 		}
 	}
+
+	if (!dst_data[analyzer_http_request_server_name].value)
+		dst_data[analyzer_http_request_server_name].value = dst_data[analyzer_http_request_server_addr].value;
 	
 	// Start processing our meta-event
 	if (start_process)
