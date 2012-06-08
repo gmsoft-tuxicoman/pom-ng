@@ -113,8 +113,7 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 	};
 
 	
-	static struct event_reg_info proto_http_evt_query;
-	memset(&proto_http_evt_query, 0, sizeof(struct event_reg_info));
+	static struct event_reg_info proto_http_evt_query = { 0 };
 	proto_http_evt_query.source_name = "proto_http";
 	proto_http_evt_query.source_obj = proto;
 	proto_http_evt_query.name = "http_query";
@@ -144,8 +143,7 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 		.data_count = PROTO_HTTP_EVT_RESPONSE_DATA_COUNT
 	};
 
-	static struct event_reg_info proto_http_evt_response;
-	memset(&proto_http_evt_response, 0, sizeof(struct event_reg_info));
+	static struct event_reg_info proto_http_evt_response = { 0 };
 	proto_http_evt_response.source_name = "proto_http";
 	proto_http_evt_response.source_obj = proto;
 	proto_http_evt_response.name = "http_response";
