@@ -30,6 +30,9 @@
 	memcpy(v->addr, y, 6);			\
 }
 
+#define PTYPE_MAC_GETADDR(x) 				\
+	((struct ptype_mac_val *)(x)->value)->addr
+
 struct ptype_mac_val {
 	char addr[6];
 	char mask[6];
