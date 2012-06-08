@@ -38,7 +38,7 @@ struct ptype_ipv4_val {
 
 /// x is the struct ptype,
 #define PTYPE_IPV4_GETADDR(x) \
-	((struct ptype_ipv4_val*) x)->addr
+	((struct ptype_ipv4_val*) x->value)->addr
 
 /// x is the struct ptype, y the value
 #define PTYPE_IPV4_SETADDR(x, y) {			\
