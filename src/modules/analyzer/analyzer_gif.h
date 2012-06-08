@@ -23,7 +23,6 @@
 #define __ANALYZER_GIF_H__
 
 #include <pom-ng/analyzer.h>
-#include <stdio.h>
 
 #define ANALYZER_GIF_PLOAD_TYPE "gif"
 
