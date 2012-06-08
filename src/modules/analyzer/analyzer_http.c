@@ -158,8 +158,7 @@ int analyzer_http_init(struct analyzer *analyzer) {
 		.data_count = ANALYZER_HTTP_EVT_REQUEST_DATA_COUNT
 	};
 
-	static struct event_reg_info analyzer_http_evt_request;
-	memset(&analyzer_http_evt_request, 0, sizeof(struct event_reg_info));
+	static struct event_reg_info analyzer_http_evt_request = { 0 };
 	analyzer_http_evt_request.source_name = "analyzer_http";
 	analyzer_http_evt_request.source_obj = analyzer;
 	analyzer_http_evt_request.name = "http_request";
