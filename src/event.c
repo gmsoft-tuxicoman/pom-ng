@@ -189,6 +189,19 @@ int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 	return POM_OK;
 }
 
+int event_has_listener(struct event_reg *evt_reg) {
+	return (evt_reg->listeners ? 1 : 0);
+}
+
+int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index) {
+
+	int res = event_process_begin(evt, stack, stack_index);
+	if (res != POM_OK)
+		return res;
+
+	return event_process_end(evt);
+}
+
 int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index) {
 
 	debug_event("Processing event begin %s", evt->reg->info->name);

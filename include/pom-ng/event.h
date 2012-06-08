@@ -75,11 +75,12 @@ struct event *event_alloc(struct event_reg *evt_reg);
 int event_cleanup(struct event *evt);
 
 struct event_reg *event_find(char *name);
-//struct ptype *event_data_item_add(struct event *evt, unsigned int data_id, char *key);
 
 int event_listener_register(struct event_reg *evt_reg, struct event_listener *listener);
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);
+int event_has_listener(struct event_reg *evt_reg);
 
+int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index);
 int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index);
 int event_process_end(struct event *evt);
 
