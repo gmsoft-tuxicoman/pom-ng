@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_gif.la analyzer_http.la analyzer_png.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
@@ -30,6 +30,9 @@ lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(
 EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la input_pcap.la input_dvb.la output_pcap.la
 
 
+analyzer_arp_la_SOURCES = analyzer/analyzer_arp.c analyzer/analyzer_arp.h
+analyzer_arp_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_arp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_gif_la_SOURCES = analyzer/analyzer_gif.c analyzer/analyzer_gif.h
 analyzer_gif_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_gif_la_LIBADD = $(top_builddir)/src/libpom-ng.la

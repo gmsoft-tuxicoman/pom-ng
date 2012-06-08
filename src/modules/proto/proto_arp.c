@@ -23,6 +23,7 @@
 #include <pom-ng/ptype_mac.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_ipv4.h>
+#include <pom-ng/proto_arp.h>
 
 #include "proto_arp.h"
 
@@ -41,21 +42,21 @@ struct mod_reg_info* proto_arp_reg_info() {
 static int proto_arp_mod_register(struct mod_reg *mod) {
 
 	static struct proto_pkt_field fields[PROTO_ARP_FIELD_NUM + 1] = { { 0 } };
-	fields[0].name = "oper";
-	fields[0].value_type = ptype_get_type("uint16");
-	fields[0].description = "Operation";
-	fields[1].name = "sender_hw_addr";
-	fields[1].value_type = ptype_get_type("mac");
-	fields[1].description = "Sender hardware address";
-	fields[2].name = "sender_proto_addr";
-	fields[2].value_type = ptype_get_type("ipv4");
-	fields[2].description = "Sender protocol address";
-	fields[3].name = "target_hw_addr";
-	fields[3].value_type = ptype_get_type("mac");
-	fields[3].description = "Target hardware address";
-	fields[4].name = "target_proto_addr";
-	fields[4].value_type = ptype_get_type("ipv4");
-	fields[4].description = "Target protocol address";
+	fields[proto_arp_field_oper].name = "oper";
+	fields[proto_arp_field_oper].value_type = ptype_get_type("uint16");
+	fields[proto_arp_field_oper].description = "Operation";
+	fields[proto_arp_field_sender_hw_addr].name = "sender_hw_addr";
+	fields[proto_arp_field_sender_hw_addr].value_type = ptype_get_type("mac");
+	fields[proto_arp_field_sender_hw_addr].description = "Sender hardware address";
+	fields[proto_arp_field_sender_proto_addr].name = "sender_proto_addr";
+	fields[proto_arp_field_sender_proto_addr].value_type = ptype_get_type("ipv4");
+	fields[proto_arp_field_sender_proto_addr].description = "Sender protocol address";
+	fields[proto_arp_field_target_hw_addr].name = "target_hw_addr";
+	fields[proto_arp_field_target_hw_addr].value_type = ptype_get_type("mac");
+	fields[proto_arp_field_target_hw_addr].description = "Target hardware address";
+	fields[proto_arp_field_target_proto_addr].name = "target_proto_addr";
+	fields[proto_arp_field_target_proto_addr].value_type = ptype_get_type("ipv4");
+	fields[proto_arp_field_target_proto_addr].description = "Target protocol address";
 
 
 	static struct proto_reg_info proto_arp = { 0 };

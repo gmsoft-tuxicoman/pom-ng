@@ -4,14 +4,21 @@
 	<datasets>
 		<dataset name="templates">
 			<item><name>http_apache</name><description>Apache like HTTP logs</description></item>
+			<item><name>arpwatch</name><description>arpwatch like logs</description></item>
 		</dataset>
 
 		<dataset name="events">
+			<!-- http_apache -->
 			<item><template>http_apache</template><event>http_request</event><format>$server_name $client_addr $username $url [$query_time] "$first_line" $status $response_size</format><file>http_apache_log</file></item>
+			
+			<!-- arpwatch -->
+			<item><template>arpwatch</template><event>arp_new_sta</event><format>New station : $ip_addr $mac_addr on input '$input'</format><file>arpwatch_log</file></item>
+			<item><template>arpwatch</template><event>arp_sta_changed</event><format>Station address changed : $ip_addr from $old_mac_addr to $new_mac_addr on input '$input'</format><file>arpwatch_log</file></item>
 		</dataset>
 
 		<dataset name="files">
 			<item><template>http_apache</template><name>http_apache_log</name><path>http.log</path></item>
+			<item><template>arpwatch</template><name>arpwatch_log</name><path>arp.log</path></item>
 		</dataset>
 	</datasets>
 
