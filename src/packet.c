@@ -1064,7 +1064,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 
 	uint32_t gap = p->seq - stream->cur_seq[next_dir];
 
-	int res = POM_OK;
+	int res = PROTO_OK;
 
 	if (gap) {
 		
@@ -1095,7 +1095,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 					s->plen = gap - pos;
 				s->pload = zero;
 				res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
-				if (res != POM_OK)
+				if (res == PROTO_ERR)
 					break;
 			}
 
@@ -1110,7 +1110,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 		
 	}
 
-	if (res == POM_OK) {
+	if (res != PROTO_ERR) {
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process forced", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 		res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
 	}
@@ -1127,7 +1127,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	free(p);
 
 
-	if (res != POM_OK) 
+	if (res == PROTO_ERR) 
 		return POM_ERR;
 
 	// See if we can process additional packets
@@ -1138,7 +1138,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 
 		debug_stream("entry %p, packet %u.%06u, seq %u, ack %u : process additional", stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
-		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR)
+		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == PROTO_ERR)
 			return POM_ERR;
 
 		for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
