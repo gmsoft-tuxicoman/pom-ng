@@ -254,31 +254,23 @@ int proto_cleanup() {
 	pom_mutex_lock(&proto_list_lock);
 
 	
-	struct proto *proto = proto_head;
-	while (proto_head) {
-			
+	struct proto *proto;
+	for (proto = proto_head; proto; proto = proto->next) {
+
 		if (proto->info->cleanup && proto->info->cleanup(proto) == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
 		conntrack_tables_cleanup(proto->ct);
 
 		mod_refcount_dec(proto->info->mod);
 		packet_info_pool_cleanup(&proto->pkt_info_pool);
-
-		struct proto *tmp = proto;
-		if (!proto->prev) {
-			proto_head = proto_head->next;
-			if (proto_head)
-				proto_head->prev = NULL;
-		} else {
-			proto->prev->next = proto->next;
-		}
-		
-		if (proto->next)
-			proto->next->prev = proto->prev;
-		free(tmp);
-
-		proto = proto_head;
 	}
+
+	while (proto_head) {
+		proto = proto_head;
+		proto_head = proto->next;
+		free(proto);
+	}
+
 	pom_mutex_unlock(&proto_list_lock);
 
 	if (proto_registry_class)
