@@ -330,7 +330,9 @@ void *core_processing_thread_func(void *priv) {
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
+			core_run = 0;
 			halt("Packet processing encountered an error");
+			pthread_cond_broadcast(&core_pkt_queue_restart_cond);
 			pthread_rwlock_unlock(&core_processing_lock);
 			return NULL;
 		}
@@ -428,11 +430,8 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 #endif
 	int i;
 	// Cleanup pkt_info and remove refcount
-	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++) {
-		if (s[i].ce)
-			conntrack_refcount_dec(s[i].ce);
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
 		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
-	}
 	
 	// Clean the stack
 	memset(&s[stack_index], 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX - stack_index));
@@ -443,7 +442,8 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 
 int core_process_packet_stack(struct proto_process_stack *stack, unsigned int stack_index, struct packet *p) {
 
-	unsigned int i, res = PROTO_OK;
+	unsigned int i;
+	int res = PROTO_OK;
 
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {
 
@@ -455,7 +455,7 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (s->proto->info->pkt_fields)
 			s->pkt_info = packet_info_pool_get(s->proto);
 
-		int res = proto_process(p, stack, i);
+		res = proto_process(p, stack, i);
 
 		if (res == PROTO_ERR)
 			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s->proto->info->name);
@@ -485,9 +485,10 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 			continue;
 		
 		if (res >= 0) {
-			res = proto_post_process(p, stack, i);
-			if (res == POM_ERR)
+			if (proto_post_process(p, stack, i) == POM_ERR) {
 				pomlog(POMLOG_ERR "Error while post processing packet for proto %s", stack[stack_index].proto->info->name);
+				res = PROTO_ERR;
+			}
 		}
 
 		if (stack[i].ce)
