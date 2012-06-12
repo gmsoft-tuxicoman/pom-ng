@@ -111,12 +111,10 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 	if (!s->ce)
 		return PROTO_ERR;
 	
-	pom_mutex_lock(&s->ce->lock);
-
 	if (!s->ce->priv) {
 		s->ce->priv = malloc(sizeof(struct proto_mpeg_ts_conntrack_priv));
 		if (!s->ce->priv) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
 			pom_oom(sizeof(struct proto_mpeg_ts_conntrack_priv));
 			return PROTO_ERR;
 		}
@@ -137,14 +135,14 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 		
 		// We need to have a PUSI to analyze and start recomposing the content
 		if (!pusi) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
 			return PROTO_OK;
 		}
 
 		// Create the new stream
 		struct proto_mpeg_ts_stream *new_streams = realloc(priv->streams, sizeof(struct proto_mpeg_ts_stream) * (priv->streams_array_size + 1));
 		if (!new_streams) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
 			pom_oom(sizeof(struct proto_mpeg_ts_stream) * (priv->streams_array_size + 1));
 			return PROTO_ERR;
 		}
@@ -158,7 +156,7 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 
 		stream->t = timer_alloc(stream, proto_mpeg_ts_stream_cleanup);
 		if (!stream->t) {
-			pom_mutex_unlock(&s->ce->lock);
+			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
 		stream->ce = s->ce;
@@ -184,7 +182,7 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 		stream = &priv->streams[i];
 	}
 
-	pom_mutex_unlock(&s->ce->lock);
+	conntrack_unlock(s->ce);
 
 	// Filter out PES packets
 	if (stream->type == proto_mpeg_stream_type_pes) {
@@ -286,8 +284,10 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 					return PROTO_ERR;
 				
 				// Process the multipart once we're done with the MPEG packet
-				if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR)
+				if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR) {
+					stream->multipart = NULL;
 					return PROTO_ERR;
+				}
 
 			}
 
@@ -300,6 +300,10 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 
 		}
 		pos += ptr;
+
+		if (pos >= MPEG_TS_LEN)
+			// Nothing left to process
+			return PROTO_STOP;
 
 		while (1) {
 			// Skip stuff bytes
