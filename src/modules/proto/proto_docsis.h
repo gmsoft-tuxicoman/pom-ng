@@ -33,10 +33,23 @@ enum proto_docsis_fields {
 	proto_docsis_field_ehdr_on,
 };
 
+#define PROTO_DOCSIS_MGMT_FIELD_NUM 7
+
+enum proto_docsis_mgmt_fields {
+	proto_docsis_mgmt_field_saddr = 0,
+	proto_docsis_mgmt_field_daddr,
+	proto_docsis_mgmt_field_dsap,
+	proto_docsis_mgmt_field_ssap,
+	proto_docsis_mgmt_field_control,
+	proto_docsis_mgmt_field_version,
+	proto_docsis_mgmt_field_type
+};
+
 struct mod_reg_info* proto_docsis_reg_info();
 static int proto_docsis_mod_register(struct mod_reg *mod);
 static int proto_docsis_mod_unregister();
 static int proto_docsis_init(struct proto *proto, struct registry_instance *i);
 static int proto_docsis_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_docsis_mgmt_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif
