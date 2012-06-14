@@ -428,10 +428,6 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 	if (res != PROTO_ERR)
 		core_process_dump_info(s, p, res);
 #endif
-	int i;
-	// Cleanup pkt_info and remove refcount
-	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1 && s[i].pkt_info; i++)
-		packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	
 	// Clean the stack
 	memset(&s[stack_index], 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX - stack_index));
@@ -452,9 +448,13 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (!s->proto)
 			break;
 	
-		if (s->proto->info->pkt_fields)
+		if (s->proto->info->pkt_fields) {
+			if (s->pkt_info)
+				pomlog(POMLOG_WARN "Packet info already allocated !");
 			s->pkt_info = packet_info_pool_get(s->proto);
+		}
 
+		pomlog(POMLOG_DEBUG "Processing proto %s", s->proto->info->name);
 		res = proto_process(p, stack, i);
 
 		if (res == PROTO_ERR)
@@ -493,6 +493,8 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 		if (stack[i].ce)
 			conntrack_refcount_dec(stack[i].ce);
+
+		packet_info_pool_release(&stack[i].proto->pkt_info_pool, stack[i].pkt_info);
 	}
 	
 	return res;
@@ -514,10 +516,6 @@ int core_process_packet(struct packet *p) {
 	core_process_dump_info(s, p, res);
 #endif
 
-	// Cleanup pkt_info
-	int i;
-	for (i = 1; i < CORE_PROTO_STACK_MAX && s[i].pkt_info; i++)
-			packet_info_pool_release(&s[i].proto->pkt_info_pool, s[i].pkt_info);
 	if (res == PROTO_ERR)
 		return PROTO_ERR;
 	return PROTO_OK;
@@ -535,8 +533,18 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 	
 	int i;
 	for (i = 0; i < CORE_PROTO_STACK_MAX + 2; i++) {
-		// Remove reference to pkt_info
-		stack[i].pkt_info = NULL;
+		// Clone pkt_info
+		if (stack[i].proto && stack[i].pkt_info) {
+			new_stack[i].pkt_info = packet_info_pool_clone(stack[i].proto, stack[i].pkt_info);
+			if (!new_stack[i].pkt_info) {
+				for (; i; i--) {
+					if (new_stack[i].pkt_info)
+						packet_info_pool_release(&stack[i].proto->pkt_info_pool, new_stack[i].pkt_info);
+				}
+				free(new_stack);
+				return NULL;
+			}
+		}
 		
 		// Adjust pload pointer
 		if (stack[i].pload && old_pkt->buff != new_pkt->buff)
