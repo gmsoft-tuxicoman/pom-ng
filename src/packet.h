@@ -81,6 +81,7 @@ int packet_buffer_pool_cleanup();
 
 int packet_info_pool_init(struct packet_info_pool *pool);
 struct packet_info *packet_info_pool_get(struct proto *p);
+struct packet_info *packet_info_pool_clone(struct proto *p, struct packet_info *info);
 int packet_pool_cleanup();
 int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
 int packet_info_pool_cleanup(struct packet_info_pool *pool);

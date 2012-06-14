@@ -40,6 +40,12 @@
 #define debug_stream(x ...)
 #endif
 
+#if 0
+#define debug_info_pool(x ...) pomlog(POMLOG_DEBUG "info_pool: " x)
+#else
+#define debug_info_pool(x ...)
+#endif
+
 static struct packet *packet_head, *packet_unused_head;
 static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -370,12 +376,16 @@ struct packet_info *packet_info_pool_get(struct proto *p) {
 			}
 		}
 
+		debug_info_pool("Allocated info %p for proto %s", info, p->info->name);
+
 	} else {
 		// Dequeue the packet_info from the unused pool
 		info = p->pkt_info_pool.unused;
 		p->pkt_info_pool.unused = info->pool_next;
 		if (p->pkt_info_pool.unused)
 			p->pkt_info_pool.unused->pool_prev = NULL;
+
+		debug_info_pool("Used info %p for proto %s", info, p->info->name);
 	}
 
 
@@ -388,6 +398,24 @@ struct packet_info *packet_info_pool_get(struct proto *p) {
 	
 	pom_mutex_unlock(&p->pkt_info_pool.lock);
 	return info;
+}
+
+struct packet_info *packet_info_pool_clone(struct proto *p, struct packet_info *info) {
+
+	struct packet_info *new_info = packet_info_pool_get(p);
+	if (!new_info)
+		return NULL;
+
+	struct proto_pkt_field *fields = p->info->pkt_fields;
+	int i;
+	for (i = 0; fields[i].name; i++) {
+		if (ptype_copy(new_info->fields_value[i], info->fields_value[i]) != POM_OK) {
+			packet_info_pool_release(&p->pkt_info_pool, new_info);
+			return NULL;
+		}
+	}
+
+	return new_info;
 }
 
 
@@ -413,6 +441,8 @@ int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *
 	if (info->pool_next)
 		info->pool_next->pool_prev = info;
 	pool->unused = info;
+
+	debug_info_pool("Released info %p", info);
 	
 	pom_mutex_unlock(&pool->lock);
 	return POM_OK;
@@ -425,8 +455,8 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 
 	struct packet_info *tmp = NULL;
 	while (pool->used) {	
-		printf("Unreleased packet info !\n");
 		tmp = pool->used;
+		printf("Unreleased packet info %p !\n", tmp);
 		pool->used = tmp->pool_next;
 
 		int i;
