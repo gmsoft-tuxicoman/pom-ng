@@ -24,6 +24,7 @@
 #include "proto.h"
 #include "main.h"
 #include "mod.h"
+#include "filter.h"
 
 static struct proto *proto_head = NULL;
 
@@ -144,6 +145,8 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 		// Process packet listeners
 		struct proto_packet_listener *l;
 		for (l = proto->packet_listeners; l; l = l->next) {
+			if (l->filter && !filter_proto_match(s, l->filter))
+				continue;
 			if (l->process(l->object, p, s, stack_index) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning packet listener failed");
 				// FIXME remove listener from the list ?
@@ -161,6 +164,8 @@ int proto_process_payload(struct packet *p, struct proto_process_stack *s, unsig
 	if (s[stack_index].plen && s[stack_index - 1].proto) {
 		struct proto_packet_listener *l;
 		for (l = s[stack_index - 1].proto->payload_listeners; l; l = l->next) {
+			if (l->filter && !filter_proto_match(s, l->filter))
+				continue;
 			if (l->process(l->object, p, s, stack_index) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning payload listener failed");
 				// FIXME remove listener from the list ?
@@ -330,4 +335,8 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 	free(l);
 
 	return POM_OK;
+}
+
+void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_proto *f) {
+	l->filter = f;
 }

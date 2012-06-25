@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,21 +18,32 @@
  *
  */
 
-#ifndef __PROTO_DOCSIS_H__
-#define __PROTO_DOCSIS_H__
 
-#include <stdint.h>
-#include <docsis.h>
-#include <pom-ng/proto_docsis.h>
+#ifndef __POM_NG_FILTER_H__
+#define __POM_NG_FILTER_H__
 
-#define PROTO_DOCSIS_FIELD_NUM 3
-#define PROTO_DOCSIS_MGMT_FIELD_NUM 7
+#include <pom-ng/proto.h>
+#include <pom-ng/ptype.h>
 
-struct mod_reg_info* proto_docsis_reg_info();
-static int proto_docsis_mod_register(struct mod_reg *mod);
-static int proto_docsis_mod_unregister();
-static int proto_docsis_init(struct proto *proto, struct registry_instance *i);
-static int proto_docsis_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int proto_docsis_mgmt_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+#define FILTER_OP_AND	0
+#define FILTER_OP_OR	1
+#define FILTER_OP_NOT	(PTYPE_OP_ALL + 1)
+
+#define FILTER_MATCH_NO		0
+#define FILTER_MATCH_YES	1
+
+struct filter_proto {
+	struct proto *proto; // If there is a proto, then it's a single match. Else it's a branch
+
+	unsigned int op;
+	struct filter_proto *a, *b;
+
+	int field_id;
+	struct ptype *value;
+};
+
+struct filter_proto *filter_proto_build(char *proto, char *field, unsigned int op, char *value);
+struct filter_proto *filter_proto_build_branch(struct filter_proto *a, struct filter_proto *b, unsigned int op);
+void filter_proto_cleanup(struct filter_proto *f);
 
 #endif
