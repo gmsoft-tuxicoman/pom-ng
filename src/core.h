@@ -29,6 +29,7 @@
 #include <pom-ng/input.h>
 #include <pthread.h>
 
+#define CORE_PROTO_STACK_START		1
 #define CORE_PROTO_STACK_MAX		16
 
 #define CORE_PKT_QUEUE_MAX		64

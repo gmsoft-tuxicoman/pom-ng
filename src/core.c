@@ -441,7 +441,7 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 	unsigned int i;
 	int res = PROTO_OK;
 
-	for (i = stack_index; i < CORE_PROTO_STACK_MAX - 1; i++) {
+	for (i = stack_index; i < CORE_PROTO_STACK_MAX - CORE_PROTO_STACK_START; i++) {
 
 		struct proto_process_stack *s = &stack[i];
 
@@ -454,7 +454,6 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 			s->pkt_info = packet_info_pool_get(s->proto);
 		}
 
-		pomlog(POMLOG_DEBUG "Processing proto %s", s->proto->info->name);
 		res = proto_process(p, stack, i);
 
 		if (res == PROTO_ERR)
@@ -506,11 +505,11 @@ int core_process_packet(struct packet *p) {
 	struct proto_process_stack s[CORE_PROTO_STACK_MAX + 2]; // Add one entry at the begining and the end 
 
 	memset(s, 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX + 2));
-	s[1].pload = p->buff;
-	s[1].plen = p->len;
-	s[1].proto = p->datalink;
+	s[CORE_PROTO_STACK_START].pload = p->buff;
+	s[CORE_PROTO_STACK_START].plen = p->len;
+	s[CORE_PROTO_STACK_START].proto = p->datalink;
 
-	int res = core_process_packet_stack(s, 1, p);
+	int res = core_process_packet_stack(s, CORE_PROTO_STACK_START, p);
 
 #ifdef CORE_DUMP_PKT_INFO
 	core_process_dump_info(s, p, res);
