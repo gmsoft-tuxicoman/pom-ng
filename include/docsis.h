@@ -103,4 +103,39 @@ struct docsis_mgmt_mdd_hdr {
 #define EH_TYPE_BP_UP		0x2	// Upstream privacy element
 #define EH_TYPE_BP_DOWN		0x4	// Downstream privacy element
 
+// Definition of MAC management message types
+#define MMT_SYNC		1
+#define MMT_UCD			2
+#define MMT_MAP			3
+#define MMT_RNG_REG		4
+#define MMT_RNG_RSP		5
+#define MMT_REG_REQ		6
+#define MMT_REG_RSP		7
+#define MMT_UCC_REQ		8
+#define MMT_UCC_RSP		9
+#define MMT_TRI_TCD		10
+#define MMT_TRI_TSI		11
+#define MMT_BPKM_REQ		12
+#define MMT_BPKM_RSP		13
+#define MMT_REG_ACK		14
+#define MMT_DSA_REQ		15
+#define MMT_DSA_RSP		16
+#define MMT_DSA_ACK		17
+#define MMT_DSC_REQ		18
+#define MMT_DSC_RSP		19
+#define MMT_DSC_ACK		20
+#define MMT_DSD_REQ		21
+#define MMT_DSD_RSP		22
+#define MMT_DCC_REQ		23
+#define MMT_DCC_RSP		24
+#define MMT_DCC_ACK		25
+#define MMT_DCI_REQ		26
+#define MMT_DCI_RSP		27
+#define MMT_UP_DIS		28
+#define MMT_UCD3		29
+#define MMT_INIT_RNG_REQ	30
+#define MMT_TST_REQ		31
+#define MMT_DCD			32
+#define MMT_MDD			33
+
 #endif
