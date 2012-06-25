@@ -5,6 +5,7 @@
 		<dataset name="templates">
 			<item><name>http_apache</name><description>Apache like HTTP logs</description></item>
 			<item><name>arpwatch</name><description>arpwatch like logs</description></item>
+			<item><name>docsis_monitor</name><description>Monitor DOCSIS cable modems</description></item>
 		</dataset>
 
 		<dataset name="events">
@@ -14,11 +15,15 @@
 			<!-- arpwatch -->
 			<item><template>arpwatch</template><event>arp_new_sta</event><format>New station : $ip_addr $mac_addr on input '$input'</format><file>arpwatch_log</file></item>
 			<item><template>arpwatch</template><event>arp_sta_changed</event><format>Station address changed : $ip_addr from $old_mac_addr to $new_mac_addr on input '$input'</format><file>arpwatch_log</file></item>
+
+			<!-- docsis_monitor -->
+			<item><template>docsis_monitor</template><event>docsis_new_cm</event><format>New cable modem : $mac on input '$input'</format><file>docsis_monitor_log</file></item>
 		</dataset>
 
 		<dataset name="files">
 			<item><template>http_apache</template><name>http_apache_log</name><path>http.log</path></item>
 			<item><template>arpwatch</template><name>arpwatch_log</name><path>arp.log</path></item>
+			<item><template>docsis_monitor</template><name>docsis_monitor_log</name><path>docsis.log</path></item>
 		</dataset>
 	</datasets>
 
