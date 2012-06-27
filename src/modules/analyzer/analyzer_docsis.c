@@ -190,6 +190,9 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 		case MMT_RNG_RSP:
 			break;
 
+		case MMT_UCD2:
+		case MMT_UCD3: // No useful info in UCD
+
 		case MMT_MDD: // We don't care about MDD so far
 			return POM_OK;
 
