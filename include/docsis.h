@@ -132,10 +132,22 @@ struct docsis_mgmt_mdd_hdr {
 #define MMT_DCI_REQ		26
 #define MMT_DCI_RSP		27
 #define MMT_UP_DIS		28
-#define MMT_UCD3		29
+#define MMT_UCD2		29
 #define MMT_INIT_RNG_REQ	30
 #define MMT_TST_REQ		31
 #define MMT_DCD			32
 #define MMT_MDD			33
+#define MMT_B_INIT_RNG_REQ	34
+#define MMT_UCD3		35
+#define MMT_DBC_REQ		36
+#define MMT_DBC_RSP		37
+#define MMT_DBC_ACK		38
+#define MMT_DVP_REQ		39
+#define MMT_DVP_RSP		40
+#define MMT_CM_STATUS		41
+#define MMT_CM_CTRL_REQ		42
+#define MMT_CM_CTRL_RSP		43
+#define MMT_REG_REQ_MP		44
+#define MMT_REG_RSP_MP		45
 
 #endif
