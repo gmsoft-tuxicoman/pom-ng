@@ -650,6 +650,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	p->multipart = multipart;
 	p->len = multipart->cur;
 	p->datalink = multipart->proto;
+	p->input = multipart->head->pkt->input;
 	stack[stack_index].pload = p->buff;
 	stack[stack_index].plen = p->len;
 	stack[stack_index].proto = p->datalink;
