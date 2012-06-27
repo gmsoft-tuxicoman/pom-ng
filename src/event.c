@@ -211,7 +211,8 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 		return POM_ERR;
 	}
 
-	evt->ce = stack[stack_index].ce;
+	if (stack)
+		evt->ce = stack[stack_index].ce;
 
 	struct event_listener_list *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
