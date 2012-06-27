@@ -18,6 +18,7 @@
 
 			<!-- docsis_monitor -->
 			<item><template>docsis_monitor</template><event>docsis_new_cm</event><format>New cable modem : $mac on input '$input'</format><file>docsis_monitor_log</file></item>
+			<item><template>docsis_monitor</template><event>docsis_cm_timeout</event><format>Cable modem timed out : $mac</format><file>docsis_monitor_log</file></item>
 		</dataset>
 
 		<dataset name="files">

@@ -28,6 +28,8 @@
 #define ANALYZER_DOCSIS_CM_TABLE_SIZE (1 << 12)
 #define ANALYZER_DOCSIS_CM_MASK (ANALYZER_DOCSIS_CM_TABLE_SIZE - 1)
 
+#define ANALYZER_DOCSIS_CM_TIMEOUT 60
+
 #define ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT 2
 
 enum {
@@ -35,16 +37,25 @@ enum {
 	analyzer_docsis_new_cm_input
 };
 
+#define ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT 1
+
+enum {
+	analyzer_docsis_cm_timeout_mac
+};
+
 struct analyzer_docsis_cm {
 
 	char mac[6];
 	struct analyzer_docsis_cm *prev, *next;
+	struct timer *t;
+	struct analyzer *analyzer;
 
 };
 
 struct analyzer_docsis_priv {
 
 	struct event_reg *evt_new_cm;
+	struct event_reg *evt_cm_timeout;
 	struct proto_packet_listener *pkt_listener;
 
 	pthread_mutex_t lock;
@@ -60,5 +71,6 @@ static int analyzer_docsis_init(struct analyzer *analyzer);
 static int analyzer_docsis_cleanup(struct analyzer *analyzer);
 static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int analyzer_docsis_cm_timeout(void *cable_modem);
 
 #endif

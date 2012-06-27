@@ -76,7 +76,6 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 
 
 	static struct data_item_reg evt_new_cm_data_items[ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT] = { { 0 } };
-
 	evt_new_cm_data_items[analyzer_docsis_new_cm_mac].name = "mac";
 	evt_new_cm_data_items[analyzer_docsis_new_cm_mac].value_type = ptype_get_type("mac");
 	evt_new_cm_data_items[analyzer_docsis_new_cm_input].name = "input";
@@ -100,6 +99,26 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 	if (!priv->evt_new_cm)
 		goto err;
 
+	static struct data_item_reg evt_cm_timeout_data_items[ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT] = { { 0 } };
+	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_mac].name = "mac";
+	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_mac].value_type = ptype_get_type("mac");
+
+	static struct data_reg evt_cm_timeout_data = {
+		.items = evt_cm_timeout_data_items,
+		.data_count = ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT
+	};
+
+	static struct event_reg_info analyzer_docsis_evt_cm_timeout = { 0 };
+	analyzer_docsis_evt_cm_timeout.source_name = "analyer_docsis";
+	analyzer_docsis_evt_cm_timeout.source_obj = analyzer;
+	analyzer_docsis_evt_cm_timeout.name = "docsis_cm_timeout";
+	analyzer_docsis_evt_cm_timeout.description = "Cable modem timed out (disconnected)";
+	analyzer_docsis_evt_cm_timeout.data_reg = &evt_cm_timeout_data;
+	analyzer_docsis_evt_cm_timeout.listeners_notify = analyzer_docsis_event_listeners_notify;
+
+	priv->evt_cm_timeout = event_register(&analyzer_docsis_evt_cm_timeout);
+	if (!priv->evt_cm_timeout)
+		goto err;
 	return POM_OK;
 
 err:
@@ -163,7 +182,7 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 	} else {
 
 		// Check if there is still an event being listened
-		if (event_has_listener(priv->evt_new_cm))
+		if (event_has_listener(priv->evt_new_cm) || event_has_listener(priv->evt_cm_timeout))
 			return POM_OK;
 
 		if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
@@ -221,6 +240,13 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 		}
 		memset(cm, 0, sizeof(struct analyzer_docsis_cm));
 
+		cm->t = timer_alloc(cm, analyzer_docsis_cm_timeout);
+		if (!cm->t) {
+			free(cm);
+			return POM_ERR;
+		}
+	
+		cm->analyzer = analyzer;
 		memcpy(cm->mac, mac_dst, sizeof(cm->mac));
 
 		cm->next = priv->cms[id];
@@ -228,6 +254,8 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 			cm->next->prev = cm;
 
 		priv->cms[id] = cm;
+
+		timer_queue(cm->t, ANALYZER_DOCSIS_CM_TIMEOUT);
 
 		pom_mutex_unlock(&priv->lock);
 
@@ -245,8 +273,51 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 				return POM_ERR;
 		}
 	} else {
+		timer_queue(cm->t, ANALYZER_DOCSIS_CM_TIMEOUT);
 		pom_mutex_unlock(&priv->lock);
 	}
+
+	return POM_OK;
+}
+
+static int analyzer_docsis_cm_timeout(void *cable_modem) {
+
+	struct analyzer_docsis_cm *cm = cable_modem;
+	struct analyzer_docsis_priv *priv = cm->analyzer->priv;
+
+	pom_mutex_lock(&priv->lock);
+
+	if (event_has_listener(priv->evt_cm_timeout)) {
+		struct event *evt = event_alloc(priv->evt_cm_timeout);
+		if (!evt) {
+			pom_mutex_unlock(&priv->lock);
+			return POM_ERR;
+		}
+		struct data *evt_data = evt->data;
+		PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_cm_timeout_mac].value, cm->mac);
+
+		if (event_process(evt, NULL, 0) != POM_OK) {
+			pom_mutex_unlock(&priv->lock);
+			return POM_ERR;
+		}
+	}
+
+	// Use the last bits for the modem ID
+	uint16_t id = ntohs(*(uint16_t*) (cm->mac + 4)) & ANALYZER_DOCSIS_CM_MASK;
+
+	// Remove the CM from the list
+	if (cm->prev)
+		cm->prev->next = cm->next;
+	else
+		priv->cms[id] = cm->next;
+
+	if (cm->next)
+		cm->next->prev = cm->prev;
+
+	timer_cleanup(cm->t);
+	free(cm);
+
+	pom_mutex_unlock(&priv->lock);
 
 	return POM_OK;
 }
