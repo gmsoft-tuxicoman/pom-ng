@@ -535,11 +535,11 @@ static int input_dvb_open(struct input *i) {
 	if (res != 1) 
 		goto err;
 
-	pomlog("Lock not acquired on frequency %u Hz", frequency);
-
 	return POM_OK;
 
 err:
+
+	pomlog("Lock not acquired on frequency %u Hz", frequency);
 
 	if (priv->frontend_fd != -1) {
 		close(priv->frontend_fd);
