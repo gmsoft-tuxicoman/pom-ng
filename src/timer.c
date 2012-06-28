@@ -61,7 +61,7 @@ int timers_process() {
 
 				// Process it
 				debug_timer( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
-				if ((*tmp->handler) (tmp->priv) != POM_OK) {
+				if ((*tmp->handler) (tmp->priv, &now) != POM_OK) {
 					return POM_ERR;
 				}
 
@@ -106,7 +106,7 @@ int timers_cleanup() {
 
 }
 
-struct timer *timer_alloc(void* priv, int (*handler) (void*)) {
+struct timer *timer_alloc(void* priv, int (*handler) (void*, struct timeval*)) {
 
 	struct timer *t;
 	t = malloc(sizeof(struct timer));

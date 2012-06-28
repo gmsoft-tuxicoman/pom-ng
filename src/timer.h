@@ -28,7 +28,7 @@ struct timer {
 
 	struct timeval expires;
 	void *priv;
-	int (*handler) (void *);
+	int (*handler) (void *, struct timeval*);
 	struct timer_queue *queue;
 	struct timer *next;
 	struct timer *prev;

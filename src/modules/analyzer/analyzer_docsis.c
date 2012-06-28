@@ -19,8 +19,9 @@
  */
 
 #include <pom-ng/ptype_mac.h>
-#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_timestamp.h>
+#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/input.h>
 #include <pom-ng/proto_docsis.h>
 #include <docsis.h>
@@ -34,7 +35,7 @@ struct mod_reg_info *analyzer_docsis_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_docsis_mod_register;
 	reg_info.unregister_func = analyzer_docsis_mod_unregister;
-	reg_info.dependencies = "proto_docsis, ptype_mac, ptype_string, ptype_uint8";
+	reg_info.dependencies = "proto_docsis, ptype_mac, ptype_string, ptype_timestamp, ptype_uint8";
 
 	return &reg_info;
 }
@@ -80,6 +81,8 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 	evt_new_cm_data_items[analyzer_docsis_new_cm_mac].value_type = ptype_get_type("mac");
 	evt_new_cm_data_items[analyzer_docsis_new_cm_input].name = "input";
 	evt_new_cm_data_items[analyzer_docsis_new_cm_input].value_type = ptype_get_type("string");
+	evt_new_cm_data_items[analyzer_docsis_new_cm_time].name = "time";
+	evt_new_cm_data_items[analyzer_docsis_new_cm_time].value_type = ptype_get_type("timestamp");
 
 
 	static struct data_reg evt_new_cm_data = {
@@ -102,6 +105,8 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 	static struct data_item_reg evt_cm_timeout_data_items[ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT] = { { 0 } };
 	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_mac].name = "mac";
 	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_mac].value_type = ptype_get_type("mac");
+	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_time].name = "time";
+	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_time].value_type = ptype_get_type("timestamp");
 
 	static struct data_reg evt_cm_timeout_data = {
 		.items = evt_cm_timeout_data_items,
@@ -268,6 +273,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 			struct data *evt_data = evt->data;
 			PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_new_cm_mac].value, mac_dst);
 			PTYPE_STRING_SETVAL(evt_data[analyzer_docsis_new_cm_input].value, p->input->name);
+			PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_new_cm_time].value, p->ts);
 
 			if (event_process(evt, stack, stack_index) != POM_OK)
 				return POM_ERR;
@@ -280,7 +286,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 	return POM_OK;
 }
 
-static int analyzer_docsis_cm_timeout(void *cable_modem) {
+static int analyzer_docsis_cm_timeout(void *cable_modem, struct timeval *now) {
 
 	struct analyzer_docsis_cm *cm = cable_modem;
 	struct analyzer_docsis_priv *priv = cm->analyzer->priv;
@@ -295,6 +301,7 @@ static int analyzer_docsis_cm_timeout(void *cable_modem) {
 		}
 		struct data *evt_data = evt->data;
 		PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_cm_timeout_mac].value, cm->mac);
+		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_timeout_time].value, *now);
 
 		if (event_process(evt, NULL, 0) != POM_OK) {
 			pom_mutex_unlock(&priv->lock);

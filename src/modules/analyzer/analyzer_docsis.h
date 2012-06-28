@@ -30,17 +30,19 @@
 
 #define ANALYZER_DOCSIS_CM_TIMEOUT 60
 
-#define ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT 2
+#define ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT 3
 
 enum {
 	analyzer_docsis_new_cm_mac,
-	analyzer_docsis_new_cm_input
+	analyzer_docsis_new_cm_input,
+	analyzer_docsis_new_cm_time
 };
 
-#define ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT 1
+#define ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT 2
 
 enum {
-	analyzer_docsis_cm_timeout_mac
+	analyzer_docsis_cm_timeout_mac,
+	analyzer_docsis_cm_timeout_time
 };
 
 struct analyzer_docsis_cm {
@@ -71,6 +73,6 @@ static int analyzer_docsis_init(struct analyzer *analyzer);
 static int analyzer_docsis_cleanup(struct analyzer *analyzer);
 static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int analyzer_docsis_cm_timeout(void *cable_modem);
+static int analyzer_docsis_cm_timeout(void *cable_modem, struct timeval *now);
 
 #endif
