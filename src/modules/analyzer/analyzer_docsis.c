@@ -221,7 +221,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 			return POM_OK;
 
 		default:
-			pomlog(POMLOG_DEBUG "Unhandled DOCSIS MGMT message type %u", *type);
+			pomlog(POMLOG_DEBUG "Unhandled DOCSIS MGMT message type %u for destination mac %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX", *type, mac_dst[0], mac_dst[1], mac_dst[2], mac_dst[3], mac_dst[4], mac_dst[5]);
 			return POM_OK;
 	}
 
