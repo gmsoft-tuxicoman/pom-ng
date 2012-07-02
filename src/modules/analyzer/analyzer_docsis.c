@@ -75,55 +75,60 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
+	static struct data_item_reg evt_cm_new_data_items[ANALYZER_DOCSIS_EVT_CM_NEW_DATA_COUNT] = { { 0 } };
+	evt_cm_new_data_items[analyzer_docsis_cm_new_mac].name = "mac",
+	evt_cm_new_data_items[analyzer_docsis_cm_new_mac].value_type = ptype_get_type("mac");
+	evt_cm_new_data_items[analyzer_docsis_cm_new_input].name = "input",
+	evt_cm_new_data_items[analyzer_docsis_cm_new_input].value_type = ptype_get_type("string");
+	evt_cm_new_data_items[analyzer_docsis_cm_new_time].name = "time",
+	evt_cm_new_data_items[analyzer_docsis_cm_new_time].value_type = ptype_get_type("timestamp");
 
-	static struct data_item_reg evt_new_cm_data_items[ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT] = { { 0 } };
-	evt_new_cm_data_items[analyzer_docsis_new_cm_mac].name = "mac";
-	evt_new_cm_data_items[analyzer_docsis_new_cm_mac].value_type = ptype_get_type("mac");
-	evt_new_cm_data_items[analyzer_docsis_new_cm_input].name = "input";
-	evt_new_cm_data_items[analyzer_docsis_new_cm_input].value_type = ptype_get_type("string");
-	evt_new_cm_data_items[analyzer_docsis_new_cm_time].name = "time";
-	evt_new_cm_data_items[analyzer_docsis_new_cm_time].value_type = ptype_get_type("timestamp");
-
-
-	static struct data_reg evt_new_cm_data = {
-		.items = evt_new_cm_data_items,
-		.data_count = ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT
+	static struct data_reg evt_cm_new_data = {
+		.items = evt_cm_new_data_items,
+		.data_count = ANALYZER_DOCSIS_EVT_CM_NEW_DATA_COUNT
 	};
 
-	static struct event_reg_info analyzer_docsis_evt_new_cm = { 0 };
-	analyzer_docsis_evt_new_cm.source_name = "analyzer_docsis";
-	analyzer_docsis_evt_new_cm.source_obj = analyzer;
-	analyzer_docsis_evt_new_cm.name = "docsis_new_cm";
-	analyzer_docsis_evt_new_cm.description = "New cable modem found";
-	analyzer_docsis_evt_new_cm.data_reg = &evt_new_cm_data;
-	analyzer_docsis_evt_new_cm.listeners_notify = analyzer_docsis_event_listeners_notify;
+	static struct event_reg_info analyzer_docsis_evt_cm_new = { 0 };
+	analyzer_docsis_evt_cm_new.source_name = "analyzer_docsis";
+	analyzer_docsis_evt_cm_new.source_obj = analyzer;
+	analyzer_docsis_evt_cm_new.name = "docsis_cm_new";
+	analyzer_docsis_evt_cm_new.description = "New cable modem found";
+	analyzer_docsis_evt_cm_new.data_reg = &evt_cm_new_data;
+	analyzer_docsis_evt_cm_new.listeners_notify = analyzer_docsis_event_listeners_notify;
 
-	priv->evt_new_cm = event_register(&analyzer_docsis_evt_new_cm);
-	if (!priv->evt_new_cm)
+	priv->evt_cm_new = event_register(&analyzer_docsis_evt_cm_new);
+	if (!priv->evt_cm_new)
 		goto err;
 
-	static struct data_item_reg evt_cm_timeout_data_items[ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT] = { { 0 } };
-	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_mac].name = "mac";
-	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_mac].value_type = ptype_get_type("mac");
-	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_time].name = "time";
-	evt_cm_timeout_data_items[analyzer_docsis_cm_timeout_time].value_type = ptype_get_type("timestamp");
+	static struct data_item_reg evt_cm_reg_status_data_items[ANALYZER_DOCSIS_EVT_CM_REG_STATUS_DATA_COUNT] = { { 0 } };
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_old].name = "old_status",
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_old].value_type = ptype_get_type("uint8");
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_new].name = "new_status",
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_new].value_type = ptype_get_type("uint8");
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_mac].name = "mac";
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_mac].value_type = ptype_get_type("mac");
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_timeout].name = "timeout",
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_timeout].value_type = ptype_get_type("uint8");
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_time].name = "time";
+	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_time].value_type = ptype_get_type("timestamp");
 
-	static struct data_reg evt_cm_timeout_data = {
-		.items = evt_cm_timeout_data_items,
-		.data_count = ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT
+	static struct data_reg evt_cm_reg_status_data = {
+		.items = evt_cm_reg_status_data_items,
+		.data_count = ANALYZER_DOCSIS_EVT_CM_REG_STATUS_DATA_COUNT
 	};
 
-	static struct event_reg_info analyzer_docsis_evt_cm_timeout = { 0 };
-	analyzer_docsis_evt_cm_timeout.source_name = "analyer_docsis";
-	analyzer_docsis_evt_cm_timeout.source_obj = analyzer;
-	analyzer_docsis_evt_cm_timeout.name = "docsis_cm_timeout";
-	analyzer_docsis_evt_cm_timeout.description = "Cable modem timed out (disconnected)";
-	analyzer_docsis_evt_cm_timeout.data_reg = &evt_cm_timeout_data;
-	analyzer_docsis_evt_cm_timeout.listeners_notify = analyzer_docsis_event_listeners_notify;
+	static struct event_reg_info analyzer_docsis_evt_cm_reg_status = { 0 };
+	analyzer_docsis_evt_cm_reg_status.source_name = "analyzer_docsis";
+	analyzer_docsis_evt_cm_reg_status.source_obj = analyzer;
+	analyzer_docsis_evt_cm_reg_status.name = "docsis_cm_reg_status";
+	analyzer_docsis_evt_cm_reg_status.description = "Cable modem registration status changed";
+	analyzer_docsis_evt_cm_reg_status.data_reg = &evt_cm_reg_status_data;
+	analyzer_docsis_evt_cm_reg_status.listeners_notify = analyzer_docsis_event_listeners_notify;
 
-	priv->evt_cm_timeout = event_register(&analyzer_docsis_evt_cm_timeout);
-	if (!priv->evt_cm_timeout)
+	priv->evt_cm_reg_status = event_register(&analyzer_docsis_evt_cm_reg_status);
+	if (!priv->evt_cm_reg_status)
 		goto err;
+
 	return POM_OK;
 
 err:
@@ -138,8 +143,11 @@ static int analyzer_docsis_cleanup(struct analyzer *analyzer) {
 
 	pthread_mutex_destroy(&priv->lock);
 
-	if (priv->evt_new_cm)
-		event_unregister(priv->evt_new_cm);
+	if (priv->evt_cm_new)
+		event_unregister(priv->evt_cm_new);
+
+	if (priv->evt_cm_reg_status)
+		event_unregister(priv->evt_cm_reg_status);
 
 	if (priv->filter)
 		filter_proto_cleanup(priv->filter);
@@ -185,9 +193,8 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 		proto_packet_listener_set_filter(priv->pkt_listener, priv->filter);
 
 	} else {
-
-		// Check if there is still an event being listened
-		if (event_has_listener(priv->evt_new_cm) || event_has_listener(priv->evt_cm_timeout))
+		
+		if (event_has_listener(priv->evt_cm_new) || event_has_listener(priv->evt_cm_reg_status))
 			return POM_OK;
 
 		if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
@@ -196,6 +203,88 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 	}
 
 	return POM_OK;
+}
+
+static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, struct analyzer_docsis_cm *cm, enum docsis_mmt_rng_status new_status, struct timeval *ts, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	if (cm->ranging_status == new_status)
+		return POM_OK;
+
+	if (event_has_listener(priv->evt_cm_reg_status)) {
+		struct event *evt = event_alloc(priv->evt_cm_reg_status);
+		if (!evt) {
+			pom_mutex_unlock(&priv->lock);
+			return POM_ERR;
+		}
+
+		struct data *evt_data = evt->data;
+		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_old].value, cm->ranging_status);
+		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_new].value, new_status);
+		PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_cm_reg_status_mac].value, cm->mac);
+		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_timeout].value, T4_TIMEOUT * cm->t4_multiplier);
+		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_reg_status_time].value, *ts);
+
+		if (event_process(evt, stack, stack_index) != POM_OK) {
+			pom_mutex_unlock(&priv->lock);
+			return POM_ERR;
+		}
+	}
+
+	cm->ranging_status = new_status;
+
+	return POM_OK;
+}
+
+static int analyzer_docsis_pkt_parse_rng_rsp(struct analyzer_docsis_priv *priv, struct analyzer_docsis_cm *cm, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct proto_process_stack *s = &stack[stack_index + 1];
+	void *pload = s->pload + 3;
+	uint32_t len = s->plen - 3;
+
+	int res = POM_OK;
+
+	while (len > sizeof(struct docsis_tlv)) {
+		struct docsis_tlv *tlv = pload;
+		void *data = pload + sizeof(struct docsis_tlv);
+		if (tlv->len > len) {
+			pomlog(POMLOG_DEBUG "TLV len greater than remaining payload len : %u > %u", tlv->len, len);
+			break;
+		}
+
+
+		switch (tlv->type) {
+
+			case RNG_RSP_RANGING_STATUS:
+				if (tlv->len != 1)
+					goto err_tlv_len;
+
+				enum docsis_mmt_rng_status new_status = *(char*)data;
+				if (new_status > docsis_mmt_rng_status_success) {
+					pomlog(POMLOG_DEBUG "Invalid ranging status %u", new_status);
+					return POM_ERR;
+				}
+
+				res = analyzer_docsis_reg_status_update(priv, cm, new_status, &p->ts, stack, stack_index);
+
+				break;
+
+			case RNG_RSP_T4_TIMEOUT_MULTIPLIER:
+				if (tlv->len != 1)
+					goto err_tlv_len;
+				cm->t4_multiplier = *(char*)data;
+				break;
+		}
+
+		len -= tlv->len + sizeof(struct docsis_tlv);
+		pload += tlv->len + sizeof(struct docsis_tlv);
+	}
+
+	return res;
+
+err_tlv_len:
+	pomlog(POMLOG_DEBUG "Invalid TLV data len");
+	return POM_ERR;
+
 }
 
 static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -209,20 +298,15 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 
 	char *mac_dst = PTYPE_MAC_GETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_daddr]);
 
-	switch (*type) {
+	// FIXME : improve this filtering at the source
+	// Filter some useless messages we don't care about
+	
+	if (*type == MMT_UCD2 || *type == MMT_UCD3 || *type == MMT_MDD)
+		return POM_OK;
 
-		case MMT_RNG_RSP:
-			break;
-
-		case MMT_UCD2:
-		case MMT_UCD3: // No useful info in UCD
-
-		case MMT_MDD: // We don't care about MDD so far
-			return POM_OK;
-
-		default:
-			pomlog(POMLOG_DEBUG "Unhandled DOCSIS MGMT message type %u for destination mac %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX", *type, mac_dst[0], mac_dst[1], mac_dst[2], mac_dst[3], mac_dst[4], mac_dst[5]);
-			return POM_OK;
+	if (*type != MMT_RNG_RSP) {
+		pomlog(POMLOG_DEBUG "Unhandled DOCSIS MGMT message type %u for destination mac %02hhX:%02hhX:%02hhX:%02hhX:%02hhX:%02hhX", *type, mac_dst[0], mac_dst[1], mac_dst[2], mac_dst[3], mac_dst[4], mac_dst[5]);
+		return POM_OK;
 	}
 
 	// Use the last bits for the modem ID
@@ -253,6 +337,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 	
 		cm->analyzer = analyzer;
 		memcpy(cm->mac, mac_dst, sizeof(cm->mac));
+		cm->t4_multiplier = 1;
 
 		cm->next = priv->cms[id];
 		if (cm->next)
@@ -260,28 +345,41 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 
 		priv->cms[id] = cm;
 
-		timer_queue(cm->t, ANALYZER_DOCSIS_CM_TIMEOUT);
-
-		pom_mutex_unlock(&priv->lock);
-
 		// Announce the new CM
-		if (event_has_listener(priv->evt_new_cm)) {
-			struct event *evt = event_alloc(priv->evt_new_cm);
-			if (!evt)
+		if (event_has_listener(priv->evt_cm_new)) {
+			struct event *evt = event_alloc(priv->evt_cm_new);
+			if (!evt) {
+				pom_mutex_unlock(&priv->lock);
 				return POM_ERR;
+			}
 
 			struct data *evt_data = evt->data;
-			PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_new_cm_mac].value, mac_dst);
-			PTYPE_STRING_SETVAL(evt_data[analyzer_docsis_new_cm_input].value, p->input->name);
-			PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_new_cm_time].value, p->ts);
+			PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_cm_new_mac].value, cm->mac);
+			PTYPE_STRING_SETVAL(evt_data[analyzer_docsis_cm_new_input].value, p->input->name);
+			PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_new_time].value, p->ts);
 
-			if (event_process(evt, stack, stack_index) != POM_OK)
+			if (event_process(evt, stack, stack_index) != POM_OK) {
+				pom_mutex_unlock(&priv->lock);
 				return POM_ERR;
+			}
 		}
-	} else {
-		timer_queue(cm->t, ANALYZER_DOCSIS_CM_TIMEOUT);
-		pom_mutex_unlock(&priv->lock);
 	}
+
+
+	switch (*type) {
+
+		case MMT_RNG_RSP:
+			analyzer_docsis_pkt_parse_rng_rsp(priv, cm, p, stack, stack_index);
+			break;
+
+		// FIXME If ranging_status is 0 and we receive another msg, probably it's actually registered
+		// and we need to call analyzer_docsis_reg_status_update();
+
+	}
+
+	timer_queue(cm->t, T4_TIMEOUT * cm->t4_multiplier);
+
+	pom_mutex_unlock(&priv->lock);
 
 	return POM_OK;
 }
@@ -291,39 +389,10 @@ static int analyzer_docsis_cm_timeout(void *cable_modem, struct timeval *now) {
 	struct analyzer_docsis_cm *cm = cable_modem;
 	struct analyzer_docsis_priv *priv = cm->analyzer->priv;
 
+	int res = POM_OK;
+
 	pom_mutex_lock(&priv->lock);
-
-	if (event_has_listener(priv->evt_cm_timeout)) {
-		struct event *evt = event_alloc(priv->evt_cm_timeout);
-		if (!evt) {
-			pom_mutex_unlock(&priv->lock);
-			return POM_ERR;
-		}
-		struct data *evt_data = evt->data;
-		PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_cm_timeout_mac].value, cm->mac);
-		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_timeout_time].value, *now);
-
-		if (event_process(evt, NULL, 0) != POM_OK) {
-			pom_mutex_unlock(&priv->lock);
-			return POM_ERR;
-		}
-	}
-
-	// Use the last bits for the modem ID
-	uint16_t id = ntohs(*(uint16_t*) (cm->mac + 4)) & ANALYZER_DOCSIS_CM_MASK;
-
-	// Remove the CM from the list
-	if (cm->prev)
-		cm->prev->next = cm->next;
-	else
-		priv->cms[id] = cm->next;
-
-	if (cm->next)
-		cm->next->prev = cm->prev;
-
-	timer_cleanup(cm->t);
-	free(cm);
-
+	res = analyzer_docsis_reg_status_update(priv, cm, docsis_mmt_rng_status_unknown, now, NULL, 0);
 	pom_mutex_unlock(&priv->lock);
 
 	return POM_OK;

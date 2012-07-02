@@ -82,8 +82,16 @@ struct docsis_mgmt_mdd_hdr {
 
 };
 
-// Definition of the standard types
+struct docsis_tlv {
+	unsigned char type;
+	unsigned char len;
+};
 
+// Definition of timeout
+#define T4_TIMEOUT	30
+
+
+// Definition of the standard types
 #define FC_TYPE_PKT_MAC			0x0 // Packet-based MAC frame
 #define FC_TYPE_ATM			0x1 // ATM cell MAC frame
 #define FC_TYPE_ISOLATION_PKT_MAC	0x2 // DOCSIS 3 isolation packet MAC frame
@@ -149,5 +157,28 @@ struct docsis_mgmt_mdd_hdr {
 #define MMT_CM_CTRL_RSP		43
 #define MMT_REG_REQ_MP		44
 #define MMT_REG_RSP_MP		45
+
+// Defines for RNG RSP messages
+#define RNG_RSP_TIMING_ADJUST		1
+#define RNG_RSP_POWER_LEVEL_ADJUST	2
+#define RNG_RSP_OFFSET_FREQ_ADJUST	3
+#define RNG_RSP_TRANSMIT_EQ_ADJUST	4
+#define RNG_RSP_RANGING_STATUS		5
+#define RNG_RSP_DOWN_FREQ_OVERRIDE	6
+#define RNG_RSP_UP_CHAN_ID_OVERRIDE	7
+#define RNG_RSP_TIMING_ADJUST_FRACT	8
+#define RNG_RSP_TRANSMIT_EQ_SET		9
+#define RNG_RSP_SCDMA_MAX_SCHED_CODE	10
+#define RNG_RSP_SCDMA_POWER_HEADROOM	11
+#define RNG_RSP_UP_CHAN_ADJUST		12
+#define RNG_RSP_T4_TIMEOUT_MULTIPLIER	13
+#define RNG_RSP_DYN_RANGE_WIN_UP_EDGE	14
+
+enum docsis_mmt_rng_status {
+	docsis_mmt_rng_status_unknown = 0,
+	docsis_mmt_rng_status_continue,
+	docsis_mmt_rng_status_abort,
+	docsis_mmt_rng_status_success,
+};
 
 #endif

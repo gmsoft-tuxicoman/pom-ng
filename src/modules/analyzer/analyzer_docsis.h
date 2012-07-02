@@ -28,26 +28,29 @@
 #define ANALYZER_DOCSIS_CM_TABLE_SIZE (1 << 12)
 #define ANALYZER_DOCSIS_CM_MASK (ANALYZER_DOCSIS_CM_TABLE_SIZE - 1)
 
-#define ANALYZER_DOCSIS_CM_TIMEOUT 60
-
-#define ANALYZER_DOCSIS_EVT_NEW_CM_DATA_COUNT 3
+#define ANALYZER_DOCSIS_EVT_CM_NEW_DATA_COUNT 3
 
 enum {
-	analyzer_docsis_new_cm_mac,
-	analyzer_docsis_new_cm_input,
-	analyzer_docsis_new_cm_time
+	analyzer_docsis_cm_new_mac,
+	analyzer_docsis_cm_new_input,
+	analyzer_docsis_cm_new_time
 };
 
-#define ANALYZER_DOCSIS_EVT_CM_TIMEOUT_DATA_COUNT 2
+#define ANALYZER_DOCSIS_EVT_CM_REG_STATUS_DATA_COUNT 5
 
 enum {
-	analyzer_docsis_cm_timeout_mac,
-	analyzer_docsis_cm_timeout_time
+	analyzer_docsis_cm_reg_status_old,
+	analyzer_docsis_cm_reg_status_new,
+	analyzer_docsis_cm_reg_status_mac,
+	analyzer_docsis_cm_reg_status_timeout,
+	analyzer_docsis_cm_reg_status_time
 };
 
 struct analyzer_docsis_cm {
 
-	char mac[6];
+	unsigned char mac[6];
+	unsigned char t4_multiplier;
+	enum docsis_mmt_rng_status ranging_status;
 	struct analyzer_docsis_cm *prev, *next;
 	struct timer *t;
 	struct analyzer *analyzer;
@@ -56,8 +59,8 @@ struct analyzer_docsis_cm {
 
 struct analyzer_docsis_priv {
 
-	struct event_reg *evt_new_cm;
-	struct event_reg *evt_cm_timeout;
+	struct event_reg *evt_cm_new;
+	struct event_reg *evt_cm_reg_status;
 	struct proto_packet_listener *pkt_listener;
 
 	pthread_mutex_t lock;

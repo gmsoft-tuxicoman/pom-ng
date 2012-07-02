@@ -17,8 +17,8 @@
 			<item><template>arpwatch</template><event>arp_sta_changed</event><format>Station address changed : $ip_addr from $old_mac_addr to $new_mac_addr on input '$input'</format><file>arpwatch_log</file></item>
 
 			<!-- docsis_monitor -->
-			<item><template>docsis_monitor</template><event>docsis_new_cm</event><format>$time | New cable modem : $mac on input '$input'</format><file>docsis_monitor_log</file></item>
-			<item><template>docsis_monitor</template><event>docsis_cm_timeout</event><format>$time | Cable modem timed out : $mac</format><file>docsis_monitor_log</file></item>
+			<item><template>docsis_monitor</template><event>docsis_cm_new</event><format>$time | New cable modem found on input '$input' : $mac</format><file>docsis_monitor_log</file></item>
+			<item><template>docsis_monitor</template><event>docsis_cm_reg_status</event><format>$time | Cable modem $mac status changed from $old_status to $new_status (T4 timeout is $timeout sec)</format><file>docsis_monitor_log</file></item>
 		</dataset>
 
 		<dataset name="files">
