@@ -23,6 +23,7 @@
 
 
 #include <pom-ng/output.h>
+#include <pom-ng/filter.h>
 
 #include <pcap.h>
 
@@ -32,6 +33,7 @@ struct output_pcap_file_priv {
 	pcap_dumper_t *pdump;
 	pcap_t *p;
 	struct proto *proto;
+	struct filter_proto *filter;
 
 	struct proto_packet_listener *listener;
 
@@ -39,7 +41,7 @@ struct output_pcap_file_priv {
 	struct ptype *p_snaplen;
 	struct ptype *p_proto;
 	struct ptype *p_unbuffered;
-
+	struct ptype *p_filter;
 
 };
 
@@ -52,5 +54,6 @@ static int output_pcap_file_cleanup(struct output *o);
 static int output_pcap_file_open(struct output *o);
 static int output_pcap_file_close(struct output *o);
 static int output_pcap_file_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+static int output_pcap_filter_change(void *priv, char *value);
 
 #endif

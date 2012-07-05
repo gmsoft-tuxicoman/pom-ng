@@ -80,8 +80,9 @@ static int output_pcap_file_init(struct output *o) {
 	priv->p_snaplen = ptype_alloc_unit("uint16", "bytes");
 	priv->p_proto = ptype_alloc("string");
 	priv->p_unbuffered = ptype_alloc("bool");
+	priv->p_filter = ptype_alloc("string");
 
-	if (!priv->p_filename || !priv->p_snaplen || !priv->p_proto || !priv->p_unbuffered)
+	if (!priv->p_filename || !priv->p_snaplen || !priv->p_proto || !priv->p_unbuffered || !priv->p_filter)
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
@@ -99,6 +100,12 @@ static int output_pcap_file_init(struct output *o) {
 	p = registry_new_param("unbuffered", "no", priv->p_unbuffered, "Write packets directly without using a buffer (slower)", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
+
+	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
+	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+		goto err;
+
+	registry_param_set_callbacks(p, priv, output_pcap_filter_change, NULL);
 
 	return POM_OK;
 
@@ -121,6 +128,8 @@ static int output_pcap_file_cleanup(struct output *o) {
 			ptype_cleanup(priv->p_proto);
 		if (priv->p_unbuffered)
 			ptype_cleanup(priv->p_unbuffered);
+		if (priv->p_filter)
+			ptype_cleanup(priv->p_filter);
 		
 		free(priv);
 
@@ -128,7 +137,6 @@ static int output_pcap_file_cleanup(struct output *o) {
 
 	return POM_OK;
 }
-
 
 static int output_pcap_file_open(struct output *o) {
 
@@ -179,6 +187,8 @@ static int output_pcap_file_open(struct output *o) {
 	priv->listener = proto_packet_listener_register(priv->proto, 0, o, output_pcap_file_process);
 	if (!priv->listener) 
 		goto err;
+
+	proto_packet_listener_set_filter(priv->listener, priv->filter);
 
 	return POM_OK;
 
@@ -254,6 +264,12 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 
 	return POM_OK;
 
+}
+
+static int output_pcap_filter_change(void *priv, char *value) {
+
+	struct output_pcap_file_priv *p = priv;
+	return filter_proto_parse(value, strlen(value), &p->filter);
 }
 
 
