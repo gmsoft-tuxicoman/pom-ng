@@ -123,3 +123,246 @@ void filter_proto_cleanup(struct filter_proto *f) {
 
 	free(f);
 }
+
+int filter_proto_parse(char *expr, unsigned int len, struct filter_proto **f) {
+
+	unsigned int i;
+	int stack_size = 0;
+
+	int branch_found = 0;
+	int branch_op = 0;
+
+	if (len < 2) {
+		pomlog(POMLOG_ERR "Expression too short. Cannot parse.");
+		return POM_ERR;
+	}
+
+
+	for (i = 0; i < len; i++) {
+		if (stack_size == 0 && expr[i] == '|' && expr[i + 1] == '|')  {
+			branch_found = 1;
+			branch_op = FILTER_OP_OR;
+		} else if (stack_size == 0 && expr[i] == '&' && expr[i + 1] == '&') {
+			branch_found = 1;
+			branch_op = FILTER_OP_AND;
+		}
+
+		if (expr[i] == '(') {
+			stack_size++;
+			continue;
+		}
+		if (expr[i] == ')') {
+			if (stack_size == 0) {
+				pomlog(POMLOG_ERR "Unmatched ')' at pos %u in expression '%s'", i, expr);
+				return POM_ERR;
+			}
+			stack_size--;
+			continue;
+		}
+
+		if (branch_found) {
+			// A branch was found, parse both sides
+
+			*f = malloc(sizeof(struct filter_proto));
+			if (!*f) {
+				pom_oom(sizeof(struct filter_proto));
+				return POM_ERR;
+			}
+			memset(*f, 0, sizeof(struct filter_proto));
+			
+			(*f)->op = branch_op;
+			
+			if (filter_proto_parse_block(expr, i - 1, &(*f)->a) != POM_OK || filter_proto_parse(expr + i + 2, len - i - 2, &(*f)->b) != POM_OK)
+				return POM_ERR;
+
+			if (!(*f)->a || !(*f)->b) {
+				pomlog(POMLOG_ERR "Branch of expression empty in expression '%s'", expr);
+				return POM_ERR;
+			}
+
+			return POM_OK;
+		}
+	}
+
+	if (stack_size > 0) {
+		pomlog(POMLOG_ERR "Unmatched '(' in expression '%s'", expr);
+		return POM_ERR;
+	}
+
+	// There was no branch, process the whole thing then
+	return filter_proto_parse_block(expr, len, f);
+	
+}
+
+int filter_proto_parse_block(char *expr, unsigned int len, struct filter_proto **f) {
+
+	if (len < 2)
+		return POM_ERR;
+
+	while (len && *expr == ' ') {
+		expr++;
+		len--;
+	}
+
+	while (len && expr[len - 1] == ' ')
+		len--;
+
+	if (!len) {
+		*f = NULL;
+		return POM_OK;
+	}
+
+	// Find out if there is an inversion
+	int inv = 0;
+	if (expr[0] == '!') {
+		inv = 1;
+		expr++;
+		len--;
+		while (*expr == ' ') {
+			expr++;
+			len--;
+		}
+
+	}
+
+	if (expr[0] == '(' && expr[len - 1] == ')') {
+		expr++;
+		len -= 2;
+		int res = filter_proto_parse(expr, len, f);
+		if (inv)
+			(*f)->op = ((*f)->op & FILTER_OP_NOT ? (*f)->op & ~FILTER_OP_NOT : (*f)->op | FILTER_OP_NOT);
+		return res;
+	}
+
+	// At this point we should have 'proto.field op value'
+	
+
+	// Search for the first token
+	char *dot = memchr(expr, '.', len);
+	if (!dot) {
+		pomlog(POMLOG_ERR "No field found");
+		return POM_ERR;
+	}
+	
+	// Parse and find the protocol
+	char *proto_str = strndup(expr, dot - expr);
+	if (!proto_str) {
+		pom_oom(dot - expr + 1);
+		return POM_ERR;
+	}
+	struct proto *proto = proto_get(proto_str);
+
+	if (!proto) {
+		pomlog(POMLOG_ERR "Protocol %s doesn't exists", proto);
+		free(proto_str);
+		return POM_ERR;
+	}
+	free(proto_str);
+
+	// Parse and find the field
+	char *space = memchr(expr, ' ', len);
+	size_t field_len;
+	if (space) {
+		field_len = space - dot - 1;
+		while (*space == ' ')
+			space++;
+	} else {
+		field_len = len - (dot - expr);
+	}
+	
+	char *field = strndup(dot + 1, field_len);
+	if (!field) {
+		pom_oom(field_len + 1);
+		return POM_ERR;
+	}
+
+	int field_id;
+	for (field_id = 0; proto->info->pkt_fields[field_id].name && strcmp(proto->info->pkt_fields[field_id].name, field); field_id++);
+
+	if (!proto->info->pkt_fields[field_id].name) {
+		pomlog(POMLOG_ERR "Field %s doesn't exists for proto %s", field, proto->info->name);
+		free(field);
+		return POM_ERR;
+	}
+	free(field);
+
+	*f = malloc(sizeof(struct filter_proto));
+	if (!*f) {
+		pom_oom(sizeof(struct filter_proto));
+		return POM_ERR;
+	}
+	memset(*f, 0, sizeof(struct filter_proto));
+
+	struct filter_proto *filter = *f;
+	filter->field_id = field_id;
+	filter->proto = proto;
+
+	if (!space) // Only make sure that the field is set if no value exists
+		return POM_OK;
+
+	// Parse the op
+	len -= space - expr;
+	expr = space;
+
+	space = memchr(expr, ' ', len);
+
+	if (!space) {
+		pomlog(POMLOG_ERR "Invalid expression. Missing operation or value");
+		goto err;
+	}
+
+	char *op_str = strndup(expr, space - expr);
+	if (!op_str) {
+		pom_oom(space - expr);
+		goto err;
+	}
+
+	while (*space == ' ')
+		space++;
+
+	char *value_str = strndup(space, len - (space - expr));
+	if (!value_str) {
+		free(op_str);
+		pom_oom(len - (space - expr));
+		goto err;
+	}
+
+	filter->value = ptype_alloc_from_type(proto->info->pkt_fields[field_id].value_type);
+	if (!filter->value) {
+		free(op_str);
+		free(value_str);
+		goto err;
+	}
+
+	if (ptype_parse_val(filter->value, value_str) != POM_OK) {
+		pomlog(POMLOG_ERR "Error while parsing value '%s'", value_str);
+		free(op_str);
+		free(value_str);
+		goto err;
+	}
+
+
+	filter->op = ptype_get_op(filter->value, op_str);
+	if (filter->op == POM_ERR) {
+		free(value_str);
+		pomlog(POMLOG_ERR "Invalid operation '%s'", op_str);
+		free(op_str);
+		goto err;
+	}
+
+	free(op_str);
+
+	if (inv)
+		filter->op |= FILTER_OP_NOT;
+
+	return POM_OK;
+
+err:
+	if (*f) {
+		if ((*f)->value)
+			ptype_cleanup((*f)->value);
+		free(*f);
+		*f = NULL;
+	}
+	return POM_ERR;
+}

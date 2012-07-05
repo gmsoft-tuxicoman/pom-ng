@@ -32,18 +32,9 @@
 #define FILTER_MATCH_NO		0
 #define FILTER_MATCH_YES	1
 
-struct filter_proto {
-	struct proto *proto; // If there is a proto, then it's a single match. Else it's a branch
-
-	unsigned int op;
-	struct filter_proto *a, *b;
-
-	int field_id;
-	struct ptype *value;
-};
-
 struct filter_proto *filter_proto_build(char *proto, char *field, unsigned int op, char *value);
 struct filter_proto *filter_proto_build_branch(struct filter_proto *a, struct filter_proto *b, unsigned int op);
 void filter_proto_cleanup(struct filter_proto *f);
+int filter_proto_parse(char *expr, unsigned int len, struct filter_proto **f);
 
 #endif

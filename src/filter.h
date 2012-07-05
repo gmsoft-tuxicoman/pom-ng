@@ -25,6 +25,17 @@
 #include <pom-ng/filter.h>
 #include "core.h"
 
+struct filter_proto {
+	struct proto *proto; // If there is a proto, then it's a single match. Else it's a branch
+
+	unsigned int op;
+	struct filter_proto *a, *b;
+
+	int field_id;
+	struct ptype *value;
+};
+
 int filter_proto_match(struct proto_process_stack *stack, struct filter_proto *f);
+int filter_proto_parse_block(char *expr, unsigned int len, struct filter_proto **f);
 
 #endif
