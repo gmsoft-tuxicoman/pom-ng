@@ -143,26 +143,31 @@ int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int 
 	if (result == PROTO_OK && s[stack_index].plen) {
 		
 		// Process packet listeners
-		struct proto_packet_listener *l;
-		for (l = proto->packet_listeners; l; l = l->next) {
-			if (l->filter && !filter_proto_match(s, l->filter))
-				continue;
-			if (l->process(l->object, p, s, stack_index) != POM_OK) {
-				pomlog(POMLOG_WARN "Warning packet listener failed");
-				// FIXME remove listener from the list ?
-			}
-		}
 
 	}
 
 	return result;
 }
 
-int proto_process_payload(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
+int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
+
+	if (!s[stack_index].plen)
+		return POM_OK;
+
+	// Process packet listeners
+	struct proto *proto = s[stack_index].proto;
+	struct proto_packet_listener *l;
+	for (l = proto->packet_listeners; l; l = l->next) {
+		if (l->filter && !filter_proto_match(s, l->filter))
+			continue;
+		if (l->process(l->object, p, s, stack_index) != POM_OK) {
+			pomlog(POMLOG_WARN "Warning packet listener failed");
+			// FIXME remove listener from the list ?
+		}
+	}
 
 	// Process payload listeners
-	if (s[stack_index].plen && s[stack_index - 1].proto) {
-		struct proto_packet_listener *l;
+	if (s[stack_index - 1].proto) {
 		for (l = s[stack_index - 1].proto->payload_listeners; l; l = l->next) {
 			if (l->filter && !filter_proto_match(s, l->filter))
 				continue;

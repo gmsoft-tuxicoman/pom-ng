@@ -467,16 +467,21 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (!s_next->pload)
 			break;
 	
-		if (proto_process_payload(p, stack, i) != POM_OK) {
-			res = PROTO_ERR;
-			break;
-		}
-
-
 	}
 
-	if (proto_process_payload(p, stack, i) != POM_OK)
-		res = PROTO_ERR;
+	// Process packet listeners
+	if (res == PROTO_OK) {
+		int j;
+		for (j = i; j >= stack_index; j--) {
+			if (!stack[j].proto)
+				continue;
+			if (proto_process_listeners(p, stack, j) != POM_OK) {
+				res = PROTO_ERR;
+				break;
+			}
+		}
+	}
+
 
 	for (; i >= stack_index; i--) {
 

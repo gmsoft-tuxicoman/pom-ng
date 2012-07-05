@@ -37,7 +37,7 @@ struct proto_event_analyzer_list {
 };
 
 int proto_init();
-int proto_process_payload(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 int proto_empty_conntracks();
 int proto_cleanup();
 
