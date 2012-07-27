@@ -44,7 +44,7 @@ struct mod_reg_info* input_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_pcap_mod_register;
 	reg_info.unregister_func = input_pcap_mod_unregister;
-	reg_info.dependencies = "proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, ptype_string, ptype_bool";
+	reg_info.dependencies = "proto_80211, proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, proto_radiotap, ptype_string, ptype_bool";
 
 	return &reg_info;
 }
@@ -115,6 +115,14 @@ static int input_pcap_common_open(struct input *i) {
 
 	priv->datalink_type = pcap_datalink(priv->p);
 	switch (priv->datalink_type) {
+		case DLT_IEEE802_11:
+			datalink = "80211";
+			break;
+
+		case DLT_IEEE802_11_RADIO:
+			datalink = "radiotap";
+			break;
+
 		case DLT_EN10MB:
 			datalink = "ethernet";
 			// Ethernet is 14 bytes long

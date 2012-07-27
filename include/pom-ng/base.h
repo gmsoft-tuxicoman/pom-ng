@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -71,4 +71,30 @@ int pom_write(int fd, const void *buf, size_t count);
 // Init a mutex with a specific type
 int pom_mutex_init_type(pthread_mutex_t *lock, int type);
 
+// Usefull macros for byte swapping
+#ifndef bswap16
+#define bswap16(x) \
+	((((x) >> 8) & 0xffu) | (((x) & 0xffu) << 8))
+#endif
+#ifndef bswap32
+#define bswap32(x) \
+	((((x) & 0xff000000u) >> 24) | (((x) & 0x00ff0000u) >>  8) | \
+	(((x) & 0x0000ff00u) <<  8) | (((x) & 0x000000ffu) << 24))
+#endif
+
+#if BYTE_ORDER == BIG_ENDIAN
+#define le16(x)		bswap16(x)
+#define le32(x)		bswap32(x)
+#define le64(x)		bswap64(x)
+#define ntohll(x)	(x)
+#define htonll(x)	(x)
+#elif BYTE_ORDER == LITTLE_ENDIAN
+#define le16(x)		(x)
+#define le32(x)		(x)
+#define le64(x)		(x)
+#define ntohll(x)	bswap64(x)
+#define htonll(x)	bswap64(x)
+#else
+#error "Please define byte ordering"
+#endif
 #endif
