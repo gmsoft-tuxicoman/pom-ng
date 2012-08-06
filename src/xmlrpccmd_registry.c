@@ -327,7 +327,8 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 
 	registry_unlock();
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A}",
+				"name", i->name,
 				"serial", i->serial,
 				"parameters", params,
 				"functions", funcs);
