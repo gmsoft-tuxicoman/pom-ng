@@ -120,20 +120,21 @@ xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value *
 	
 	}
 
+	last_serial = xmlrpccmd_serial;
+	pom_mutex_unlock(&xmlrpccmd_serial_lock);
+
 	registry_lock();
 	pomlog_rlock();
 
 	struct pomlog_entry *last_log = pomlog_get_tail();
 	
 	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:i,s:i}",
-						"main", xmlrpccmd_serial,
+						"main", last_serial,
 						"registry", registry_serial_get(),
 						"log", last_log->id);
 
 	pomlog_unlock();
 	registry_unlock();
-
-	pom_mutex_unlock(&xmlrpccmd_serial_lock);
 
 	return res;
 
