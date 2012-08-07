@@ -24,6 +24,8 @@
 
 #include "signal.h"
 
+#include "xmlrpccmd.h"
+
 #include <sys/msg.h>
 
 static struct pomlog_entry *pomlog_head = NULL, *pomlog_tail = NULL;
@@ -132,6 +134,8 @@ void pomlog_internal(char *file, const char *format, ...) {
 		printf("Error while unlocking the log lock. Aborting.\r");
 		abort();
 	}
+
+	xmlrcpcmd_serial_inc();
 }
 
 int pomlog_cleanup() {
