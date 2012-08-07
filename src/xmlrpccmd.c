@@ -156,7 +156,12 @@ xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * con
 
 	struct pomlog_entry *log = pomlog_get_tail();
 
-	while (log && log->id > last_id)
+	if (log->id <= last_id) {
+		pomlog_unlock();
+		return res;
+	}
+
+	while (log && log->id > last_id + 1)
 		log = log->prev;
 
 	while (log) {
