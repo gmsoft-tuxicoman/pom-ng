@@ -94,8 +94,12 @@ int input_register(struct input_reg_info *reg_info) {
 	}
 
 	memset(reg, 0, sizeof(struct input_reg));
-
 	reg->info = reg_info;
+
+	if (registry_add_instance_type(input_registry_class, reg_info->name) != POM_OK) {
+		free(reg);
+		return POM_ERR;
+	}
 
 	mod_refcount_inc(reg_info->mod);
 
@@ -115,6 +119,8 @@ int input_unregister(char *name) {
 	for (reg = input_reg_head; reg && strcmp(reg->info->name, name); reg = reg->next);
 	if (!reg) 
 		return POM_OK;
+
+	registry_remove_instance_type(input_registry_class, name);
 
 	if (reg->prev)
 		reg->prev->next = reg->next;
