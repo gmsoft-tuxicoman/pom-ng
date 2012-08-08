@@ -1080,17 +1080,20 @@ int registry_load(char *config_name) {
 	if (datastore_dataset_query_set_order(dsq_config, 3, DATASET_READ_ORDER_ASC) != POM_OK)
 		goto err;
 
+	registry_lock();
+
 	// Reset the registry
 	if (registry_reset() != POM_OK)
-		goto err;
+		goto err_locked;
+
 
 	while ((res = datastore_dataset_read(dsq_config)) != DATASET_QUERY_OK) {
 		if (res < 0)
-			goto err;
+			goto err_locked;
 
 		if (dsq_config->values[1].is_null || dsq_config->values[3].is_null) {
 			pomlog(POMLOG_ERR "Got NULL values while they were not supposed to be !");
-			goto err;
+			goto err_locked;
 		}
 		enum registry_config_entry_types type = *PTYPE_UINT8_GETVAL(dsq_config->values[3].value);
 		char *entry = PTYPE_STRING_GETVAL(dsq_config->values[1].value);
@@ -1102,13 +1105,13 @@ int registry_load(char *config_name) {
 		char *name1 = strdup(entry);
 		if (!name1) {
 			pom_oom(strlen(entry) + 1);
-			goto err;
+			goto err_locked;
 		}
 		char *name2 = strchr(name1, '.');
 		if (!name2) {
 			pomlog(POMLOG_ERR "Unparseable entry name \"%s\"", entry);
 			free(name1);
-			goto err;
+			goto err_locked;
 		}
 		*name2 = 0;
 		name2++;
@@ -1208,12 +1211,16 @@ int registry_load(char *config_name) {
 
 	}
 
+	registry_unlock();
+
 	datastore_dataset_query_cleanup(dsq_config);
 
 	pomlog("Registry configuration \"%s\" loaded", config_name);
 
 	return POM_OK;
 
+err_locked:
+	registry_unlock();
 err:
 
 	if (dsq_config_list)
