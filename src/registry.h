@@ -25,8 +25,9 @@
 
 #include <pom-ng/registry.h>
 
-#define REGISTRY_CONFIG_LIST	"config_list"
-#define REGISTRY_CONFIG		"config"
+#define REGISTRY_CONFIG_LIST		"config_list"
+#define REGISTRY_CONFIG			"config"
+#define REGISTRY_CONFIG_NAME_MAX	256
 
 enum registry_config_entry_types {
 	registry_config_class_param,
@@ -61,6 +62,11 @@ struct registry_class {
 	struct registry_class *next, *prev;
 };
 
+struct registry_config_entry {
+	char name[REGISTRY_CONFIG_NAME_MAX];
+	struct timeval ts;
+};
+
 int registry_init();
 int registry_cleanup();
 
@@ -86,11 +92,14 @@ struct registry_class *registry_find_class(char *cls);
 struct registry_instance *registry_find_instance(char *cls, char *instance);
 
 int registry_uid_assign(struct registry_instance *instance, char *uid);
-void registry_serial_inc();
+void registry_classes_serial_inc();
 uint32_t registry_serial_get();
+uint32_t registry_classes_serial_get();
+uint32_t registry_config_serial_get();
 
-int registry_save(char *config_name);
-int registry_reset();
-int registry_load(char *config_name);
+struct registry_config_entry* registry_config_list();
+int registry_config_save(char *config_name);
+int registry_config_reset();
+int registry_config_load(char *config_name);
 
 #endif

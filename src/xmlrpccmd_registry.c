@@ -74,7 +74,7 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.name = "registry.save",
 		.callback_func = xmlrpccmd_registry_save,
 		.signature = "i:s",
-		.help = "Save the registry in the system datastore",
+		.help = "Save the registry configuration in the system datastore",
 
 	},
 
@@ -90,8 +90,7 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.callback_func = xmlrpccmd_registry_load,
 		.signature = "i:s",
 		.help = "Load a saved configuration",
-	},
-
+	}
 };
 
 int xmlrpccmd_registry_register_all() {
@@ -154,10 +153,35 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 	}
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A}",
-					"serial", registry_serial_get(),
-					"classes", classes);
+	xmlrpc_value *configs = xmlrpc_array_new(envP);
+
+	struct registry_config_entry *config_list = registry_config_list();
+	if (!config_list) {
+		registry_unlock();
+		xmlrpc_faultf(envP, "Error while loading configuration list");
+		return NULL;
+	}
+
+	ssize_t i;
+
+	for (i = 0; *config_list[i].name; i++) {
+		xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:s,s:t}",
+							"name", config_list[i].name,
+							"timestamp", (time_t)config_list[i].ts.tv_sec);
+		xmlrpc_array_append_item(envP, configs, entry);
+		xmlrpc_DECREF(entry);
+	}
+
+	free(config_list);
+
+
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A,s:i,s:A}",
+					"classes_serial", registry_classes_serial_get(),
+					"classes", classes,
+					"configs_serial", registry_config_serial_get(),
+					"configs", configs);
 	xmlrpc_DECREF(classes);
+	xmlrpc_DECREF(configs);
 	registry_unlock();
 
 	return res;
@@ -392,7 +416,7 @@ xmlrpc_value *xmlrpccmd_registry_set_instance_param(xmlrpc_env * const envP, xml
 	
 	i->serial++;
 	i->parent->serial++;
-	registry_serial_inc();
+	registry_classes_serial_inc();
 	
 	registry_unlock();
 
@@ -445,7 +469,7 @@ xmlrpc_value *xmlrpccmd_registry_instance_function(xmlrpc_env * const envP, xmlr
 
 	i->serial++;
 	i->parent->serial++;
-	registry_serial_inc();
+	registry_classes_serial_inc();
 
 	registry_unlock();
 
@@ -474,7 +498,7 @@ xmlrpc_value *xmlrpccmd_registry_save(xmlrpc_env * const envP, xmlrpc_value * co
 	if (envP->fault_occurred)
 		return NULL;
 
-	if (registry_save(name) != POM_OK) {
+	if (registry_config_save(name) != POM_OK) {
 		free(name);
 		xmlrpc_faultf(envP, "Error while saving the registry");
 		return NULL;
@@ -487,7 +511,7 @@ xmlrpc_value *xmlrpccmd_registry_save(xmlrpc_env * const envP, xmlrpc_value * co
 
 xmlrpc_value *xmlrpccmd_registry_reset(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
-	if (registry_reset() != POM_OK) {
+	if (registry_config_reset() != POM_OK) {
 		xmlrpc_faultf(envP, "Error while resetting the registry");
 		return NULL;
 	}
@@ -503,7 +527,7 @@ xmlrpc_value *xmlrpccmd_registry_load(xmlrpc_env * const envP, xmlrpc_value * co
 	if (envP->fault_occurred)
 		return NULL;
 
-	if (registry_load(name) != POM_OK) {
+	if (registry_config_load(name) != POM_OK) {
 		free(name);
 		xmlrpc_faultf(envP, "Error while loading the registry");
 		return NULL;
@@ -513,4 +537,3 @@ xmlrpc_value *xmlrpccmd_registry_load(xmlrpc_env * const envP, xmlrpc_value * co
 
 	return xmlrpc_int_new(envP, 0);
 }
-

@@ -55,7 +55,7 @@ static struct registry_class *registry_head = NULL;
 static uint32_t *registry_uid_table = NULL;
 static size_t registry_uid_table_size = 0;
 static unsigned int registry_uid_seedp = 0;
-static uint32_t registry_serial = 0;
+static uint32_t registry_serial = 0, registry_classes_serial = 0, registry_config_serial = 0;
 
 int registry_init() {
 
@@ -282,7 +282,7 @@ struct registry_instance *registry_add_instance(struct registry_class *c, char *
 	c->instances = i;
 	
 	i->parent->serial++;
-	registry_serial_inc();
+	registry_classes_serial_inc();
 
 	registry_unlock();
 
@@ -342,7 +342,7 @@ int registry_remove_instance(struct registry_instance *i) {
 		i->next->prev = i->prev;
 
 	c->serial++;
-	registry_serial_inc();
+	registry_classes_serial_inc();
 
 	registry_unlock();
 
@@ -562,7 +562,7 @@ int registry_set_param(struct registry_instance *i, char *param, char* value) {
 
 	i->serial++;
 	i->parent->serial++;
-	registry_serial_inc();
+	registry_classes_serial_inc();
 
 	registry_unlock();
 
@@ -754,17 +754,98 @@ int registry_uid_assign(struct registry_instance *instance, char* uid) {
 }
 
 
-void registry_serial_inc() {
+void registry_classes_serial_inc() {
+	registry_classes_serial++;
 	registry_serial++;
 	xmlrcpcmd_serial_inc();
 }
+
 
 uint32_t registry_serial_get() {
 	return registry_serial;
 }
 
+uint32_t registry_classes_serial_get() {
+	return registry_classes_serial;
+}
 
-int registry_save(char *config_name) {
+uint32_t registry_config_serial_get() {
+	return registry_config_serial;
+}
+
+
+struct registry_config_entry* registry_config_list() {
+
+	struct dataset_query *dsq_config_list = NULL;
+
+	struct registry_config_entry *list = NULL;
+	ssize_t list_size = 0;
+
+	struct datastore *sys_dstore = system_datastore();
+	if (!sys_dstore)
+		return NULL;
+
+	struct datastore_connection *dc = datastore_connection_new(sys_dstore);
+	if (!dc)
+		return NULL;
+
+	dsq_config_list = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG_LIST, registry_config_list_dataset_template, dc);
+	if (!dsq_config_list)
+		goto err;
+
+	int res;
+
+	while ((res = datastore_dataset_read(dsq_config_list)) != DATASET_QUERY_OK) {
+		if (res < 0)
+			goto err;
+
+		if (dsq_config_list->values[0].is_null || dsq_config_list->values[1].is_null) {
+			pomlog(POMLOG_ERR "Got NULL values while they were not supposed to be !");
+			goto err;
+		}
+
+		
+		struct registry_config_entry *new_list = realloc(list, sizeof(struct registry_config_entry) * (list_size + 2));
+		if (!new_list) {
+			pom_oom(sizeof(struct registry_config_entry) * (list_size + 2));
+			goto err;
+		}
+		list = new_list;
+		memset(&list[list_size], 0, sizeof(struct registry_config_entry) * 2);
+
+		char *name = PTYPE_STRING_GETVAL(dsq_config_list->values[0].value);
+		struct timeval *tv = PTYPE_TIMESTAMP_GETVAL(dsq_config_list->values[1].value);
+
+		strncpy(list[list_size].name, name, REGISTRY_CONFIG_NAME_MAX - 1);
+		memcpy(&list[list_size].ts, tv, sizeof(struct timeval));
+
+		list_size++;
+	}
+
+	datastore_dataset_query_cleanup(dsq_config_list);
+
+	datastore_connection_release(dc);
+
+	return list;
+err:
+	if (dsq_config_list)
+		datastore_dataset_query_cleanup(dsq_config_list);
+
+	if (dc)
+		datastore_connection_release(dc);
+
+	if (list)
+		free(list);
+
+	return NULL;
+}
+
+int registry_config_save(char *config_name) {
+
+	if (strlen(config_name) >= REGISTRY_CONFIG_NAME_MAX) {
+		pomlog(POMLOG_ERR "Configuration name too long, max %u characters.", REGISTRY_CONFIG_NAME_MAX);
+		return POM_ERR;
+	}
 
 	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
 	
@@ -923,6 +1004,10 @@ int registry_save(char *config_name) {
 
 	}
 
+	registry_config_serial++;
+	registry_serial++;
+	xmlrcpcmd_serial_inc();
+
 	registry_unlock();
 
 	if (datastore_transaction_commit(dc) != POM_OK)
@@ -956,7 +1041,7 @@ err:
 
 }
 
-int registry_reset() {
+int registry_config_reset() {
 	
 	registry_lock();
 
@@ -1023,7 +1108,7 @@ int registry_reset() {
 		}
 	}
 
-
+	registry_classes_serial_inc();
 	registry_unlock();
 
 	return POM_OK;
@@ -1036,7 +1121,7 @@ err:
 
 }
 
-int registry_load(char *config_name) {
+int registry_config_load(char *config_name) {
 
 	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
 	
@@ -1083,7 +1168,7 @@ int registry_load(char *config_name) {
 	registry_lock();
 
 	// Reset the registry
-	if (registry_reset() != POM_OK)
+	if (registry_config_reset() != POM_OK)
 		goto err_locked;
 
 
@@ -1211,6 +1296,7 @@ int registry_load(char *config_name) {
 
 	}
 
+	registry_classes_serial_inc();
 	registry_unlock();
 
 	datastore_dataset_query_cleanup(dsq_config);
