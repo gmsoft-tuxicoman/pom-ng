@@ -626,7 +626,7 @@ struct datastore_connection *datastore_connection_new(struct datastore *d) {
 		d->cons = res;
 	} else {
 		d->cons_unused = res->next;
-		if (d->cons_unused->prev)
+		if (d->cons_unused && d->cons_unused->prev)
 			d->cons_unused->prev = NULL;
 
 		res->next = NULL;
@@ -826,8 +826,6 @@ struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct d
 	}
 
 	pom_mutex_unlock(&d->lock);
-
-	pomlog(POMLOG_DEBUG "Dataset %s in datastore %s opened", res->name, d->name);
 
 	return res;
 
