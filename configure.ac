@@ -233,6 +233,11 @@ then
 	DATASTORE_OBJS="$DATASTORE_OBJS datastore_sqlite.la"
 fi
 
+# Check for Lua
+PKG_CHECK_MODULES(lua, [lua], [], AC_MSG_ERROR([lua is required to build this program])])
+AC_SUBST(lua_LIBS)
+
+
 AC_SUBST(ANALYZER_OBJS)
 AC_SUBST(DATASTORE_OBJS)
 AC_SUBST(INPUT_OBJS)

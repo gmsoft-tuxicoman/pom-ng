@@ -19,12 +19,13 @@
 include $(top_srcdir)/Makefile.common
 
 XMLRPC_SRC = xmlrpcsrv.c xmlrpcsrv.h xmlrpccmd.c xmlrpccmd.h xmlrpccmd_registry.c xmlrpccmd_registry.h
+ADDON_SRC = addon.c addon.h addon_event.c addon_event.h
 CORE_SRC = httpd.c httpd.h pomlog.c pomlog.h mod.c mod.h
 
 bin_PROGRAMS = pom-ng
-pom_ng_SOURCES = main.c main.h $(CORE_SRC) $(XMLRPC_SRC)
+pom_ng_SOURCES = main.c main.h $(CORE_SRC) $(XMLRPC_SRC) $(ADDON_SRC)
 pom_ng_CFLAGS = @libxml2_CFLAGS@ -DPOM_LIBDIR='"$(mod_dir)"' -DDATAROOT='"$(pkgdatadir)"'
-pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@ @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@ @magic_LIBS@
+pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@ @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@ @magic_LIBS@ @lua_LIBS@
 
 libpom_ng_la_SOURCES = analyzer.c analyzer.h common.c common.h core.c core.h ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h output.c output.h timer.c timer.h registry.c registry.h event.c data.c datastore.c datastore.h resource.c resource.h filter.c filter.h
 libpom_ng_la_CFLAGS = @libxml2_CFLAGS@ -DDATAROOT='"$(pkgdatadir)"'

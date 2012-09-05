@@ -41,6 +41,7 @@
 #include "analyzer.h"
 #include "output.h"
 #include "datastore.h"
+#include "addon.h"
 
 #include <pom-ng/ptype.h>
 
@@ -321,6 +322,10 @@ int main(int argc, char *argv[]) {
 		goto err_dstore;
 	}
 
+	if (addon_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing addons");
+		goto err_addon;
+	}
 
 	// Main loop
 	
@@ -340,11 +345,11 @@ int main(int argc, char *argv[]) {
 
 	// Cleanup components
 
-
 	core_cleanup(shutdown_in_error);
 
 	packet_pool_cleanup();
 	packet_buffer_pool_cleanup();
+	addon_cleanup();
 	input_cleanup();
 	xmlrpcsrv_cleanup();
 	httpd_cleanup();
@@ -368,6 +373,9 @@ int main(int argc, char *argv[]) {
 	
 	// Error path below
 
+
+err_addon:
+	addon_cleanup();
 err_dstore:
 	core_cleanup(1);
 err_core:
