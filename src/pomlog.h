@@ -25,16 +25,7 @@
 
 #include <pom-ng/pomlog.h>
 
-/// IPC log message
-struct pomlog_ipc_msg {
-	long type; // IPC_TYPE_LOG
-	int log_level;
-	char filename[POMLOG_FILENAME_SIZE];
-	char line[POMLOG_LINE_SIZE];
-};
-
 /// Log entry
-
 struct pomlog_entry {
 
 	uint32_t id; // Only valid if level < POM_LOG_TSHOOT
@@ -47,18 +38,11 @@ struct pomlog_entry {
 
 };
 
-int pomlog_ipc(int log_level, char *filename, char *line);
-int pomlog_ipc_thread_init(int *ipc_queue);
 int pomlog_cleanup();
 int pomlog_set_debug_level(unsigned int debug_level);
 
 void pomlog_rlock();
 void pomlog_unlock();
 struct pomlog_entry *pomlog_get_tail();
-
-// Declared in <pom-ng/pomlog.h>
-// void pomlog_internal(char *file, const char *format, ...);
-// int pomlog_ipc_internal(int queue_id, char *filename, const char *format, ...);
-
 
 #endif
