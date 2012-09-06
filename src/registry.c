@@ -1269,17 +1269,11 @@ int registry_config_load(char *config_name) {
 						break;
 					}
 
+				} else if (!strcmp(name3, "running")) {
+					// For now don't do anything for running
+
 				} else {
-					struct registry_param *p;
-					for (p = inst->params; p && strcmp(p->name, name3); p = p->next);
-					if (!p) {
-						pomlog(POMLOG_WARN "Parameter %s for instance %s.%s not found, skipping", name3, name1, name2);
-						break;
-					}
-
-					if (ptype_parse_val(p->value, value) != POM_OK)
-						pomlog(POMLOG_ERR "Unable to parse value \"%s\" for parameter %s", value, entry);
-
+					registry_set_param(inst, name3, value);
 				}
 
 				break;
