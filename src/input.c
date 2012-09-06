@@ -251,7 +251,7 @@ int input_instance_remove(struct registry_instance *ri) {
 	pom_mutex_lock(&i->lock);
 	int running = i->running;
 	pom_mutex_unlock(&i->lock);
-	if (running && registry_set_param_value(i->reg_param_running, "0") != POM_OK) {
+	if (running && registry_set_param(i->reg_instance, "running", "0") != POM_OK) {
 		return POM_ERR;
 	}
 
@@ -360,7 +360,7 @@ int input_instance_start_stop_handler(void *priv, struct ptype *run) {
 
 int input_stop(struct input *i) {
 
-	return registry_set_param_value(i->reg_param_running, "no");
+	return registry_set_param(i->reg_instance, "running", "no");
 }
 
 int input_stop_all() {
@@ -396,7 +396,7 @@ void *input_process_thread(void *param) {
 		if (i->reg->info->read(i) != POM_OK) {
 			// This will update the value of i->running
 			pomlog(POMLOG_ERR "Error while reading from input %s", i->name);
-			registry_set_param_value(i->reg_param_running, "0");
+			registry_set_param(i->reg_instance, "running" , "0");
 		}
 		pom_mutex_lock(&i->lock);
 
