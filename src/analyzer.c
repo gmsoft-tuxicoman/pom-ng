@@ -641,6 +641,16 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 						data_cleanup_table(pload->data, pload_analyzer->data_reg);
 						pload->data = NULL;
 					}
+				} else if (pload->state == analyzer_pload_buffer_state_partial) {
+					// The analyzer need more data
+					if (!pload->buff_size) {
+						pload->buff = NULL;
+						pload->buff_pos = 0;
+						return analyzer_pload_buffer_append_to_buff(pload, data, size);
+					} else {
+						// We already appended the data
+						return POM_OK;
+					}
 				}
 
 			} else {

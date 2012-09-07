@@ -351,8 +351,8 @@ int main(int argc, char *argv[]) {
 	packet_buffer_pool_cleanup();
 	addon_cleanup();
 	input_cleanup();
-	xmlrpcsrv_cleanup();
 	httpd_cleanup();
+	xmlrpcsrv_cleanup();
 	output_cleanup();
 	analyzer_cleanup();
 	proto_cleanup();

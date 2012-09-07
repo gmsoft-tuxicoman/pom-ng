@@ -167,11 +167,11 @@ int proto_process_listeners(struct packet *p, struct proto_process_stack *s, uns
 	}
 
 	// Process payload listeners
-	if (s[stack_index - 1].proto) {
-		for (l = s[stack_index - 1].proto->payload_listeners; l; l = l->next) {
+	if (s[stack_index + 1].plen) {
+		for (l = proto->payload_listeners; l; l = l->next) {
 			if (l->filter && !filter_proto_match(s, l->filter))
 				continue;
-			if (l->process(l->object, p, s, stack_index) != POM_OK) {
+			if (l->process(l->object, p, s, stack_index + 1) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning payload listener failed");
 				// FIXME remove listener from the list ?
 			}

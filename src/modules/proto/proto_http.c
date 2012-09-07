@@ -349,7 +349,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				break;
 			}
 
-			case HTTP_STATE_BODY:
+			case HTTP_STATE_BODY: {
 				if (priv->client_direction == POM_DIR_REVERSE(s->direction) && priv->info[s->direction].content_pos == 0) {
 					// If it was a HEAD request, we might think there is some payload
 					// while there actually isn't any. Check for that
@@ -447,13 +447,14 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					packet_stream_parser_get_remaining(parser, &s_next->pload, &s_next->plen);
 
 					unsigned int pload_remaining = priv->info[s->direction].content_len - priv->info[s->direction].content_pos;
-					if (pload_remaining < s_next->plen) {
+					if ((priv->info[s->direction].flags & HTTP_FLAG_HAVE_CLEN) && (pload_remaining < s_next->plen)) {
 						if (packet_stream_parser_skip_bytes(parser, pload_remaining) != POM_OK) {
 							pomlog(POMLOG_ERR "Error while skipping %u bytes from the stream", pload_remaining);
 							return PROTO_ERR;
 						}
 						s_next->plen = pload_remaining;
 						priv->info[s->direction].content_pos = priv->info[s->direction].content_pos;
+						debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
 
 						// Do the post processing
 						if (proto_http_post_process(proto, p, stack, stack_index) != POM_OK)
@@ -461,14 +462,12 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 					} else {
 						packet_stream_parser_empty(parser);
 						priv->info[s->direction].content_pos += s_next->plen;
+						debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
+						return POM_OK;
 					}
 				}
-
-				debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
-
-				if (!s_next->plen)
-					return PROTO_OK;
-
+				break;
+			}
 		}
 	}
 
