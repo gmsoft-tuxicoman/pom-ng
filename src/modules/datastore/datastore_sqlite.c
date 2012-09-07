@@ -151,7 +151,8 @@ static int datastore_sqlite_connect(struct datastore_connection *dc) {
 	if (sqlite3_open_v2(dbfile, &cpriv->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL)) {
 		pomlog(POMLOG_ERR "Connection to database %s failed : %s", dbfile, sqlite3_errmsg(cpriv->db));
 		if (cpriv->db)
-			sqlite3_close(cpriv->db);
+			if (sqlite3_close(cpriv->db) != SQLITE_OK)
+				pomlog(POMLOG_WARN "Warning, sqlite3_close() failed.");
 		free(cpriv);
 		return POM_ERR;
 
@@ -172,7 +173,8 @@ static int datastore_sqlite_disconnect(struct datastore_connection *dc) {
 
 	struct datastore_sqlite_connection_priv *cpriv = dc->priv;
 
-	sqlite3_close(cpriv->db);
+	if (sqlite3_close(cpriv->db) != SQLITE_OK)
+		pomlog(POMLOG_WARN "Warning, sqlite3_close() failed.");
 	free(cpriv);
 	pomlog("Connection to the database closed");
 
@@ -400,6 +402,13 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 	struct datastore_sqlite_connection_priv *cpriv = dsq->con->priv;
 	struct datavalue_condition *qc = dsq->cond;
 	struct datavalue_read_order *qro = dsq->read_order;
+
+	if (qpriv->read_stmt)
+		sqlite3_finalize(qpriv->read_stmt);
+	if (qpriv->write_stmt)
+		sqlite3_finalize(qpriv->write_stmt);
+	if (qpriv->delete_stmt)
+		sqlite3_finalize(qpriv->delete_stmt);
 
 
 	if (qc) {
