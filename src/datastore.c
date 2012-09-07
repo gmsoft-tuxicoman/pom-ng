@@ -1104,6 +1104,9 @@ int datastore_dataset_query_cleanup(struct dataset_query *dsq) {
 		free(dsq->cond);
 	}
 
+	if (dsq->read_order)
+		free(dsq->read_order);
+
 	pom_mutex_lock(&dsq->ds->dstore->lock);
 	dsq->ds->refcount--;
 	pom_mutex_unlock(&dsq->ds->dstore->lock);
