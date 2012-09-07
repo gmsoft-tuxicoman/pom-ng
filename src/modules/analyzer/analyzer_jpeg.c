@@ -102,8 +102,14 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 		memset(priv, 0, sizeof(struct analyzer_jpeg_pload_priv));
 		
 		// Setup error handler
-		struct jpeg_error_mgr jerr;
-		priv->cinfo.err = jpeg_std_error(&jerr);
+		struct jpeg_error_mgr *jerr = malloc(sizeof(struct jpeg_error_mgr));
+		if (!jerr) {
+			free(priv);
+			pom_oom(sizeof(struct jpeg_error_mgr));
+			return POM_ERR;
+		}
+		memset(jerr, 0, sizeof(struct jpeg_error_mgr));
+		priv->cinfo.err = jpeg_std_error(jerr);
 		priv->cinfo.err->error_exit = analyzer_jpeg_lib_error_exit;
 
 		// Allocate the decompressor
@@ -115,6 +121,7 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 		
 		struct jpeg_source_mgr *src = malloc(sizeof(struct jpeg_source_mgr));
 		if (!src) {
+			free(priv->cinfo.err);
 			pom_oom(sizeof(struct jpeg_source_mgr));
 			jpeg_destroy_decompress(&priv->cinfo);
 			free(priv);
@@ -171,6 +178,7 @@ static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyze
 	if (!priv)
 		return POM_OK;
 
+	free(priv->cinfo.err);
 	free(priv->cinfo.src);
 	jpeg_destroy_decompress(&priv->cinfo);
 	free(priv);
@@ -196,8 +204,12 @@ static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_b
 	if (num_bytes <= 0)
 		return;
 
+	struct analyzer_pload_buffer *pload = cinfo->client_data;
+	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+
 	// Find out remaining bytes
 	if (num_bytes >= cinfo->src->bytes_in_buffer) {
+		priv->jpeg_lib_pos += num_bytes - cinfo->src->bytes_in_buffer;
 		cinfo->src->bytes_in_buffer = 0;
 	} else {
 		cinfo->src->next_input_byte += num_bytes;
