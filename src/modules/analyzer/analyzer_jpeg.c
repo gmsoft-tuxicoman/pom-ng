@@ -160,6 +160,7 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 			res = POM_ERR;
 		}
 
+		free(priv->cinfo.err);
 		free(priv->cinfo.src);
 		jpeg_destroy_decompress(&priv->cinfo);
 		free(priv);
