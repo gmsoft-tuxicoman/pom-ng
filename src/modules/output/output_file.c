@@ -53,6 +53,7 @@ int output_file_mod_register(struct mod_reg *mod) {
 	output_file.mod = mod;
 
 	output_file.init = output_file_init;
+	output_file.open = output_file_open;
 	output_file.close = output_file_close;
 	output_file.cleanup = output_file_cleanup;
 
@@ -68,7 +69,6 @@ int output_file_mod_unregister() {
 	return res;
 }
 
-
 int output_file_init(struct output *o) {
 
 	struct output_file_priv *priv = malloc(sizeof(struct output_file_priv));
@@ -80,30 +80,26 @@ int output_file_init(struct output *o) {
 	o->priv = priv;
 
 	priv->p_path = ptype_alloc("string");
-	priv->p_filter = ptype_alloc("string");
+//	priv->p_filter = ptype_alloc("string");
 
-	if (!priv->p_path || !priv->p_filter)
+//	if (!priv->p_path || !priv->p_filter)
+	if (!priv->p_path)
 		goto err;
 
 	struct registry_param *p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
-
+/*
 	p = registry_new_param("filter", "", priv->p_filter, "File filter", 0);
 	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
 		goto err;
-
-
-	static struct analyzer_pload_output_reg output_reg;
-	memset(&output_reg, 0, sizeof(struct analyzer_pload_output_reg));
-	output_reg.open = output_file_pload_open;
-	output_reg.write = output_file_pload_write;
-	output_reg.close = output_file_pload_close;
-
-	if (analyzer_pload_output_register(o, &output_reg) != POM_OK)
-		goto err;
+*/
 
 	
+	priv->output_reg.open = output_file_pload_open;
+	priv->output_reg.write = output_file_pload_write;
+	priv->output_reg.close = output_file_pload_close;
+
 	return POM_OK;
 err:
 	output_file_cleanup(o);
@@ -117,8 +113,8 @@ int output_file_cleanup(struct output *o) {
 	if (priv) {
 		if (priv->p_path)
 			ptype_cleanup(priv->p_path);
-		if (priv->p_filter)
-			ptype_cleanup(priv->p_filter);
+//		if (priv->p_filter)
+//			ptype_cleanup(priv->p_filter);
 		free(priv);
 
 	}
@@ -128,12 +124,21 @@ int output_file_cleanup(struct output *o) {
 	return POM_OK;
 }
 
+int output_file_open(struct output *o) {
+
+	struct output_file_priv *priv = o->priv;
+
+	return analyzer_pload_output_register(o, &priv->output_reg);
+
+}
 
 int output_file_close(struct output *o) {
 
-	//struct output_file_priv *priv = o->priv;
+	if (analyzer_pload_output_unregister(o) != POM_OK)
+		return POM_ERR;
 
 	// TODO close all the files
+	
 
 	return POM_OK;
 }

@@ -28,7 +28,9 @@
 struct output_file_priv {
 
 	struct ptype *p_path;
-	struct ptype *p_filter;
+	//struct ptype *p_filter;
+	
+	struct analyzer_pload_output_reg output_reg;
 
 };
 
@@ -43,6 +45,7 @@ int output_file_mod_unregister();
 
 int output_file_init(struct output *o);
 int output_file_cleanup(struct output *o);
+int output_file_open(struct output *o);
 int output_file_close(struct output *o);
 
 int output_file_pload_open(struct analyzer_pload_output_list *po);
