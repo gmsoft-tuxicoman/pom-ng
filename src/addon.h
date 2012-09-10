@@ -34,7 +34,7 @@
 #define ADDON_POM_LIB "pom"
 #define ADDON_REG_REGISTRY_KEY "addon_reg"
 
-struct addon_reg {
+struct addon {
 
 	char *name;
 	char *filename;
@@ -42,7 +42,7 @@ struct addon_reg {
 	struct mod_reg_info mod_info;
 	struct mod_reg *mod;
 
-	struct addon_reg *prev, *next;
+	struct addon *prev, *next;
 };
 
 int addon_init();
@@ -52,7 +52,7 @@ int addon_cleanup();
 
 int addon_error(lua_State *L);
 
-struct addon_reg *addon_get_reg(lua_State *L);
+struct addon *addon_get_from_registry(lua_State *L);
 
 
 #define addon_oom(L, x) luaL_error((L), "Not enough memory to allocate %u bytes", (x))

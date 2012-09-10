@@ -48,7 +48,7 @@ int addon_output_lua_register(lua_State *L) {
 
 int addon_output_register(lua_State *L) {
 
-	struct addon_reg *reg = addon_get_reg(L);
+	struct addon *addon = addon_get_from_registry(L);
 
 	// Get the name of the output
 	lua_pushstring(L, "name");
@@ -68,7 +68,7 @@ int addon_output_register(lua_State *L) {
 	lua_setmetatable(L, -2);
 
 	output_info->api_ver = OUTPUT_API_VER;
-	output_info->mod = reg->mod;
+	output_info->mod = addon->mod;
 	output_info->init = addon_output_init;
 	output_info->cleanup = addon_output_cleanup;
 

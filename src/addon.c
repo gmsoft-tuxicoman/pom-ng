@@ -30,7 +30,7 @@
 
 
 static struct registry_class *addon_registry_class = NULL;
-static struct addon_reg *addon_reg_head = NULL;
+static struct addon *addon_head = NULL;
 
 int addon_init() {
 
@@ -47,7 +47,6 @@ int addon_init() {
 		goto err;
 	}
 
-	struct addon_reg *reg = NULL;
 	struct dirent tmp, *dp;
 	while (1) {
 		if (readdir_r(d, &tmp, &dp) < 0) {
@@ -66,46 +65,57 @@ int addon_init() {
 		if (!strcmp(dp->d_name + name_len, ADDON_EXT)) {
 			pomlog(POMLOG_DEBUG "Loading %s", dp->d_name);
 
-			struct addon_reg *reg = malloc(sizeof(struct addon_reg));
-			if (!reg) {
-				pom_oom(sizeof(struct addon_reg));
+			struct addon *addon = malloc(sizeof(struct addon));
+			if (!addon) {
+				pom_oom(sizeof(struct addon));
 				goto err;
 			}
-			memset(reg, 0, sizeof(struct addon_reg));
+			memset(addon, 0, sizeof(struct addon));
 
-			reg->name = strdup(dp->d_name);
+			addon->name = strdup(dp->d_name);
+			if (!addon->name) {
+				free(addon);
+				pom_oom(strlen(dp->d_name) + 1);
+				goto err;
+			}
 
-			reg->filename = malloc(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
-			if (!reg->filename) {
+			addon->filename = malloc(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
+			if (!addon->filename) {
+				free(addon->name);
+				free(addon);
 				pom_oom(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
 				goto err;
 			}
-			strcpy(reg->filename, ADDON_DIR);
-			strcat(reg->filename, dp->d_name);
+			strcpy(addon->filename, ADDON_DIR);
+			strcat(addon->filename, dp->d_name);
 
-			reg->L = addon_create_state(reg->filename);
-			if (!reg->L)
+			addon->L = addon_create_state(addon->filename);
+			if (!addon->L) {
+				free(addon->filename);
+				free(addon->name);
+				free(addon);
 				goto err;
+			}
 
 			// TODO fetch dependencies from a global variable
 
-			reg->mod_info.api_ver = MOD_API_VER;
-			reg->mod_info.register_func = addon_mod_register;
+			addon->mod_info.api_ver = MOD_API_VER;
+			addon->mod_info.register_func = addon_mod_register;
 
-			struct mod_reg *mod = mod_register(dp->d_name, &reg->mod_info, reg);
+			struct mod_reg *mod = mod_register(dp->d_name, &addon->mod_info, addon);
 			if (!mod) {
-				if (reg->prev)
-					reg->prev->next = reg->next;
-				if (reg->next)
-					reg->next->prev = reg->prev;
+				if (addon->prev)
+					addon->prev->next = addon->next;
+				if (addon->next)
+					addon->next->prev = addon->prev;
 
-				if (addon_reg_head == reg)
-					addon_reg_head = reg->next;
+				if (addon_head == addon)
+					addon_head = addon->next;
 				
-				lua_close(reg->L);
-				free(reg->filename);
-				free(reg->name);
-				free(reg);
+				lua_close(addon->L);
+				free(addon->filename);
+				free(addon->name);
+				free(addon);
 				pomlog("Failed to load addon \"%s\"", dp->d_name);
 			} else {
 				pomlog("Loaded addon : %s", dp->d_name);
@@ -120,16 +130,6 @@ int addon_init() {
 
 err:
 
-	if (reg) {
-		if (reg->name)
-			free(reg->name);
-		if (reg->filename)
-			free(reg->filename);
-		if (reg->L)
-			lua_close(reg->L);
-		free(reg);
-	}
-
 	if (d)
 		closedir(d);
 
@@ -140,13 +140,13 @@ err:
 
 int addon_mod_register(struct mod_reg *mod) {
 
-	struct addon_reg *reg = mod->priv;
-	reg->mod = mod;
+	struct addon *addon = mod->priv;
+	addon->mod = mod;
 
-	char *dot = strrchr(reg->name, '.');
-	size_t name_len = strlen(reg->name);
+	char *dot = strrchr(addon->name, '.');
+	size_t name_len = strlen(addon->name);
 	if (dot)
-		name_len = dot - reg->name;
+		name_len = dot - addon->name;
 	
 	size_t reg_func_len = name_len + strlen(ADDON_REGISTER_FUNC_SUFFIX) + 1;
 	char *reg_func_name = malloc(reg_func_len);
@@ -157,30 +157,30 @@ int addon_mod_register(struct mod_reg *mod) {
 	}
 
 	memset(reg_func_name, 0, reg_func_len);
-	memcpy(reg_func_name, reg->name, name_len);
+	memcpy(reg_func_name, addon->name, name_len);
 	strcat(reg_func_name, ADDON_REGISTER_FUNC_SUFFIX);
 
 	// Add the addon_reg structure in the registry
-	lua_pushstring(reg->L, ADDON_REG_REGISTRY_KEY);
-	lua_pushlightuserdata(reg->L, reg);
-	lua_settable(reg->L, LUA_REGISTRYINDEX);
+	lua_pushstring(addon->L, ADDON_REG_REGISTRY_KEY);
+	lua_pushlightuserdata(addon->L, addon);
+	lua_settable(addon->L, LUA_REGISTRYINDEX);
 
 	// Call the register function
-	lua_getglobal(reg->L, reg_func_name);
-	if (!lua_isfunction(reg->L, -1)) {
-		pomlog(POMLOG_ERR "Failed load addon %s. Register function %s() not found.", reg->name, reg_func_name);
+	lua_getglobal(addon->L, reg_func_name);
+	if (!lua_isfunction(addon->L, -1)) {
+		pomlog(POMLOG_ERR "Failed load addon %s. Register function %s() not found.", addon->name, reg_func_name);
 		free(reg_func_name);
 		return POM_ERR;
 	}
 	free(reg_func_name);
 
-	lua_pcall(reg->L, 0, 0, 0);
+	lua_pcall(addon->L, 0, 0, 0);
 	
 
-	reg->next = addon_reg_head;
-	if (reg->next)
-		reg->next->prev = reg;
-	addon_reg_head = reg;
+	addon->next = addon_head;
+	if (addon->next)
+		addon->next->prev = addon;
+	addon_head = addon;
 
 	return POM_OK;
 
@@ -233,9 +233,9 @@ err:
 int addon_cleanup() {
 
 
-	while (addon_reg_head) {
-		struct addon_reg *tmp = addon_reg_head;
-		addon_reg_head = tmp->next;
+	while (addon_head) {
+		struct addon *tmp = addon_head;
+		addon_head = tmp->next;
 
 		mod_unload(tmp->mod);
 
@@ -260,11 +260,10 @@ int addon_error(lua_State *L) {
 	return 0;
 }
 
-struct addon_reg *addon_get_reg(lua_State *L) {
+struct addon *addon_get_from_registry(lua_State *L) {
 
 	lua_pushstring(L, ADDON_REG_REGISTRY_KEY);
 	lua_gettable(L, LUA_REGISTRYINDEX);
-	struct addon_reg *reg = lua_touserdata(L, -1);
-	pomlog(POMLOG_DEBUG "Got addon_reg from %s", reg->name);
-	return reg;
+	struct addon *tmp = lua_touserdata(L, -1);
+	return tmp;
 }
