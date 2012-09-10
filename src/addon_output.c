@@ -80,17 +80,6 @@ int addon_output_register(lua_State *L) {
 	return 0;
 }
 
-int addon_output_unregister(lua_State *L) {
-	
-	struct addon_reg *reg = addon_get_reg(L);
-	
-	mod_refcount_dec(reg->mod);
-	
-	return 1;
-}
-
-
-
 int addon_output_init(struct output *o) {
 	return POM_OK;
 }
