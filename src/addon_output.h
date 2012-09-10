@@ -19,42 +19,35 @@
  */
 
 
-#ifndef __ADDON_H__
-#define __ADDON_H__
+#ifndef __ADDON_OUTPUT_H__
+#define __ADDON_OUTPUT_H__
 
-#include <lua.h>
-#include <lauxlib.h>
-#include "mod.h"
+#include <output.h>
 
-#define ADDON_REGISTRY "addon"
+#define ADDON_OUTPUT_REG_METATABLE "addon.output_reg"
+#define ADDON_OUTPUT_METATABLE "addon.output"
 
-#define ADDON_DIR DATAROOT "/addons/"
-#define ADDON_EXT ".lua"
-#define ADDON_REGISTER_FUNC_SUFFIX "_register"
-#define ADDON_POM_LIB "pom"
-#define ADDON_REG_REGISTRY_KEY "addon_reg"
+struct addon_output_reg {
 
-struct addon_reg {
+	struct output_reg_info reg_info;
 
-	char *name;
-	char *filename;
-	lua_State *L;
-	struct mod_reg_info mod_info;
-	struct mod_reg *mod;
-
-	struct addon_reg *prev, *next;
+	struct addon_output_reg *prev, *next;
 };
 
-int addon_init();
-int addon_mod_register(struct mod_reg *mod);
-lua_State *addon_create_state(char *file);
-int addon_cleanup();
+struct addon_output {
 
-int addon_error(lua_State *L);
+	struct addon_output_reg *reg_info;
 
-struct addon_reg *addon_get_reg(lua_State *L);
+	struct addon_output *prev, *next;
+};
 
+int addon_output_lua_register(lua_State *L);
+int addon_output_register(lua_State *L);
 
-#define addon_oom(L, x) luaL_error((L), "Not enough memory to allocate %u bytes", (x))
+int addon_output_init(struct output *o);
+int addon_output_cleanup(struct output *o);
+
 
 #endif
+
+

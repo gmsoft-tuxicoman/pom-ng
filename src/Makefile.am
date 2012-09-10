@@ -19,7 +19,7 @@
 include $(top_srcdir)/Makefile.common
 
 XMLRPC_SRC = xmlrpcsrv.c xmlrpcsrv.h xmlrpccmd.c xmlrpccmd.h xmlrpccmd_registry.c xmlrpccmd_registry.h
-ADDON_SRC = addon.c addon.h addon_event.c addon_event.h
+ADDON_SRC = addon.c addon.h addon_event.c addon_event.h addon_output.c addon_output.h
 CORE_SRC = httpd.c httpd.h pomlog.c pomlog.h mod.c mod.h
 
 bin_PROGRAMS = pom-ng
