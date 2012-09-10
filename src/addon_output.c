@@ -21,9 +21,9 @@
 #include "addon.h"
 #include "addon_output.h"
 
-struct addon_output_reg *addon_output_reg_head = NULL;
+struct addon_output *addon_output_head = NULL;
 
-static int addon_output_reg_gc(lua_State *L) {
+static int addon_output_gc(lua_State *L) {
 	struct output_reg_info *output_reg = lua_touserdata(L, 1);
 	if (output_reg)
 		free(output_reg->name);
@@ -36,9 +36,9 @@ int addon_output_lua_register(lua_State *L) {
 		{ 0 }
 	};
 
-	luaL_newmetatable(L, ADDON_OUTPUT_REG_METATABLE);
+	luaL_newmetatable(L, ADDON_OUTPUT_METATABLE);
 	lua_pushstring(L, "__gc");
-	lua_pushcfunction(L, addon_output_reg_gc);
+	lua_pushcfunction(L, addon_output_gc);
 	lua_settable(L, -3);
 
 	luaL_register(L, ADDON_POM_LIB, l);
@@ -64,7 +64,7 @@ int addon_output_register(lua_State *L) {
 	if (!output_info->name)
 		addon_oom(L, strlen(name) + 1);
 
-	luaL_getmetatable(L, ADDON_OUTPUT_REG_METATABLE);
+	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE);
 	lua_setmetatable(L, -2);
 
 	output_info->api_ver = OUTPUT_API_VER;
