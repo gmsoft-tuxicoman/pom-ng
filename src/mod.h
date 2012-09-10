@@ -42,7 +42,7 @@ struct mod_reg {
 	pthread_mutex_t lock;
 	char *name;
 	char *filename;
-	void *dl_handle;
+	void *priv; // Either dl_handle or private data if filename is NULL
 	struct mod_reg *next, *prev;
 
 };
@@ -51,6 +51,8 @@ int mod_load_all();
 
 struct mod_reg *mod_get_by_name(char *name);
 struct mod_reg *mod_load(char *name);
+struct mod_reg *mod_register(const char *name, struct mod_reg_info *reg_info, void *priv);
+int mod_load_dependencies(const char *dependencies);
 int mod_unload(struct mod_reg *mod);
 int mod_unload_all();
 

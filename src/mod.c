@@ -162,35 +162,9 @@ struct mod_reg *mod_load(char *name) {
 		return NULL;
 	}
 
-	// Check dependencies
-	if (reg_info->dependencies) {
-		char *dupped_str = strdup(reg_info->dependencies);
-		char *str = dupped_str;
-		if (!str) {
-			dlclose(dl_handle);
-			pom_oom(strlen(reg_info->dependencies));
-			return NULL;
-		}
-		char *token, *saveptr;
-		for (; ; str = NULL) {
-			token = strtok_r(str, ", ", &saveptr);
-
-			if (!token)
-				break;
-
-			for (tmp = mod_reg_head; tmp && strcmp(token, tmp->name); tmp = tmp->next);
-			if (tmp) {
-				// Already loaded, skip
-				continue;
-			}
-			if (!mod_load(token)) {
-				dlclose(dl_handle);
-				pomlog(POMLOG_ERR "Failed to load dependency %s for module %s", token, name);
-				free(dupped_str);
-				return NULL;
-			}
-		}
-		free(dupped_str);
+	if (mod_load_dependencies(reg_info->dependencies) != POM_OK) {
+		dlclose(dl_handle);
+		return NULL;
 	}
 
 	struct mod_reg *reg = malloc(sizeof(struct mod_reg));
@@ -202,7 +176,7 @@ struct mod_reg *mod_load(char *name) {
 
 	memset(reg, 0, sizeof(struct mod_reg));
 
-	reg->dl_handle = dl_handle;
+	reg->priv = dl_handle;
 	reg->filename = strdup(filename);
 	reg->name = strdup(name);
 	reg->info = reg_info;
@@ -246,6 +220,100 @@ struct mod_reg *mod_load(char *name) {
 	}
 
 	pom_mutex_unlock(&reg->lock);
+
+	return reg;
+
+}
+
+int mod_load_dependencies(const char *dependencies) {
+
+	if (!dependencies)
+		return POM_OK;
+
+	char *dupped_str = strdup(dependencies);
+	char *str = dupped_str;
+	if (!str) {
+		pom_oom(strlen(dependencies));
+		return POM_ERR;
+	}
+	char *token, *saveptr;
+	for (; ; str = NULL) {
+		token = strtok_r(str, ", ", &saveptr);
+
+		if (!token)
+			break;
+		struct mod_reg *tmp;
+		for (tmp = mod_reg_head; tmp && strcmp(token, tmp->name); tmp = tmp->next);
+		if (tmp) {
+			// Already loaded, skip
+			continue;
+		}
+		if (!mod_load(token)) {
+			pomlog(POMLOG_ERR "Failed to load dependency %s", token);
+			free(dupped_str);
+			return POM_ERR;
+		}
+	}
+	free(dupped_str);
+
+	return POM_OK;
+}
+
+struct mod_reg *mod_register(const char *name, struct mod_reg_info *reg_info, void *priv) {
+
+	if (mod_load_dependencies(reg_info->dependencies) != POM_OK)
+		return NULL;
+
+	struct mod_reg *reg = malloc(sizeof(struct mod_reg));
+	if (!reg) {
+		pom_oom(sizeof(struct mod_reg));
+		return NULL;
+	}
+	memset(reg, 0, sizeof(struct mod_reg));
+
+	reg->name = strdup(name);
+	reg->info = reg_info;
+
+	if (!reg->name || pthread_mutex_init(&reg->lock, NULL)) {
+		if (reg->name)
+			free(reg->name);
+		free(reg);
+
+		pomlog(POMLOG_ERR "Not enough memory to allocate name and filename of struct mod_reg or failed to initialize the lock");
+
+		return NULL;
+	}
+
+
+	pomlog(POMLOG_DEBUG "Module %s loaded, registering components ...", reg->name);
+	reg->priv = priv;
+
+	if (reg->info->register_func(reg) != POM_OK) {
+		pomlog(POMLOG_WARN "Error while registering the components of module %s", reg->name);
+		mod_unload(reg);
+		return NULL;
+	}
+
+	pom_mutex_lock(&reg->lock);
+	if (!reg->refcount) {
+		pom_mutex_unlock(&reg->lock);
+		pthread_mutex_destroy(&reg->lock);
+		pomlog(POMLOG_WARN "Module %s did not register anything", reg->name);
+		free(reg->name);
+		free(reg);
+		return NULL;
+	}
+
+	pom_mutex_unlock(&reg->lock);
+
+	pom_mutex_lock(&mod_reg_lock);
+
+	reg->next = mod_reg_head;
+	mod_reg_head = reg;
+	if (reg->next)
+		reg->next->prev = reg;
+
+	pom_mutex_unlock(&mod_reg_lock);
 
 	return reg;
 
@@ -309,12 +377,13 @@ int mod_unload(struct mod_reg *mod) {
 
 	pom_mutex_unlock(&mod_reg_lock);
 
-	if (dlclose(mod->dl_handle))
+	if (mod->filename && dlclose(mod->priv))
 		pomlog(POMLOG_WARN "Error while closing module %s", mod->name);
 
 	pomlog(POMLOG_DEBUG "Module %s unloaded", mod->name);
 
-	free(mod->filename);
+	if (mod->filename)
+		free(mod->filename);
 	free(mod->name);
 
 	free(mod);
@@ -359,9 +428,9 @@ int mod_unload_all() {
 
 #ifdef RUNNING_ON_VALGRIND
 		// Do not unload modules when running into valgrind so the backtraces are complete
-		if (!RUNNING_ON_VALGRIND && dlclose(mod->dl_handle))
+		if (!RUNNING_ON_VALGRIND && mod->filename && dlclose(mod->priv))
 #else
-		if (dlclose(mod->dl_handle))
+		if (dlclose(mod->priv))
 #endif
 			pomlog(POMLOG_WARN "Error while closing module %s", mod->name);
 
