@@ -51,7 +51,7 @@ int addon_output_register(lua_State *L) {
 	struct addon *addon = addon_get_from_registry(L);
 
 	// Get the name of the output
-	lua_pushstring(L, "name");
+	lua_pushliteral(L, "name");
 	lua_gettable(L, 1);
 	const char *name = lua_tostring(L, -1);
 
@@ -70,10 +70,17 @@ int addon_output_register(lua_State *L) {
 	output_info->api_ver = OUTPUT_API_VER;
 	output_info->mod = addon->mod;
 	output_info->init = addon_output_init;
+	output_info->open = addon_output_open;
+	output_info->close = addon_output_close;
 	output_info->cleanup = addon_output_cleanup;
 
 	if (output_register(output_info) != POM_OK)
 		luaL_error(L, "Error while registering addon input %s", name);
+
+	// Save our template in the registry
+	lua_pushlightuserdata(L, output_info);
+	lua_pushvalue(L, 1);
+	lua_settable(L, LUA_REGISTRYINDEX);
 
 	pomlog(POMLOG_DEBUG "Registered addon output %s", name);
 
@@ -81,9 +88,75 @@ int addon_output_register(lua_State *L) {
 }
 
 int addon_output_init(struct output *o) {
+
+	struct addon *addon = o->info->reg_info->mod->priv;
+
+	struct addon_output_priv *p = malloc(sizeof(struct addon_output_priv));
+	if (!p) {
+		pom_oom(sizeof(struct addon_output_priv));
+		return POM_ERR;
+	}
+	memset(p, 0, sizeof(struct addon_output_priv));
+
+	o->priv = p;
+
+	p->L = lua_newthread(addon->L);
+
+	if (!p->L) {
+		pomlog(POMLOG_ERR "Error while creating new lua state for output %s", o->info->reg_info->name);
+		free(p);
+		return POM_ERR;
+	}
+
+	// Create a new global table for this thread to avoid memory corruption
+	lua_newtable(p->L);
+	// Create a new metatable to 'inherit' the main thread global
+	lua_newtable(p->L);
+	lua_pushliteral(p->L, "__index");
+	lua_pushvalue(p->L, LUA_GLOBALSINDEX);
+	lua_settable(p->L, -3);
+	// Set the metatable to the new global table
+	lua_setmetatable(p->L, -2);
+	// Replace the old table
+	lua_replace(p->L, LUA_GLOBALSINDEX);
+
+
+	// Create a new instance of the class
+	lua_pushlightuserdata(p->L, o);
+	lua_newtable(p->L);
+
+	// Do the inheritence
+	lua_newtable(p->L);
+	lua_pushliteral(p->L, "__index");
+	lua_pushlightuserdata(p->L, o->info->reg_info);
+	lua_gettable(p->L, LUA_REGISTRYINDEX);
+	lua_settable(p->L, -3);
+	lua_setmetatable(p->L, -2);
+
+	// Add the new instance in the registry
+	lua_settable(p->L, LUA_REGISTRYINDEX);
+	
+	pomlog(POMLOG_DEBUG "Output test created");
+
 	return POM_OK;
 }
 
 int addon_output_cleanup(struct output *o) {
+	
+	struct addon_output_priv *p = o->priv;
+	free(p);
 	return POM_OK;
 }
+
+int addon_output_open(struct output *o) {
+
+	struct addon_output_priv *p = o->priv;
+	return addon_instance_call(p->L, "open", o);
+}
+
+int addon_output_close(struct output *o) {
+
+	struct addon_output_priv *p = o->priv;
+	return addon_instance_call(p->L, "close", o);
+}
+

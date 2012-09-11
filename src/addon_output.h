@@ -44,6 +44,8 @@ int addon_output_register(lua_State *L);
 
 int addon_output_init(struct output *o);
 int addon_output_cleanup(struct output *o);
+int addon_output_open(struct output *o);
+int addon_output_close(struct output *o);
 
 
 #endif
