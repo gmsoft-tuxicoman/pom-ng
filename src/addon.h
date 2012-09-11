@@ -54,6 +54,8 @@ int addon_error(lua_State *L);
 
 struct addon *addon_get_from_registry(lua_State *L);
 
+int addon_instance_call(lua_State *L, const char *function, void *instance);
+
 
 #define addon_oom(L, x) luaL_error((L), "Not enough memory to allocate %u bytes", (x))
 

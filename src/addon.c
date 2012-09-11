@@ -165,6 +165,9 @@ int addon_mod_register(struct mod_reg *mod) {
 	lua_pushlightuserdata(addon->L, addon);
 	lua_settable(addon->L, LUA_REGISTRYINDEX);
 
+	// Add our error handler
+	lua_pushcfunction(addon->L, addon_error);
+
 	// Call the register function
 	lua_getglobal(addon->L, reg_func_name);
 	if (!lua_isfunction(addon->L, -1)) {
@@ -174,7 +177,7 @@ int addon_mod_register(struct mod_reg *mod) {
 	}
 	free(reg_func_name);
 
-	lua_pcall(addon->L, 0, 0, 0);
+	lua_pcall(addon->L, 0, 0, -2);
 	
 
 	addon->next = addon_head;
@@ -267,3 +270,27 @@ struct addon *addon_get_from_registry(lua_State *L) {
 	struct addon *tmp = lua_touserdata(L, -1);
 	return tmp;
 }
+
+int addon_instance_call(lua_State *L, const char *function, void *instance) {
+
+	// Fetch the corresponding instance
+	lua_pushlightuserdata(L, instance);
+	lua_gettable(L, LUA_REGISTRYINDEX);
+	if (!lua_istable(L, -1))
+		luaL_error(L, "Error while calling Lua function %s : instance not found", function);
+
+	// Push the error handler
+	lua_pushcfunction(L, addon_error);
+
+	// Fetch the open function
+	lua_pushstring(L, function);
+	lua_gettable(L, -3);
+
+	// Add self
+	lua_pushvalue(L, -3);
+
+	lua_pcall(L, 1, 0, -2);
+	
+	return POM_OK;
+}
+
