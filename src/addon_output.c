@@ -144,6 +144,11 @@ int addon_output_init(struct output *o) {
 int addon_output_cleanup(struct output *o) {
 	
 	struct addon_output_priv *p = o->priv;
+
+	lua_pushlightuserdata(p->L, o);
+	lua_pushnil(p->L);
+	lua_settable(p->L, LUA_REGISTRYINDEX);
+
 	free(p);
 	return POM_OK;
 }
