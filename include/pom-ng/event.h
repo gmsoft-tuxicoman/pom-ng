@@ -40,24 +40,6 @@ struct event {
 	struct data *data;
 };
 
-struct event_listener {
-	void *obj;
-	int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
-	int (*process_end) (struct event *evt, void *obj);
-
-};
-
-struct event_listener_list {
-	struct event_listener *l;
-	struct event_listener_list *prev, *next;
-};
-
-struct event_reg {
-	struct event_reg_info *info;
-	struct event_listener_list *listeners;
-	struct event_reg *prev, *next;
-};
-
 struct event_reg_info {
 	char *source_name;
 	void *source_obj;
@@ -68,6 +50,12 @@ struct event_reg_info {
 	int (*cleanup) (struct event *evt);
 };
 
+struct event_reg {
+	struct event_reg_info *info;
+	struct event_listener *listeners;
+	struct event_reg *prev, *next;
+};
+
 struct event_reg *event_register(struct event_reg_info *reg_info);
 int event_unregister(struct event_reg *evt);
 
@@ -76,7 +64,7 @@ int event_cleanup(struct event *evt);
 
 struct event_reg *event_find(char *name);
 
-int event_listener_register(struct event_reg *evt_reg, struct event_listener *listener);
+int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);
 int event_has_listener(struct event_reg *evt_reg);
 
