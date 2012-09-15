@@ -21,6 +21,7 @@
 
 #include "common.h"
 #include <pom-ng/event.h>
+#include "event.h"
 
 #if 0
 #define debug_event(x ...) pomlog(POMLOG_DEBUG x)
@@ -128,17 +129,28 @@ struct event_reg *event_find(char *name) {
 	return tmp;
 }
 
-int event_listener_register(struct event_reg *evt_reg, struct event_listener *listener) {
+int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj)) {
+
+	struct event_listener *lst;
+	for (lst = evt_reg->listeners; lst && lst->obj != obj; lst = lst->next);
+
+	if (lst) {
+		pomlog(POMLOG_ERR "Event %s is already being listened to by obj %p", evt_reg->info->name, obj);
+		return POM_ERR;
+	}
 	
-	struct event_listener_list *lst = malloc(sizeof(struct event_listener_list));
+	
+	lst = malloc(sizeof(struct event_listener));
 	if (!lst) {
-		pom_oom(sizeof(struct event_listener_list));
+		pom_oom(sizeof(struct event_listener));
 		return POM_ERR;
 
 	}
-	memset(lst, 0, sizeof(struct event_listener_list));
+	memset(lst, 0, sizeof(struct event_listener));
 	
-	lst->l = listener;
+	lst->obj = obj;
+	lst->process_begin = process_begin;
+	lst->process_end = process_end;
 	
 	lst->next = evt_reg->listeners;
 	if (lst->next)
@@ -162,8 +174,8 @@ int event_listener_register(struct event_reg *evt_reg, struct event_listener *li
 
 int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 
-	struct event_listener_list *lst;
-	for (lst = evt_reg->listeners; lst && lst->l->obj != obj; lst = lst->next);
+	struct event_listener *lst;
+	for (lst = evt_reg->listeners; lst && lst->obj != obj; lst = lst->next);
 
 	if (!lst) {
 		pomlog(POMLOG_ERR "Object %p not found in the listeners list of event %s",  obj, evt_reg->info->name);
@@ -214,10 +226,9 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 	if (stack)
 		evt->ce = stack[stack_index].ce;
 
-	struct event_listener_list *lst;
+	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
-		struct event_listener *l = lst->l;
-		if (l->process_begin && l->process_begin(evt, l->obj, stack, stack_index) != POM_OK) {
+		if (lst->process_begin && lst->process_begin(evt, lst->obj, stack, stack_index) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing begining of event %s", evt->reg->info->name);
 		}
 	}
@@ -243,10 +254,9 @@ int event_process_end(struct event *evt) {
 
 	event_refcount_inc(evt);
 
-	struct event_listener_list *lst;
+	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
-		struct event_listener *l = lst->l;
-		if (l->process_end && l->process_end(evt, l->obj) != POM_OK) {
+		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}
 	}

@@ -41,7 +41,6 @@ struct output_log_txt_file {
 
 struct output_log_txt_event {
 	struct event_reg *evt;
-	struct event_listener listener;
 	struct output_log_txt_priv *output_priv;
 
 	char *format;

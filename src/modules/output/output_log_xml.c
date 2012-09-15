@@ -116,12 +116,8 @@ int output_log_xml_open(struct output *o) {
 		return POM_ERR;
 	}
 
-	// Listen on the right event
-	static struct event_listener listener;
-	listener.obj = o;
-	listener.process_end = output_log_xml_process;
-
-	if (event_listener_register(priv->evt, &listener) != POM_OK)
+	// Listen to the right event
+	if (event_listener_register(priv->evt, o, NULL, output_log_xml_process) != POM_OK)
 		goto err;
 
 	return POM_OK;

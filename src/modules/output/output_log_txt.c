@@ -256,11 +256,8 @@ int output_log_txt_open(struct output *o) {
 			goto err;
 		}
 		
-		// Register our listener to the event
-		log_evt->listener.obj = log_evt;
-		log_evt->listener.process_end = output_log_txt_process;
-
-		if (event_listener_register(evt, &log_evt->listener) != POM_OK)
+		// Listen to the event
+		if (event_listener_register(evt, log_evt, NULL, output_log_txt_process) != POM_OK)
 			goto err;
 
 		// Parse the format of this event
