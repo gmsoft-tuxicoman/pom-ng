@@ -62,7 +62,7 @@ int event_unregister(struct event_reg *evt);
 struct event *event_alloc(struct event_reg *evt_reg);
 int event_cleanup(struct event *evt);
 
-struct event_reg *event_find(char *name);
+struct event_reg *event_find(const char *name);
 
 int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);

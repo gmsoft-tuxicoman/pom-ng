@@ -122,7 +122,7 @@ int event_cleanup(struct event *evt) {
 	return POM_OK;
 }
 
-struct event_reg *event_find(char *name) {
+struct event_reg *event_find(const char *name) {
 
 	struct event_reg *tmp;
 	for (tmp = event_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
