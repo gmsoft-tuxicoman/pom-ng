@@ -300,7 +300,7 @@ int addon_get_instance(struct addon_instance_priv *p) {
 	return POM_OK;
 }
 
-int addon_call(lua_State *L, const char *function) {
+int addon_call(lua_State *L, const char *function, int nargs) {
 	
 	// We assume the instance table is at the top of the stack
 
@@ -314,7 +314,13 @@ int addon_call(lua_State *L, const char *function) {
 	// Add self
 	lua_pushvalue(L, -3);
 
-	switch (lua_pcall(L, 1, 0, -3)) {
+	// Put the arguments in front
+	if (nargs) {
+		lua_insert(L, -(nargs + 1));
+		lua_insert(L, -(nargs + 2));
+	}
+
+	switch (lua_pcall(L, nargs + 1, 0, -3)) {
 		case LUA_ERRRUN:
 			pomlog(POMLOG_ERR "Error while calling function \"%s\"", function);
 			return POM_ERR;

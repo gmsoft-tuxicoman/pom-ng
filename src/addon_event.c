@@ -36,7 +36,7 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 		return POM_ERR;
 	}
 
-	return addon_call(p->L, "begin");
+	return addon_call(p->L, "begin", 0);
 }
 
 int addon_event_process_end(struct event *evt, void *obj) {
@@ -54,5 +54,5 @@ int addon_event_process_end(struct event *evt, void *obj) {
 		return POM_ERR;
 	}
 
-	return addon_call(p->L, "end");
+	return addon_call(p->L, "end", 0);
 }

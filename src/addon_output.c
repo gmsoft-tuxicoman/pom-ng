@@ -299,7 +299,7 @@ int addon_output_open(struct output *o) {
 	struct addon_instance_priv *p = o->priv;
 	if (addon_get_instance(p) != POM_OK)
 		return POM_ERR;
-	return addon_call(p->L, "open");
+	return addon_call(p->L, "open", 0);
 }
 
 int addon_output_close(struct output *o) {
@@ -307,6 +307,6 @@ int addon_output_close(struct output *o) {
 	struct addon_instance_priv *p = o->priv;
 	if (addon_get_instance(p) != POM_OK)
 		return POM_ERR;
-	return addon_call(p->L, "close");
+	return addon_call(p->L, "close", 0);
 }
 
