@@ -49,15 +49,13 @@ static int addon_output_new(lua_State *L) {
 }
 
 // Called from lua to listen to a new event from an instance
-static int addon_output_event_listen(lua_State *L) {
+static int addon_output_event_listen_start(lua_State *L) {
 	
 	// Args should be :
 	// 1) self
 	// 2) event name
 	// 3) process_begin
 	// 4) process_end
-	
-	pomlog(POMLOG_DEBUG "Gonna listen to an event !");
 	
 	// Find the event
 	const char *evt_name = luaL_checkstring(L, 2);
@@ -112,6 +110,37 @@ static int addon_output_event_listen(lua_State *L) {
 	return 0;
 }
 
+// Called from lua to stop listening to a particular event
+static int addon_output_event_listen_stop(lua_State *L) {
+	// Args should be :
+	// 1) self
+	// 2) event name
+
+	// Find the event
+	const char *evt_name = luaL_checkstring(L, 2);
+
+	struct event_reg *evt = event_find(evt_name);
+	if (!evt)
+		luaL_error(L, "Event %s does not exists", evt_name);
+
+	// Get the output
+	lua_pushliteral(L, "__priv");
+	lua_gettable(L, 1);
+	struct addon_instance_priv *p = lua_touserdata(L, -1);
+	if (!p)
+		luaL_error(L, "Error while finding the output pointer");
+	
+	if (event_listener_unregister(evt, p) != POM_OK)
+		luaL_error(L, "Error while unregistering event listener");
+
+	// Forget about listening to the event
+	lua_pushlightuserdata(L, evt);
+	lua_pushnil(L);
+	lua_settable(L, 1);
+
+	return 0;
+}
+
 // Garbage collector function for output instances
 static int addon_output_gc(lua_State *L) {
 	struct output_reg_info *output_reg = lua_touserdata(L, 1);
@@ -129,7 +158,8 @@ int addon_output_lua_register(lua_State *L) {
 	luaL_register(L, ADDON_POM_OUTPUT_LIB, l);
 
 	struct luaL_Reg m[] = {
-		{ "event_listen", addon_output_event_listen },
+		{ "event_listen_start", addon_output_event_listen_start },
+		{ "event_listen_stop", addon_output_event_listen_stop },
 		{ 0 }
 	};
 
