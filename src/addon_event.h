@@ -24,6 +24,14 @@
 
 #include <pom-ng/event.h>
 
+#define ADDON_EVENT_METATABLE	"addon.event"
+
+struct addon_event {
+	struct event *evt;
+};
+
+int addon_event_lua_register(lua_State *L);
+
 int addon_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 int addon_event_process_end(struct event *evt, void *obj);
 

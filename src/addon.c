@@ -218,6 +218,7 @@ lua_State *addon_create_state(char *file) {
 	luaL_openlibs(L);
 
 	// Register our own
+	addon_event_lua_register(L);
 	addon_output_lua_register(L);
 
 	// Add our error handler
@@ -302,25 +303,26 @@ int addon_get_instance(struct addon_instance_priv *p) {
 
 int addon_call(lua_State *L, const char *function, int nargs) {
 	
-	// We assume the instance table is at the top of the stack
+	// We assume the instance table is at the top of the stack followed by arguments
 
 	// Push the error handler
 	lua_pushcfunction(L, addon_error);
 
 	// Fetch the open function
 	lua_pushstring(L, function);
-	lua_gettable(L, -3);
+	lua_gettable(L, -(nargs + 3));
 
 	// Add self
-	lua_pushvalue(L, -3);
+	lua_pushvalue(L, -(nargs + 3));
 
 	// Put the arguments in front
-	if (nargs) {
-		lua_insert(L, -(nargs + 1));
-		lua_insert(L, -(nargs + 2));
+	int i;
+	for (i = 0; i < nargs; i++) {
+		lua_pushvalue(L, -(nargs + 3));
+		lua_remove(L, -(nargs + 4));
 	}
 
-	switch (lua_pcall(L, nargs + 1, 0, -3)) {
+	switch (lua_pcall(L, nargs + 1, 0, -(nargs + 3))) {
 		case LUA_ERRRUN:
 			pomlog(POMLOG_ERR "Error while calling function \"%s\"", function);
 			return POM_ERR;
