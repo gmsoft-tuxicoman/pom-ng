@@ -24,19 +24,15 @@
 
 #include <output.h>
 
-#define ADDON_OUTPUT_METATABLE "addon.output"
+#define ADDON_OUTPUT_METATABLE		"addon.output"
+#define ADDON_OUTPUT_REG_METATABLE	"addon.output_reg"
+#define ADDON_POM_OUTPUT_LIB		"output"
 
 struct addon_output {
 
 	struct output_reg_info reg_info;
 
 	struct addon_output *prev, *next;
-};
-
-struct addon_output_priv {
-
-	lua_State *L; // Each output has it's own lua state
-
 };
 
 int addon_output_lua_register(lua_State *L);

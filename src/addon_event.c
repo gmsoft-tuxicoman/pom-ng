@@ -20,27 +20,39 @@
 
 #include "addon.h"
 #include "addon_event.h"
-#include <pom-ng/event.h>
 
-int addon_event_lua_register(lua_State *L) {
-	struct luaL_Reg l[] = {
-		{ "event_find", addon_event_find },
-		{ 0 }
-	};
+int addon_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	luaL_register(L, "pom", l);
+	struct addon_instance_priv *p = obj;
 
-	return POM_OK;
-}
+	if (addon_get_instance(p) != POM_OK)
+		return POM_ERR;
 
-int addon_event_find(lua_State *L) {
-
-	const char *evt_name = luaL_checkstring(L, 1);
-
-	if (event_find((char*)evt_name)) {
-		lua_pushnumber(L, 1);
-		return 1;
+	// Fetch the table associated with that event
+	lua_pushlightuserdata(p->L, evt->reg);
+	lua_gettable(p->L, -2);
+	if (!lua_istable(p->L, -1)) {
+		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
+		return POM_ERR;
 	}
-	return 0;
+
+	return addon_call(p->L, "begin");
 }
 
+int addon_event_process_end(struct event *evt, void *obj) {
+
+	struct addon_instance_priv *p = obj;
+
+	if (addon_get_instance(p) != POM_OK)
+		return POM_ERR;
+
+	// Fetch the table associated with that event
+	lua_pushlightuserdata(p->L, evt->reg);
+	lua_gettable(p->L, -2);
+	if (!lua_istable(p->L, -1)) {
+		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
+		return POM_ERR;
+	}
+
+	return addon_call(p->L, "end");
+}

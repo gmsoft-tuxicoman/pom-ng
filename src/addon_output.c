@@ -21,8 +21,98 @@
 #include "addon.h"
 #include "addon_output.h"
 
+#include <pom-ng/event.h>
+#include "addon_event.h"
+
 struct addon_output *addon_output_head = NULL;
 
+// Called from lua to create a new output class
+static int addon_output_new(lua_State *L) {
+
+	luaL_checkstring(L, 1);
+
+	// Create the new instance
+	lua_newtable(L);
+
+	// Assign the metatable
+	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE);
+	lua_setmetatable(L, -2);
+
+	// Set its name
+	lua_pushliteral(L, "name");
+	lua_pushvalue(L, 1);
+	lua_settable(L, -3);
+
+	// TODO make name read-only
+
+	return 1;
+}
+
+// Called from lua to listen to a new event from an instance
+static int addon_output_event_listen(lua_State *L) {
+	
+	// Args should be :
+	// 1) self
+	// 2) event name
+	// 3) process_begin
+	// 4) process_end
+	
+	pomlog(POMLOG_DEBUG "Gonna listen to an event !");
+	
+	// Find the event
+	const char *evt_name = luaL_checkstring(L, 2);
+	
+	struct event_reg *evt = event_find(evt_name);
+	if (!evt)
+		luaL_error(L, "Event %s does not exists", evt_name);
+
+	// Check which function we should register
+	int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) = NULL;
+	int (*process_end) (struct event *evt, void *obj) = NULL;
+
+	if (lua_isfunction(L, 3))
+		process_begin = addon_event_process_begin;
+	if (lua_isfunction(L, 4))
+		process_end = addon_event_process_end;
+
+	if (!process_begin && !process_end)
+		luaL_error(L, "No processing function provided");
+
+	// Get the output
+	lua_pushliteral(L, "__priv");
+	lua_gettable(L, 1);
+	struct addon_instance_priv *p = lua_touserdata(L, -1);
+	if (!p)
+		luaL_error(L, "Error while finding the output pointer");
+
+	if (event_listener_register(evt, p, process_begin, process_end) != POM_OK)
+		luaL_error(L, "Error while listening to event %s", evt_name);
+
+	// Add a table to self for the processing functions of this event
+	lua_newtable(L);
+	lua_pushlightuserdata(L, evt);
+	lua_pushvalue(L, -2);
+	lua_settable(L, 1);
+
+	// Add the processing function
+	if (process_begin) {
+		lua_pushliteral(L, "begin");
+		lua_pushvalue(L, 3);
+		lua_settable(L, -3);
+	}
+
+	if (process_end) {
+		lua_pushliteral(L, "end");
+		lua_pushvalue(L, 4);
+		lua_settable(L, -3);
+	}
+
+	pomlog(POMLOG_DEBUG "Output listening to event %s", evt_name);
+
+	return 0;
+}
+
+// Garbage collector function for output instances
 static int addon_output_gc(lua_State *L) {
 	struct output_reg_info *output_reg = lua_touserdata(L, 1);
 	if (output_reg)
@@ -32,16 +122,36 @@ static int addon_output_gc(lua_State *L) {
 
 int addon_output_lua_register(lua_State *L) {
 	struct luaL_Reg l[] = {
-		{ "output_register", addon_output_register },
+		{ "new", addon_output_new },
+		{ "register", addon_output_register },
+		{ 0 }
+	};
+	luaL_register(L, ADDON_POM_OUTPUT_LIB, l);
+
+	struct luaL_Reg m[] = {
+		{ "event_listen", addon_output_event_listen },
 		{ 0 }
 	};
 
+	// Create the output metatable
 	luaL_newmetatable(L, ADDON_OUTPUT_METATABLE);
-	lua_pushstring(L, "__gc");
-	lua_pushcfunction(L, addon_output_gc);
+
+	// Assign __index to itself
+	lua_pushstring(L, "__index");
+	lua_pushvalue(L, -2);
 	lua_settable(L, -3);
 
-	luaL_register(L, ADDON_POM_LIB, l);
+	// Register the functions
+	luaL_register(L, NULL, m);
+
+	struct luaL_Reg m_reg[] = {
+		{ "__gc", addon_output_gc },
+		{ 0 }
+	};
+	
+	// Create the output_reg metatable
+	luaL_newmetatable(L, ADDON_OUTPUT_REG_METATABLE);
+	luaL_register(L, NULL, m_reg);
 
 	return POM_OK;
 }
@@ -59,13 +169,14 @@ int addon_output_register(lua_State *L) {
 
 	struct output_reg_info *output_info = lua_newuserdata(L, sizeof(struct output_reg_info));
 	memset(output_info, 0, sizeof(struct output_reg_info));
+
+	// Add the output_reg metatable
+	luaL_getmetatable(L, ADDON_OUTPUT_REG_METATABLE);
+	lua_setmetatable(L, -2);
 	
 	output_info->name = strdup(name);
 	if (!output_info->name)
 		addon_oom(L, strlen(name) + 1);
-
-	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE);
-	lua_setmetatable(L, -2);
 
 	output_info->api_ver = OUTPUT_API_VER;
 	output_info->mod = addon->mod;
@@ -91,77 +202,81 @@ int addon_output_init(struct output *o) {
 
 	struct addon *addon = o->info->reg_info->mod->priv;
 
-	struct addon_output_priv *p = malloc(sizeof(struct addon_output_priv));
-	if (!p) {
-		pom_oom(sizeof(struct addon_output_priv));
-		return POM_ERR;
-	}
-	memset(p, 0, sizeof(struct addon_output_priv));
+	lua_State *L = lua_newthread(addon->L);
 
-	o->priv = p;
-
-	p->L = lua_newthread(addon->L);
-
-	if (!p->L) {
+	if (!L) {
 		pomlog(POMLOG_ERR "Error while creating new lua state for output %s", o->info->reg_info->name);
-		free(p);
 		return POM_ERR;
 	}
 
 	// Create a new global table for this thread to avoid memory corruption
-	lua_newtable(p->L);
+	lua_newtable(L);
 	// Create a new metatable to 'inherit' the main thread global
-	lua_newtable(p->L);
-	lua_pushliteral(p->L, "__index");
-	lua_pushvalue(p->L, LUA_GLOBALSINDEX);
-	lua_settable(p->L, -3);
+	lua_newtable(L);
+	lua_pushliteral(L, "__index");
+	lua_pushvalue(L, LUA_GLOBALSINDEX);
+	lua_settable(L, -3);
 	// Set the metatable to the new global table
-	lua_setmetatable(p->L, -2);
+	lua_setmetatable(L, -2);
 	// Replace the old table
-	lua_replace(p->L, LUA_GLOBALSINDEX);
+	lua_replace(L, LUA_GLOBALSINDEX);
 
 
 	// Create a new instance of the class
-	lua_pushlightuserdata(p->L, o);
-	lua_newtable(p->L);
+	lua_newtable(L);
 
 	// Do the inheritence
-	lua_newtable(p->L);
-	lua_pushliteral(p->L, "__index");
-	lua_pushlightuserdata(p->L, o->info->reg_info);
-	lua_gettable(p->L, LUA_REGISTRYINDEX);
-	lua_settable(p->L, -3);
-	lua_setmetatable(p->L, -2);
+	lua_newtable(L);
+	lua_pushliteral(L, "__index");
+	lua_pushlightuserdata(L, o->info->reg_info);
+	lua_gettable(L, LUA_REGISTRYINDEX);
+	lua_settable(L, -3);
+	lua_setmetatable(L, -2);
 
+	// Create the private data
+	lua_pushliteral(L, "__priv");
+	// TODO make __priv read-only
+	struct addon_instance_priv *p = lua_newuserdata(L, sizeof(struct addon_instance_priv));
+	memset(p, 0, sizeof(struct addon_instance_priv));
+	o->priv = p;
+	p->instance = o;
+	p->L = L;
+	lua_settable(L, -3);
+
+	lua_pushlightuserdata(L, p);
+	lua_pushvalue(L, -2);
 	// Add the new instance in the registry
-	lua_settable(p->L, LUA_REGISTRYINDEX);
+	lua_settable(L, LUA_REGISTRYINDEX);
 	
-	pomlog(POMLOG_DEBUG "Output test created");
+	pomlog(POMLOG_DEBUG "Output %s created", o->name);
 
 	return POM_OK;
 }
 
 int addon_output_cleanup(struct output *o) {
 	
-	struct addon_output_priv *p = o->priv;
+	struct addon_instance_priv *p = o->priv;
 
-	lua_pushlightuserdata(p->L, o);
+	lua_pushlightuserdata(p->L, p);
 	lua_pushnil(p->L);
 	lua_settable(p->L, LUA_REGISTRYINDEX);
 
-	free(p);
 	return POM_OK;
 }
 
 int addon_output_open(struct output *o) {
 
-	struct addon_output_priv *p = o->priv;
-	return addon_instance_call(p->L, "open", o);
+	struct addon_instance_priv *p = o->priv;
+	if (addon_get_instance(p) != POM_OK)
+		return POM_ERR;
+	return addon_call(p->L, "open");
 }
 
 int addon_output_close(struct output *o) {
 
-	struct addon_output_priv *p = o->priv;
-	return addon_instance_call(p->L, "close", o);
+	struct addon_instance_priv *p = o->priv;
+	if (addon_get_instance(p) != POM_OK)
+		return POM_ERR;
+	return addon_call(p->L, "close");
 }
 
