@@ -45,6 +45,13 @@ struct addon {
 	struct addon *prev, *next;
 };
 
+struct addon_instance_priv {
+
+	lua_State *L; // Each output has it's own lua state
+	void *instance;
+
+};
+
 int addon_init();
 int addon_mod_register(struct mod_reg *mod);
 lua_State *addon_create_state(char *file);
@@ -54,7 +61,8 @@ int addon_error(lua_State *L);
 
 struct addon *addon_get_from_registry(lua_State *L);
 
-int addon_instance_call(lua_State *L, const char *function, void *instance);
+int addon_get_instance(struct addon_instance_priv *p);
+int addon_call(lua_State *L, const char *function);
 
 
 #define addon_oom(L, x) luaL_error((L), "Not enough memory to allocate %u bytes", (x))

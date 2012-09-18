@@ -177,15 +177,32 @@ int addon_mod_register(struct mod_reg *mod) {
 	}
 	free(reg_func_name);
 
-	lua_pcall(addon->L, 0, 0, -2);
+	switch (lua_pcall(addon->L, 0, 0, -2)) {
+		case LUA_ERRRUN:
+			pomlog(POMLOG_ERR "Error while registering addon \"%s\"", addon->name);
+			goto err;
+		case LUA_ERRMEM:
+			pomlog(POMLOG_ERR "Not enough memory to register addon \"%s\"", addon->name);
+			goto err;
+		case LUA_ERRERR:
+			pomlog(POMLOG_ERR "Error while running the error handler while registering addon \"%s\"", addon->name);
+			goto err;
+	}
 	
-
 	addon->next = addon_head;
 	if (addon->next)
 		addon->next->prev = addon;
 	addon_head = addon;
 
 	return POM_OK;
+
+err:
+	// Remove the addon from the lua registry
+	lua_pushstring(addon->L, ADDON_REG_REGISTRY_KEY);
+	lua_pushnil(addon->L);
+	lua_settable(addon->L, LUA_REGISTRYINDEX);
+
+	return POM_ERR;
 
 }
 
@@ -201,7 +218,6 @@ lua_State *addon_create_state(char *file) {
 	luaL_openlibs(L);
 
 	// Register our own
-	addon_event_lua_register(L);
 	addon_output_lua_register(L);
 
 	// Add our error handler
@@ -271,13 +287,22 @@ struct addon *addon_get_from_registry(lua_State *L) {
 	return tmp;
 }
 
-int addon_instance_call(lua_State *L, const char *function, void *instance) {
+
+int addon_get_instance(struct addon_instance_priv *p) {
 
 	// Fetch the corresponding instance
-	lua_pushlightuserdata(L, instance);
-	lua_gettable(L, LUA_REGISTRYINDEX);
-	if (!lua_istable(L, -1))
-		luaL_error(L, "Error while calling Lua function %s : instance not found", function);
+	lua_pushlightuserdata(p->L, p);
+	lua_gettable(p->L, LUA_REGISTRYINDEX);
+	if (!lua_istable(p->L, -1)) {
+		pomlog(POMLOG_ERR, "Could not find instance %p", p->instance);
+		return POM_ERR;
+	}
+	return POM_OK;
+}
+
+int addon_call(lua_State *L, const char *function) {
+	
+	// We assume the instance table is at the top of the stack
 
 	// Push the error handler
 	lua_pushcfunction(L, addon_error);
@@ -289,7 +314,17 @@ int addon_instance_call(lua_State *L, const char *function, void *instance) {
 	// Add self
 	lua_pushvalue(L, -3);
 
-	lua_pcall(L, 1, 0, -2);
+	switch (lua_pcall(L, 1, 0, -3)) {
+		case LUA_ERRRUN:
+			pomlog(POMLOG_ERR "Error while calling function \"%s\"", function);
+			return POM_ERR;
+		case LUA_ERRMEM:
+			pomlog(POMLOG_ERR "Not enough memory to call function \"%s\"", function);
+			return POM_ERR;
+		case LUA_ERRERR:
+			pomlog(POMLOG_ERR "Error while running the error handler for function \"%s\"", function);
+			return POM_ERR;
+	}
 	
 	return POM_OK;
 }
