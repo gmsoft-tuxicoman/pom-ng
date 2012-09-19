@@ -94,7 +94,7 @@ int addon_init() {
 				free(addon->filename);
 				free(addon->name);
 				free(addon);
-				goto err;
+				continue;
 			}
 
 			// TODO fetch dependencies from a global variable
