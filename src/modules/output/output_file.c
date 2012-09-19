@@ -77,7 +77,7 @@ int output_file_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_file_priv));
-	o->priv = priv;
+	output_set_priv(o, priv);
 
 	priv->p_path = ptype_alloc("string");
 //	priv->p_filter = ptype_alloc("string");
@@ -87,11 +87,11 @@ int output_file_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 /*
 	p = registry_new_param("filter", "", priv->p_filter, "File filter", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 */
 
@@ -102,14 +102,14 @@ int output_file_init(struct output *o) {
 
 	return POM_OK;
 err:
-	output_file_cleanup(o);
+	output_file_cleanup(priv);
 	return POM_ERR;
 
 }
 
-int output_file_cleanup(struct output *o) {
+int output_file_cleanup(void *output_priv) {
 
-	struct output_file_priv *priv = o->priv;
+	struct output_file_priv *priv = output_priv;
 	if (priv) {
 		if (priv->p_path)
 			ptype_cleanup(priv->p_path);
@@ -122,17 +122,17 @@ int output_file_cleanup(struct output *o) {
 	return POM_OK;
 }
 
-int output_file_open(struct output *o) {
+int output_file_open(void *output_priv) {
 
-	struct output_file_priv *priv = o->priv;
+	struct output_file_priv *priv = output_priv;
 
-	return analyzer_pload_output_register(o, &priv->output_reg);
+	return analyzer_pload_output_register(priv, &priv->output_reg);
 
 }
 
-int output_file_close(struct output *o) {
+int output_file_close(void *output_priv) {
 
-	if (analyzer_pload_output_unregister(o) != POM_OK)
+	if (analyzer_pload_output_unregister(output_priv) != POM_OK)
 		return POM_ERR;
 
 	// TODO close all the files
@@ -144,7 +144,7 @@ int output_file_close(struct output *o) {
 
 int output_file_pload_open(struct analyzer_pload_output_list *po) {
 
-	struct output_file_priv *priv = po->o->output->priv;
+	struct output_file_priv *priv = po->o->output_priv;
 
 	// Open the file
 	char filename[FILENAME_MAX + 1];

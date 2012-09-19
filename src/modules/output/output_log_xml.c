@@ -38,7 +38,7 @@ int output_log_xml_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_log_xml_priv));
-	o->priv = priv;
+	output_set_priv(o, priv);
 
 	priv->fd = -1;
 	
@@ -49,25 +49,25 @@ int output_log_xml_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "log.xml", priv->p_filename, "XML log file", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("source", "", priv->p_source, "Define the type of event being logged", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
 
 err:
-	output_log_xml_cleanup(o);
+	output_log_xml_cleanup(priv);
 	return POM_ERR;
 
 }
 
 
-int output_log_xml_cleanup(struct output *o) {
+int output_log_xml_cleanup(void *output_priv) {
 	
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = output_priv;
 	if (priv) {
 		if (priv->fd != -1)
 			close(priv->fd);
@@ -82,9 +82,9 @@ int output_log_xml_cleanup(struct output *o) {
 }
 
 
-int output_log_xml_open(struct output *o) {
+int output_log_xml_open(void *output_priv) {
 
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd != -1) {
 		pomlog(POMLOG_ERR "Output already started");
@@ -117,7 +117,7 @@ int output_log_xml_open(struct output *o) {
 	}
 
 	// Listen to the right event
-	if (event_listener_register(priv->evt, o, NULL, output_log_xml_process) != POM_OK)
+	if (event_listener_register(priv->evt, priv, NULL, output_log_xml_process) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -136,16 +136,16 @@ err:
 }
 
 
-int output_log_xml_close(struct output *o) {
+int output_log_xml_close(void *output_priv) {
 
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd == -1) {
 		pomlog(POMLOG_ERR "Output already stopped");
 		return POM_ERR;
 	}
 
-	event_listener_unregister(priv->evt, o);
+	event_listener_unregister(priv->evt, priv);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));
@@ -158,8 +158,7 @@ int output_log_xml_close(struct output *o) {
 
 int output_log_xml_process(struct event *evt, void *obj) {
 
-	struct output *o = obj;
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = obj;
 
 	xmlBufferPtr buff = xmlBufferCreate();
 	if (!buff) {

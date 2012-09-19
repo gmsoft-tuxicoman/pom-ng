@@ -25,7 +25,6 @@
 #include <pom-ng/base.h>
 #include <pom-ng/event.h>
 #include <pom-ng/conntrack.h>
-#include <pom-ng/output.h>
 #include <pom-ng/data.h>
 
 #ifdef HAVE_ZLIB
@@ -160,7 +159,7 @@ struct analyzer_pload_output_reg {
 
 struct analyzer_pload_output {
 
-	struct output *output;
+	void *output_priv;
 	struct analyzer_pload_output_reg *reg_info;
 
 	struct analyzer_pload_output *prev, *next;
@@ -190,7 +189,7 @@ struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name);
 struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type);
 
 
-int analyzer_pload_output_register(struct output *o, struct analyzer_pload_output_reg *reg_info);
-int analyzer_pload_output_unregister(struct output *o);
+int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info);
+int analyzer_pload_output_unregister(void *output_priv);
 
 #endif

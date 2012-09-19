@@ -36,9 +36,9 @@ struct output_log_xml_priv {
 };
 
 int output_log_xml_init(struct output *o);
-int output_log_xml_open(struct output *o);
-int output_log_xml_close(struct output *o);
-int output_log_xml_cleanup(struct output *o);
+int output_log_xml_open(void *output_priv);
+int output_log_xml_close(void *output_priv);
+int output_log_xml_cleanup(void *output_priv);
 int output_log_xml_process(struct event *evt, void *obj);
 
 #endif

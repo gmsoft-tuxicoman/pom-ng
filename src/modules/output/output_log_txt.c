@@ -66,7 +66,7 @@ int output_log_txt_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_log_txt_priv));
-	o->priv = priv;
+	output_set_priv(o, priv);
 
 	priv->p_prefix = ptype_alloc("string");
 	priv->p_template = ptype_alloc("string");
@@ -74,23 +74,23 @@ int output_log_txt_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("prefix", "./", priv->p_prefix, "Log files prefix", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("template", "", priv->p_template, "Log template to use", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
 err:
 
-	output_log_txt_cleanup(o);
+	output_log_txt_cleanup(priv);
 	return POM_ERR;
 }
 
-int output_log_txt_cleanup(struct output *o) {
+int output_log_txt_cleanup(void *output_priv) {
 
-	struct output_log_txt_priv *priv = o->priv;
+	struct output_log_txt_priv *priv = output_priv;
 	if (priv) {
 		if (priv->p_prefix)
 			ptype_cleanup(priv->p_prefix);
@@ -102,9 +102,9 @@ int output_log_txt_cleanup(struct output *o) {
 	return POM_OK;
 }
 
-int output_log_txt_open(struct output *o) {
+int output_log_txt_open(void *output_priv) {
 
-	struct output_log_txt_priv *priv = o->priv;
+	struct output_log_txt_priv *priv = output_priv;
 
 	struct resource *r = NULL;
 	struct resource_dataset *r_templates = NULL, *r_events = NULL, *r_files = NULL;
@@ -340,14 +340,14 @@ err:
 	if (r)
 		resource_close(r);
 
-	output_log_txt_close(o);
+	output_log_txt_close(priv);
 
 	return POM_ERR;
 }
 
-int output_log_txt_close(struct output *o) {
+int output_log_txt_close(void *output_priv) {
 	
-	struct output_log_txt_priv *priv = o->priv;
+	struct output_log_txt_priv *priv = output_priv;
 
 
 	while (priv->events) {

@@ -67,6 +67,8 @@ int output_cleanup() {
 
 int output_register(struct output_reg_info *reg_info) {
 
+	pomlog(POMLOG_DEBUG "Registering output %s", reg_info->name);
+
 	if (reg_info->api_ver != OUTPUT_API_VER) {
 		pomlog(POMLOG_ERR "Cannot register output as API version differ : expected %u got %u", OUTPUT_API_VER, reg_info->api_ver);
 		return POM_ERR;
@@ -201,14 +203,14 @@ int output_instance_remove(struct registry_instance *ri) {
 	struct output *o = ri->priv;
 
 	if (o->running && o->info->reg_info->close) {
-		if (o->info->reg_info->close(o) != POM_OK) {
+		if (o->info->reg_info->close(o->priv) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while stopping the output");
 			return POM_ERR;
 		}
 	}
 
 	if (o->info->reg_info->cleanup) {
-		if (o->info->reg_info->cleanup(o) != POM_OK) {
+		if (o->info->reg_info->cleanup(o->priv) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while cleaning up output");
 			return POM_ERR;
 		}
@@ -242,7 +244,7 @@ int output_instance_start_stop_handler(void *priv, struct ptype *run) {
 
 	if (*new_state) {
 		if (o->info->reg_info->open) {
-			if (o->info->reg_info->open(o) != POM_OK) {
+			if (o->info->reg_info->open(o->priv) != POM_OK) {
 				pomlog(POMLOG_ERR "Error while starting the output");
 				return POM_ERR;
 			}
@@ -250,7 +252,7 @@ int output_instance_start_stop_handler(void *priv, struct ptype *run) {
 		pomlog("Output %s started", o->info->reg_info->name);
 	} else {
 		if (o->info->reg_info->close) {
-			if (o->info->reg_info->close(o) != POM_OK) {
+			if (o->info->reg_info->close(o->priv) != POM_OK) {
 				pomlog(POMLOG_ERR "Error while stopping the output");
 				return POM_ERR;
 			}
@@ -291,5 +293,13 @@ int output_unregister(char *name) {
 	pom_mutex_unlock(&output_lock);
 
 	return POM_OK;
+}
+
+void output_set_priv(struct output *o, void *priv) {
+	o->priv = priv;
+}
+
+int output_instance_add_param(struct output *o, struct registry_param *p) {
+	return registry_instance_add_param(o->reg_instance, p);
 }
 
