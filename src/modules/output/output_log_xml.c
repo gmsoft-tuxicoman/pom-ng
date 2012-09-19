@@ -38,7 +38,7 @@ int output_log_xml_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_log_xml_priv));
-	o->priv = priv;
+	output_set_priv(o, priv);
 
 	priv->fd = -1;
 	
@@ -49,11 +49,11 @@ int output_log_xml_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "log.xml", priv->p_filename, "XML log file", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("source", "", priv->p_source, "Define the type of event being logged", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -158,8 +158,7 @@ int output_log_xml_close(void *output_priv) {
 
 int output_log_xml_process(struct event *evt, void *obj) {
 
-	struct output *o = obj;
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = obj;
 
 	xmlBufferPtr buff = xmlBufferCreate();
 	if (!buff) {

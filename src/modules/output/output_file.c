@@ -77,7 +77,7 @@ int output_file_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_file_priv));
-	o->priv = priv;
+	output_set_priv(o, priv);
 
 	priv->p_path = ptype_alloc("string");
 //	priv->p_filter = ptype_alloc("string");
@@ -87,11 +87,11 @@ int output_file_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 /*
 	p = registry_new_param("filter", "", priv->p_filter, "File filter", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 */
 

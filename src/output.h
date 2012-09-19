@@ -26,6 +26,19 @@
 
 #define OUTPUT_REGISTRY "output"
 
+struct output {
+
+	char *name;
+	struct output_reg *info;
+	struct registry_instance *reg_instance;
+	int running;
+
+	void *priv;
+
+	struct output *prev, *next;
+
+};
+
 struct output_reg {
 
 	struct output_reg_info *reg_info;

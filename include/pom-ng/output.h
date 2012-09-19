@@ -29,21 +29,7 @@
 // Current output API version
 #define OUTPUT_API_VER 1
 
-struct output_reg;
-struct analyzer_data;
-
-struct output {
-
-	char *name;
-	struct output_reg *info;
-	struct registry_instance *reg_instance;
-	int running;
-
-	void *priv;
-
-	struct output *prev, *next;
-
-};
+struct output;
 
 struct output_reg_info {
 	unsigned int api_ver;
@@ -59,5 +45,9 @@ struct output_reg_info {
 
 int output_register(struct output_reg_info *reg_info);
 int output_unregister(char *name);
+
+void output_set_priv(struct output *o, void *priv);
+int output_instance_add_param(struct output *o, struct registry_param *p);
+
 
 #endif

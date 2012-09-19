@@ -295,3 +295,11 @@ int output_unregister(char *name) {
 	return POM_OK;
 }
 
+void output_set_priv(struct output *o, void *priv) {
+	o->priv = priv;
+}
+
+int output_instance_add_param(struct output *o, struct registry_param *p) {
+	return registry_instance_add_param(o->reg_instance, p);
+}
+

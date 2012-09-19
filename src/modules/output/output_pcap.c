@@ -73,8 +73,7 @@ static int output_pcap_file_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_pcap_file_priv));
-
-	o->priv = priv;
+	output_set_priv(o, priv);
 
 	priv->p_filename = ptype_alloc("string");
 	priv->p_snaplen = ptype_alloc_unit("uint16", "bytes");
@@ -86,23 +85,23 @@ static int output_pcap_file_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("snaplen", "1550", priv->p_snaplen, "Snaplen", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("protocol", "ethernet", priv->p_proto, "Protocol to capture", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("unbuffered", "no", priv->p_unbuffered, "Write packets directly without using a buffer (slower)", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
-	if (registry_instance_add_param(o->reg_instance, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
 	registry_param_set_callbacks(p, priv, output_pcap_filter_change, NULL);
@@ -237,9 +236,7 @@ static int output_pcap_file_close(void *output_priv) {
 
 static int output_pcap_file_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
 
-	struct output *o = obj;
-
-	struct output_pcap_file_priv *priv = o->priv;
+	struct output_pcap_file_priv *priv = obj;
 
 	struct pcap_pkthdr phdr;
 	memset(&phdr, 0, sizeof(struct pcap_pkthdr));
