@@ -693,7 +693,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				lst->pload = pload;
 
 				if (tmp->reg_info->open(lst)) {
-					pomlog(POMLOG_ERR "Error while opending output %s for a payload", tmp->output->name);
+					pomlog(POMLOG_ERR "Error while opending an output for a payload");
 					free(lst);
 					continue;
 				}
@@ -727,7 +727,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				res = lst->o->reg_info->write(lst, data, size);
 			}
 			if (res != POM_OK) {
-				pomlog(POMLOG_ERR "Error while writing to output %s", lst->o->output->name);
+				pomlog(POMLOG_ERR "Error while writing to an output");
 				lst->o->reg_info->close(lst);
 				// Remove this input from the list
 				if (lst->next)
@@ -776,7 +776,7 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 	while (pload->output_list) {
 		struct analyzer_pload_output_list *lst = pload->output_list;
 		if (lst->o->reg_info->close(lst) != POM_OK)
-			pomlog(POMLOG_WARN "Error while closing payload with output %s", lst->o->output->name);
+			pomlog(POMLOG_WARN "Error while closing payload");
 		
 		pload->output_list = lst->next;
 		free(lst);
@@ -836,7 +836,7 @@ struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type
 }
 
 
-int analyzer_pload_output_register(struct output *o, struct analyzer_pload_output_reg *reg_info) {
+int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info) {
 
 
 	struct analyzer_pload_output *po = malloc(sizeof(struct analyzer_pload_output));
@@ -847,7 +847,7 @@ int analyzer_pload_output_register(struct output *o, struct analyzer_pload_outpu
 	memset(po, 0, sizeof(struct analyzer_pload_output));
 
 	po->reg_info = reg_info;
-	po->output = o;
+	po->output_priv = output_priv;
 
 	po->next = analyzer_pload_outputs;
 	if (po->next)
@@ -860,10 +860,10 @@ int analyzer_pload_output_register(struct output *o, struct analyzer_pload_outpu
 }
 
 
-int analyzer_pload_output_unregister(struct output *o) {
+int analyzer_pload_output_unregister(void *output_priv) {
 
 	struct analyzer_pload_output *po = analyzer_pload_outputs;
-	for (; po && po->output != o; po = po->next);
+	for (; po && po->output_priv != output_priv; po = po->next);
 
 	if (!po) {
 		pomlog(POMLOG_ERR "Payload output not found in the list of registered outputs");

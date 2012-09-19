@@ -59,15 +59,15 @@ int output_log_xml_init(struct output *o) {
 	return POM_OK;
 
 err:
-	output_log_xml_cleanup(o);
+	output_log_xml_cleanup(priv);
 	return POM_ERR;
 
 }
 
 
-int output_log_xml_cleanup(struct output *o) {
+int output_log_xml_cleanup(void *output_priv) {
 	
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = output_priv;
 	if (priv) {
 		if (priv->fd != -1)
 			close(priv->fd);
@@ -82,9 +82,9 @@ int output_log_xml_cleanup(struct output *o) {
 }
 
 
-int output_log_xml_open(struct output *o) {
+int output_log_xml_open(void *output_priv) {
 
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd != -1) {
 		pomlog(POMLOG_ERR "Output already started");
@@ -117,7 +117,7 @@ int output_log_xml_open(struct output *o) {
 	}
 
 	// Listen to the right event
-	if (event_listener_register(priv->evt, o, NULL, output_log_xml_process) != POM_OK)
+	if (event_listener_register(priv->evt, priv, NULL, output_log_xml_process) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -136,16 +136,16 @@ err:
 }
 
 
-int output_log_xml_close(struct output *o) {
+int output_log_xml_close(void *output_priv) {
 
-	struct output_log_xml_priv *priv = o->priv;
+	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd == -1) {
 		pomlog(POMLOG_ERR "Output already stopped");
 		return POM_ERR;
 	}
 
-	event_listener_unregister(priv->evt, o);
+	event_listener_unregister(priv->evt, priv);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));

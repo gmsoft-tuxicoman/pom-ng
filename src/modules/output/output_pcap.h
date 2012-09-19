@@ -50,9 +50,9 @@ static int output_pcap_mod_register(struct mod_reg *mod);
 static int output_pcap_mod_unregister();
 
 static int output_pcap_file_init(struct output *o);
-static int output_pcap_file_cleanup(struct output *o);
-static int output_pcap_file_open(struct output *o);
-static int output_pcap_file_close(struct output *o);
+static int output_pcap_file_cleanup(void *output_priv);
+static int output_pcap_file_open(void *output_priv);
+static int output_pcap_file_close(void *output_priv);
 static int output_pcap_file_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 static int output_pcap_filter_change(void *priv, char *value);
 

@@ -110,14 +110,14 @@ static int output_pcap_file_init(struct output *o) {
 	return POM_OK;
 
 err:
-	output_pcap_file_cleanup(o);
+	output_pcap_file_cleanup(priv);
 	return POM_ERR;
 
 }
 
-static int output_pcap_file_cleanup(struct output *o) {
+static int output_pcap_file_cleanup(void *output_priv) {
 
-	struct output_pcap_file_priv *priv = o->priv;
+	struct output_pcap_file_priv *priv = output_priv;
 	
 	if (priv) {
 		if (priv->p_filename)
@@ -138,9 +138,9 @@ static int output_pcap_file_cleanup(struct output *o) {
 	return POM_OK;
 }
 
-static int output_pcap_file_open(struct output *o) {
+static int output_pcap_file_open(void *output_priv) {
 
-	struct output_pcap_file_priv *priv = o->priv;
+	struct output_pcap_file_priv *priv = output_priv;
 
 	uint16_t *snaplen = PTYPE_UINT16_GETVAL(priv->p_snaplen);
 
@@ -184,7 +184,7 @@ static int output_pcap_file_open(struct output *o) {
 	}
 
 
-	priv->listener = proto_packet_listener_register(priv->proto, 0, o, output_pcap_file_process);
+	priv->listener = proto_packet_listener_register(priv->proto, 0, priv, output_pcap_file_process);
 	if (!priv->listener) 
 		goto err;
 
@@ -208,9 +208,9 @@ err:
 
 }
 
-static int output_pcap_file_close(struct output *o) {
+static int output_pcap_file_close(void *output_priv) {
 
-	struct output_pcap_file_priv *priv = o->priv;
+	struct output_pcap_file_priv *priv = output_priv;
 
 	if (!priv)
 		return POM_ERR;

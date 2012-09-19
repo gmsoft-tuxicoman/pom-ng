@@ -51,9 +51,9 @@ struct output_reg_info {
 	struct mod_reg *mod;
 
 	int (*init) (struct output *o);
-	int (*open) (struct output *o);
-	int (*close) (struct output *o);
-	int (*cleanup) (struct output *o);
+	int (*open) (void *output_priv);
+	int (*close) (void *output_priv);
+	int (*cleanup) (void *output_priv);
 
 };
 

@@ -62,9 +62,9 @@ struct output_log_txt_priv {
 };
 
 int output_log_txt_init(struct output *o);
-int output_log_txt_open(struct output *o);
-int output_log_txt_close(struct output *o);
-int output_log_txt_cleanup(struct output *o);
+int output_log_txt_open(void *output_priv);
+int output_log_txt_close(void *output_priv);
+int output_log_txt_cleanup(void *output_priv);
 int output_log_txt_process(struct event *evt, void *obj);
 
 
