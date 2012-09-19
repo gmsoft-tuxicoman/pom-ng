@@ -119,8 +119,6 @@ int output_file_cleanup(struct output *o) {
 
 	}
 
-	analyzer_pload_output_unregister(o);
-	
 	return POM_OK;
 }
 
