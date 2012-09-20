@@ -23,8 +23,7 @@
 #define __POM_NG_OUTPUT_H__
 
 #include <pom-ng/base.h>
-#include <pom-ng/proto.h>
-#include <pom-ng/conntrack.h>
+#include <pom-ng/registry.h>
 
 // Current output API version
 #define OUTPUT_API_VER 1
