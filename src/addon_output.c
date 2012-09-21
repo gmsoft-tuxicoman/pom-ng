@@ -283,9 +283,9 @@ int addon_output_init(struct output *o) {
 	return POM_OK;
 }
 
-int addon_output_cleanup(struct output *o) {
+int addon_output_cleanup(void *output_priv) {
 	
-	struct addon_instance_priv *p = o->priv;
+	struct addon_instance_priv *p = output_priv;
 
 	lua_pushlightuserdata(p->L, p);
 	lua_pushnil(p->L);
@@ -294,17 +294,17 @@ int addon_output_cleanup(struct output *o) {
 	return POM_OK;
 }
 
-int addon_output_open(struct output *o) {
+int addon_output_open(void *output_priv) {
 
-	struct addon_instance_priv *p = o->priv;
+	struct addon_instance_priv *p = output_priv;
 	if (addon_get_instance(p) != POM_OK)
 		return POM_ERR;
 	return addon_call(p->L, "open", 0);
 }
 
-int addon_output_close(struct output *o) {
+int addon_output_close(void *output_priv) {
 
-	struct addon_instance_priv *p = o->priv;
+	struct addon_instance_priv *p = output_priv;
 	if (addon_get_instance(p) != POM_OK)
 		return POM_ERR;
 	return addon_call(p->L, "close", 0);
