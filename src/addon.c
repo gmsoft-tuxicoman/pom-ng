@@ -23,6 +23,7 @@
 
 #include "addon_event.h"
 #include "addon_output.h"
+#include "addon_plugin.h"
 
 #include <dirent.h>
 #include <lualib.h>
@@ -220,6 +221,7 @@ lua_State *addon_create_state(char *file) {
 	// Register our own
 	addon_event_lua_register(L);
 	addon_output_lua_register(L);
+	addon_plugin_lua_register(L);
 
 	// Add our error handler
 	lua_pushcfunction(L, addon_error);
