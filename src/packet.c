@@ -136,7 +136,7 @@ void packet_buffer_pool_release(struct packet_buffer *pb) {
 	if (pb->pool_id >= PACKET_BUFFER_POOL_COUNT) {
 		pom_mutex_unlock(&packet_buffer_pool_mutex);
 		pomlog(POMLOG_ERR "Internal error, packet pool id too big");
-		halt("Internal error");
+		halt("Internal error", 1);
 		return;
 	}
 

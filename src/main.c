@@ -47,16 +47,12 @@
 static char* shutdown_reason = NULL;
 static int running = 1, shutdown_in_error = 0;
 static struct datastore *system_store = NULL;
+static pthread_t main_thread = 0;
 
 void signal_handler(int signal) {
 
 	switch (signal) {
 		case SIGCHLD:
-			if (running)
-				halt_signal("Input process died :-(\n");
-			break;
-		case SIGPIPE:
-			// Ignore for now
 			break;
 		case SIGINT:
 		case SIGTERM:
@@ -258,9 +254,10 @@ int main(int argc, char *argv[]) {
 	mysigaction.sa_flags = 0;
 	mysigaction.sa_handler = signal_handler;
 	sigaction(SIGINT, &mysigaction, NULL);
-	sigaction(SIGCHLD, &mysigaction, NULL);
 	sigaction(SIGTERM, &mysigaction, NULL);
-	sigaction(SIGPIPE, &mysigaction, NULL);
+	sigaction(SIGCHLD, &mysigaction, NULL);
+
+	main_thread = pthread_self();
 
 	// Initialize components
 	
@@ -395,18 +392,21 @@ err_registry:
 	return -1; 
 }
 
-int halt(char *reason) {
-	if (halt_signal(reason) != POM_OK)
-		return POM_ERR;
+int halt(char *reason, int error) {
 
-	shutdown_in_error = 1;
-	kill(getpid(), SIGINT);
+	shutdown_reason = strdup(reason);
+	shutdown_in_error = error;
+	running = 0;
 
+	pthread_kill(main_thread, SIGCHLD);
+	
 	return POM_OK;
 }
 
 int halt_signal(char *reason) {
-	// Can be called from a signal handler, don't use pomlog()
+	// Called from a signal handler, don't use pomlog()
+	if (shutdown_reason)
+		free(shutdown_reason);
 	shutdown_reason = strdup(reason);
 
 	running = 0;
