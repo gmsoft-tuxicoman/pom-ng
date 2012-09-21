@@ -41,5 +41,7 @@ int xmlrpcsrv_cleanup();
 
 int xmlrpcsrv_register_command(struct xmlrpcsrv_command *cmd);
 
+void xmlrpcsrv_shutdown(xmlrpc_env * const faultP, void * const context, const char * const comment, void * const callInfo);
+
 
 #endif
