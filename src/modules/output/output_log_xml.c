@@ -29,24 +29,54 @@
 
 #include <libxml/xmlwriter.h>
 
-int output_log_xml_init(struct output *o) {
+static struct output_log_xml_priv *log_xml_init() {
 
-
+	
 	struct output_log_xml_priv *priv = malloc(sizeof(struct output_log_xml_priv));
 	if (!priv) {
 		pom_oom(sizeof(struct output_log_xml_priv));
-		return POM_ERR;
+		return NULL;
 	}
 	memset(priv, 0, sizeof(struct output_log_xml_priv));
-	output_set_priv(o, priv);
 
 	priv->fd = -1;
 	
 	priv->p_filename = ptype_alloc("string");
-	priv->p_source = ptype_alloc("string");
 
-	if (!priv->p_filename || !priv->p_source)
+	if (!priv->p_filename) {
+		output_log_xml_cleanup(priv);
+		return NULL;
+	}
+	
+	return priv;
+}
+
+int addon_log_xml_init(struct addon_plugin *a) {
+
+	struct output_log_xml_priv *priv = log_xml_init();
+
+	addon_plugin_set_priv(a, priv);
+
+	if (addon_plugin_add_params(a, "filename", "log.xml", priv->p_filename) != POM_OK) {
+		output_log_xml_cleanup(priv);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+	
+}
+
+int output_log_xml_init(struct output *o) {
+
+	struct output_log_xml_priv *priv = log_xml_init();
+	if (!priv)
+		return POM_ERR;
+
+	priv->p_source = ptype_alloc("string");
+	if (!priv->p_source)
 		goto err;
+
+	output_set_priv(o, priv);
 
 	struct registry_param *p = registry_new_param("filename", "log.xml", priv->p_filename, "XML log file", 0);
 	if (output_instance_add_param(o, p) != POM_OK)
@@ -57,13 +87,10 @@ int output_log_xml_init(struct output *o) {
 		goto err;
 
 	return POM_OK;
-
 err:
 	output_log_xml_cleanup(priv);
 	return POM_ERR;
-
 }
-
 
 int output_log_xml_cleanup(void *output_priv) {
 	
@@ -81,26 +108,12 @@ int output_log_xml_cleanup(void *output_priv) {
 	return POM_OK;
 }
 
-
-int output_log_xml_open(void *output_priv) {
+int addon_log_xml_open(void *output_priv) {
 
 	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd != -1) {
 		pomlog(POMLOG_ERR "Output already started");
-		return POM_ERR;
-	}
-
-	char *src_name = PTYPE_STRING_GETVAL(priv->p_source);
-	if (!strlen(src_name)) {
-		pomlog(POMLOG_ERR "You need to specify a source for this output");
-		return POM_ERR;
-	}
-
-	priv->evt = event_find(src_name);
-
-	if (!priv->evt) {
-		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
 		return POM_ERR;
 	}
 
@@ -115,6 +128,31 @@ int output_log_xml_open(void *output_priv) {
 		pomlog(POMLOG_ERR "Error while opening log file \"%s\" : %s", filename, pom_strerror(errno));
 		return POM_ERR;
 	}
+
+	return POM_OK;
+
+}
+
+int output_log_xml_open(void *output_priv) {
+
+	struct output_log_xml_priv *priv = output_priv;
+
+	if (addon_log_xml_open(priv) != POM_OK)
+		return POM_ERR;
+
+	char *src_name = PTYPE_STRING_GETVAL(priv->p_source);
+	if (!strlen(src_name)) {
+		pomlog(POMLOG_ERR "You need to specify a source for this output");
+		return POM_ERR;
+	}
+
+	priv->evt = event_find(src_name);
+
+	if (!priv->evt) {
+		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
+		return POM_ERR;
+	}
+
 
 	// Listen to the right event
 	if (event_listener_register(priv->evt, priv, NULL, output_log_xml_process) != POM_OK)
@@ -135,17 +173,14 @@ err:
 
 }
 
-
-int output_log_xml_close(void *output_priv) {
-
+int addon_log_xml_close(void *output_priv) {
+	
 	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd == -1) {
 		pomlog(POMLOG_ERR "Output already stopped");
 		return POM_ERR;
 	}
-
-	event_listener_unregister(priv->evt, priv);
 
 	if (close(priv->fd)) {
 		pomlog(POMLOG_ERR "Error while closing log file : %s", pom_strerror(errno));
@@ -155,6 +190,17 @@ int output_log_xml_close(void *output_priv) {
 	return POM_OK;
 }
 
+int output_log_xml_close(void *output_priv) {
+
+	struct output_log_xml_priv *priv = output_priv;
+
+	if (addon_log_xml_close(priv) != POM_OK)
+		return POM_ERR;
+
+	event_listener_unregister(priv->evt, priv);
+
+	return POM_OK;
+}
 
 int output_log_xml_process(struct event *evt, void *obj) {
 

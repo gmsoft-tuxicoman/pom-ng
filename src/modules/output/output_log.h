@@ -23,6 +23,7 @@
 
 #include <pom-ng/analyzer.h>
 #include <pom-ng/output.h>
+#include <pom-ng/addon.h>
 
 struct mod_reg_info* output_log_reg_info();
 int output_log_mod_register(struct mod_reg *mod);

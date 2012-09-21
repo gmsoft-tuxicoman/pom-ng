@@ -35,8 +35,11 @@ struct output_log_xml_priv {
 
 };
 
+int addon_log_xml_init(struct addon_plugin *a);
 int output_log_xml_init(struct output *o);
+int addon_log_xml_open(void *output_priv);
 int output_log_xml_open(void *output_priv);
+int addon_log_xml_close(void *output_priv);
 int output_log_xml_close(void *output_priv);
 int output_log_xml_cleanup(void *output_priv);
 int output_log_xml_process(struct event *evt, void *obj);
