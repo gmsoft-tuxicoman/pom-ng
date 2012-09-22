@@ -85,3 +85,53 @@ int addon_ptype_push(lua_State *L, struct ptype *p) {
 
 	return 1;
 }
+
+void addon_ptype_parse(lua_State *L, int narg, struct ptype *p) {
+
+	int type = lua_type(L, narg);
+
+	if (p->type == ptype_bool && type == LUA_TBOOLEAN) {
+		int b = lua_toboolean(L, narg);
+		PTYPE_BOOL_SETVAL(p, b);
+		return;
+	} else if (p->type == ptype_uint8 ||
+		p->type == ptype_uint16 ||
+		p->type == ptype_uint32) {
+
+		uint32_t val = lua_tointeger(L, narg);
+		if (p->type == ptype_uint8) {
+			if (val > (2 << 8))
+				luaL_error(L, "Integer too big for uint8_t : %u", val);
+			PTYPE_UINT8_SETVAL(p, val);
+		} else if (p->type == ptype_uint16) {
+			if (val > (2 << 16))
+				luaL_error(L, "Integer too big for uint16_t : %s", val);
+			PTYPE_UINT16_SETVAL(p, val);
+		} else {
+			PTYPE_UINT32_SETVAL(p, val);
+		}
+		return;
+	} else if (p->type == ptype_uint64) {
+
+		uint64_t val = 0;
+
+		// check if native system has 64bit integer
+		if (sizeof(lua_Integer) < sizeof(uint64_t)) {
+			val = lua_tonumber(L, narg);
+		} else {
+			val = lua_tointeger(L, narg);
+		}
+		PTYPE_UINT64_SETVAL(p, val);
+		return;
+	} else if (p->type == ptype_string) {
+		const char *value = luaL_checkstring(L, narg);
+		PTYPE_STRING_SETVAL(p, (char*)value);
+		return;
+	}
+
+
+	// Last restort, parse the string
+	const char *value = luaL_checkstring(L, narg);
+	if (ptype_parse_val(p, (char*)value) != POM_OK)
+		luaL_error(L, "Cannot parse value %s", value);
+}

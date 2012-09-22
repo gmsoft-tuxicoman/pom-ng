@@ -159,16 +159,13 @@ static int addon_plugin_param_set(lua_State *L) {
 
 	const char *name = luaL_checkstring(L, 2);
 
-	const char *value = luaL_checkstring(L, 3);
-
 	struct addon_plugin_param *tmp;
 	for (tmp = a->params; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 	
 	if (!tmp)
 		luaL_error(L, "No such parameter %s to plugin %s", name, a->reg->name);
 
-	if (ptype_parse_val(tmp->value, (char*)value) != POM_OK)
-		luaL_error(L, "Cannot parse value %s", value);
+	addon_ptype_parse(L, 3, tmp->value);
 
 	return 0;
 }

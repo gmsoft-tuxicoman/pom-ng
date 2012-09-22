@@ -22,6 +22,7 @@
 #define __ADDON_PTYPE_H__
 
 int addon_ptype_push(lua_State *L, struct ptype *p);
+void addon_ptype_parse(lua_State *L, int narg, struct ptype *p);
 
 
 #endif
