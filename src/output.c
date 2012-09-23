@@ -187,13 +187,13 @@ int output_instance_add(char *type, char *name) {
 	return POM_OK;
 
 err:
-	if (res->name)
-		free(res->name);
-
-	if (res->reg_instance)
+	if (res->reg_instance) {
 		registry_remove_instance(res->reg_instance);
-
-	free(res);
+	} else {
+		if (res->name)
+			free(res->name);
+		free(res);
+	}
 
 	return POM_ERR;
 }
@@ -216,7 +216,8 @@ int output_instance_remove(struct registry_instance *ri) {
 		}
 	}
 
-	free(o->name);
+	if (o->name)
+		free(o->name);
 
 	if (o->prev)
 		o->prev->next = o->next;
