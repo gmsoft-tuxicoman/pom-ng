@@ -40,7 +40,7 @@ static int addon_event_data_item_iterator(lua_State *L) {
 
 static int addon_event_data_item_get_field(lua_State *L) {
 
-	struct addon_event *e = lua_touserdata(L, lua_upvalueindex(1));
+	struct addon_event *e = luaL_checkudata(L, lua_upvalueindex(1), ADDON_EVENT_METATABLE);
 	const char *key = luaL_checkstring(L, 2);
 	int field_id = lua_tointeger(L, lua_upvalueindex(2));
 
@@ -91,7 +91,7 @@ static int addon_event_data_push_item(lua_State *L, int item_id) {
 
 static int addon_event_data_iterator(lua_State *L) {
 
-	struct addon_event *e = lua_touserdata(L, lua_upvalueindex(1));
+	struct addon_event *e = luaL_checkudata(L, lua_upvalueindex(1), ADDON_EVENT_METATABLE);
 	int id = lua_tointeger(L, lua_upvalueindex(2));
 
 	struct data_reg *data_reg = e->evt->reg->info->data_reg;
@@ -116,7 +116,7 @@ static int addon_event_data_iterator(lua_State *L) {
 
 static int addon_event_data_get_field(lua_State *L) {
 	
-	struct addon_event *e = lua_touserdata(L, lua_upvalueindex(1));
+	struct addon_event *e = luaL_checkudata(L, lua_upvalueindex(1), ADDON_EVENT_METATABLE);
 	const char *key = luaL_checkstring(L, 2);
 
 	// Look for the field
@@ -148,7 +148,7 @@ static int addon_event_data_get_field(lua_State *L) {
 
 static int addon_event_get_field(lua_State *L) {
 
-	struct addon_event *e = lua_touserdata(L, 1);
+	struct addon_event *e = luaL_checkudata(L, 1, ADDON_EVENT_METATABLE);
 
 	const char *key = luaL_checkstring(L, 2);
 	if (!strcmp(key, "name")) {
