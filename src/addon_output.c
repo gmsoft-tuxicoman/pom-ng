@@ -23,11 +23,16 @@
 
 #include <pom-ng/event.h>
 #include "addon_event.h"
+#include "addon_ptype.h"
 
 struct addon_output *addon_output_head = NULL;
 
 // Called from lua to create a new output class
 static int addon_output_new(lua_State *L) {
+
+	// Args should be :
+	// 1) name
+	// 2) parameter table
 
 	luaL_checkstring(L, 1);
 
@@ -43,9 +48,22 @@ static int addon_output_new(lua_State *L) {
 	lua_pushvalue(L, 1);
 	lua_settable(L, -3);
 
-	// TODO make name read-only
+	// Save the parameter table
+	lua_pushliteral(L, "params");
+	lua_pushvalue(L, 2);
+	lua_settable(L, -3);
+
+	// TODO make fields read-only
 
 	return 1;
+}
+
+// Helper function to get the output priv
+static struct addon_instance_priv *addon_output_get_priv(lua_State *L, int t) {
+
+	lua_pushliteral(L, "__priv");
+	lua_gettable(L, t);
+	return luaL_checkudata(L, -1, ADDON_OUTPUT_PRIV_METATABLE);
 }
 
 // Called from lua to listen to a new event from an instance
@@ -77,11 +95,7 @@ static int addon_output_event_listen_start(lua_State *L) {
 		luaL_error(L, "No processing function provided");
 
 	// Get the output
-	lua_pushliteral(L, "__priv");
-	lua_gettable(L, 1);
-	struct addon_instance_priv *p = lua_touserdata(L, -1);
-	if (!p)
-		luaL_error(L, "Error while finding the output pointer");
+	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
 
 	if (event_listener_register(evt, p, process_begin, process_end) != POM_OK)
 		luaL_error(L, "Error while listening to event %s", evt_name);
@@ -124,11 +138,7 @@ static int addon_output_event_listen_stop(lua_State *L) {
 		luaL_error(L, "Event %s does not exists", evt_name);
 
 	// Get the output
-	lua_pushliteral(L, "__priv");
-	lua_gettable(L, 1);
-	struct addon_instance_priv *p = lua_touserdata(L, -1);
-	if (!p)
-		luaL_error(L, "Error while finding the output pointer");
+	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
 	
 	if (event_listener_unregister(evt, p) != POM_OK)
 		luaL_error(L, "Error while unregistering event listener");
@@ -141,15 +151,51 @@ static int addon_output_event_listen_stop(lua_State *L) {
 	return 0;
 }
 
-// Garbage collector function for output instances
+// Called from lua to get a parameter value
+
+static int addon_output_param_get(lua_State *L) {
+
+	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
+
+	const char *name = luaL_checkstring(L, 2);
+
+	struct addon_param *tmp;
+	for (tmp = p->params; tmp && strcmp(tmp->name, name); tmp = tmp->next);
+	
+	if (!tmp)
+		luaL_error(L, "No such parameter %s", name);
+
+	addon_ptype_push(L, tmp->value);
+
+	return 1;
+}
+
+// Garbage collector function for an output parameter
+static int addon_output_priv_gc(lua_State *L) {
+	struct addon_instance_priv *priv = luaL_checkudata(L, 1, ADDON_OUTPUT_PRIV_METATABLE);
+
+	while (priv->params) {
+		struct addon_param *tmp = priv->params;
+		priv->params = tmp->next;
+		free(tmp->name);
+		ptype_cleanup(tmp->value);
+		free(tmp);
+	}
+
+	return 0;
+}
+
+// Garbage collector function for output class
 static int addon_output_gc(lua_State *L) {
-	struct output_reg_info *output_reg = lua_touserdata(L, 1);
+	struct output_reg_info *output_reg = luaL_checkudata(L, 1, ADDON_OUTPUT_REG_METATABLE);
 	if (output_reg)
 		free(output_reg->name);
 	return 0;
 }
 
 int addon_output_lua_register(lua_State *L) {
+
+	// Register the output functions
 	struct luaL_Reg l[] = {
 		{ "new", addon_output_new },
 		{ "register", addon_output_register },
@@ -157,31 +203,41 @@ int addon_output_lua_register(lua_State *L) {
 	};
 	luaL_register(L, ADDON_POM_OUTPUT_LIB, l);
 
+
+	// Create the output instance metatable
 	struct luaL_Reg m[] = {
 		{ "event_listen_start", addon_output_event_listen_start },
 		{ "event_listen_stop", addon_output_event_listen_stop },
+		{ "param_get", addon_output_param_get },
+
 		{ 0 }
 	};
 
-	// Create the output metatable
 	luaL_newmetatable(L, ADDON_OUTPUT_METATABLE);
-
 	// Assign __index to itself
 	lua_pushstring(L, "__index");
 	lua_pushvalue(L, -2);
 	lua_settable(L, -3);
-
-	// Register the functions
 	luaL_register(L, NULL, m);
 
+
+	// Create the output_reg metatable
 	struct luaL_Reg m_reg[] = {
 		{ "__gc", addon_output_gc },
 		{ 0 }
 	};
-	
-	// Create the output_reg metatable
 	luaL_newmetatable(L, ADDON_OUTPUT_REG_METATABLE);
 	luaL_register(L, NULL, m_reg);
+
+	
+	// Ceate the output_priv metatable
+	struct luaL_Reg m_priv[] = {
+		{ "__gc", addon_output_priv_gc },
+		{ 0 }
+	};
+	luaL_newmetatable(L, ADDON_OUTPUT_PRIV_METATABLE);
+	luaL_register(L, NULL, m_priv);
+
 
 	return POM_OK;
 }
@@ -271,15 +327,115 @@ int addon_output_init(struct output *o) {
 	o->priv = p;
 	p->instance = o;
 	p->L = L;
+	// Assign the output_priv metatable
+	luaL_getmetatable(L, ADDON_OUTPUT_PRIV_METATABLE);
+	lua_setmetatable(L, -2);
+	// Add it to __priv
 	lua_settable(L, -3);
 
+	// Add the new instance in the registry
 	lua_pushlightuserdata(L, p);
 	lua_pushvalue(L, -2);
-	// Add the new instance in the registry
 	lua_settable(L, LUA_REGISTRYINDEX);
 	
-	pomlog(POMLOG_DEBUG "Output %s created", o->name);
+	// Fetch the parameters table from the class
+	lua_pushlightuserdata(L, o->info->reg_info);
+	lua_gettable(L, LUA_REGISTRYINDEX);
+	lua_pushliteral(L, "params");
+	lua_gettable(L, -2);
 
+	// Parse each param from the class
+	lua_pushnil(L);
+	while (lua_next(L, -2) != 0) {
+		if (!lua_istable(L, -1))
+			pomlog(POMLOG_ERR "Parameters should be described in tables");
+
+		// Fetch parameter data
+		// Stack at this point :
+		// instance (table)
+		// params (table) // table from the class
+		// key
+		// param (table) // current parameter
+	
+		// Fetch the name
+		lua_pushinteger(L, 1);
+		lua_gettable(L, -2);
+		if (!lua_isstring(L, -1)) {
+			pomlog(POMLOG_ERR "Parameter name is not a string");
+			return POM_ERR;
+		}
+		const char *name = luaL_checkstring(L, -1);
+		lua_pop(L, 1);
+
+		// Fetch the ptype type
+		lua_pushinteger(L, 2);
+		lua_gettable(L, -2);
+		if (!lua_isstring(L, -1)) {
+			pomlog(POMLOG_ERR "Parameter type is not a string");
+			// Add it to __priv
+			return POM_ERR;
+		}
+		const char *type = lua_tostring(L, -1);
+		lua_pop(L, 1);
+
+		// Fetch the default value
+		lua_pushinteger(L, 3);
+		lua_gettable(L, -2);
+		if (!lua_isstring(L, -1)) {
+			pomlog(POMLOG_ERR "Parameter default value is not a string");
+			return POM_ERR;
+		}
+		const char *defval = lua_tostring(L, -1);
+		lua_pop(L, 1);
+
+		// Fetch the description
+		lua_pushinteger(L, 4);
+		lua_gettable(L, -2);
+		if (!lua_isstring(L, -1)) {
+			pomlog(POMLOG_ERR "Parameter description is not a string");
+			return POM_ERR;
+		}
+		const char *descr = lua_tostring(L, -1);
+		lua_pop(L, 1);
+
+		// Allocate it
+		struct addon_param *param = malloc(sizeof(struct addon_param));
+		if (!param) {
+			pom_oom(sizeof(struct addon_param));
+			return POM_ERR;
+		}
+		param->name = strdup(name);
+		if (!param->name) {
+			free(param);
+			pom_oom(strlen(name) + 1);
+			return POM_ERR;
+		}
+		param->value = ptype_alloc(type);
+		if (!param->value) {
+			free(param->name);
+			free(param);
+			return POM_ERR;
+		}
+		
+		struct registry_param *reg_param = registry_new_param((char*)name, (char*)defval, param->value, (char*)descr, 0);
+		if (output_instance_add_param(o, reg_param) != POM_OK) {
+			if (p)
+				registry_cleanup_param(reg_param);
+			free(param->name);
+			ptype_cleanup(param->value);
+			free(param);
+			return POM_ERR;
+		}
+
+		param->next = p->params;
+		p->params = param;
+
+
+		// Pop the value (the param table)
+		lua_pop(L, 1);
+	}
+
+	pomlog(POMLOG_DEBUG "Output %s created", o->name);
 	return POM_OK;
 }
 
