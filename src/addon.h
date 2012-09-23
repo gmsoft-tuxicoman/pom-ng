@@ -45,10 +45,18 @@ struct addon {
 	struct addon *prev, *next;
 };
 
+struct addon_param {
+	char *name;
+	struct ptype *value;
+
+	struct addon_param *next;
+};
+
 struct addon_instance_priv {
 
 	lua_State *L; // Each output has it's own lua state
 	void *instance;
+	struct addon_param *params;
 
 };
 

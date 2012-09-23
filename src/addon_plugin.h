@@ -26,16 +26,9 @@
 #define ADDON_PLUGIN_METATABLE		"addon.plugin"
 #define ADDON_PLUGIN_LIB		"plugin"
 
-struct addon_plugin_param {
-	char *name;
-	struct ptype *value;
-
-	struct addon_plugin_param *next;
-};
-
 struct addon_plugin {
 	struct addon_plugin_reg *reg;
-	struct addon_plugin_param *params;
+	struct addon_param *params;
 
 	int open;
 

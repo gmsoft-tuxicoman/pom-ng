@@ -81,7 +81,7 @@ static int addon_plugin_gc(lua_State *L) {
 		luaL_error(L, "Error while cleaning up plugin %s", a->reg->name);
 
 	while (a->params) {
-		struct addon_plugin_param *tmp = a->params;
+		struct addon_param *tmp = a->params;
 		a->params = tmp->next;
 		free(tmp->name);
 		free(tmp);
@@ -139,7 +139,7 @@ static int addon_plugin_param_get(lua_State *L) {
 
 	const char *name = luaL_checkstring(L, 2);
 
-	struct addon_plugin_param *tmp;
+	struct addon_param *tmp;
 	for (tmp = a->params; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 	
 	if (!tmp)
@@ -159,7 +159,7 @@ static int addon_plugin_param_set(lua_State *L) {
 
 	const char *name = luaL_checkstring(L, 2);
 
-	struct addon_plugin_param *tmp;
+	struct addon_param *tmp;
 	for (tmp = a->params; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 	
 	if (!tmp)
@@ -249,12 +249,12 @@ int addon_plugin_add_params(struct addon_plugin *a, char *name, char *defval, st
 	if (ptype_parse_val(value, defval) != POM_OK)
 		return POM_ERR;
 
-	struct addon_plugin_param *p = malloc(sizeof(struct addon_plugin_param));
+	struct addon_param *p = malloc(sizeof(struct addon_param));
 	if (!p) {
-		pom_oom(sizeof(struct addon_plugin_param));
+		pom_oom(sizeof(struct addon_param));
 		return POM_ERR;
 	}
-	memset(p, 0, sizeof(struct addon_plugin_param));
+	memset(p, 0, sizeof(struct addon_param));
 
 	p->name = strdup(name);
 	if (!p->name) {
