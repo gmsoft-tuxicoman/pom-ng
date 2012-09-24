@@ -84,25 +84,8 @@ enum analyzer_pload_class_id {
 	analyzer_pload_class_document,
 };
 
-struct analyzer_pload_type {
-
-	enum analyzer_pload_class_id cls;
-	char *name;
-	char *description;
-	char *extension;
-	struct analyzer_pload_reg *analyzer;
-
-	struct analyzer_pload_type *prev, *next;
-
-};
-
-
-struct analyzer_pload_mime_type {
-
-	struct analyzer_pload_type *type;
-	char *name;
-	struct analyzer_pload_mime_type *prev, *next;
-};
+struct analyzer_pload_instance;
+struct analyzer_pload_type;
 
 enum analyzer_pload_buffer_state {
 	
@@ -128,7 +111,7 @@ struct analyzer_pload_buffer {
 
 	struct data *data;
 	struct event *rel_event;
-	struct analyzer_pload_output_list *output_list;
+	struct analyzer_pload_instance *output_list;
 	void *analyzer_priv;
 
 #ifdef HAVE_ZLIB
@@ -151,30 +134,10 @@ struct analyzer_pload_reg {
 struct analyzer_pload_output_reg {
 
 
-	int (*open) (struct analyzer_pload_output_list *po);
-	int (*write) (struct analyzer_pload_output_list *po, void *data, size_t len);
-	int (*close) (struct analyzer_pload_output_list *po); 
+	int (*open) (struct analyzer_pload_instance *pi, void *output_priv);
+	int (*write) (void *pload_instance_priv, void *data, size_t len);
+	int (*close) (void *pload_instance_priv); 
 
-};
-
-struct analyzer_pload_output {
-
-	void *output_priv;
-	struct analyzer_pload_output_reg *reg_info;
-
-	struct analyzer_pload_output *prev, *next;
-
-};
-
-struct analyzer_pload_output_list {
-
-	struct analyzer_pload_output *o;
-	struct analyzer_pload_buffer *pload;
-
-	void *priv;
-
-	struct analyzer_pload_output_list *prev, *next;
-	
 };
 
 int analyzer_register(struct analyzer_reg *reg_info);
@@ -188,8 +151,9 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
 struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name);
 struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type);
 
-
 int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info);
 int analyzer_pload_output_unregister(void *output_priv);
+
+void analyzer_pload_instance_set_priv(struct analyzer_pload_instance *pi, void *priv);
 
 #endif

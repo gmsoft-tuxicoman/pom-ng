@@ -29,7 +29,7 @@
 void signal_handler(int signal);
 struct datastore *open_system_datastore(char *dstore_uri);
 int main(int argc, char *argv[]);
-int halt(char *reason);
+int halt(char *reason, int error);
 int halt_signal(char *reason);
 struct datastore *system_datastore();
 

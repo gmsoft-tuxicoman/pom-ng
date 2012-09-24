@@ -34,6 +34,46 @@ struct analyzer_event_listener_list {
 
 };
 
+struct analyzer_pload_type {
+
+	enum analyzer_pload_class_id cls;
+	char *name;
+	char *description;
+	char *extension;
+	struct analyzer_pload_reg *analyzer;
+
+	struct analyzer_pload_type *prev, *next;
+
+};
+
+
+struct analyzer_pload_mime_type {
+
+	struct analyzer_pload_type *type;
+	char *name;
+	struct analyzer_pload_mime_type *prev, *next;
+};
+
+struct analyzer_pload_output {
+
+	void *output_priv;
+	struct analyzer_pload_output_reg *reg_info;
+
+	struct analyzer_pload_output *prev, *next;
+
+};
+
+struct analyzer_pload_instance {
+
+	struct analyzer_pload_output *o;
+	struct analyzer_pload_buffer *pload;
+
+	void *priv;
+
+	struct analyzer_pload_instance *prev, *next;
+	
+};
+
 int analyzer_init();
 int analyzer_cleanup();
 int analyzer_pload_output(struct analyzer_pload_buffer *pload);

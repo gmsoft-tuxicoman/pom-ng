@@ -682,17 +682,17 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			struct analyzer_pload_output *tmp;
 			for (tmp = analyzer_pload_outputs; tmp; tmp = tmp->next) {
 
-				struct analyzer_pload_output_list *lst = malloc(sizeof(struct analyzer_pload_output_list));
+				struct analyzer_pload_instance *lst = malloc(sizeof(struct analyzer_pload_instance));
 				if (!lst) {
-					pom_oom(sizeof(struct analyzer_pload_output_list));
+					pom_oom(sizeof(struct analyzer_pload_instance));
 					// Error is not fatal
 					return POM_OK;
 				}
-				memset(lst, 0, sizeof(struct analyzer_pload_output_list));
+				memset(lst, 0, sizeof(struct analyzer_pload_instance));
 				lst->o = tmp;
 				lst->pload = pload;
 
-				if (tmp->reg_info->open(lst)) {
+				if (tmp->reg_info->open(lst, tmp->output_priv)) {
 					pomlog(POMLOG_ERR "Error while opending an output for a payload");
 					free(lst);
 					continue;
@@ -718,17 +718,17 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 		}
 
-		struct analyzer_pload_output_list *lst;
+		struct analyzer_pload_instance *lst;
 		for (lst = pload->output_list; lst; lst = lst->next) {
 			int res;
 			if (pload->buff_size) {
-				res = lst->o->reg_info->write(lst, pload->buff, pload->buff_pos);
+				res = lst->o->reg_info->write(lst->priv, pload->buff, pload->buff_pos);
 			} else {
-				res = lst->o->reg_info->write(lst, data, size);
+				res = lst->o->reg_info->write(lst->priv, data, size);
 			}
 			if (res != POM_OK) {
 				pomlog(POMLOG_ERR "Error while writing to an output");
-				lst->o->reg_info->close(lst);
+				lst->o->reg_info->close(lst->priv);
 				// Remove this input from the list
 				if (lst->next)
 					lst->next->prev = lst->prev;
@@ -774,8 +774,8 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 	}
 
 	while (pload->output_list) {
-		struct analyzer_pload_output_list *lst = pload->output_list;
-		if (lst->o->reg_info->close(lst) != POM_OK)
+		struct analyzer_pload_instance *lst = pload->output_list;
+		if (lst->o->reg_info->close(lst->priv) != POM_OK)
 			pomlog(POMLOG_WARN "Error while closing payload");
 		
 		pload->output_list = lst->next;
@@ -881,4 +881,8 @@ int analyzer_pload_output_unregister(void *output_priv) {
 	free(po);
 
 	return POM_OK;
+}
+
+void analyzer_pload_instance_set_priv(struct analyzer_pload_instance *pi, void *priv) {
+	pi->priv = priv;
 }

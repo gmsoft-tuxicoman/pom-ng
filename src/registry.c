@@ -1311,3 +1311,67 @@ err:
 
 	return POM_ERR;
 }
+
+int registry_config_delete(char *config_name) {
+
+	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
+	
+	struct datastore *sys_dstore = system_datastore();
+	if (!sys_dstore)
+		return POM_ERR;
+
+	registry_lock();
+
+	// Find what is the id corresponding to the name given if any
+	dsq_config_list = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG_LIST, registry_config_list_dataset_template, NULL);
+	if (!dsq_config_list)
+		goto err;
+
+	if (datastore_dataset_query_set_string_condition(dsq_config_list, 0, PTYPE_OP_EQ, config_name) != POM_OK)
+		goto err;
+
+	int res = datastore_dataset_read_single(dsq_config_list);
+
+	if (res < 0)
+		goto err;
+
+	if (res == DATASET_QUERY_OK) {
+		pomlog(POMLOG_ERR "Configuration \"%s\" not found in the database", config_name);
+		goto err;
+	}
+
+	// Get the id of the list
+	uint64_t config_id = dsq_config_list->data_id;
+
+	// Fetch the config
+	dsq_config = datastore_dataset_query_open(sys_dstore, REGISTRY_CONFIG, registry_config_dataset_template, NULL);
+	if (!dsq_config)
+		goto err;
+
+	if (datastore_dataset_query_set_uint64_condition(dsq_config, 0, PTYPE_OP_EQ, config_id) != POM_OK)
+		goto err;
+
+	// Delete the config
+	if (datastore_dataset_delete(dsq_config) != POM_OK)
+		goto err;
+	datastore_dataset_query_cleanup(dsq_config);
+
+	// Delete the config in the list
+	datastore_dataset_delete(dsq_config_list);
+	datastore_dataset_query_cleanup(dsq_config_list);
+
+	registry_config_serial++;
+	registry_serial++;
+	xmlrcpcmd_serial_inc();
+	registry_unlock();
+
+	return POM_OK;
+
+err:
+	registry_unlock();
+
+	datastore_dataset_query_cleanup(dsq_config_list);
+	datastore_dataset_query_cleanup(dsq_config);
+
+	return POM_ERR;
+}

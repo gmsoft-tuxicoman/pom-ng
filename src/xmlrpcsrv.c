@@ -20,6 +20,7 @@
 
 
 #include "common.h"
+#include "main.h"
 #include "xmlrpcsrv.h"
 #include "xmlrpccmd.h"
 
@@ -45,6 +46,8 @@ int xmlrpcsrv_init() {
 	xmlrpc_env_clean(&env);
 
 	xmlrpccmd_register_all();
+
+	xmlrpc_registry_set_shutdown(xmlrpcsrv_registry, xmlrpcsrv_shutdown, NULL);
 
 	return POM_OK;
 }
@@ -112,4 +115,9 @@ int xmlrpcsrv_register_command(struct xmlrpcsrv_command *cmd) {
 
 	return POM_OK;
 
+}
+
+void xmlrpcsrv_shutdown(xmlrpc_env * const faultP, void * const context, const char * const comment, void * const callInfo) {
+	pomlog(POMLOG_WARN "Shutdown requested via XML-RPC : %s", comment);
+	halt("Shutdown requested", 0);
 }

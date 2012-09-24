@@ -331,7 +331,7 @@ void *core_processing_thread_func(void *priv) {
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
 			core_run = 0;
-			halt("Packet processing encountered an error");
+			halt("Packet processing encountered an error", 1);
 			pthread_cond_broadcast(&core_pkt_queue_restart_cond);
 			pthread_rwlock_unlock(&core_processing_lock);
 			return NULL;
@@ -365,7 +365,7 @@ void *core_processing_thread_func(void *priv) {
 	}
 	pom_mutex_unlock(&core_pkt_queue_mutex);
 
-	halt("Processing thread encountered an error");
+	halt("Processing thread encountered an error", 1);
 	return NULL;
 }
 

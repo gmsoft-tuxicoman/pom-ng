@@ -101,5 +101,6 @@ struct registry_config_entry* registry_config_list();
 int registry_config_save(char *config_name);
 int registry_config_reset();
 int registry_config_load(char *config_name);
+int registry_config_delete(char *config_name);
 
 #endif
