@@ -142,9 +142,9 @@ int output_file_close(void *output_priv) {
 }
 
 
-int output_file_pload_open(struct analyzer_pload_output_list *po) {
+int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
 
-	struct output_file_priv *priv = po->o->output_priv;
+	struct output_file_priv *priv = output_priv;
 
 	// Open the file
 	char filename[FILENAME_MAX + 1];
@@ -184,16 +184,16 @@ int output_file_pload_open(struct analyzer_pload_output_list *po) {
 		return POM_ERR;
 	}
 
-	po->priv = ppriv;
+	analyzer_pload_instance_set_priv(pi, ppriv);
 
 	return POM_OK;
 
 }
 
-int output_file_pload_write(struct analyzer_pload_output_list *po, void *data, size_t len) {
+int output_file_pload_write(void *pload_instance_priv, void *data, size_t len) {
 
 
-	struct output_file_pload_priv *ppriv = po->priv;
+	struct output_file_pload_priv *ppriv = pload_instance_priv;
 	int res = pom_write(ppriv->fd, data, len);
 	if (res == POM_ERR)
 		pomlog(POMLOG_ERR "Error while writing to file %s : %s", ppriv->filename, pom_strerror(errno));
@@ -202,14 +202,13 @@ int output_file_pload_write(struct analyzer_pload_output_list *po, void *data, s
 
 }
 
-int output_file_pload_close(struct analyzer_pload_output_list *po) {
+int output_file_pload_close(void *pload_instance_priv) {
 
-	struct output_file_pload_priv *ppriv = po->priv;
+	struct output_file_pload_priv *ppriv = pload_instance_priv;
 	int fd = ppriv->fd;
 	pomlog(POMLOG_DEBUG "File %s closed", ppriv->filename);
 	free(ppriv->filename);
 	free(ppriv);
-	po->priv = NULL;
 
 	return close(fd);
 }
