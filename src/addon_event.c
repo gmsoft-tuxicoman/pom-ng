@@ -51,7 +51,7 @@ static int addon_event_data_item_get_field(lua_State *L) {
 
 	// Create an iterator if need
 	if (!strcmp(key, "iter")) {
-		struct data_item **d = lua_newuserdata(L, sizeof(struct data_item **));
+		struct data_item **d = lua_newuserdata(L, sizeof(struct data_item *));
 		*d = e->evt->data[field_id].items;
 		lua_pushcclosure(L, addon_event_data_item_iterator, 1);
 		return 1;
@@ -193,21 +193,6 @@ int addon_event_lua_register(lua_State *L) {
 	return POM_OK;
 }
 
-static int addon_event_add_event(lua_State *L, struct event *evt) {
-
-	// Add a pointer to the event
-	struct addon_event *e = lua_newuserdata(L, sizeof(struct addon_event));
-	if (!e)
-		return POM_ERR;
-	e->evt = evt;
-	
-	// Add the metatable to this object
-	luaL_getmetatable(L, ADDON_EVENT_METATABLE);
-	lua_setmetatable(L, -2);
-
-	return POM_OK;
-}
-
 int addon_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct addon_instance_priv *p = obj;
@@ -263,3 +248,19 @@ int addon_event_process_end(struct event *evt, void *obj) {
 	return addon_pcall(p->L, 2, 0);
 
 }
+
+int addon_event_add_event(lua_State *L, struct event *evt) {
+
+	// Add a pointer to the event
+	struct addon_event *e = lua_newuserdata(L, sizeof(struct addon_event));
+	if (!e)
+		return POM_ERR;
+	e->evt = evt;
+	
+	// Add the metatable to this object
+	luaL_getmetatable(L, ADDON_EVENT_METATABLE);
+	lua_setmetatable(L, -2);
+
+	return POM_OK;
+}
+

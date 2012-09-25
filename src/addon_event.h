@@ -35,6 +35,8 @@ int addon_event_lua_register(lua_State *L);
 int addon_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 int addon_event_process_end(struct event *evt, void *obj);
 
+int addon_event_add_event(lua_State *L, struct event *evt);
+
 #endif
 
 
