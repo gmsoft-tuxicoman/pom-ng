@@ -24,6 +24,7 @@
 #include "addon_event.h"
 #include "addon_output.h"
 #include "addon_plugin.h"
+#include "addon_pload.h"
 
 #include <dirent.h>
 #include <lualib.h>
