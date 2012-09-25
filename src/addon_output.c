@@ -25,6 +25,7 @@
 #include <pom-ng/analyzer.h>
 #include "addon_event.h"
 #include "addon_ptype.h"
+#include "addon_pload.h"
 
 struct addon_output *addon_output_head = NULL;
 
@@ -152,24 +153,6 @@ static int addon_output_event_listen_stop(lua_State *L) {
 	return 0;
 }
 
-// Called from lua to get the pload content
-static int addon_output_pload_data(lua_State *L) {
-
-	struct addon_output_pload_data *p = luaL_checkudata(L, 1, ADDON_OUTPUT_PLOAD_METATABLE);
-	lua_pushlstring(L, p->data, p->len);
-	
-	return 1;
-}
-
-// Called from lua to get the pload length
-static int addon_output_pload_len(lua_State *L) {
-
-	struct addon_output_pload_data *p = luaL_checkudata(L, 1, ADDON_OUTPUT_PLOAD_METATABLE);
-	lua_pushinteger(L, p->len);
-	
-	return 1;
-}
-
 // Called from C to open a pload
 static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
 
@@ -204,9 +187,7 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 
 	// Add output_pload_data to it
 	lua_pushliteral(p->L, "__pload_data");
-	lua_newuserdata(p->L, sizeof(struct addon_output_pload_data));
-	luaL_getmetatable(p->L, ADDON_OUTPUT_PLOAD_METATABLE);
-	lua_setmetatable(p->L, -2);
+	addon_pload_data_push(p->L);
 	lua_settable(p->L, -3);
 
 	// Add the new priv to the __pload_listener table
@@ -214,7 +195,10 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_pushvalue(p->L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
 	lua_settable(p->L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
-	return addon_pcall(p->L, 2, 0);
+	// Add the pload to the args
+	addon_pload_push(p->L, analyzer_pload_instance_get_buffer(pi)); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
+
+	return addon_pcall(p->L, 3, 0);
 }
 
 // Called from C to write a pload
@@ -241,10 +225,7 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 	lua_gettable(p->L, -2); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
 
 	// Update the pload_data
-	struct addon_output_pload_data *pdata = luaL_checkudata(p->L, -1, ADDON_OUTPUT_PLOAD_METATABLE);
-	pdata->data = data;
-	pdata->len = len;
-
+	addon_pload_data_update(p->L, -1, data, len);
 
 	return addon_pcall(p->L, 3, 0);
 }
@@ -446,19 +427,6 @@ int addon_output_lua_register(lua_State *L) {
 	};
 	luaL_newmetatable(L, ADDON_OUTPUT_PRIV_METATABLE);
 	luaL_register(L, NULL, m_priv);
-
-	// Create the output_pload metatable
-	struct luaL_Reg m_pload[] = {
-		{ "data", addon_output_pload_data },
-		{ "len", addon_output_pload_len },
-		{ 0 }
-	};
-	luaL_newmetatable(L, ADDON_OUTPUT_PLOAD_METATABLE);
-	// Assign __index to itself
-	lua_pushstring(L, "__index");
-	lua_pushvalue(L, -2);
-	lua_settable(L, -3);
-	luaL_register(L, NULL, m_pload);
 
 	return POM_OK;
 }

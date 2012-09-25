@@ -18,39 +18,25 @@
  *
  */
 
+#ifndef __ADDON_PLOAD_H__
+#define __ADDON_PLOAD_H__
 
-#ifndef __ADDON_OUTPUT_H__
-#define __ADDON_OUTPUT_H__
+#include "addon.h"
+#include "analyzer.h"
 
-#include "output.h"
+#define ADDON_PLOAD_METATABLE "addon.pload"
+#define ADDON_PLOAD_DATA_METATABLE "addon.pload_data"
 
-#define ADDON_OUTPUT_METATABLE		"addon.output"
-#define ADDON_OUTPUT_PRIV_METATABLE	"addon.output_priv"
-#define ADDON_OUTPUT_REG_METATABLE	"addon.output_reg"
-#define ADDON_POM_OUTPUT_LIB		"output"
-
-struct addon_output {
-
-	struct output_reg_info reg_info;
-
-	struct addon_output *prev, *next;
+struct addon_pload_data {
+	void *data;
+	ssize_t len;
 };
 
-struct addon_output_pload_priv {
+int addon_pload_lua_register(lua_State *L);
 
-	struct addon_instance_priv *instance_priv;
-
-};
-
-int addon_output_lua_register(lua_State *L);
-int addon_output_register(lua_State *L);
-
-int addon_output_init(struct output *o);
-int addon_output_cleanup(void *output_priv);
-int addon_output_open(void *output_priv);
-int addon_output_close(void *output_priv);
+void addon_pload_data_push(lua_State *L);
+void addon_pload_data_update(lua_State *L, int n, void *data, size_t len);
+void addon_pload_push(lua_State *L, struct analyzer_pload_buffer *pload);
 
 
 #endif
-
-

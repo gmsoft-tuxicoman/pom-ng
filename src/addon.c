@@ -222,6 +222,7 @@ lua_State *addon_create_state(char *file) {
 	addon_event_lua_register(L);
 	addon_output_lua_register(L);
 	addon_plugin_lua_register(L);
+	addon_pload_lua_register(L);
 
 	// Add our error handler
 	lua_pushcfunction(L, addon_error);

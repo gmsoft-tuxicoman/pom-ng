@@ -886,3 +886,7 @@ int analyzer_pload_output_unregister(void *output_priv) {
 void analyzer_pload_instance_set_priv(struct analyzer_pload_instance *pi, void *priv) {
 	pi->priv = priv;
 }
+
+struct analyzer_pload_buffer *analyzer_pload_instance_get_buffer(struct analyzer_pload_instance *pi) {
+	return pi->pload;
+}
