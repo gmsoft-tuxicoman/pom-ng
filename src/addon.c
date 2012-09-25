@@ -303,36 +303,27 @@ int addon_get_instance(struct addon_instance_priv *p) {
 	return POM_OK;
 }
 
-int addon_call(lua_State *L, const char *function, int nargs) {
-	
-	// We assume the instance table is at the top of the stack followed by arguments
+int addon_pcall(lua_State *L, int nargs, int nresults) {
 
-	// Push the error handler
-	lua_pushcfunction(L, addon_error);
+	const char *err_str = "Unknown error";
 
-	// Fetch the open function
-	lua_pushstring(L, function);
-	lua_gettable(L, -(nargs + 3));
-
-	// Add self
-	lua_pushvalue(L, -(nargs + 3));
-
-	// Put the arguments in front
-	int i;
-	for (i = 0; i < nargs; i++) {
-		lua_pushvalue(L, -(nargs + 3));
-		lua_remove(L, -(nargs + 4));
+	if (!lua_isfunction(L, -(nargs + 1))) {
+		pomlog(POMLOG_ERR "Internal error : Trying to call something that is not a function");
+		return POM_ERR;
 	}
 
-	switch (lua_pcall(L, nargs + 1, 0, -(nargs + 3))) {
+	switch (lua_pcall(L, nargs, nresults, 0)) {
 		case LUA_ERRRUN:
-			pomlog(POMLOG_ERR "Error while calling function \"%s\"", function);
+			err_str = lua_tostring(L, -1);
+			pomlog(POMLOG_ERR "Error while calling lua : %s", err_str);
 			return POM_ERR;
 		case LUA_ERRMEM:
-			pomlog(POMLOG_ERR "Not enough memory to call function \"%s\"", function);
+			err_str = lua_tostring(L, -1);
+			pomlog(POMLOG_ERR "Not enough memory to lua : %s", err_str);
 			return POM_ERR;
 		case LUA_ERRERR:
-			pomlog(POMLOG_ERR "Error while running the error handler for function \"%s\"", function);
+			err_str = lua_tostring(L, -1);
+			pomlog(POMLOG_ERR "Error while running the error handler : %s", err_str);
 			return POM_ERR;
 	}
 	

@@ -22,6 +22,7 @@
 #include "addon_output.h"
 
 #include <pom-ng/event.h>
+#include <pom-ng/analyzer.h>
 #include "addon_event.h"
 #include "addon_ptype.h"
 
@@ -151,8 +152,175 @@ static int addon_output_event_listen_stop(lua_State *L) {
 	return 0;
 }
 
-// Called from lua to get a parameter value
+// Called from C to open a pload
+static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
 
+	struct addon_instance_priv *p = output_priv;
+
+	if (addon_get_instance(output_priv) != POM_OK) // Stack : self
+		return POM_ERR;
+	
+	struct addon_output_pload_priv *ppriv = malloc(sizeof(struct addon_output_pload_priv));
+	if (!ppriv) {
+		pom_oom(sizeof(struct addon_output_pload_priv));
+		return POM_ERR;
+	}
+	memset(ppriv, 0, sizeof(struct addon_output_pload_priv));
+	ppriv->instance_priv = p;
+
+	analyzer_pload_instance_set_priv(pi, ppriv);
+
+	// Get the __pload_listener table
+	lua_pushliteral(p->L, "__pload_listener");
+	lua_gettable(p->L, -2); // Stack : self, __pload_listener
+
+	// Get the open function
+	lua_pushliteral(p->L, "open");
+	lua_gettable(p->L, -2); // Stack : self, __pload_listener, open_func
+
+	// Add self
+	lua_pushvalue(p->L, -3);
+
+	// Create a new table for the pload priv and store it into __pload_listener
+	lua_newtable(p->L); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+	lua_pushlightuserdata(p->L, ppriv); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv
+	lua_pushvalue(p->L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
+	lua_settable(p->L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+
+	return addon_pcall(p->L, 2, 0);
+}
+
+// Called from C to write a pload
+static int addon_output_pload_write(void *pload_instance_priv, void *data, size_t len) {
+
+	struct addon_output_pload_priv *ppriv = pload_instance_priv;
+	struct addon_instance_priv *p = ppriv->instance_priv;
+
+	if (addon_get_instance(p) != POM_OK) // Stack : self
+		return POM_ERR;
+	
+	lua_pushliteral(p->L, "__pload_listener");
+	lua_gettable(p->L, -2);  // Stack : self, __pload_listener
+
+	// Get the write function
+	lua_pushliteral(p->L, "write");
+	lua_gettable(p->L, -2); // Stack : self, __pload_listener, write_func
+
+	// Setup args
+	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, write_func, self
+	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
+	lua_gettable(p->L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
+
+
+	return addon_pcall(p->L, 2, 0);
+}
+
+// Called from C to close a pload
+static int addon_output_pload_close(void *pload_instance_priv) {
+
+	struct addon_output_pload_priv *ppriv = pload_instance_priv;
+	struct addon_instance_priv *p = ppriv->instance_priv;
+
+	if (addon_get_instance(p) != POM_OK) // Stack : self
+		return POM_ERR;
+	
+	lua_pushliteral(p->L, "__pload_listener");
+	lua_gettable(p->L, -2); // Stack : __pload_listener
+
+	// Get the close function
+	lua_pushliteral(p->L, "close");
+	lua_gettable(p->L, -2); // Stack : self, __pload_listener, close_func
+
+	// Setup args
+	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, close_func, self
+	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, close_func, self, pload_priv
+	lua_gettable(p->L, -4); // Stack : self, __pload_listener, close_func, self, pload_priv_table
+
+	int res = addon_pcall(p->L, 2, 0);
+	if (res != POM_OK)
+		return POM_ERR;
+
+	free(ppriv);
+
+	return POM_OK;
+}
+
+// Called from lua to start listening to files
+static int addon_output_pload_listen_start(lua_State *L) {
+
+	// Args should be :
+	// 1) self
+	// 2) open function
+	// 3) write function
+	// 4) close function
+	
+
+	// Get the output
+	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
+
+	if (!lua_isfunction(L, 2) || !lua_isfunction(L, 3) || !lua_isfunction(L, 4))
+		luaL_error(L, "Arguments to pload_listen_start() should be : read function, write function, close function");
+
+	// Check if we are already listening or not
+	lua_pushliteral(L, "__pload_listener");
+	lua_gettable(L, 1);
+	if (!lua_isnil(L, -1))
+		luaL_error(L, "The output is already listening for payloads");
+
+	static struct analyzer_pload_output_reg reg_info = { 0 };
+	reg_info.open = addon_output_pload_open;
+	reg_info.write = addon_output_pload_write;
+	reg_info.close = addon_output_pload_close;
+
+	if (analyzer_pload_output_register(p, &reg_info) != POM_OK)
+		luaL_error(L, "Error while registering the payload listener");
+
+
+	// Create table to track pload listener functions
+	lua_pushliteral(L, "__pload_listener");
+	lua_newtable(L);
+
+	lua_pushliteral(L, "open");
+	lua_pushvalue(L, 2);
+	lua_settable(L, -3);
+
+	lua_pushliteral(L, "write");
+	lua_pushvalue(L, 3);
+	lua_settable(L, -3);
+
+	lua_pushliteral(L, "close");
+	lua_pushvalue(L, 4);
+	lua_settable(L, -3);
+
+	lua_settable(L, 1);
+	
+	return 0;
+}
+
+static int addon_output_pload_listen_stop(lua_State *L) {
+	// Args should be :
+	// 1) self
+	
+	// Get the output
+	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
+
+	// Get the listening table
+	lua_pushliteral(L, "__pload_listener");
+	lua_gettable(L, 1);
+	if (lua_isnil(L, 1))
+		luaL_error(L, "The output is not listening for payloads");
+
+	if (analyzer_pload_output_unregister(p) != POM_OK)
+		luaL_error(L, "Error while stopping payload listening");
+	
+	lua_pushliteral(L, "__pload_listener");
+	lua_pushnil(L);
+	lua_settable(L, -1);
+
+	return 0;
+}
+
+// Called from lua to get a parameter value
 static int addon_output_param_get(lua_State *L) {
 
 	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
@@ -208,6 +376,8 @@ int addon_output_lua_register(lua_State *L) {
 	struct luaL_Reg m[] = {
 		{ "event_listen_start", addon_output_event_listen_start },
 		{ "event_listen_stop", addon_output_event_listen_stop },
+		{ "pload_listen_start", addon_output_pload_listen_start },
+		{ "pload_listen_stop", addon_output_pload_listen_stop },
 		{ "param_get", addon_output_param_get },
 
 		{ 0 }
@@ -453,16 +623,28 @@ int addon_output_cleanup(void *output_priv) {
 int addon_output_open(void *output_priv) {
 
 	struct addon_instance_priv *p = output_priv;
-	if (addon_get_instance(p) != POM_OK)
+	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
-	return addon_call(p->L, "open", 0);
+
+	lua_pushliteral(p->L, "open");
+	lua_gettable(p->L, -2); // Stack : self, open_func
+
+	lua_pushvalue(p->L, -2); // Stack : self, open_func, self
+
+	return addon_pcall(p->L, 1, 0);
 }
 
 int addon_output_close(void *output_priv) {
 
 	struct addon_instance_priv *p = output_priv;
-	if (addon_get_instance(p) != POM_OK)
+	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
-	return addon_call(p->L, "close", 0);
+
+	lua_pushliteral(p->L, "close");
+	lua_gettable(p->L, -2); // Stack : self, close_func
+
+	lua_pushvalue(p->L, -2); // Stack : self, close_func, self
+
+	return addon_pcall(p->L, 1, 0);
 }
 

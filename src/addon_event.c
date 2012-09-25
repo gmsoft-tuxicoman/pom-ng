@@ -212,41 +212,54 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 
 	struct addon_instance_priv *p = obj;
 
-	if (addon_get_instance(p) != POM_OK)
+	// Fetch the instance table
+	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
 
 	// Fetch the table associated with that event
 	lua_pushlightuserdata(p->L, evt->reg);
-	lua_gettable(p->L, -2);
+	lua_gettable(p->L, -2); // Stack : self, evt_table
 	if (!lua_istable(p->L, -1)) {
 		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
 		return POM_ERR;
 	}
-	
-	if (addon_event_add_event(p->L, evt) != POM_OK)
+
+	// Get the open function
+	lua_pushliteral(p->L, "begin");
+	lua_gettable(p->L, -2); // Stack : self, evt_table, open_func
+	// Push self
+	lua_pushvalue(p->L, -3); // Stack : self, evt_table, open_func, self
+	// Push event
+	if (addon_event_add_event(p->L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
 		return POM_ERR;
 
-	return addon_call(p->L, "begin", 1);
+	return addon_pcall(p->L, 2, 0);
 }
 
 int addon_event_process_end(struct event *evt, void *obj) {
 
 	struct addon_instance_priv *p = obj;
 
-	if (addon_get_instance(p) != POM_OK)
+	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
 
 	// Fetch the table associated with that event
 	lua_pushlightuserdata(p->L, evt->reg);
-	lua_gettable(p->L, -2);
+	lua_gettable(p->L, -2); // Stack : self, evt_table
 	if (!lua_istable(p->L, -1)) {
 		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
 		return POM_ERR;
 	}
 
-	if (addon_event_add_event(p->L, evt) != POM_OK)
+	// Get the open function
+	lua_pushliteral(p->L, "end");
+	lua_gettable(p->L, -2); // Stack : self, evt_table, close_func
+	// Push self
+	lua_pushvalue(p->L, -3); // Stack : self, evt_table, close_func, self
+	// Push event
+	if (addon_event_add_event(p->L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
 		return POM_ERR;
 
-	return addon_call(p->L, "end", 1);
+	return addon_pcall(p->L, 2, 0);
 
 }

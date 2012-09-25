@@ -36,6 +36,12 @@ struct addon_output {
 	struct addon_output *prev, *next;
 };
 
+struct addon_output_pload_priv {
+
+	struct addon_instance_priv *instance_priv;
+
+};
+
 int addon_output_lua_register(lua_State *L);
 int addon_output_register(lua_State *L);
 
