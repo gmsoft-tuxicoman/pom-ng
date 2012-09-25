@@ -152,6 +152,24 @@ static int addon_output_event_listen_stop(lua_State *L) {
 	return 0;
 }
 
+// Called from lua to get the pload content
+static int addon_output_pload_data(lua_State *L) {
+
+	struct addon_output_pload_data *p = luaL_checkudata(L, 1, ADDON_OUTPUT_PLOAD_METATABLE);
+	lua_pushlstring(L, p->data, p->len);
+	
+	return 1;
+}
+
+// Called from lua to get the pload length
+static int addon_output_pload_len(lua_State *L) {
+
+	struct addon_output_pload_data *p = luaL_checkudata(L, 1, ADDON_OUTPUT_PLOAD_METATABLE);
+	lua_pushinteger(L, p->len);
+	
+	return 1;
+}
+
 // Called from C to open a pload
 static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
 
@@ -183,6 +201,15 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 
 	// Create a new table for the pload priv and store it into __pload_listener
 	lua_newtable(p->L); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+
+	// Add output_pload_data to it
+	lua_pushliteral(p->L, "__pload_data");
+	lua_newuserdata(p->L, sizeof(struct addon_output_pload_data));
+	luaL_getmetatable(p->L, ADDON_OUTPUT_PLOAD_METATABLE);
+	lua_setmetatable(p->L, -2);
+	lua_settable(p->L, -3);
+
+	// Add the new priv to the __pload_listener table
 	lua_pushlightuserdata(p->L, ppriv); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv
 	lua_pushvalue(p->L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
 	lua_settable(p->L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
@@ -210,9 +237,16 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, write_func, self
 	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
 	lua_gettable(p->L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
+	lua_pushliteral(p->L, "__pload_data");
+	lua_gettable(p->L, -2); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
+
+	// Update the pload_data
+	struct addon_output_pload_data *pdata = luaL_checkudata(p->L, -1, ADDON_OUTPUT_PLOAD_METATABLE);
+	pdata->data = data;
+	pdata->len = len;
 
 
-	return addon_pcall(p->L, 2, 0);
+	return addon_pcall(p->L, 3, 0);
 }
 
 // Called from C to close a pload
@@ -236,11 +270,16 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, close_func, self, pload_priv
 	lua_gettable(p->L, -4); // Stack : self, __pload_listener, close_func, self, pload_priv_table
 
-	int res = addon_pcall(p->L, 2, 0);
+	int res = addon_pcall(p->L, 2, 0); // Stack : self, __pload_listener
 	if (res != POM_OK)
 		return POM_ERR;
 
 	free(ppriv);
+
+	// Remove the instance priv from the __pload_listener table
+	lua_pushlightuserdata(p->L, pload_instance_priv);
+	lua_pushnil(p->L);
+	lua_settable(p->L, -3);
 
 	return POM_OK;
 }
@@ -408,6 +447,18 @@ int addon_output_lua_register(lua_State *L) {
 	luaL_newmetatable(L, ADDON_OUTPUT_PRIV_METATABLE);
 	luaL_register(L, NULL, m_priv);
 
+	// Create the output_pload metatable
+	struct luaL_Reg m_pload[] = {
+		{ "data", addon_output_pload_data },
+		{ "len", addon_output_pload_len },
+		{ 0 }
+	};
+	luaL_newmetatable(L, ADDON_OUTPUT_PLOAD_METATABLE);
+	// Assign __index to itself
+	lua_pushstring(L, "__index");
+	lua_pushvalue(L, -2);
+	lua_settable(L, -3);
+	luaL_register(L, NULL, m_pload);
 
 	return POM_OK;
 }

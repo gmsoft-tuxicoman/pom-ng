@@ -27,6 +27,7 @@
 #define ADDON_OUTPUT_METATABLE		"addon.output"
 #define ADDON_OUTPUT_PRIV_METATABLE	"addon.output_priv"
 #define ADDON_OUTPUT_REG_METATABLE	"addon.output_reg"
+#define ADDON_OUTPUT_PLOAD_METATABLE	"addon.output_pload"
 #define ADDON_POM_OUTPUT_LIB		"output"
 
 struct addon_output {
@@ -34,6 +35,11 @@ struct addon_output {
 	struct output_reg_info reg_info;
 
 	struct addon_output *prev, *next;
+};
+
+struct addon_output_pload_data {
+	void *data;
+	ssize_t len;
 };
 
 struct addon_output_pload_priv {
