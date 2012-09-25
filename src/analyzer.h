@@ -67,6 +67,7 @@ struct analyzer_pload_instance {
 
 	struct analyzer_pload_output *o;
 	struct analyzer_pload_buffer *pload;
+	int is_err;
 
 	void *priv;
 

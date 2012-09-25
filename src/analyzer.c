@@ -693,9 +693,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				lst->pload = pload;
 
 				if (tmp->reg_info->open(lst, tmp->output_priv)) {
-					pomlog(POMLOG_ERR "Error while opending an output for a payload");
-					free(lst);
-					continue;
+					// Either the pload is not needed or their was an error
+					lst->is_err = 1;
 				}
 
 				lst->next = pload->output_list;
@@ -720,6 +719,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 		struct analyzer_pload_instance *lst;
 		for (lst = pload->output_list; lst; lst = lst->next) {
+			if (lst->is_err)
+				continue;
 			int res;
 			if (pload->buff_size) {
 				res = lst->o->reg_info->write(lst->priv, pload->buff, pload->buff_pos);
@@ -729,15 +730,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			if (res != POM_OK) {
 				pomlog(POMLOG_ERR "Error while writing to an output");
 				lst->o->reg_info->close(lst->priv);
-				// Remove this input from the list
-				if (lst->next)
-					lst->next->prev = lst->prev;
-				if (lst->prev)
-					lst->prev->next = lst->next;
-				else
-					pload->output_list = lst->next;
-
-				free(lst);
+				lst->is_err = 1;
 				continue;
 			}
 
@@ -775,7 +768,7 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 
 	while (pload->output_list) {
 		struct analyzer_pload_instance *lst = pload->output_list;
-		if (lst->o->reg_info->close(lst->priv) != POM_OK)
+		if (!lst->is_err && lst->o->reg_info->close(lst->priv) != POM_OK)
 			pomlog(POMLOG_WARN "Error while closing payload");
 		
 		pload->output_list = lst->next;
