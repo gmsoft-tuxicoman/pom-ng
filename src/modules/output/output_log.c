@@ -61,7 +61,7 @@ int output_log_mod_register(struct mod_reg *mod) {
 	output_log_xml.close = output_log_xml_close;
 	output_log_xml.cleanup = output_log_xml_cleanup;
 
-	static struct addon_plugin_reg addon_log_xml = { 0 };
+	static struct addon_plugin_event_reg addon_log_xml = { 0 };
 	addon_log_xml.name = "log_xml";
 	addon_log_xml.mod = mod;
 	
@@ -74,7 +74,7 @@ int output_log_mod_register(struct mod_reg *mod) {
 
 	if (output_register(&output_log_txt) != POM_OK ||
 		output_register(&output_log_xml) != POM_OK ||
-		addon_plugin_register(&addon_log_xml)) {
+		addon_plugin_event_register(&addon_log_xml)) {
 		output_log_mod_unregister();
 		return POM_ERR;
 	}

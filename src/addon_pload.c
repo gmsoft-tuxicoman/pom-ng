@@ -25,16 +25,17 @@
 
 // Called from lua to get the event from the pload
 static int addon_pload_event(lua_State *L) {
-	struct analyzer_pload_buffer **p = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
+	struct analyzer_pload_instance **i = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
+	struct analyzer_pload_buffer *p = analyzer_pload_instance_get_buffer(*i);
 
-	addon_event_add_event(L, (*p)->rel_event);
+	addon_event_add_event(L, p->rel_event);
 
 	return 1;
 }
 
 static int addon_pload_type(lua_State *L) {
-	struct analyzer_pload_buffer **pp = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
-	struct analyzer_pload_buffer *p = *pp;
+	struct analyzer_pload_instance **i = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
+	struct analyzer_pload_buffer *p = analyzer_pload_instance_get_buffer(*i);
 	
 	lua_newtable(L);
 	
@@ -142,11 +143,16 @@ void addon_pload_data_update(lua_State *L, int n, void *data, size_t len) {
 	p->len = len;
 }
 
-void addon_pload_push(lua_State *L, struct analyzer_pload_buffer *pload) {
+void addon_pload_push(lua_State *L, struct analyzer_pload_instance *pi) {
 
-	struct analyzer_pload_buffer **p = lua_newuserdata(L, sizeof(struct analyzer_pload_buffer *));
-	*p = pload;
+	struct analyzer_pload_instance **i = lua_newuserdata(L, sizeof(struct analyzer_pload_buffer *));
+	*i = pi;
 
 	luaL_getmetatable(L, ADDON_PLOAD_METATABLE);
 	lua_setmetatable(L, -2);
+}
+
+struct analyzer_pload_instance *addon_pload_get_instance(lua_State *L, int n) {
+	struct analyzer_pload_instance **i = luaL_checkudata(L, n, ADDON_PLOAD_METATABLE);
+	return *i;
 }

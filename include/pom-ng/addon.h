@@ -22,11 +22,17 @@
 #define __POMNG_ADDON_H__
 
 #include <pom-ng/event.h>
+#include <pom-ng/analyzer.h>
 
 struct addon_plugin;
 
-struct addon_plugin_reg {
+struct addon_pload_param_reg {
+	char *name;
+	char *ptype_type;
+	char *defval;
+};
 
+struct addon_plugin_event_reg {
 	char *name;
 	struct mod_reg *mod;
 
@@ -37,15 +43,30 @@ struct addon_plugin_reg {
 
 	int (*event_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 	int (*event_end) (struct event *evt, void *obj);
-
-	struct addon_plugin_reg *prev, *next;
 };
 
-int addon_plugin_register(struct addon_plugin_reg *reg_info);
+struct addon_plugin_pload_reg {
+	char *name;
+	struct mod_reg *mod;
+
+	int (*init) (struct addon_plugin *p);
+	int (*cleanup) (void *addon_priv);
+	int (*open) (void *addon_priv);
+	int (*close) (void *addon_priv);
+
+	int (*pload_open) (struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
+	int (*pload_write) (void *pload_instance_priv, void *data, size_t len);
+	int (*pload_close) (void *pload_instance_priv);
+
+	struct addon_pload_param_reg *pload_params;
+};
+
+int addon_plugin_event_register(struct addon_plugin_event_reg *reg_info);
+int addon_plugin_pload_register(struct addon_plugin_pload_reg *reg_info);
 int addon_plugin_unregister(char *name);
 
 void addon_plugin_set_priv(struct addon_plugin *a, void *priv);
-int addon_plugin_add_params(struct addon_plugin *a, char *name, char *defval, struct ptype *value);
+int addon_plugin_add_param(struct addon_plugin *a, char *name, char *defval, struct ptype *value);
 
 
 #endif

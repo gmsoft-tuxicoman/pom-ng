@@ -23,7 +23,7 @@
 
 #include <pom-ng/analyzer.h>
 #include <pom-ng/output.h>
-
+#include <pom-ng/addon.h>
 
 struct output_file_priv {
 
@@ -49,6 +49,7 @@ int output_file_open(void *output_priv);
 int output_file_close(void *output_priv);
 
 int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv);
+int addon_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
 int output_file_pload_write(void *pload_instance_priv, void *data, size_t len);
 int output_file_pload_close(void *pload_instance_priv);
 

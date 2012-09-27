@@ -46,8 +46,7 @@ struct mod_reg_info* output_file_reg_info() {
 int output_file_mod_register(struct mod_reg *mod) {
 
 
-	static struct output_reg_info output_file;
-	memset(&output_file, 0, sizeof(struct output_reg_info));
+	static struct output_reg_info output_file = { 0 };
 	output_file.name = "file";
 	output_file.api_ver = OUTPUT_API_VER;
 	output_file.mod = mod;
@@ -57,7 +56,29 @@ int output_file_mod_register(struct mod_reg *mod) {
 	output_file.close = output_file_close;
 	output_file.cleanup = output_file_cleanup;
 
-	return output_register(&output_file);
+	static struct addon_plugin_pload_reg addon_file = { 0 };
+	addon_file.name = "file";
+	addon_file.mod = mod;
+
+	addon_file.pload_open = addon_file_pload_open;
+	addon_file.pload_write = output_file_pload_write;
+	addon_file.pload_close = output_file_pload_close;
+
+	static struct addon_pload_param_reg params[] = {
+		{ "filename", "string" },
+		{ 0 }
+	};
+
+	addon_file.pload_params = params;
+
+
+	if (output_register(&output_file) != POM_OK ||
+		addon_plugin_pload_register(&addon_file) != POM_OK) {
+		output_file_mod_unregister();
+		return POM_ERR;
+	}
+
+	return POM_OK;
 }
 
 int output_file_mod_unregister() {
@@ -65,6 +86,7 @@ int output_file_mod_unregister() {
 	int res = POM_OK;
 
 	res += output_unregister("file");
+	res += addon_plugin_unregister("file");
 
 	return res;
 }
@@ -77,24 +99,18 @@ int output_file_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_file_priv));
+
 	output_set_priv(o, priv);
 
 	priv->p_path = ptype_alloc("string");
-//	priv->p_filter = ptype_alloc("string");
-
-//	if (!priv->p_path || !priv->p_filter)
 	if (!priv->p_path)
 		goto err;
 
 	struct registry_param *p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
-	if (output_instance_add_param(o, p) != POM_OK)
+	if (output_instance_add_param(o, p) != POM_OK) {
+		registry_cleanup_param(p);
 		goto err;
-/*
-	p = registry_new_param("filter", "", priv->p_filter, "File filter", 0);
-	if (output_instance_add_param(o, p) != POM_OK)
-		goto err;
-*/
-
+	}
 	
 	priv->output_reg.open = output_file_pload_open;
 	priv->output_reg.write = output_file_pload_write;
@@ -113,8 +129,6 @@ int output_file_cleanup(void *output_priv) {
 	if (priv) {
 		if (priv->p_path)
 			ptype_cleanup(priv->p_path);
-//		if (priv->p_filter)
-//			ptype_cleanup(priv->p_filter);
 		free(priv);
 
 	}
@@ -135,12 +149,36 @@ int output_file_close(void *output_priv) {
 	if (analyzer_pload_output_unregister(output_priv) != POM_OK)
 		return POM_ERR;
 
-	// TODO close all the files
-	
-
 	return POM_OK;
 }
 
+static int file_pload_open(struct analyzer_pload_instance *pi, const char *filename) {
+
+	// Create the private structure for the payload
+	struct output_file_pload_priv *ppriv = malloc(sizeof(struct output_file_pload_priv));
+	if (!ppriv) {
+		pom_oom(sizeof(struct output_file_pload_priv));
+		return POM_ERR;
+	}
+	memset(ppriv, 0, sizeof(struct output_file_pload_priv));
+
+	ppriv->filename = strdup(filename);
+	if (!ppriv->filename) {
+		free(ppriv);
+		pom_oom(strlen(filename) + 1);
+		return POM_ERR;
+	}
+
+	ppriv->fd = pom_open(filename, O_WRONLY | O_CREAT, 0666);
+	if (ppriv->fd == -1) {
+		free(ppriv);
+		return POM_ERR;
+	}
+
+	analyzer_pload_instance_set_priv(pi, ppriv);
+
+	return POM_OK;
+}
 
 int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
 
@@ -160,35 +198,16 @@ int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv
 	strftime(buff, sizeof(buff), format, &tmp);
 	snprintf(filename + strlen(filename), FILENAME_MAX - strlen(filename), "%s-%u.bin", buff, (unsigned int)tv.tv_usec);
 
-
-	int fd = open(filename, O_WRONLY | O_CREAT, 0666);
-	if (fd == -1)
-		return POM_ERR;
-
-
-	// Store the fd in memory
-
-	struct output_file_pload_priv *ppriv = malloc(sizeof(struct output_file_pload_priv));
-	if (!ppriv) {
-		close(fd);
-		pom_oom(sizeof(struct output_file_pload_priv));
-		return POM_ERR;
-	}
-	memset(ppriv, 0, sizeof(struct output_file_pload_priv));
-
-	ppriv->fd = fd;
-	ppriv->filename = strdup(filename);
-	if (!ppriv->filename) {
-		free(ppriv);
-		pom_oom(strlen(filename));
-		return POM_ERR;
-	}
-
-	analyzer_pload_instance_set_priv(pi, ppriv);
-
-	return POM_OK;
+	return file_pload_open(pi, filename);
 
 }
+
+int addon_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]) {
+
+	char *filename = PTYPE_STRING_GETVAL(params[0]);
+	return file_pload_open(pi, filename);
+}
+
 
 int output_file_pload_write(void *pload_instance_priv, void *data, size_t len) {
 

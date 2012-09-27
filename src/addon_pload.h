@@ -36,7 +36,8 @@ int addon_pload_lua_register(lua_State *L);
 
 void addon_pload_data_push(lua_State *L);
 void addon_pload_data_update(lua_State *L, int n, void *data, size_t len);
-void addon_pload_push(lua_State *L, struct analyzer_pload_buffer *pload);
+void addon_pload_push(lua_State *L, struct analyzer_pload_instance *pi);
+struct analyzer_pload_instance *addon_pload_get_instance(lua_State *L, int n);
 
 
 #endif

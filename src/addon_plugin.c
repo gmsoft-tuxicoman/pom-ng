@@ -22,6 +22,9 @@
 
 #include "addon_plugin.h"
 #include "addon_ptype.h"
+#include "addon_pload.h"
+#include "addon_output.h"
+#include "analyzer.h"
 
 struct addon_plugin_reg *addon_plugin_head = NULL;
 
@@ -97,7 +100,7 @@ static int addon_plugin_event_listen_start(lua_State *L) {
 	// 2) event name
 	
 	struct addon_plugin *a = luaL_checkudata(L, 1, ADDON_PLUGIN_METATABLE);
-	if (!a->reg->event_begin && !a->reg->event_end)
+	if (a->reg->type != addon_plugin_type_event)
 		luaL_error(L, "Plugin %s cannot listen to events", a->reg->name);
 
 	const char *evt_name = luaL_checkstring(L, 2);
@@ -119,6 +122,8 @@ static int addon_plugin_event_listen_stop(lua_State *L) {
 	// 2) event name
 	
 	struct addon_plugin *a = luaL_checkudata(L, 1, ADDON_PLUGIN_METATABLE);
+	if (a->reg->type != addon_plugin_type_event)
+		luaL_error(L, "Plugin %s cannot listen to events", a->reg->name);
 
 	const char *evt_name = luaL_checkstring(L, 2);
 
@@ -170,6 +175,84 @@ static int addon_plugin_param_set(lua_State *L) {
 	return 0;
 }
 
+static int addon_plugin_pload_process(lua_State *L) {
+
+
+	// Args should be :
+	// 1) self
+	// 2) pload
+	// 3) parameters
+
+	struct addon_plugin *a = luaL_checkudata(L, 1, ADDON_PLUGIN_METATABLE);
+
+	if (a->reg->type != addon_plugin_type_pload)
+		luaL_error(L, "Plugin %s cannot process payloads", a->reg->name);
+
+	// Get the output pload_instance
+	struct analyzer_pload_instance* output_pi = addon_pload_get_instance(L, 2);
+
+	if (!lua_istable(L, 3))
+		luaL_error(L, "Third argument must be parameter table");
+
+	// Create a new instance for our pload plugin
+	struct addon_output_pload_plugin *pload_plugin = addon_output_pload_plugin_alloc(a->reg, output_pi->o, output_pi->pload);
+	if (!pload_plugin)
+		return 0;
+
+	// Allocate the parameters
+	size_t params_size = sizeof(struct ptype *) * (a->reg->pload_param_count + 1);
+	struct ptype **params = malloc(params_size);
+	if (!params) {
+		free(pload_plugin);
+		addon_oom(L, params_size);
+	}
+
+	memset(params, 0, params_size);
+
+	int i;
+	for (i = 0; i < a->reg->pload_param_count; i++) {
+		params[i] = ptype_alloc(a->reg->pload_params[i].ptype_type);
+		if (!params[i]) {
+			free(pload_plugin);
+			goto err;
+		}
+
+		lua_pushstring(L, a->reg->pload_params[i].name);
+		lua_gettable(L, 3);
+		if (lua_isnil(L, -1)) {
+			if (ptype_parse_val(params[i], a->reg->pload_params[i].defval) != POM_OK) {
+				free(pload_plugin);
+				pomlog(POMLOG_ERR "Error while parsing default value %s", a->reg->pload_params[i].defval);
+				goto err;
+			}
+		} else {
+			addon_ptype_parse(L, -1, params[i]);
+		}
+
+	}
+
+	if (a->reg->pload_open(&pload_plugin->pi , a->priv, params) != POM_OK) {
+		pomlog(POMLOG_WARN "Error while opening pload for plugin %s", a->reg->name);
+		free(pload_plugin);
+		goto err;
+	}
+
+	// Add the pload_instance to the output
+	struct addon_output_pload_priv *output_pi_priv = output_pi->priv;
+	pload_plugin->next = output_pi_priv->plugins;
+	if (pload_plugin->next)
+		pload_plugin->next->prev = pload_plugin->prev;
+	output_pi_priv->plugins = pload_plugin;
+
+err:
+
+	for (i = 0; params[i]; i++)
+		ptype_cleanup(params[i]);
+	free(params);
+
+	return 0;
+}
+
 int addon_plugin_lua_register(lua_State *L) {
 
 	struct luaL_Reg l[] = {
@@ -190,6 +273,8 @@ int addon_plugin_lua_register(lua_State *L) {
 		{ "param_get", addon_plugin_param_get },
 		{ "param_set", addon_plugin_param_set },
 
+		{ "pload_process", addon_plugin_pload_process },
+
 		{ 0 }
 	};
 
@@ -207,14 +292,68 @@ int addon_plugin_lua_register(lua_State *L) {
 }
 
 
-int addon_plugin_register(struct addon_plugin_reg *reg_info) {
+int addon_plugin_event_register(struct addon_plugin_event_reg *reg_info) {
 
-	reg_info->next = addon_plugin_head;
-	if (reg_info->next)
-		reg_info->next->prev = reg_info;
-	addon_plugin_head = reg_info;
+	struct addon_plugin_reg *reg = malloc(sizeof(struct addon_plugin_reg));
+	if (!reg) {
+		pom_oom(sizeof(struct addon_plugin_reg));
+		return POM_ERR;
+	}
+	memset(reg, 0, sizeof(struct addon_plugin_reg));
 
-	mod_refcount_inc(reg_info->mod);
+	reg->name = reg_info->name;
+	reg->mod = reg_info->mod;
+
+	reg->init = reg_info->init;
+	reg->cleanup = reg_info->cleanup;
+	reg->open = reg_info->open;
+	reg->close = reg_info->close;
+	reg->event_begin = reg_info->event_begin;
+	reg->event_end = reg_info->event_end;
+
+	reg->type = addon_plugin_type_event;
+
+	reg->next = addon_plugin_head;
+	if (reg->next)
+		reg->next->prev = reg;
+	addon_plugin_head = reg;
+
+	mod_refcount_inc(reg->mod);
+	
+	return POM_OK;
+}
+
+int addon_plugin_pload_register(struct addon_plugin_pload_reg *reg_info) {
+
+	struct addon_plugin_reg *reg = malloc(sizeof(struct addon_plugin_reg));
+	if (!reg) {
+		pom_oom(sizeof(struct addon_plugin_reg));
+		return POM_ERR;
+	}
+	memset(reg, 0, sizeof(struct addon_plugin_reg));
+
+	reg->name = reg_info->name;
+	reg->mod = reg_info->mod;
+
+	reg->init = reg_info->init;
+	reg->cleanup = reg_info->cleanup;
+	reg->open = reg_info->open;
+	reg->close = reg_info->close;
+	reg->pload_open = reg_info->pload_open;
+	reg->pload_write = reg_info->pload_write;
+	reg->pload_close = reg_info->pload_close;
+
+	reg->pload_params = reg_info->pload_params;
+
+	reg->type = addon_plugin_type_pload;
+	for (; reg_info->pload_params[reg->pload_param_count].name; reg->pload_param_count++);
+
+	reg->next = addon_plugin_head;
+	if (reg->next)
+		reg->next->prev = reg;
+	addon_plugin_head = reg;
+
+	mod_refcount_inc(reg->mod);
 	
 	return POM_OK;
 }
@@ -237,6 +376,8 @@ int addon_plugin_unregister(char *name) {
 
 	mod_refcount_dec(tmp->mod);
 
+	free(tmp);
+
 	return POM_OK;
 }
 
@@ -244,7 +385,7 @@ void addon_plugin_set_priv(struct addon_plugin *a, void *priv) {
 	a->priv = priv;
 }
 
-int addon_plugin_add_params(struct addon_plugin *a, char *name, char *defval, struct ptype *value) {
+int addon_plugin_add_param(struct addon_plugin *a, char *name, char *defval, struct ptype *value) {
 
 	if (ptype_parse_val(value, defval) != POM_OK)
 		return POM_ERR;
@@ -269,4 +410,14 @@ int addon_plugin_add_params(struct addon_plugin *a, char *name, char *defval, st
 	a->params = p;
 
 	return POM_OK;
+}
+
+int addon_plugin_pload_write(struct addon_plugin_reg *addon_reg, void *pload_instance_priv, void *data, size_t len) {
+
+	return addon_reg->pload_write(pload_instance_priv, data, len);
+}
+
+int addon_plugin_pload_close(struct addon_plugin_reg *addon_reg, void *pload_instance_priv) {
+
+	return addon_reg->pload_close(pload_instance_priv);
 }

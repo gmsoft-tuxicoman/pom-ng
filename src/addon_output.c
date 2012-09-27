@@ -26,6 +26,7 @@
 #include "addon_event.h"
 #include "addon_ptype.h"
 #include "addon_pload.h"
+#include "addon_plugin.h"
 
 struct addon_output *addon_output_head = NULL;
 
@@ -196,9 +197,11 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_settable(p->L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
 	// Add the pload to the args
-	addon_pload_push(p->L, analyzer_pload_instance_get_buffer(pi)); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
+	addon_pload_push(p->L, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
 
-	return addon_pcall(p->L, 3, 0);
+	addon_pcall(p->L, 3, 0);
+
+	return POM_OK;
 }
 
 // Called from C to write a pload
@@ -206,6 +209,18 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
 	struct addon_instance_priv *p = ppriv->instance_priv;
+
+	// First process all the plugins attached to this pload
+	struct addon_output_pload_plugin *tmp;
+	for (tmp = ppriv->plugins; tmp; tmp = tmp->next) {
+		if (tmp->is_err)
+			continue;
+
+		if (addon_plugin_pload_write(tmp->addon_reg, tmp->pi.priv, data, len) != POM_OK) {
+			addon_plugin_pload_close(tmp->addon_reg, tmp->pi.priv);
+			tmp->is_err = 1;
+		}
+	}
 
 	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
@@ -238,7 +253,15 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 
 	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
-	
+
+	// Process all the plugins attached to this pload
+	struct addon_output_pload_plugin *tmp;
+	for (tmp = ppriv->plugins; tmp; tmp = tmp->next) {
+		if (tmp->is_err)
+			continue;
+		addon_plugin_pload_close(tmp->addon_reg, tmp->pi.priv);
+	}
+
 	lua_pushliteral(p->L, "__pload_listener");
 	lua_gettable(p->L, -2); // Stack : __pload_listener
 
@@ -254,6 +277,12 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 	int res = addon_pcall(p->L, 2, 0); // Stack : self, __pload_listener
 	if (res != POM_OK)
 		return POM_ERR;
+
+	while (ppriv->plugins) {
+		tmp = ppriv->plugins;
+		ppriv->plugins = tmp->next;
+		free(tmp);
+	}
 
 	free(ppriv);
 
@@ -667,3 +696,16 @@ int addon_output_close(void *output_priv) {
 	return addon_pcall(p->L, 1, 0);
 }
 
+struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_plugin_reg *addon_reg, struct analyzer_pload_output *o, struct analyzer_pload_buffer *pload) {
+	struct addon_output_pload_plugin *plugin = malloc(sizeof(struct addon_output_pload_plugin));
+	if (!plugin) {
+		pom_oom(sizeof(struct addon_output_pload_plugin));
+		return NULL;
+	}
+	memset(plugin, 0, sizeof(struct addon_output_pload_plugin));
+	plugin->addon_reg = addon_reg;
+	plugin->pi.o = o;
+	plugin->pi.pload = pload;
+
+	return plugin;
+}

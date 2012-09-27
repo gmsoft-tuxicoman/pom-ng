@@ -23,6 +23,7 @@
 #define __ADDON_OUTPUT_H__
 
 #include "output.h"
+#include "analyzer.h"
 
 #define ADDON_OUTPUT_METATABLE		"addon.output"
 #define ADDON_OUTPUT_PRIV_METATABLE	"addon.output_priv"
@@ -36,9 +37,22 @@ struct addon_output {
 	struct addon_output *prev, *next;
 };
 
+struct addon_output_pload_plugin {
+
+	struct analyzer_pload_instance pi;
+	struct addon_plugin_reg *addon_reg;
+
+	int is_err;
+
+	struct addon_output_pload_plugin *prev, *next;
+};
+
 struct addon_output_pload_priv {
 
 	struct addon_instance_priv *instance_priv;
+
+	// Used by pload plugins for this output
+	struct addon_output_pload_plugin *plugins;
 
 };
 
@@ -50,6 +64,7 @@ int addon_output_cleanup(void *output_priv);
 int addon_output_open(void *output_priv);
 int addon_output_close(void *output_priv);
 
+struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_plugin_reg *addon_reg, struct analyzer_pload_output *o, struct analyzer_pload_buffer *pload);
 
 #endif
 

@@ -54,15 +54,19 @@ static struct output_log_xml_priv *log_xml_init() {
 int addon_log_xml_init(struct addon_plugin *a) {
 
 	struct output_log_xml_priv *priv = log_xml_init();
+	if (!priv)
+		return POM_ERR;
 
 	addon_plugin_set_priv(a, priv);
 
-	if (addon_plugin_add_params(a, "filename", "log.xml", priv->p_filename) != POM_OK) {
-		output_log_xml_cleanup(priv);
-		return POM_ERR;
-	}
+	if (addon_plugin_add_param(a, "filename", "log.xml", priv->p_filename) != POM_OK)
+		goto err;
 
 	return POM_OK;
+
+err:
+	output_log_xml_cleanup(priv);
+	return POM_ERR;
 	
 }
 
