@@ -78,7 +78,7 @@ struct ptype* ptype_alloc_unit(const char* type, char* unit) {
 
 	if (!reg) {
 		// This should only be needed at startup
-		pomlog("Ptype of type %s not found, trying to load module", type);
+		pomlog(POMLOG_DEBUG "Ptype of type %s not found, trying to load module", type);
 		char ptype_mod_name[64] = { 0 };
 		strcat(ptype_mod_name, "ptype_");
 		strncat(ptype_mod_name, type, sizeof(ptype_mod_name) - 1 - strlen(ptype_mod_name));

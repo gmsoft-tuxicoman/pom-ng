@@ -162,7 +162,7 @@ static int datastore_sqlite_connect(struct datastore_connection *dc) {
 
 	dc->priv = cpriv;
 
-	pomlog("New connection to database %s", dbfile);
+	pomlog(POMLOG_DEBUG "New connection to database %s", dbfile);
 
 	return POM_OK;
 
@@ -176,7 +176,7 @@ static int datastore_sqlite_disconnect(struct datastore_connection *dc) {
 	if (sqlite3_close(cpriv->db) != SQLITE_OK)
 		pomlog(POMLOG_WARN "Warning, sqlite3_close() failed.");
 	free(cpriv);
-	pomlog("Connection to the database closed");
+	pomlog(POMLOG_DEBUG "Connection to the database closed");
 
 	return POM_OK;
 

@@ -458,7 +458,7 @@ int datastore_open(struct datastore *d) {
 
 
 
-	pomlog("Datastore %s opened", d->reg->info->name);
+	pomlog(POMLOG_DEBUG "Datastore %s opened", d->reg->info->name);
 
 	return POM_OK;
 
