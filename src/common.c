@@ -21,6 +21,9 @@
 
 
 #include "common.h"
+#include <sys/stat.h>
+#include <limits.h>
+#include <fcntl.h>
 
 char *pom_strerror(int err) {
 
@@ -37,6 +40,40 @@ void pom_oom_internal(size_t size, char *file, unsigned int line) {
 }
 
 
+int pom_open(const char *filename, int flags, mode_t mode) {
+
+	if (strstr(filename, "..")) {
+		pomlog(POMLOG_ERR "String '..' found in the filename");
+		return -1;
+	}
+
+	char buffer[NAME_MAX + 1];
+	buffer[NAME_MAX] = 0;
+	strncpy(buffer, filename, NAME_MAX);
+
+	char *slash = buffer;
+	if (*slash == '/') // we assume that the root directory exists :)
+		slash++;
+	
+	slash = strchr(slash, '/');
+	while (slash) {
+		*slash = 0;
+		struct stat stats;
+		if (stat(buffer, &stats)) {
+			switch (errno) {
+				case ENOENT:
+					mkdir(buffer, 00777);
+					break;
+				default:
+					return -1;
+			}
+		}
+		*slash = '/';
+		slash = strchr(slash + 1, '/');
+	}
+
+	return open(buffer, flags, mode);
+}
 
 int pom_write(int fd, const void *buf, size_t count) {
 

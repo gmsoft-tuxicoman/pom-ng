@@ -40,6 +40,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/types.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 
@@ -64,6 +65,9 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 		abort();													\
 	}															\
 }															
+
+// Wrapper for open() which creates the directory structure
+int pom_open(const char *filename, int flags, mode_t mode);
 
 // Wrapper for write() that writes the whole buffer
 int pom_write(int fd, const void *buf, size_t count);
