@@ -25,6 +25,7 @@
 #include "addon_output.h"
 #include "addon_plugin.h"
 #include "addon_pload.h"
+#include "addon_data.h"
 
 #include <dirent.h>
 #include <lualib.h>
@@ -224,6 +225,7 @@ lua_State *addon_create_state(char *file) {
 	addon_output_lua_register(L);
 	addon_plugin_lua_register(L);
 	addon_pload_lua_register(L);
+	addon_data_lua_register(L);
 
 	// Add our error handler
 	lua_pushcfunction(L, addon_error);
