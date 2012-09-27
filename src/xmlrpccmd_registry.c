@@ -163,23 +163,19 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 	xmlrpc_value *configs = xmlrpc_array_new(envP);
 
 	struct registry_config_entry *config_list = registry_config_list();
-	if (!config_list) {
-		registry_unlock();
-		xmlrpc_faultf(envP, "Error while loading configuration list");
-		return NULL;
+	if (config_list) {
+		ssize_t i;
+
+		for (i = 0; *config_list[i].name; i++) {
+			xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:s,s:t}",
+								"name", config_list[i].name,
+								"timestamp", (time_t)config_list[i].ts.tv_sec);
+			xmlrpc_array_append_item(envP, configs, entry);
+			xmlrpc_DECREF(entry);
+		}
+
+		free(config_list);
 	}
-
-	ssize_t i;
-
-	for (i = 0; *config_list[i].name; i++) {
-		xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:s,s:t}",
-							"name", config_list[i].name,
-							"timestamp", (time_t)config_list[i].ts.tv_sec);
-		xmlrpc_array_append_item(envP, configs, entry);
-		xmlrpc_DECREF(entry);
-	}
-
-	free(config_list);
 
 
 	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A,s:i,s:A}",
