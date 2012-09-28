@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "ptype_uint64.h"
 #include <pom-ng/ptype_uint64.h>
@@ -96,9 +97,9 @@ int ptype_uint64_parse(struct ptype *p, char *val) {
 
 
 	uint64_t *v = p->value;
-	if (sscanf(val, "0x%lx", v) == 1) {
+	if (sscanf(val, "0x%"PRIx64, v) == 1) {
 		return POM_OK;
-	} else if (sscanf(val, "%lu", v) == 1) {
+	} else if (sscanf(val, "%"PRIu64, v) == 1) {
 		char suffix = val[strlen(val) - 1];
 		switch (suffix) {
 			case 'k':
@@ -131,18 +132,18 @@ int ptype_uint64_print(struct ptype *p, char *val, size_t size) {
 
 	switch (p->flags & PTYPE_FLAG_RESERVED) {
 		case PTYPE_UINT64_PRINT_HEX:
-			return snprintf(val, size, "0x%lX", *v);
+			return snprintf(val, size, "0x%"PRIX64, *v);
 		case PTYPE_UINT64_PRINT_HUMAN: {
 			uint64_t value = *v;
 			if (value > 99999) {
 				value = (value + 500) / 1000;
 				if (value > 9999) {
 					value = (value + 500) / 1000;
-					return snprintf(val, size, "%lum", value);
+					return snprintf(val, size, "%"PRIu64"m", value);
 				} else
-					return snprintf(val, size, "%luk", value);
+					return snprintf(val, size, "%"PRIu64"k", value);
 			} else
-				return snprintf(val, size, "%lu", value);
+				return snprintf(val, size, "%"PRIu64, value);
 			break;
 		}
 		case PTYPE_UINT64_PRINT_HUMAN_1024: {
@@ -151,16 +152,16 @@ int ptype_uint64_print(struct ptype *p, char *val, size_t size) {
 				value = (value + 512) / 1024;
 				if (value > 9999) {
 					value = (value + 512) / 1024;
-					return snprintf(val, size, "%luM", value);
+					return snprintf(val, size, "%"PRIu64"M", value);
 				} else
-					return snprintf(val, size, "%luK", value);
+					return snprintf(val, size, "%"PRIu64"K", value);
 			} else
-				return snprintf(val, size, "%lu", value);
+				return snprintf(val, size, "%"PRIu64, value);
 			break;
 		}
 		default:
 		case PTYPE_UINT64_PRINT_DECIMAL:
-			return snprintf(val, size, "%lu", *v);
+			return snprintf(val, size, "%"PRIu64, *v);
 	}
 
 	return 0;
@@ -192,7 +193,7 @@ int ptype_uint64_compare(int op, void *val_a, void* val_b) {
 int ptype_uint64_serialize(struct ptype *p, char *val, size_t size) {
 
 	uint64_t *v = p->value;
-	return snprintf(val, size, "%lu", *v);
+	return snprintf(val, size, "%"PRIu64, *v);
 }
 
 int ptype_uint64_copy(struct ptype *dst, struct ptype *src) {
