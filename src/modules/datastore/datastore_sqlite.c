@@ -30,6 +30,7 @@
 #include <pom-ng/ptype_timestamp.h>
 
 #include <stdio.h>
+#include <inttypes.h>
 
 #define DATASTORE_SQLITE_PKID "pkid"
 
@@ -162,7 +163,7 @@ static int datastore_sqlite_connect(struct datastore_connection *dc) {
 
 	dc->priv = cpriv;
 
-	pomlog("New connection to database %s", dbfile);
+	pomlog(POMLOG_DEBUG "New connection to database %s", dbfile);
 
 	return POM_OK;
 
@@ -176,7 +177,7 @@ static int datastore_sqlite_disconnect(struct datastore_connection *dc) {
 	if (sqlite3_close(cpriv->db) != SQLITE_OK)
 		pomlog(POMLOG_WARN "Warning, sqlite3_close() failed.");
 	free(cpriv);
-	pomlog("Connection to the database closed");
+	pomlog(POMLOG_DEBUG "Connection to the database closed");
 
 	return POM_OK;
 
@@ -443,7 +444,7 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %u", dt[qc->field_id].name, op, *PTYPE_UINT32_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_UINT64:
-				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %lu", dt[qc->field_id].name, op, *PTYPE_UINT64_GETVAL(qc->value));
+				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s %"PRIu64, dt[qc->field_id].name, op, *PTYPE_UINT64_GETVAL(qc->value));
 				break;
 			case DATASTORE_SQLITE_PTYPE_STRING: {
 				snprintf(cond_query + strlen(cond_query), DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(cond_query), " WHERE %s %s \"", dt[qc->field_id].name, op);
