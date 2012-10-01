@@ -38,27 +38,13 @@ static int addon_data_item_iterator(lua_State *L) {
 
 }
 
-static int addon_data_item_get_field(lua_State *L) {
+static int addon_data_item_metatable(lua_State *L) {
 
-	struct addon_data *d = lua_touserdata(L, lua_upvalueindex(1));
+	struct data_item **di = luaL_checkudata(L, 1, ADDON_DATA_ITEM_METATABLE);
 	const char *key = luaL_checkstring(L, 2);
-	int field_id = lua_tointeger(L, lua_upvalueindex(2));
-
-	struct data_reg *data_reg = d->reg;
-
-	if (field_id >= data_reg->data_count)
-		luaL_error(L, "field_id %u bigger than data_count %u", field_id, data_reg->data_count);
-
-	// Create an iterator if need
-	if (!strcmp(key, "iter")) {
-		struct data_item **di = lua_newuserdata(L, sizeof(struct data_item *));
-		*di = d->data[field_id].items;
-		lua_pushcclosure(L, addon_data_item_iterator, 1);
-		return 1;
-	}
 
 	struct data_item *item;
-	for (item = d->data[field_id].items; item && strcmp(item->key, key); item = item->next);
+	for (item = *di; item && strcmp(item->key, key); item = item->next);
 	if (!item)
 		return 0;
 	
@@ -68,22 +54,12 @@ static int addon_data_item_get_field(lua_State *L) {
 
 }
 
-static int addon_data_push_item(lua_State *L, int item_id) {
+static int addon_data_push_item(lua_State *L, struct data_item *item) {
 	
-	// Create the item table
-	lua_newtable(L);
+	struct data_item **di = lua_newuserdata(L, sizeof(struct data_item *));
+	*di = item;
 
-	// Create its metatable
-	lua_newtable(L);
-
-	// Add the lookup function
-	lua_pushliteral(L, "__index");
-	lua_pushvalue(L, lua_upvalueindex(1));
-	lua_pushinteger(L, item_id);
-	lua_pushcclosure(L, addon_data_item_get_field, 2);
-	lua_settable(L, -3);
-
-	// Set the metatable
+	luaL_getmetatable(L, ADDON_DATA_ITEM_METATABLE);
 	lua_setmetatable(L, -2);
 
 	return 1;
@@ -102,7 +78,7 @@ static int addon_data_iterator(lua_State *L) {
 
 	lua_pushstring(L, data_reg->items[id].name);
 	if (data_reg->items[id].flags & DATA_REG_FLAG_LIST) {
-		addon_data_push_item(L, id);
+		addon_data_push_item(L, data[id].items);
 	} else {
 		addon_ptype_push(L, data[id].value);
 	}
@@ -114,9 +90,9 @@ static int addon_data_iterator(lua_State *L) {
 	return 2;
 }
 
-static int addon_data_get_field(lua_State *L) {
+static int addon_data_metatable(lua_State *L) {
 	
-	struct addon_data *d = lua_touserdata(L, lua_upvalueindex(1));
+	struct addon_data *d = luaL_checkudata(L, 1, ADDON_DATA_METATABLE);
 	const char *key = luaL_checkstring(L, 2);
 
 	// Look for the field
@@ -136,7 +112,7 @@ static int addon_data_get_field(lua_State *L) {
 	}
 
 	if (data_reg->items[i].flags & DATA_REG_FLAG_LIST) {
-		addon_data_push_item(L, i);
+		addon_data_push_item(L, data[i].items);
 		return 1;
 	} else {
 		addon_ptype_push(L, data[i].value);
@@ -146,15 +122,20 @@ static int addon_data_get_field(lua_State *L) {
 	return 0;
 }
 
+int addon_data_item_get_iterator(lua_State *L) {
+
+	struct data_item **di = luaL_checkudata(L, 1, ADDON_DATA_ITEM_METATABLE);
+	
+	struct data_item **iter_di = lua_newuserdata(L, sizeof(struct data_item **));
+	*iter_di = *di;
+	lua_pushcclosure(L, addon_data_item_iterator, 1);
+
+	return 1;
+}
+
 int addon_data_get_iterator(lua_State *L) {
 
-	if (!lua_getmetatable(L, 1))
-		luaL_error(L, "Expected addon.data");
-	lua_pushliteral(L, "__metatable");
-	lua_gettable(L, -2);
-	const char *metatable = luaL_checkstring(L, -1);
-	if (strcmp(metatable, "addon.data"))
-		luaL_error(L, "Expected addon.data");
+	luaL_checkudata(L, 1, ADDON_DATA_METATABLE);
 
 	lua_pushvalue(L, 1);
 	lua_pushinteger(L, 0);
@@ -165,8 +146,19 @@ int addon_data_get_iterator(lua_State *L) {
 
 void addon_data_lua_register(lua_State *L) {
 
+	luaL_newmetatable(L, ADDON_DATA_METATABLE);
+	lua_pushliteral(L, "__index");
+	lua_pushcfunction(L, addon_data_metatable);
+	lua_settable(L, -3);
+
+	luaL_newmetatable(L, ADDON_DATA_ITEM_METATABLE);
+	lua_pushliteral(L, "__index");
+	lua_pushcfunction(L, addon_data_item_metatable);
+	lua_settable(L, -3);
+
 	struct luaL_Reg l[] = {
 		{ "data_iterator", addon_data_get_iterator },
+		{ "data_item_iterator", addon_data_item_get_iterator },
 		{ 0 }
 	};
 	luaL_register(L, ADDON_POM_LIB, l);
@@ -180,17 +172,7 @@ void addon_data_push(lua_State *L, struct data *data, struct data_reg *data_reg)
 	d->data = data;
 	d->reg = data_reg;
 
-	lua_newtable(L);
-	lua_pushliteral(L, "__index");
-	lua_pushvalue(L, -3);
-	lua_pushcclosure(L, addon_data_get_field, 1);
-	lua_settable(L, -3);
-
-	lua_pushliteral(L, "__metatable");
-	lua_pushliteral(L, "addon.data");
-	lua_settable(L, -3);
-
+	luaL_getmetatable(L, ADDON_DATA_METATABLE);
 	lua_setmetatable(L, -2);
-
 }
 

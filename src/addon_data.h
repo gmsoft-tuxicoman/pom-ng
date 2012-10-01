@@ -24,6 +24,9 @@
 
 #include <pom-ng/data.h>
 
+#define ADDON_DATA_METATABLE		"addon.data"
+#define ADDON_DATA_ITEM_METATABLE	"addon.data_item"
+
 struct addon_data {
 	struct data *data;
 	struct data_reg *reg;
