@@ -21,6 +21,7 @@
 
 #include "addon_pload.h"
 #include "addon_event.h"
+#include "addon_data.h"
 #include <pom-ng/analyzer.h>
 
 // Called from lua to get the metatable
@@ -34,6 +35,8 @@ static int addon_pload_metatable(lua_State *L) {
 	if (!strcmp(key, "event")) {
 		// Return the corresponding event
 		addon_event_add_event(L, p->rel_event);
+	} else if (!strcmp(key, "data")) {
+		addon_data_push(L, p->data, p->type->analyzer->data_reg);
 	} else if (!strcmp(key, "type")) {
 		// Return the type table
 
@@ -77,6 +80,8 @@ static int addon_pload_metatable(lua_State *L) {
 				break;
 		}
 		lua_settable(L, -3);
+	} else {
+		return 0;
 	}
 	return 1;
 }
