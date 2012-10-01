@@ -81,21 +81,17 @@ static int addon_pload_metatable(lua_State *L) {
 	return 1;
 }
 
-// Called from lua to get the pload content
-static int addon_pload_data_data(lua_State *L) {
+static int addon_pload_data_metatable(lua_State *L) {
 
 	struct addon_pload_data *p = luaL_checkudata(L, 1, ADDON_PLOAD_DATA_METATABLE);
-	lua_pushlstring(L, p->data, p->len);
-	
-	return 1;
-}
-
-// Called from lua to get the pload length
-static int addon_pload_data_len(lua_State *L) {
-
-	struct addon_pload_data *p = luaL_checkudata(L, 1, ADDON_PLOAD_DATA_METATABLE);
-	lua_pushinteger(L, p->len);
-	
+	const char *key = luaL_checkstring(L, 2);
+	if (!strcmp(key, "data")) {
+		lua_pushlstring(L, p->data, p->len);
+	} else if (!strcmp(key, "len")) {
+		lua_pushinteger(L, p->len);
+	} else {
+		lua_pushnil(L);
+	}
 	return 1;
 }
 
@@ -106,18 +102,10 @@ int addon_pload_lua_register(lua_State *L) {
 	lua_pushcfunction(L, addon_pload_metatable);
 	lua_settable(L, -3);
 
-	// Create the pload_data metatable
-	struct luaL_Reg m_data[] = {
-		{ "data", addon_pload_data_data },
-		{ "len", addon_pload_data_len },
-		{ 0 }
-	};
 	luaL_newmetatable(L, ADDON_PLOAD_DATA_METATABLE);
-	// Assign __index to itself
 	lua_pushstring(L, "__index");
-	lua_pushvalue(L, -2);
+	lua_pushcfunction(L, addon_pload_data_metatable);
 	lua_settable(L, -3);
-	luaL_register(L, NULL, m_data);
 
 	return POM_OK;
 }
@@ -140,7 +128,6 @@ void addon_pload_push(lua_State *L, struct analyzer_pload_instance *pi) {
 	*i = pi;
 
 	luaL_getmetatable(L, ADDON_PLOAD_METATABLE);
-
 	lua_setmetatable(L, -2);
 }
 
