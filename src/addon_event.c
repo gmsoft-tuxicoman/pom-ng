@@ -75,7 +75,7 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 	// Push self
 	lua_pushvalue(p->L, -3); // Stack : self, evt_table, open_func, self
 	// Push event
-	if (addon_event_add_event(p->L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
+	if (addon_event_push(p->L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
 		return POM_ERR;
 
 	return addon_pcall(p->L, 2, 0);
@@ -102,14 +102,14 @@ int addon_event_process_end(struct event *evt, void *obj) {
 	// Push self
 	lua_pushvalue(p->L, -3); // Stack : self, evt_table, close_func, self
 	// Push event
-	if (addon_event_add_event(p->L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
+	if (addon_event_push(p->L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
 		return POM_ERR;
 
 	return addon_pcall(p->L, 2, 0);
 
 }
 
-int addon_event_add_event(lua_State *L, struct event *evt) {
+int addon_event_push(lua_State *L, struct event *evt) {
 
 	// Add a pointer to the event
 	struct addon_event *e = lua_newuserdata(L, sizeof(struct addon_event));

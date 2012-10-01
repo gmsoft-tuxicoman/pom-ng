@@ -34,7 +34,7 @@ static int addon_pload_metatable(lua_State *L) {
 
 	if (!strcmp(key, "event")) {
 		// Return the corresponding event
-		addon_event_add_event(L, p->rel_event);
+		addon_event_push(L, p->rel_event);
 	} else if (!strcmp(key, "data")) {
 		addon_data_push(L, p->data, p->type->analyzer->data_reg);
 	} else if (!strcmp(key, "type")) {
