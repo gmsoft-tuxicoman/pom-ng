@@ -23,61 +23,61 @@
 #include "addon_event.h"
 #include <pom-ng/analyzer.h>
 
-// Called from lua to get the event from the pload
-static int addon_pload_event(lua_State *L) {
+// Called from lua to get the metatable
+static int addon_pload_metatable(lua_State *L) {
+	
+	const char *key = luaL_checkstring(L, 2);
+
 	struct analyzer_pload_instance **i = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
 	struct analyzer_pload_buffer *p = analyzer_pload_instance_get_buffer(*i);
 
-	addon_event_add_event(L, p->rel_event);
+	if (!strcmp(key, "event")) {
+		// Return the corresponding event
+		addon_event_add_event(L, p->rel_event);
+	} else if (!strcmp(key, "type")) {
+		// Return the type table
 
-	return 1;
-}
+		lua_newtable(L);
+		
+		// Add type name
+		lua_pushliteral(L, "name");
+		lua_pushstring(L, p->type->name);
+		lua_settable(L, -3);
 
-static int addon_pload_type(lua_State *L) {
-	struct analyzer_pload_instance **i = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
-	struct analyzer_pload_buffer *p = analyzer_pload_instance_get_buffer(*i);
-	
-	lua_newtable(L);
-	
-	// Add type name
-	lua_pushliteral(L, "name");
-	lua_pushstring(L, p->type->name);
-	lua_settable(L, -3);
+		// Add type description
+		lua_pushliteral(L, "description");
+		lua_pushstring(L, p->type->description);
+		lua_settable(L, -3);
 
-	// Add type description
-	lua_pushliteral(L, "description");
-	lua_pushstring(L, p->type->description);
-	lua_settable(L, -3);
+		// Add type extension
+		lua_pushliteral(L, "extension");
+		lua_pushstring(L, p->type->extension);
+		lua_settable(L, -3);
 
-	// Add type extension
-	lua_pushliteral(L, "extension");
-	lua_pushstring(L, p->type->extension);
-	lua_settable(L, -3);
-
-	// Add the class
-	lua_pushliteral(L, "class");
-	switch (p->type->cls) {
-		case analyzer_pload_class_unknown:
-			lua_pushliteral(L, "unknown");
-			break;
-		case analyzer_pload_class_application:
-			lua_pushliteral(L, "application");
-			break;
-		case analyzer_pload_class_audio:
-			lua_pushliteral(L, "audio");
-			break;
-		case analyzer_pload_class_image:
-			lua_pushliteral(L, "image");
-			break;
-		case analyzer_pload_class_video:
-			lua_pushliteral(L, "video");
-			break;
-		case analyzer_pload_class_document:
-			lua_pushliteral(L, "document");
-			break;
+		// Add the class
+		lua_pushliteral(L, "class");
+		switch (p->type->cls) {
+			case analyzer_pload_class_unknown:
+				lua_pushliteral(L, "unknown");
+				break;
+			case analyzer_pload_class_application:
+				lua_pushliteral(L, "application");
+				break;
+			case analyzer_pload_class_audio:
+				lua_pushliteral(L, "audio");
+				break;
+			case analyzer_pload_class_image:
+				lua_pushliteral(L, "image");
+				break;
+			case analyzer_pload_class_video:
+				lua_pushliteral(L, "video");
+				break;
+			case analyzer_pload_class_document:
+				lua_pushliteral(L, "document");
+				break;
+		}
+		lua_settable(L, -3);
 	}
-	lua_settable(L, -3);
-
 	return 1;
 }
 
@@ -101,19 +101,10 @@ static int addon_pload_data_len(lua_State *L) {
 
 int addon_pload_lua_register(lua_State *L) {
 
-	// Create the pload metatable
-	struct luaL_Reg m[] = {
-		{ "event", addon_pload_event },
-		{ "type", addon_pload_type },
-		{ 0 }
-	};
 	luaL_newmetatable(L, ADDON_PLOAD_METATABLE);
-	// Assign __index to itself
-	lua_pushstring(L, "__index");
-	lua_pushvalue(L, -2);
+	lua_pushliteral(L, "__index");
+	lua_pushcfunction(L, addon_pload_metatable);
 	lua_settable(L, -3);
-	luaL_register(L, NULL, m);
-
 
 	// Create the pload_data metatable
 	struct luaL_Reg m_data[] = {
@@ -149,10 +140,12 @@ void addon_pload_push(lua_State *L, struct analyzer_pload_instance *pi) {
 	*i = pi;
 
 	luaL_getmetatable(L, ADDON_PLOAD_METATABLE);
+
 	lua_setmetatable(L, -2);
 }
 
 struct analyzer_pload_instance *addon_pload_get_instance(lua_State *L, int n) {
+
 	struct analyzer_pload_instance **i = luaL_checkudata(L, n, ADDON_PLOAD_METATABLE);
 	return *i;
 }
