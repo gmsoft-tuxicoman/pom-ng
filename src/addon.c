@@ -168,9 +168,6 @@ int addon_mod_register(struct mod_reg *mod) {
 	lua_pushlightuserdata(addon->L, addon);
 	lua_settable(addon->L, LUA_REGISTRYINDEX);
 
-	// Add our error handler
-	lua_pushcfunction(addon->L, addon_error);
-
 	// Call the register function
 	lua_getglobal(addon->L, reg_func_name);
 	if (!lua_isfunction(addon->L, -1)) {
@@ -180,17 +177,8 @@ int addon_mod_register(struct mod_reg *mod) {
 	}
 	free(reg_func_name);
 
-	switch (lua_pcall(addon->L, 0, 0, -2)) {
-		case LUA_ERRRUN:
-			pomlog(POMLOG_ERR "Error while registering addon \"%s\"", addon->name);
-			goto err;
-		case LUA_ERRMEM:
-			pomlog(POMLOG_ERR "Not enough memory to register addon \"%s\"", addon->name);
-			goto err;
-		case LUA_ERRERR:
-			pomlog(POMLOG_ERR "Error while running the error handler while registering addon \"%s\"", addon->name);
-			goto err;
-	}
+	if (addon_pcall(addon->L, 0, 0) != POM_OK)
+		goto err;
 	
 	addon->next = addon_head;
 	if (addon->next)
@@ -227,8 +215,10 @@ lua_State *addon_create_state(char *file) {
 	addon_pload_lua_register(L);
 	addon_data_lua_register(L);
 
-	// Add our error handler
-	lua_pushcfunction(L, addon_error);
+	// Set the path for addon libs
+	lua_getglobal(L, "package");
+	lua_pushliteral(L, ADDON_LIBS_PATH);
+	lua_setfield(L, -2, "path");
 
 	// Load the chunk
 	if (luaL_loadfile(L, file)) {
@@ -237,18 +227,8 @@ lua_State *addon_create_state(char *file) {
 	}
 
 	// Run the lua file
-	switch (lua_pcall(L, 0, 0, -2)) {
-		case LUA_ERRRUN:
-			pomlog(POMLOG_ERR "Error while loading addon \"%s\"", file);
-			goto err;
-		case LUA_ERRMEM:
-			pomlog(POMLOG_ERR "Not enough memory to load addon \"%s\"", file);
-			goto err;
-		case LUA_ERRERR:
-			pomlog(POMLOG_ERR "Error while running the error handler for addon \"%s\"", file);
-			goto err;
-	}
-
+	if (addon_pcall(L, 0, 0) != POM_OK)
+		goto err;
 	return L;
 
 err:
@@ -277,13 +257,6 @@ int addon_cleanup() {
 
 
 	return POM_OK;
-}
-
-
-int addon_error(lua_State *L) {
-	const char *err_str = luaL_checkstring(L, -1);
-	pomlog(POMLOG_ERR "%s", err_str);
-	return 0;
 }
 
 struct addon *addon_get_from_registry(lua_State *L) {
@@ -334,3 +307,20 @@ int addon_pcall(lua_State *L, int nargs, int nresults) {
 	return POM_OK;
 }
 
+void addon_pomlib_register(lua_State *L, luaL_Reg *l) {
+
+	lua_getglobal(L, ADDON_POM_LIB);
+
+	if (lua_isnil(L, -1)) {
+		lua_newtable(L);
+		lua_pushvalue(L, -1);
+		lua_setglobal(L, ADDON_POM_LIB);
+	}
+	
+	int i;
+	for (i = 0; l[i].name; i++) {
+		lua_pushcfunction(L, l[i].func);
+		lua_setfield(L, -2, l[i].name);
+	}
+
+}

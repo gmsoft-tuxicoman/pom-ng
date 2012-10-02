@@ -161,7 +161,7 @@ void addon_data_lua_register(lua_State *L) {
 		{ "data_item_iterator", addon_data_item_get_iterator },
 		{ 0 }
 	};
-	luaL_register(L, ADDON_POM_LIB, l);
+	addon_pomlib_register(L, l);
 }
 
 void addon_data_push(lua_State *L, struct data *data, struct data_reg *data_reg) {
