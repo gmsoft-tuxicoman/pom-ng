@@ -37,6 +37,6 @@
 
 #define pomlog(args ...) pomlog_internal(__FILE__, args)
 
-void pomlog_internal(char *file, const char *format, ...);
+void pomlog_internal(const char *file, const char *format, ...);
 
 #endif

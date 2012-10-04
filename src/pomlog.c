@@ -36,7 +36,7 @@ static uint32_t pomlog_buffer_entry_id = 0;
 
 static unsigned int pomlog_debug_level = 3; // Default to POMLOG_INFO
 
-void pomlog_internal(char *file, const char *format, ...) {
+void pomlog_internal(const char *file, const char *format, ...) {
 
 
 
@@ -61,7 +61,8 @@ void pomlog_internal(char *file, const char *format, ...) {
 
 	char *dot = strchr(file, '.');
 	unsigned int len = strlen(file);
-	if (dot) {
+	// Only remove extension for C files, not lua ones
+	if (dot && *(dot + 1) == 'c') {
 		unsigned int new_len = dot - file;
 		if (new_len < len)
 			len = new_len;
