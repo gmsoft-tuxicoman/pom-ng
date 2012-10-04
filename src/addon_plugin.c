@@ -24,6 +24,7 @@
 #include "addon_ptype.h"
 #include "addon_pload.h"
 #include "addon_output.h"
+#include "addon_event.h"
 #include "analyzer.h"
 
 struct addon_plugin_reg *addon_plugin_head = NULL;
@@ -136,6 +137,24 @@ static int addon_plugin_event_listen_stop(lua_State *L) {
 
 	return 0;
 
+}
+
+static int addon_plugin_event_process(lua_State *L) {
+
+	// Args should be :
+	// 1) self
+	// 2) event object
+	
+	struct addon_plugin *a = luaL_checkudata(L, 1, ADDON_PLUGIN_METATABLE);
+	if (a->reg->type != addon_plugin_type_event)
+		luaL_error(L, "Plugin %s cannot listen to events", a->reg->name);
+
+	struct addon_event *e = luaL_checkudata(L, 2, ADDON_EVENT_METATABLE);
+
+	if (event_add_listener(e->evt, a->priv, a->reg->event_begin, a->reg->event_end) != POM_OK)
+		luaL_error(L, "Error while adding event to plugin");
+
+	return 0;
 }
 
 static int addon_plugin_param_get(lua_State *L) {
@@ -274,6 +293,10 @@ static int addon_plugin_metatable(lua_State *L) {
 		if (a->reg->type != addon_plugin_type_event)
 			return 0;
 		lua_pushcfunction(L, addon_plugin_event_listen_stop);
+	} else if (!strcmp(key, "event_process")) {
+		if (a->reg->type != addon_plugin_type_event)
+			return 0;
+		lua_pushcfunction(L, addon_plugin_event_process);
 	} else if (!strcmp(key, "pload_process")) {
 		if (a->reg->type != addon_plugin_type_pload)
 			return 0;
