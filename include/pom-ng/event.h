@@ -31,6 +31,9 @@
 // Indicate that the event processing is done
 #define EVENT_FLAG_PROCESS_DONE		0x2
 
+// Indicate that the event generates a payload
+#define EVENT_REG_FLAG_PAYLOAD		0x1
+
 struct event {
 	struct event_reg *reg;
 	unsigned int flags;
@@ -46,6 +49,7 @@ struct event_reg_info {
 	char *name;
 	char *description;
 	struct data_reg *data_reg;
+	unsigned int flags;
 	int (*listeners_notify) (void *obj, struct event_reg *evt_reg, int has_listeners);
 	int (*cleanup) (struct event *evt);
 };
@@ -63,6 +67,9 @@ struct event *event_alloc(struct event_reg *evt_reg);
 int event_cleanup(struct event *evt);
 
 struct event_reg *event_find(char *name);
+
+int event_payload_listen_start();
+int event_payload_listen_stop();
 
 int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);
