@@ -209,6 +209,7 @@ lua_State *addon_create_state(char *file) {
 	luaL_openlibs(L);
 
 	// Register our own
+	addon_lua_register(L);
 	addon_event_lua_register(L);
 	addon_output_lua_register(L);
 	addon_plugin_lua_register(L);
@@ -257,6 +258,33 @@ int addon_cleanup() {
 
 
 	return POM_OK;
+}
+
+void addon_lua_register(lua_State *L) {
+	struct luaL_Reg l[] = {
+		{ "log", addon_log },
+		{ 0 }
+	};
+	addon_pomlib_register(L, l);
+
+	// Register the POMLOG_* variables
+	lua_pushinteger(L, 1);
+	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_ERR");
+
+	lua_pushinteger(L, 2);
+	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_WARN");
+
+	lua_pushinteger(L, 3);
+	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_INFO");
+
+	lua_pushinteger(L, 4);
+	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_DEBUG");
+
+	// Replace print() by our logging function
+	
+	lua_pushcfunction(L, addon_log);
+	lua_setfield(L, LUA_GLOBALSINDEX, "print");
+
 }
 
 struct addon *addon_get_from_registry(lua_State *L) {
@@ -323,4 +351,42 @@ void addon_pomlib_register(lua_State *L, luaL_Reg *l) {
 		lua_setfield(L, -2, l[i].name);
 	}
 
+}
+
+int addon_log(lua_State *L) {
+
+	// Get the filename
+	lua_Debug ar;
+	lua_getstack(L, 1, &ar);
+	lua_getinfo(L, "S", &ar);
+
+	// Get the log line
+
+	// Check if first arg is integer
+	if (lua_isnumber(L, 1)) {
+		const char *line = luaL_checkstring(L, 2);
+		int level = lua_tointeger(L, 1);
+		switch (level) {
+			case 1:
+				pomlog_internal(ar.source, POMLOG_ERR "%s", line);
+				break;
+			case 2:
+				pomlog_internal(ar.source, POMLOG_WARN "%s", line);
+				break;
+			case 3:
+				pomlog_internal(ar.source, POMLOG_INFO "%s", line);
+				break;
+			case 4:
+				pomlog_internal(ar.source, POMLOG_DEBUG "%s", line);
+				break;
+		}
+
+		return 0;
+	}
+
+
+	const char *line = luaL_checkstring(L, 1);
+	pomlog_internal(ar.source, "%s", line);
+
+	return 0;
 }

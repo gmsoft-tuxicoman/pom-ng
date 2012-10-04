@@ -65,6 +65,7 @@ int addon_init();
 int addon_mod_register(struct mod_reg *mod);
 lua_State *addon_create_state(char *file);
 int addon_cleanup();
+void addon_lua_register(lua_State *L);
 
 struct addon *addon_get_from_registry(lua_State *L);
 
@@ -72,6 +73,7 @@ int addon_get_instance(struct addon_instance_priv *p);
 int addon_pcall(lua_State *L, int nargs, int nresults);
 
 void addon_pomlib_register(lua_State *L, luaL_Reg *l);
+int addon_log(lua_State *L);
 
 #define addon_oom(L, x) luaL_error((L), "Not enough memory to allocate %u bytes", (x))
 
