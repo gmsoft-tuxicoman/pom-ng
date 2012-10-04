@@ -117,6 +117,12 @@ int event_cleanup(struct event *evt) {
 		return POM_ERR;
 	}
 
+	while (evt->tmp_listeners) {
+		struct event_listener *lst = evt->tmp_listeners;
+		evt->tmp_listeners = lst->next;
+		free(lst);
+	}
+
 	data_cleanup_table(evt->data, evt->reg->info->data_reg);
 	free(evt);
 	return POM_OK;
@@ -201,6 +207,30 @@ int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 	return POM_OK;
 }
 
+int event_add_listener(struct event *evt, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj)) {
+
+	if (process_begin && process_begin(evt, obj, NULL, 0) != POM_OK)
+		return POM_ERR;
+
+	struct event_listener *tmp = malloc(sizeof(struct event_listener));
+	if (!tmp) {
+		pom_oom(sizeof(struct event_listener));
+		return POM_ERR;
+	}
+	memset(tmp, 0, sizeof(struct event_listener));
+	
+	tmp->obj = obj;
+	tmp->process_end = process_end;
+
+	tmp->next = evt->tmp_listeners;
+	if (tmp->next)
+		tmp->next->prev = tmp;
+	evt->tmp_listeners = tmp;
+
+	return POM_OK;
+
+}
+
 int event_has_listener(struct event_reg *evt_reg) {
 	return (evt_reg->listeners ? 1 : 0);
 }
@@ -256,6 +286,12 @@ int event_process_end(struct event *evt) {
 
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
+		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
+			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
+		}
+	}
+
+	for (lst = evt->tmp_listeners; lst; lst = lst->next) {
 		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}

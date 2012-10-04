@@ -38,6 +38,8 @@ struct event {
 	void *priv;
 	unsigned int refcount;
 	struct data *data;
+
+	struct event_listener* tmp_listeners;
 };
 
 struct event_reg_info {
@@ -66,6 +68,7 @@ struct event_reg *event_find(const char *name);
 
 int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);
+int event_add_listener(struct event *evt, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 int event_has_listener(struct event_reg *evt_reg);
 
 int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index);
