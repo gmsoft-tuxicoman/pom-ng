@@ -94,9 +94,6 @@ static int addon_output_event_listen_start(lua_State *L) {
 	if (lua_isfunction(L, 4))
 		process_end = addon_event_process_end;
 
-	if (!process_begin && !process_end)
-		luaL_error(L, "No processing function provided");
-
 	// Get the output
 	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
 
@@ -180,6 +177,10 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_pushliteral(p->L, "open");
 	lua_gettable(p->L, -2); // Stack : self, __pload_listener, open_func
 
+	// Check if there is an open function
+	if (lua_isnil(p->L, -1))
+		return POM_OK;
+
 	// Add self
 	lua_pushvalue(p->L, -3);
 
@@ -224,20 +225,24 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 
 	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
-	
-	lua_pushliteral(p->L, "__pload_listener");
-	lua_gettable(p->L, -2);  // Stack : self, __pload_listener
+
+	if (addon_checkstack(p->L, 7) != POM_OK)
+		return POM_ERR;
+
+	lua_getfield(p->L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Get the write function
-	lua_pushliteral(p->L, "write");
-	lua_gettable(p->L, -2); // Stack : self, __pload_listener, write_func
+	lua_getfield(p->L, -1, "write"); // Stack : self, __pload_listener, write_func
+	
+	// Check if there is a write function
+	if (lua_isnil(p->L, -1))
+		return POM_OK;
 
 	// Setup args
 	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, write_func, self
 	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
 	lua_gettable(p->L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
-	lua_pushliteral(p->L, "__pload_data");
-	lua_gettable(p->L, -2); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
+	lua_getfield(p->L, -1, "__pload_data"); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
 
 	// Update the pload_data
 	addon_pload_data_update(p->L, -1, data, len);
@@ -262,21 +267,28 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 		addon_plugin_pload_close(tmp->addon_reg, tmp->pi.priv);
 	}
 
-	lua_pushliteral(p->L, "__pload_listener");
-	lua_gettable(p->L, -2); // Stack : __pload_listener
+	lua_getfield(p->L, -1, "__pload_listener"); // Stack : __pload_listener
+
+	// Remove the instance priv from the __pload_listener table
+	lua_pushlightuserdata(p->L, pload_instance_priv);
+	lua_pushnil(p->L);
+	lua_settable(p->L, -3);
 
 	// Get the close function
-	lua_pushliteral(p->L, "close");
-	lua_gettable(p->L, -2); // Stack : self, __pload_listener, close_func
+	lua_getfield(p->L, -1,  "close"); // Stack : self, __pload_listener, close_func
 
-	// Setup args
-	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, close_func, self
-	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, close_func, self, pload_priv
-	lua_gettable(p->L, -4); // Stack : self, __pload_listener, close_func, self, pload_priv_table
+	int res = POM_OK;
 
-	int res = addon_pcall(p->L, 2, 0); // Stack : self, __pload_listener
-	if (res != POM_OK)
-		return POM_ERR;
+	// Check if there is an close function
+	if (!lua_isnil(p->L, -1)) {
+
+		// Setup args
+		lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, close_func, self
+		lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, close_func, self, pload_priv
+		lua_gettable(p->L, -4); // Stack : self, __pload_listener, close_func, self, pload_priv_table
+
+		res = addon_pcall(p->L, 2, 0); // Stack : self, __pload_listener
+	}
 
 	while (ppriv->plugins) {
 		tmp = ppriv->plugins;
@@ -286,12 +298,8 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 
 	free(ppriv);
 
-	// Remove the instance priv from the __pload_listener table
-	lua_pushlightuserdata(p->L, pload_instance_priv);
-	lua_pushnil(p->L);
-	lua_settable(p->L, -3);
 
-	return POM_OK;
+	return res;
 }
 
 // Called from lua to start listening to files
@@ -307,8 +315,8 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	// Get the output
 	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
 
-	if (!lua_isfunction(L, 2) || !lua_isfunction(L, 3) || !lua_isfunction(L, 4))
-		luaL_error(L, "Arguments to pload_listen_start() should be : read function, write function, close function");
+	if (!lua_isfunction(L, 2) && !lua_isfunction(L, 3) && !lua_isfunction(L, 4))
+		luaL_error(L, "At least one function should be provided to pload_listen_start()");
 
 	// Check if we are already listening or not
 	lua_pushliteral(L, "__pload_listener");
