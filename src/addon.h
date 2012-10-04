@@ -74,6 +74,7 @@ int addon_pcall(lua_State *L, int nargs, int nresults);
 
 void addon_pomlib_register(lua_State *L, luaL_Reg *l);
 int addon_log(lua_State *L);
+int addon_checkstack(lua_State *L, unsigned int num);
 
 #define addon_oom(L, x) luaL_error((L), "Not enough memory to allocate %u bytes", (x))
 
