@@ -253,6 +253,38 @@ err:
 	return 0;
 }
 
+static int addon_plugin_metatable(lua_State *L) {
+
+	struct addon_plugin *a = luaL_checkudata(L, 1, ADDON_PLUGIN_METATABLE);	
+	const char *key = luaL_checkstring(L, 2);
+
+	if (!strcmp(key, "open")) {
+		lua_pushcfunction(L, addon_plugin_open);
+	} else if (!strcmp(key, "close")) {
+		lua_pushcfunction(L, addon_plugin_close);
+	} else if (!strcmp(key, "param_get")) {
+		lua_pushcfunction(L, addon_plugin_param_get);
+	} else if (!strcmp(key, "param_set")) {
+		lua_pushcfunction(L, addon_plugin_param_set);
+	} else if (!strcmp(key, "event_listen_start")) {
+		if (a->reg->type != addon_plugin_type_event)
+			return 0;
+		lua_pushcfunction(L, addon_plugin_event_listen_start);
+	} else if (!strcmp(key, "event_listen_stop")) {
+		if (a->reg->type != addon_plugin_type_event)
+			return 0;
+		lua_pushcfunction(L, addon_plugin_event_listen_stop);
+	} else if (!strcmp(key, "pload_process")) {
+		if (a->reg->type != addon_plugin_type_pload)
+			return 0;
+		lua_pushcfunction(L, addon_plugin_pload_process);
+	} else {
+		return 0;
+	}
+
+	return 1;
+}
+
 int addon_plugin_lua_register(lua_State *L) {
 
 	struct luaL_Reg l[] = {
@@ -263,27 +295,12 @@ int addon_plugin_lua_register(lua_State *L) {
 	luaL_register(L, ADDON_PLUGIN_LIB, l);
 
 	struct luaL_Reg m[] = {
-		{ "open", addon_plugin_open },
-		{ "close", addon_plugin_close },
+		{ "__index", addon_plugin_metatable },
 		{ "__gc", addon_plugin_gc },
-
-		{ "event_listen_start", addon_plugin_event_listen_start },
-		{ "event_listen_stop", addon_plugin_event_listen_stop },
-
-		{ "param_get", addon_plugin_param_get },
-		{ "param_set", addon_plugin_param_set },
-
-		{ "pload_process", addon_plugin_pload_process },
-
 		{ 0 }
 	};
 
 	luaL_newmetatable(L, ADDON_PLUGIN_METATABLE);
-	
-	// Assign __index to itself
-	lua_pushliteral(L, "__index");
-	lua_pushvalue(L, -2);
-	lua_settable(L, -3);
 
 	// Register the functions
 	luaL_register(L, NULL, m);
