@@ -29,6 +29,7 @@
 #include <sys/time.h>
 
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_bool.h>
 
 struct mod_reg_info* output_file_reg_info() {
 
@@ -37,7 +38,7 @@ struct mod_reg_info* output_file_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = output_file_mod_register;
 	reg_info.unregister_func = output_file_mod_unregister;
-	reg_info.dependencies = "ptype_string";
+	reg_info.dependencies = "ptype_bool, ptype_string";
 
 	return &reg_info;
 
@@ -79,22 +80,20 @@ int output_file_init(struct output *o) {
 	memset(priv, 0, sizeof(struct output_file_priv));
 	output_set_priv(o, priv);
 
+	priv->p_listen_pload_evt = ptype_alloc("bool");
 	priv->p_path = ptype_alloc("string");
-//	priv->p_filter = ptype_alloc("string");
 
-//	if (!priv->p_path || !priv->p_filter)
 	if (!priv->p_path)
 		goto err;
 
-	struct registry_param *p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
+	
+	struct registry_param *p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt, "Listen to all events that generate payloads", 0);
 	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
-/*
-	p = registry_new_param("filter", "", priv->p_filter, "File filter", 0);
-	if (output_instance_add_param(o, p) != POM_OK)
-		goto err;
-*/
 
+	p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
+	if (output_instance_add_param(o, p) != POM_OK)
+		goto err;
 	
 	priv->output_reg.open = output_file_pload_open;
 	priv->output_reg.write = output_file_pload_write;
@@ -111,10 +110,10 @@ int output_file_cleanup(void *output_priv) {
 
 	struct output_file_priv *priv = output_priv;
 	if (priv) {
+		if (priv->p_listen_pload_evt)
+			ptype_cleanup(priv->p_listen_pload_evt);
 		if (priv->p_path)
 			ptype_cleanup(priv->p_path);
-//		if (priv->p_filter)
-//			ptype_cleanup(priv->p_filter);
 		free(priv);
 
 	}
@@ -126,6 +125,11 @@ int output_file_open(void *output_priv) {
 
 	struct output_file_priv *priv = output_priv;
 
+	char *listen_pload_evt = PTYPE_BOOL_GETVAL(priv->p_listen_pload_evt);
+	if (*listen_pload_evt && event_payload_listen_start() != POM_OK)
+		return POM_ERR;
+		
+
 	return analyzer_pload_output_register(priv, &priv->output_reg);
 
 }
@@ -134,9 +138,12 @@ int output_file_close(void *output_priv) {
 
 	if (analyzer_pload_output_unregister(output_priv) != POM_OK)
 		return POM_ERR;
-
-	// TODO close all the files
 	
+	struct output_file_priv *priv = output_priv;
+
+	char *listen_pload_evt = PTYPE_BOOL_GETVAL(priv->p_listen_pload_evt);
+	if (*listen_pload_evt)
+		event_payload_listen_stop();
 
 	return POM_OK;
 }
