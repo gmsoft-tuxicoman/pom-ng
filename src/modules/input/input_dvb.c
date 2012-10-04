@@ -234,7 +234,7 @@ static int input_dvb_c_init(struct input *i) {
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
+	p = registry_new_param("symbol_rate", "6952000", priv->symbol_rate, "Symbols per seconds", 0);
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
@@ -242,7 +242,7 @@ static int input_dvb_c_init(struct input *i) {
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("modulation", "0", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
+	p = registry_new_param("modulation", "QAM256", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
