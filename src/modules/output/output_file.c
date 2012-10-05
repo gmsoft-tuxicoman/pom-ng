@@ -177,6 +177,7 @@ static int file_pload_open(struct analyzer_pload_instance *pi, const char *filen
 
 	analyzer_pload_instance_set_priv(pi, ppriv);
 
+	pomlog(POMLOG_DEBUG "File %s open", ppriv->filename);
 	return POM_OK;
 }
 
