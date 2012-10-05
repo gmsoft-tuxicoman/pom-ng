@@ -298,6 +298,9 @@ struct addon *addon_get_from_registry(lua_State *L) {
 
 int addon_get_instance(struct addon_instance_priv *p) {
 
+	// Reset the stack
+	lua_settop(p->L, 0);
+
 	// Fetch the corresponding instance
 	lua_pushlightuserdata(p->L, p);
 	lua_gettable(p->L, LUA_REGISTRYINDEX);
@@ -391,11 +394,3 @@ int addon_log(lua_State *L) {
 	return 0;
 }
 
-int addon_checkstack(lua_State *L, unsigned int num) {
-
-	if (!lua_checkstack(L, num)) {
-		pomlog(POMLOG_ERR "Unable to grow stack for %u elements", num);
-		return POM_ERR;
-	}
-	return POM_OK;
-}

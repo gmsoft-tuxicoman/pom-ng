@@ -226,9 +226,6 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 	if (addon_get_instance(p) != POM_OK) // Stack : self
 		return POM_ERR;
 
-	if (addon_checkstack(p->L, 7) != POM_OK)
-		return POM_ERR;
-
 	lua_getfield(p->L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Get the write function
