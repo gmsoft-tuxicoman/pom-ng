@@ -18,6 +18,7 @@
 			<item><name>jpeg</name><description>JPEG image</description><extension>jpg</extension><class>image</class></item>
 			<item><name>gif</name><description>GIF image</description><extension>gif</extension><class>image</class></item>
 			<item><name>png</name><description>PNG image</description><extension>png</extension><class>image</class></item>
+			<item><name>flv</name><description>Flash video</description><extension>flv</extension><class>video</class></item>
 
 		</dataset>
 
@@ -39,6 +40,7 @@
 			<item><name>jpeg</name><mime>image/jpg</mime></item>
 			<item><name>gif</name><mime>image/gif</mime></item>
 			<item><name>png</name><mime>image/png</mime></item>
+			<item><name>flv</name><mime>video/x-flv</mime></item>
 		</dataset>
 	</datasets>
 
