@@ -20,6 +20,7 @@
 			<item><name>png</name><description>PNG image</description><extension>png</extension><class>image</class></item>
 			<item><name>flv</name><description>Flash video</description><extension>flv</extension><class>video</class></item>
 			<item><name>webm</name><description>WebM video</description><extension>webm</extension><class>video</class></item>
+			<item><name>m2ts</name><description>MPEG2 TS video</description><extension>m2ts</extension><class>video</class></item>
 
 		</dataset>
 
@@ -43,6 +44,7 @@
 			<item><name>png</name><mime>image/png</mime></item>
 			<item><name>flv</name><mime>video/x-flv</mime></item>
 			<item><name>webm</name><mime>video/webm</mime></item>
+			<item><name>m2ts</name><mime>video/MP2T</mime></item>
 		</dataset>
 	</datasets>
 
