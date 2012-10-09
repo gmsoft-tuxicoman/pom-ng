@@ -37,9 +37,8 @@ static int addon_pload_metatable(lua_State *L) {
 		addon_event_push(L, p->rel_event);
 	} else if (!strcmp(key, "data")) {
 		addon_data_push(L, p->data, p->type->analyzer->data_reg);
-	} else if (!strcmp(key, "type")) {
-		// Return the type table
-
+	} else if (!strcmp(key, "type") && p->type) {
+		// Return the type table if any
 		lua_newtable(L);
 		
 		// Add type name
