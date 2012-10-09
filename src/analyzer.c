@@ -51,6 +51,7 @@ static struct analyzer *analyzer_head = NULL;
 static pthread_mutex_t analyzer_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct analyzer_pload_type *analyzer_pload_types = NULL;
+static struct analyzer_pload_type *analyzer_binary_pload_type = NULL;
 static struct analyzer_pload_mime_type *analyzer_pload_mime_types = NULL;
 
 static struct analyzer_pload_output *analyzer_pload_outputs = NULL;
@@ -219,6 +220,8 @@ int analyzer_init() {
 	resource_dataset_close(mime_types);
 	resource_close(r);
 
+	// This is the 'match all' type
+	analyzer_binary_pload_type = analyzer_pload_type_get_by_name("binary");
 
 	return POM_OK;
 
@@ -582,7 +585,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			struct analyzer_pload_type *magic_pload_type = analyzer_pload_type_get_by_mime_type(magic_mime_type);
 
 			// If magic found something different, use that instead
-			if (magic_pload_type && (magic_pload_type != pload->type)) {
+			if (magic_pload_type && (magic_pload_type != pload->type) && (magic_pload_type != analyzer_binary_pload_type)) {
 				debug_analyzer(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_mime_type);
 				pload->type = magic_pload_type;
 			}
