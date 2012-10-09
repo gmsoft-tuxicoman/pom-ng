@@ -167,6 +167,9 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 
 	analyzer_pload_instance_set_priv(pi, ppriv);
 
+	// We need to lock while playing with the __pload_listener table
+	pom_mutex_lock(&p->lock);
+
 	// Get the __pload_listener table
 	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
@@ -175,6 +178,7 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 
 	// Check if there is an open function
 	if (lua_isnil(L, -1)) {
+		pom_mutex_unlock(&p->lock);
 		lua_pop(L, 3); // Stack : empty
 		return POM_OK;
 	}
@@ -193,6 +197,9 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_pushlightuserdata(L, ppriv); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv
 	lua_pushvalue(L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
 	lua_settable(L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+
+	// Done playing with the __pload_listener table
+	pom_mutex_unlock(&p->lock);
 
 	// Add the pload to the args
 	addon_pload_push(L, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
@@ -226,6 +233,7 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 
 	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
 
+	pom_mutex_lock(&p->lock);
 	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Get the write function
@@ -233,6 +241,7 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 	
 	// Check if there is a write function
 	if (lua_isnil(L, -1)) {
+		pom_mutex_unlock(&p->lock);
 		lua_pop(L, 3); // Stack : empty
 		return POM_OK;
 	}
@@ -242,6 +251,7 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
 	lua_gettable(L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
 	lua_getfield(L, -1, "__pload_data"); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
+	pom_mutex_unlock(&p->lock);
 
 	// Update the pload_data
 	addon_pload_data_update(L, -1, data, len);
@@ -269,6 +279,7 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 		addon_plugin_pload_close(tmp->addon_reg, tmp->pi.priv);
 	}
 
+	pom_mutex_lock(&p->lock);
 	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Remove the instance priv from the __pload_listener table
@@ -288,11 +299,13 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 		lua_pushvalue(L, -3); // Stack : self, __pload_listener, close_func, self
 		lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, close_func, self, pload_priv
 		lua_gettable(L, -4); // Stack : self, __pload_listener, close_func, self, pload_priv_table
+		pom_mutex_unlock(&p->lock);
 
 		res = addon_pcall(L, 2, 0); // Stack : self, __pload_listener
 
 		lua_pop(L, 2); // Stack : empty
 	} else {
+		pom_mutex_unlock(&p->lock);
 		lua_pop(L, 3); // Stack : empty
 	}
 
@@ -480,19 +493,20 @@ int addon_output_register(lua_State *L) {
 
 	struct addon *addon = addon_get_from_registry(L);
 
+	// Stack : class
+
 	// Get the name of the output
-	lua_pushliteral(L, "name");
-	lua_gettable(L, 1);
+	lua_getfield(L, 1, "name"); // Stack : class, name
 	const char *name = lua_tostring(L, -1);
 
 	pomlog(POMLOG_DEBUG "Registering addon output %s ...", name);
 
-	struct output_reg_info *output_info = lua_newuserdata(L, sizeof(struct output_reg_info));
+	struct output_reg_info *output_info = lua_newuserdata(L, sizeof(struct output_reg_info)); // Stack : class, name, info
 	memset(output_info, 0, sizeof(struct output_reg_info));
 
 	// Add the output_reg metatable
-	luaL_getmetatable(L, ADDON_OUTPUT_REG_METATABLE);
-	lua_setmetatable(L, -2);
+	luaL_getmetatable(L, ADDON_OUTPUT_REG_METATABLE); // Stack : class, name, info, metatable
+	lua_setmetatable(L, -2); // Stack : class, name, info
 	
 	output_info->name = strdup(name);
 	if (!output_info->name)
@@ -508,10 +522,13 @@ int addon_output_register(lua_State *L) {
 	if (output_register(output_info) != POM_OK)
 		luaL_error(L, "Error while registering addon input %s", name);
 
+	// Add the info to the class
+	lua_setfield(L, 1, "__info"); // Stack : class, name
+
 	// Save our template in the registry
-	lua_pushlightuserdata(L, output_info);
-	lua_pushvalue(L, 1);
-	lua_settable(L, LUA_REGISTRYINDEX);
+	lua_pushlightuserdata(L, output_info);  // Stack : class, name, info_p
+	lua_pushvalue(L, 1); // Stack : class, name, info_p, class
+	lua_settable(L, LUA_REGISTRYINDEX); // Stack : class, name
 
 	pomlog(POMLOG_DEBUG "Registered addon output %s", name);
 
