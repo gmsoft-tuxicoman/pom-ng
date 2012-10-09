@@ -307,6 +307,32 @@ int addon_get_instance(struct addon_instance_priv *p) {
 	return POM_OK;
 }
 
+lua_State *addon_get_instance_and_thread(struct addon_instance_priv *p) {
+
+	pom_mutex_lock(&p->lock);
+	lua_pushlightuserdata(p->L, p); // Stack : instance_p
+	lua_gettable(p->L, LUA_REGISTRYINDEX); // Stack : instance
+	lua_getfield(p->L, -1, "__thread"); // Stack : instance, __thread
+	lua_rawgeti(p->L, -1, pthread_self()); // Stack : instance, __thread, thread
+
+	lua_State *L = NULL;
+
+	if (lua_isnil(p->L, -1)) {
+		L = lua_newthread(p->L); // Stack : instance, __thread, nil, thread
+		lua_rawseti(p->L, -3, pthread_self()); // Stack : instance, __thread, nil
+	} else {
+	 	L = lua_tothread(p->L, -1);
+	}
+
+	lua_pop(p->L, 3); // Stack : empty
+	pthread_mutex_unlock(&p->lock);
+
+	// Fetch the instance in the new thread
+	lua_pushlightuserdata(L, p);
+	lua_gettable(L, LUA_REGISTRYINDEX);
+	return L;
+}
+
 int addon_pcall(lua_State *L, int nargs, int nresults) {
 
 	if (!lua_isfunction(L, -(nargs + 1))) {

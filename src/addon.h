@@ -55,7 +55,8 @@ struct addon_param {
 
 struct addon_instance_priv {
 
-	lua_State *L; // Each output has it's own lua state
+	lua_State *L; // Main lua state for the output
+	pthread_mutex_t lock;
 	void *instance;
 	struct addon_param *params;
 
@@ -70,6 +71,7 @@ void addon_lua_register(lua_State *L);
 struct addon *addon_get_from_registry(lua_State *L);
 
 int addon_get_instance(struct addon_instance_priv *p);
+lua_State *addon_get_instance_and_thread(struct addon_instance_priv *p);
 int addon_pcall(lua_State *L, int nargs, int nresults);
 
 void addon_pomlib_register(lua_State *L, luaL_Reg *l);

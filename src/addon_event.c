@@ -58,34 +58,33 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 	struct addon_instance_priv *p = obj;
 
 	// Fetch the instance table
-	if (addon_get_instance(p) != POM_OK) // Stack : self
-		return POM_ERR;
+	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
 
 	// Fetch the table associated with that event
-	lua_pushlightuserdata(p->L, evt->reg); // Stack : self, evt_reg
-	lua_gettable(p->L, -2); // Stack : self, evt_table
-	if (!lua_istable(p->L, -1)) {
+	lua_pushlightuserdata(L, evt->reg); // Stack : self, evt_reg
+	lua_gettable(L, -2); // Stack : self, evt_table
+	if (!lua_istable(L, -1)) {
 		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
 		return POM_ERR;
 	}
 
 	// Get the open function
-	lua_getfield(p->L, -1, "begin"); // Stack : self, evt_table, open_func
+	lua_getfield(L, -1, "begin"); // Stack : self, evt_table, open_func
 
-	if (lua_isnil(p->L, -1)) {
-		lua_pop(p->L, 3); // Stack : empty
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 3); // Stack : empty
 		return POM_OK;
 	}
 
 	// Push self
-	lua_pushvalue(p->L, -3); // Stack : self, evt_table, open_func, self
+	lua_pushvalue(L, -3); // Stack : self, evt_table, open_func, self
 	// Push event
-	if (addon_event_push(p->L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
+	if (addon_event_push(L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
 		return POM_ERR;
 
-	int res =  addon_pcall(p->L, 2, 0); // Stack : self, evt_table
+	int res =  addon_pcall(L, 2, 0); // Stack : self, evt_table
 	
-	lua_pop(p->L, 2); // Stack : empty
+	lua_pop(L, 2); // Stack : empty
 
 	return res;
 }
@@ -94,35 +93,34 @@ int addon_event_process_end(struct event *evt, void *obj) {
 
 	struct addon_instance_priv *p = obj;
 
-	if (addon_get_instance(p) != POM_OK) // Stack : self
-		return POM_ERR;
+	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
 
 	// Fetch the table associated with that event
-	lua_pushlightuserdata(p->L, evt->reg);
-	lua_gettable(p->L, -2); // Stack : self, evt_table
-	if (!lua_istable(p->L, -1)) {
+	lua_pushlightuserdata(L, evt->reg);
+	lua_gettable(L, -2); // Stack : self, evt_table
+	if (!lua_istable(L, -1)) {
 		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
 		return POM_ERR;
 	}
 
 	// Get the open function
-	lua_getfield(p->L, -1, "end"); // Stack : self, evt_table, close_func
+	lua_getfield(L, -1, "end"); // Stack : self, evt_table, close_func
 	
 	// Check if there is an end function
-	if (lua_isnil(p->L, -1)) {
-		lua_pop(p->L, 3); // Stack : empty
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 3); // Stack : empty
 		return POM_OK;
 	}
 
 	// Push self
-	lua_pushvalue(p->L, -3); // Stack : self, evt_table, close_func, self
+	lua_pushvalue(L, -3); // Stack : self, evt_table, close_func, self
 	// Push event
-	if (addon_event_push(p->L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
+	if (addon_event_push(L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
 		return POM_ERR;
 
-	int res = addon_pcall(p->L, 2, 0); // Stack : self, evt_table
+	int res = addon_pcall(L, 2, 0); // Stack : self, evt_table
 
-	lua_pop(p->L, 2); // Stack : empty
+	lua_pop(L, 2); // Stack : empty
 
 	return res;
 }
