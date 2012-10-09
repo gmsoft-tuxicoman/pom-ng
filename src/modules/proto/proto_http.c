@@ -435,11 +435,12 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 						// Continue parsing the next chunk
 						continue;
-					} else {
-						packet_stream_parser_empty(parser);
-						s_next->plen = remaining_size;
 					}
+
+					packet_stream_parser_empty(parser);
+					s_next->plen = remaining_size;
 					priv->info[s->direction].chunk_pos += remaining_size;
+					return POM_OK; // Nothing left to process
 
 				}  else {
 
@@ -458,12 +459,12 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 
 						// Do the post processing
 						if (proto_http_post_process(proto, p, stack, stack_index) != POM_OK)
-							return POM_ERR;
+							return PROTO_ERR;
 					} else {
 						packet_stream_parser_empty(parser);
 						priv->info[s->direction].content_pos += s_next->plen;
 						debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
-						return POM_OK;
+						return PROTO_OK;
 					}
 				}
 				break;
