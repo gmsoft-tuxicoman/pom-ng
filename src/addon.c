@@ -295,11 +295,7 @@ struct addon *addon_get_from_registry(lua_State *L) {
 	return tmp;
 }
 
-
 int addon_get_instance(struct addon_instance_priv *p) {
-
-	// Reset the stack
-	lua_settop(p->L, 0);
 
 	// Fetch the corresponding instance
 	lua_pushlightuserdata(p->L, p);
@@ -313,27 +309,34 @@ int addon_get_instance(struct addon_instance_priv *p) {
 
 int addon_pcall(lua_State *L, int nargs, int nresults) {
 
-	const char *err_str = "Unknown error";
-
 	if (!lua_isfunction(L, -(nargs + 1))) {
 		pomlog(POMLOG_ERR "Internal error : Trying to call something that is not a function");
 		return POM_ERR;
 	}
 
-	switch (lua_pcall(L, nargs, nresults, 0)) {
+	int res = lua_pcall(L, nargs, nresults, 0);
+
+	if (!res)
+		return POM_OK;
+
+
+	const char *err_str_lua = lua_tostring(L, -1);
+	lua_pop(L, 1); // Remove the error message
+	const char *err_str = "Unknown error";
+
+	switch (res) {
 		case LUA_ERRRUN:
-			err_str = lua_tostring(L, -1);
-			pomlog(POMLOG_ERR "Error while calling lua : %s", err_str);
-			return POM_ERR;
+			err_str = "Error while calling lua";
+			break;
 		case LUA_ERRMEM:
-			err_str = lua_tostring(L, -1);
-			pomlog(POMLOG_ERR "Not enough memory to lua : %s", err_str);
-			return POM_ERR;
+			err_str = "Not enough memory to lua";
+			break;
 		case LUA_ERRERR:
-			err_str = lua_tostring(L, -1);
-			pomlog(POMLOG_ERR "Error while running the error handler : %s", err_str);
-			return POM_ERR;
+			err_str = "Error while running the error handler";
+			break;
 	}
+
+	pomlog(POMLOG_ERR "Error : %s : %s", err_str, err_str_lua);
 	
 	return POM_OK;
 }
