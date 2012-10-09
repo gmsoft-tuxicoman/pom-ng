@@ -18,7 +18,10 @@ function http_out:pload_open(priv, pload)
 
 	-- Check if we need to process this payload
 	local process = false
-	local class = pload.type['class']
+	local pload_type = pload.type
+	if pload_type == nil then return end
+
+	local class = pload_type['class']
 
 	-- Check for images and the minimum surface
 	if class == "image" and self:param_get("dump_img") then
