@@ -19,6 +19,7 @@
 			<item><name>gif</name><description>GIF image</description><extension>gif</extension><class>image</class></item>
 			<item><name>png</name><description>PNG image</description><extension>png</extension><class>image</class></item>
 			<item><name>flv</name><description>Flash video</description><extension>flv</extension><class>video</class></item>
+			<item><name>webm</name><description>WebM video</description><extension>webm</extension><class>video</class></item>
 
 		</dataset>
 
@@ -41,6 +42,7 @@
 			<item><name>gif</name><mime>image/gif</mime></item>
 			<item><name>png</name><mime>image/png</mime></item>
 			<item><name>flv</name><mime>video/x-flv</mime></item>
+			<item><name>webm</name><mime>video/webm</mime></item>
 		</dataset>
 	</datasets>
 
