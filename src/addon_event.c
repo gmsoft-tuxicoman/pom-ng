@@ -62,7 +62,7 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 		return POM_ERR;
 
 	// Fetch the table associated with that event
-	lua_pushlightuserdata(p->L, evt->reg);
+	lua_pushlightuserdata(p->L, evt->reg); // Stack : self, evt_reg
 	lua_gettable(p->L, -2); // Stack : self, evt_table
 	if (!lua_istable(p->L, -1)) {
 		pomlog(POMLOG_ERR "Listener not registered for event %s", evt->reg->info->name);
@@ -70,15 +70,24 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 	}
 
 	// Get the open function
-	lua_pushliteral(p->L, "begin");
-	lua_gettable(p->L, -2); // Stack : self, evt_table, open_func
+	lua_getfield(p->L, -1, "begin"); // Stack : self, evt_table, open_func
+
+	if (lua_isnil(p->L, -1)) {
+		lua_pop(p->L, 3); // Stack : empty
+		return POM_OK;
+	}
+
 	// Push self
 	lua_pushvalue(p->L, -3); // Stack : self, evt_table, open_func, self
 	// Push event
 	if (addon_event_push(p->L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
 		return POM_ERR;
 
-	return addon_pcall(p->L, 2, 0);
+	int res =  addon_pcall(p->L, 2, 0); // Stack : self, evt_table
+	
+	lua_pop(p->L, 2); // Stack : empty
+
+	return res;
 }
 
 int addon_event_process_end(struct event *evt, void *obj) {
@@ -97,16 +106,25 @@ int addon_event_process_end(struct event *evt, void *obj) {
 	}
 
 	// Get the open function
-	lua_pushliteral(p->L, "end");
-	lua_gettable(p->L, -2); // Stack : self, evt_table, close_func
+	lua_getfield(p->L, -1, "end"); // Stack : self, evt_table, close_func
+	
+	// Check if there is an end function
+	if (lua_isnil(p->L, -1)) {
+		lua_pop(p->L, 3); // Stack : empty
+		return POM_OK;
+	}
+
 	// Push self
 	lua_pushvalue(p->L, -3); // Stack : self, evt_table, close_func, self
 	// Push event
 	if (addon_event_push(p->L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
 		return POM_ERR;
 
-	return addon_pcall(p->L, 2, 0);
+	int res = addon_pcall(p->L, 2, 0); // Stack : self, evt_table
 
+	lua_pop(p->L, 2); // Stack : empty
+
+	return res;
 }
 
 int addon_event_push(lua_State *L, struct event *evt) {
