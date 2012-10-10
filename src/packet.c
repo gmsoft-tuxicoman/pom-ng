@@ -1126,6 +1126,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 					s->plen = gap - pos;
 				s->pload = zero;
 				res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
+				s->direction = next_dir;
 				if (res == PROTO_ERR)
 					break;
 			}
