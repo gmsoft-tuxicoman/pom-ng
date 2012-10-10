@@ -27,8 +27,8 @@
 
 struct output_file_priv {
 
+	struct ptype *p_listen_pload_evt;
 	struct ptype *p_path;
-	//struct ptype *p_filter;
 	
 	struct analyzer_pload_output_reg output_reg;
 

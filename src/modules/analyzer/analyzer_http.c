@@ -164,6 +164,7 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	analyzer_http_evt_request.name = "http_request";
 	analyzer_http_evt_request.description = "HTTP request (compound event of http_query and http_response)";
 	analyzer_http_evt_request.data_reg = &evt_request_data;
+	analyzer_http_evt_request.flags = EVENT_REG_FLAG_PAYLOAD;
 	analyzer_http_evt_request.listeners_notify = analyzer_http_event_listeners_notify;
 	analyzer_http_evt_request.cleanup = analyzer_http_request_event_cleanup;
 

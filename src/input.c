@@ -388,7 +388,7 @@ void *input_process_thread(void *param) {
 
 	pom_mutex_lock(&i->lock);
 
-	pomlog(POMLOG_DEBUG "Input %s started", i->name);
+	pomlog("Input %s started", i->name);
 
 	while (i->running == INPUT_RUN_RUNNING) {
 	
@@ -409,7 +409,7 @@ void *input_process_thread(void *param) {
 
 	i->running = INPUT_RUN_STOPPED;
 	pom_mutex_unlock(&i->lock);
-	pomlog(POMLOG_DEBUG "Input %s stopped", i->name);
+	pomlog("Input %s stopped", i->name);
 
 	return NULL;
 

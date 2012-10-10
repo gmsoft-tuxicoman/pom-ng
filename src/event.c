@@ -29,7 +29,9 @@
 #define debug_event(x ...)
 #endif
 
-struct event_reg *event_reg_head = NULL;
+static struct event_reg *event_reg_head = NULL;
+
+static unsigned int event_pload_listener_ref = 0;
 
 
 struct event_reg *event_register(struct event_reg_info *reg_info) {
@@ -133,6 +135,55 @@ struct event_reg *event_find(const char *name) {
 	struct event_reg *tmp;
 	for (tmp = event_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
 	return tmp;
+}
+
+int event_payload_listen_start() {
+
+	if (event_pload_listener_ref) {
+		event_pload_listener_ref++;
+		return POM_OK;
+	}
+
+	event_pload_listener_ref++;
+
+	struct event_reg *tmp;
+	for (tmp = event_reg_head; tmp; tmp = tmp->next) {
+		if (tmp->info->flags & EVENT_REG_FLAG_PAYLOAD) {
+			// Register a dummy listener for events that generate payload
+			if (event_listener_register(tmp, &event_pload_listener_ref, NULL, NULL) != POM_OK)
+				goto err;
+		}
+	}
+
+
+	return POM_OK;
+
+err:
+	event_payload_listen_stop();
+
+	return POM_ERR;
+}
+
+int event_payload_listen_stop() {
+
+	if (!event_pload_listener_ref) {
+		pomlog(POMLOG_ERR, "Payload listener not started yet !");
+		return POM_ERR;
+	}
+
+	event_pload_listener_ref--;
+
+	if (event_pload_listener_ref)
+		return POM_OK;
+
+	struct event_reg *tmp;
+	for (tmp = event_reg_head; tmp; tmp = tmp->next) {
+		if (!(tmp->info->flags & EVENT_REG_FLAG_PAYLOAD))
+			continue;
+		event_listener_unregister(tmp, &event_pload_listener_ref);
+	}
+	
+	return POM_OK;
 }
 
 int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj)) {
