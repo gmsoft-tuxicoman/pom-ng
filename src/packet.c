@@ -685,10 +685,15 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 		free(res);
 		return NULL;
 	}
+	if (pthread_mutex_init(&res->wait_lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing stream wait lock : %s", pom_strerror(errno));
+		free(res);
+		return NULL;
+	}
 
 	res->flags = flags;
 
-	debug_stream("thread %u, entry %p, allocated, start_seq %u, start_ack %u, direction %u", pthread_self(), res, start_seq, start_ack, direction);
+	debug_stream("thread %p, entry %p, allocated, start_seq %u, start_ack %u, direction %u", pthread_self(), res, start_seq, start_ack, direction);
 
 	return res;
 }
@@ -722,10 +727,19 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 
 	if (pthread_mutex_destroy(&stream->lock)) 
 		pomlog(POMLOG_ERR "Error while destroying stream lock : %s", pom_strerror(errno));
+	if (pthread_mutex_destroy(&stream->wait_lock)) 
+		pomlog(POMLOG_ERR "Error while destroying stream wait lock : %s", pom_strerror(errno));
 
+	while (stream->wait_list_unused) {
+		struct packet_stream_thread_wait *tmp = stream->wait_list_unused;
+		stream->wait_list_unused = tmp->next;
+		pthread_cond_destroy(&tmp->cond);
+		free(tmp);
+	}
+	
 	free(stream);
 
-	debug_stream("thread %u, entry %p, released", pthread_self(), stream);
+	debug_stream("thread %p, entry %p, released", pthread_self(), stream);
 
 	return POM_OK;
 }
@@ -788,7 +802,7 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 	if ((cur_seq < pkt->seq && pkt->seq - cur_seq < PACKET_HALF_SEQ)
 		|| (cur_seq > pkt->seq && cur_seq - pkt->seq > PACKET_HALF_SEQ)) {
 		// There is a gap
-		debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : GAP : cur_seq %u, rev_seq %u", pthread_self(), stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : GAP : cur_seq %u, rev_seq %u", pthread_self(), stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
 		return 0;
 	}
 
@@ -802,7 +816,7 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 			// The host processed data in the reverse direction which we haven't processed yet
 			if (stream->t)
 				conntrack_timer_queue(stream->t, stream->rev_dir_timeout);
-			debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", pthread_self(), stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", pthread_self(), stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
 			return 0;
 		}
 
@@ -810,9 +824,21 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 
 
 	// This packet can be processed
-	debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : is next : cur_seq %u, rev_seq %u", pthread_self(), stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : is next : cur_seq %u, rev_seq %u", pthread_self(), stream, pkt->pkt->ts.tv_sec, pkt->pkt->ts.tv_usec, pkt->seq, pkt->ack, cur_seq, rev_seq);
 
 	return 1;
+
+}
+
+static void packet_stream_end_process_packet(struct packet_stream *stream) {
+
+	pom_mutex_unlock(&stream->lock);
+	pom_mutex_lock(&stream->wait_lock);
+	if (stream->wait_list_head) {
+		debug_stream("thread %p, entry %p : signaling thread %p", pthread_self(), stream, stream->wait_list_head->thread);
+		pthread_cond_broadcast(&stream->wait_list_head->cond);
+	}
+	pom_mutex_unlock(&stream->wait_lock);
 
 }
 
@@ -821,13 +847,127 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	if (!stream || !pkt || !stack)
 		return PROTO_ERR;
 
-	debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : start", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : start", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
 	struct proto_process_stack *cur_stack = &stack[stack_index];
 	int direction = cur_stack->direction;
 
-	pom_mutex_lock(&stream->lock);
-	debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : start locked", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+	int must_wait = 0;
+
+	int res = pthread_mutex_trylock(&stream->lock);
+	if (res == EBUSY) {
+		// Already locked, let's wait a bit
+		must_wait = 1;
+		pom_mutex_lock(&stream->wait_lock);
+	} else if (res) {
+		pomlog(POMLOG_ERR "Error while locking packet stream lock : %s", pom_strerror(errno));
+		abort();
+		return POM_ERR;
+	} else {
+
+		// We got the processing lock. But was it really this thread's turn ?
+		pom_mutex_lock(&stream->wait_lock);
+
+		struct packet_stream_thread_wait *tmp = stream->wait_list_head;
+		// A thread with a packet preceding ours is waiting
+		if (tmp && (tmp->ts.tv_sec < pkt->ts.tv_sec || (tmp->ts.tv_sec == pkt->ts.tv_sec && tmp->ts.tv_usec < pkt->ts.tv_usec))) {
+			// No it wasn't, release it and signal the right thread
+			must_wait = 2;
+			pom_mutex_unlock(&stream->lock);
+			debug_stream("thread %p, entry %p : signaling thread %p", pthread_self(), stream, stream->wait_list_head->thread);
+			pthread_cond_broadcast(&stream->wait_list_head->cond);
+		} else {
+			// Yes it was. YAY !
+			pom_mutex_unlock(&stream->wait_lock);
+		}
+
+	}
+
+
+	if (must_wait) {
+
+		// Add ourself in the waiting list
+		struct packet_stream_thread_wait *lst = NULL;
+		if (stream->wait_list_unused) {
+			lst = stream->wait_list_unused;
+			stream->wait_list_unused = lst->next;
+			lst->next = NULL;
+		} else {
+			lst = malloc(sizeof(struct packet_stream_thread_wait));
+			if (!lst) {
+				pom_oom(sizeof(struct packet_stream_thread_wait));
+				pom_mutex_unlock(&stream->wait_lock);
+				return POM_ERR;
+			}
+			memset(lst, 0, sizeof(struct packet_stream_thread_wait));
+			
+			if (pthread_cond_init(&lst->cond, NULL)) {
+				pomlog(POMLOG_ERR "Error while initializing wait list condition : %s", pom_strerror(errno));
+				free(lst);
+				return POM_ERR;
+			}
+		}
+		memcpy(&lst->ts, &pkt->ts, sizeof(struct timeval));
+		lst->thread = pthread_self();
+
+		struct packet_stream_thread_wait *tmp;
+		for (tmp = stream->wait_list_head; tmp && (tmp->ts.tv_sec < lst->ts.tv_sec || (tmp->ts.tv_sec == lst->ts.tv_sec && tmp->ts.tv_usec < lst->ts.tv_usec)); tmp = tmp->next);
+		if (tmp) {
+
+			lst->prev = tmp->prev;
+			if (lst->prev)
+				lst->prev->next = lst;
+			else
+				stream->wait_list_head = lst;
+
+			lst->next = tmp;
+			lst->next->prev = lst;
+		} else {
+			lst->prev = stream->wait_list_tail;
+			if (lst->prev)
+				lst->prev->next = lst;
+			else
+				stream->wait_list_head = lst;
+
+			stream->wait_list_tail = lst;
+		}
+
+
+		while (1) {
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : waiting", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+			if (pthread_cond_wait(&lst->cond, &stream->wait_lock)) {
+				pomlog(POMLOG_ERR "Error while waiting for the packet stream wait cond : %s", pom_strerror(errno));
+				abort();
+				return POM_ERR;
+			}
+
+			if (stream->wait_list_head != lst) {
+				// There is a small chance that another stream lock stream->wait_lock while pthread_cond_wait acquires it
+				// If we are not the right thread, then simply signal the right one and wait again for our turn
+				debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : wrong thread woke up", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+				pthread_cond_broadcast(&stream->wait_list_head->cond);
+				continue;
+			}
+			break;
+		}
+
+		tmp = stream->wait_list_head;
+		stream->wait_list_head = tmp->next;
+		if (stream->wait_list_head)
+			stream->wait_list_head->prev = NULL;
+		else
+			stream->wait_list_tail = NULL;
+
+		tmp->next = stream->wait_list_unused;
+		tmp->prev = NULL;
+		stream->wait_list_unused = tmp;
+
+		pom_mutex_unlock(&stream->wait_lock);
+		pom_mutex_lock(&stream->lock);
+
+	}
+
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : start locked", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
 	// Update the stream flags
 	if (stream->flags & PACKET_FLAG_STREAM_BIDIR) {
@@ -856,13 +996,13 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	if (cur_seq != seq) {
 		if (packet_stream_is_packet_old_dupe(stream, &spkt, direction)) {
 			// cur_seq is after the end of the packet, discard it
-			pom_mutex_unlock(&stream->lock);
-			debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : discard", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+			packet_stream_end_process_packet(stream);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : discard", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 			return PROTO_OK;
 		}
 
 		if (packet_stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR) {
-			pom_mutex_unlock(&stream->lock);
+			packet_stream_end_process_packet(stream);
 			return PROTO_ERR;
 		}
 	}
@@ -876,11 +1016,11 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// Process it
 		stream->cur_seq[direction] += cur_stack->plen;
 		stream->cur_ack[direction] = ack;
-		debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : process", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
 		int res = stream->handler(stream->ce, pkt, stack, stack_index);
 		if (res == PROTO_ERR) {
-			pom_mutex_unlock(&stream->lock);
+			packet_stream_end_process_packet(stream);
 			return PROTO_ERR;
 		}
 
@@ -890,10 +1030,10 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		while ((p = packet_stream_get_next(stream, &cur_dir))) {
 
 
-			debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
 			if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR) {
-				pom_mutex_unlock(&stream->lock);
+				packet_stream_end_process_packet(stream);
 				return PROTO_ERR;
 			}
 
@@ -919,19 +1059,19 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 				conntrack_timer_queue(stream->t, stream->same_dir_timeout);
 		}
 
-		pom_mutex_unlock(&stream->lock);
-		debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : done", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+		packet_stream_end_process_packet(stream);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		return res;
 	}
 
 	// Queue the packet then
 
-	debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : queue", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : queue", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 
 	struct packet_stream_pkt *p = malloc(sizeof(struct packet_stream_pkt));
 	if (!p) {
 		pom_oom(sizeof(struct packet_stream_pkt));
-		pom_mutex_unlock(&stream->lock);
+		packet_stream_end_process_packet(stream);
 		return PROTO_ERR;
 	}
 	memset(p, 0 , sizeof(struct packet_stream_pkt));
@@ -941,13 +1081,13 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// No need to backup this if there is no payload
 		p->pkt = packet_clone(pkt, stream->flags);
 		if (!p->pkt) {
-			pom_mutex_unlock(&stream->lock);
+			packet_stream_end_process_packet(stream);
 			free(p);
 			return PROTO_ERR;
 		}
 		p->stack = core_stack_backup(stack, pkt, p->pkt);
 		if (!p->stack) {
-			pom_mutex_unlock(&stream->lock);
+			packet_stream_end_process_packet(stream);
 			packet_pool_release(p->pkt);
 			free(p);
 			return PROTO_ERR;
@@ -1004,9 +1144,9 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	
 	if (stream->cur_buff_size >= stream->max_buff_size) {
 		// Buffer overflow
-		debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		if (packet_stream_force_dequeue(stream) != POM_OK) {
-			pom_mutex_unlock(&stream->lock);
+			packet_stream_end_process_packet(stream);
 			return POM_ERR;
 		}
 
@@ -1017,9 +1157,9 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	// Add timeout
 	if (stream->t && (stream->head[POM_DIR_FWD] || stream->head[POM_DIR_REV])) 
 		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
-	pom_mutex_unlock(&stream->lock);
+	packet_stream_end_process_packet(stream);
 
-	debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : done", pthread_self(),  stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done", pthread_self(),  stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 	return PROTO_OK;
 }
 
@@ -1060,7 +1200,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 				} else {
 					next_dir = POM_DIR_REV;
 				}
-				debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : processing next by timestamp", pthread_self(), stream, stream->head[next_dir]->pkt->ts.tv_sec, stream->head[next_dir]->pkt->ts.tv_usec, stream->head[next_dir]->seq, stream->head[next_dir]->ack);
+				debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : processing next by timestamp", pthread_self(), stream, stream->head[next_dir]->pkt->ts.tv_sec, stream->head[next_dir]->pkt->ts.tv_usec, stream->head[next_dir]->seq, stream->head[next_dir]->ack);
 			} else {
 				next_dir = i;
 			}
@@ -1102,7 +1242,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 		
 		if (gap < stream->max_buff_size) {
 		
-			debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack, gap);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack, gap);
 			uint32_t gap_step = gap;
 			if (gap_step > 2048)
 				gap_step = 2048;
@@ -1138,13 +1278,13 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 			s->plen = plen_old;
 
 		} else {
-			debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : gap of %u too big. not filling", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack, gap);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : gap of %u too big. not filling", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack, gap);
 		}
 		
 	}
 
 	if (res != PROTO_ERR) {
-		debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : process forced", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process forced", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 		res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
 	}
 
@@ -1169,7 +1309,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	while ((p = packet_stream_get_next(stream, &next_dir))) {
 
 
-		debug_stream("thread %u, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
 		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == PROTO_ERR)
 			return POM_ERR;

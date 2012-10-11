@@ -51,6 +51,13 @@ struct packet_stream_pkt {
 
 };
 
+struct packet_stream_thread_wait {
+	struct timeval ts;
+	pthread_t thread;
+	pthread_cond_t cond;
+	struct packet_stream_thread_wait *prev, *next;
+};
+
 struct packet_stream {
 
 	uint32_t cur_seq[POM_DIR_TOT];
@@ -63,6 +70,9 @@ struct packet_stream {
 	struct conntrack_timer *t;
 	struct conntrack_entry *ce;
 	pthread_mutex_t lock;
+
+	pthread_mutex_t wait_lock;
+	struct packet_stream_thread_wait *wait_list_head, *wait_list_tail, *wait_list_unused;
 };
 
 struct packet_stream_parser {
