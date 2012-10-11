@@ -19,6 +19,8 @@ function http_out:pload_open(priv, pload)
 	-- Check if we need to process this payload
 	local process = false
 	local pload_type = pload.type
+
+	-- Payload type is not identified
 	if pload_type == nil then return end
 
 	local class = pload_type['class']
@@ -34,7 +36,12 @@ function http_out:pload_open(priv, pload)
 
 	-- Process it (or not)
 	if process then
-		local filename = self.prefix .. event.data["server_name"] ..  event.data["url"]
+		local data = event.data
+
+		-- If we don't have a complete event and url is missing, then don't process it
+		if not data["url"] then return end
+
+		local filename = self.prefix .. data["server_name"] .. data["url"]
 		pom.log(POMLOG_DEBUG, "Saving file into " .. filename)
 		self.files:pload_process(pload, { filename = filename } )
 		self.log:event_process(event)
