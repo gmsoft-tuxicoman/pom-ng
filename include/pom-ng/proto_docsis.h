@@ -28,8 +28,8 @@ enum proto_docsis_fields {
 };
 
 enum proto_docsis_mgmt_fields {
-	proto_docsis_mgmt_field_saddr = 0,
-	proto_docsis_mgmt_field_daddr,
+	proto_docsis_mgmt_field_src = 0,
+	proto_docsis_mgmt_field_dst,
 	proto_docsis_mgmt_field_dsap,
 	proto_docsis_mgmt_field_ssap,
 	proto_docsis_mgmt_field_control,

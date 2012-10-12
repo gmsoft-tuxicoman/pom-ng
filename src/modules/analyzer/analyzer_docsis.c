@@ -296,7 +296,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 
 	uint8_t *type = PTYPE_UINT8_GETVAL(s->pkt_info->fields_value[proto_docsis_mgmt_field_type]);
 
-	char *mac_dst = PTYPE_MAC_GETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_daddr]);
+	char *mac_dst = PTYPE_MAC_GETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_dst]);
 
 	// FIXME : improve this filtering at the source
 	// Filter some useless messages we don't care about

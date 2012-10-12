@@ -48,10 +48,10 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 
 
 	static struct proto_pkt_field docsis_mgmt_fields[PROTO_DOCSIS_MGMT_FIELD_NUM + 1] = { { 0 } };
-	docsis_mgmt_fields[0].name = "saddr";
+	docsis_mgmt_fields[0].name = "src";
 	docsis_mgmt_fields[0].value_type = ptype_get_type("mac");
 	docsis_mgmt_fields[0].description = "Source address";
-	docsis_mgmt_fields[1].name = "daddr";
+	docsis_mgmt_fields[1].name = "dst";
 	docsis_mgmt_fields[1].value_type = ptype_get_type("mac");
 	docsis_mgmt_fields[1].description = "Destination address";
 	docsis_mgmt_fields[2].name = "dsap";
@@ -197,8 +197,8 @@ static int proto_docsis_mgmt_process(struct proto *proto, struct packet *p, stru
 	s_next->pload = s->pload + sizeof(struct docsis_mgmt_hdr);
 	s_next->plen = ntohs(dmhdr->len) - (sizeof(struct docsis_mgmt_hdr) - offsetof(struct docsis_mgmt_hdr, dsap));
 
-	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_saddr], dmhdr->saddr);
-	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_daddr], dmhdr->daddr);
+	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_src], dmhdr->saddr);
+	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_docsis_mgmt_field_dst], dmhdr->daddr);
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_docsis_mgmt_field_dsap], dmhdr->dsap);
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_docsis_mgmt_field_ssap], dmhdr->ssap);
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_docsis_mgmt_field_control], dmhdr->control);
