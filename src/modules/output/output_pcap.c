@@ -156,9 +156,9 @@ static int output_pcap_file_open(void *output_priv) {
 	} else if (!strcasecmp("docsis", proto)) {
 		linktype = DLT_DOCSIS;
 #endif
-/*	} else if (!strcasecmp("80211", proto)) {
+	} else if (!strcasecmp("80211", proto)) {
 		linktype = DLT_IEEE802_11;
-*/	} else {
+	} else {
 		pomlog(POMLOG_ERR "Protocol %s is not supported", proto);
 		return POM_ERR;
 	}
