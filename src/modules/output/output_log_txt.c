@@ -73,7 +73,7 @@ int output_log_txt_init(struct output *o) {
 	if (!priv->p_prefix || !priv->p_template)
 		goto err;
 
-	struct registry_param *p = registry_new_param("prefix", "./", priv->p_prefix, "Log files prefix", 0);
+	struct registry_param *p = registry_new_param("prefix", "/tmp/", priv->p_prefix, "Log files prefix", 0);
 	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 	
