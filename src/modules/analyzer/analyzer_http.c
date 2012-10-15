@@ -81,47 +81,36 @@ int analyzer_http_init(struct analyzer *analyzer) {
 
 	evt_request_data_items[analyzer_http_request_server_name].name = "server_name";
 	evt_request_data_items[analyzer_http_request_server_name].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_server_name].value_type = ptype_get_type("string");
 
 	evt_request_data_items[analyzer_http_request_server_addr].name = "server_addr";
 	evt_request_data_items[analyzer_http_request_server_addr].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_server_addr].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_server_port].name = "server_port";
 	evt_request_data_items[analyzer_http_request_server_port].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_server_port].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_client_addr].name = "client_addr";
 	evt_request_data_items[analyzer_http_request_client_addr].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_client_addr].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_client_port].name = "client_port";
 	evt_request_data_items[analyzer_http_request_client_port].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_client_port].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_request_proto].name = "request_proto";
 	evt_request_data_items[analyzer_http_request_request_proto].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_request_proto].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_request_method].name = "request_method";
 	evt_request_data_items[analyzer_http_request_request_method].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_request_method].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_first_line].name = "first_line";
 	evt_request_data_items[analyzer_http_request_first_line].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_first_line].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_url].name = "url";
 	evt_request_data_items[analyzer_http_request_url].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_url].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_query_time].name = "query_time";
 	evt_request_data_items[analyzer_http_request_query_time].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_query_time].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_response_time].name = "response_time";
 	evt_request_data_items[analyzer_http_request_response_time].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_response_time].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_username].name = "username";
 	evt_request_data_items[analyzer_http_request_username].flags = DATA_REG_FLAG_NO_ALLOC;
@@ -133,20 +122,16 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	
 	evt_request_data_items[analyzer_http_request_status].name = "status";
 	evt_request_data_items[analyzer_http_request_status].flags = DATA_REG_FLAG_NO_ALLOC;
-	evt_request_data_items[analyzer_http_request_status].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_query_headers].name = "query_headers";
 	evt_request_data_items[analyzer_http_request_query_headers].flags = DATA_REG_FLAG_LIST;
-	evt_request_data_items[analyzer_http_request_query_headers].value_type = ptype_get_type("string");
 
 	evt_request_data_items[analyzer_http_request_response_headers].name = "response_headers";
 	evt_request_data_items[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
-	evt_request_data_items[analyzer_http_request_response_headers].value_type = ptype_get_type("string");
-	
+
 	evt_request_data_items[analyzer_http_request_post_data].name = "post_data";
 	evt_request_data_items[analyzer_http_request_post_data].flags = DATA_REG_FLAG_LIST;
-	evt_request_data_items[analyzer_http_request_post_data].value_type = ptype_get_type("string");
-
+	
 	evt_request_data_items[analyzer_http_request_query_size].name = "query_size";
 	evt_request_data_items[analyzer_http_request_query_size].value_type = ptype_get_type("uint64");
 
