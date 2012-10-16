@@ -147,14 +147,14 @@ int output_log_xml_open(void *output_priv) {
 	char *src_name = PTYPE_STRING_GETVAL(priv->p_source);
 	if (!strlen(src_name)) {
 		pomlog(POMLOG_ERR "You need to specify a source for this output");
-		return POM_ERR;
+		goto err;
 	}
 
 	priv->evt = event_find(src_name);
 
 	if (!priv->evt) {
 		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
-		return POM_ERR;
+		goto err;
 	}
 
 
