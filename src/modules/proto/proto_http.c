@@ -274,6 +274,14 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						(s->direction == priv->client_direction && (!(info->flags & HTTP_FLAG_HAVE_CLEN)))
 						
 						) {
+							if (s->direction == priv->client_direction) {
+								PTYPE_TIMESTAMP_SETVAL(priv->event[s->direction]->data[proto_http_query_end_time].value, p->ts);
+								data_set(priv->event[s->direction]->data[proto_http_query_end_time]);
+							} else {
+								PTYPE_TIMESTAMP_SETVAL(priv->event[s->direction]->data[proto_http_response_end_time].value, p->ts);
+								data_set(priv->event[s->direction]->data[proto_http_response_end_time]);
+							}
+
 							// Process the event
 							event_process_begin(priv->event[s->direction], stack, stack_index);
 							event_process_end(priv->event[s->direction]);
@@ -490,6 +498,13 @@ static int proto_http_post_process(struct proto *proto, struct packet *p, struct
 		|| ((info->flags & HTTP_FLAG_CHUNKED) && !info->chunk_len)) // Last chunk was processed
 		) {
 
+		if (direction == priv->client_direction) {
+			PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_query_end_time].value, p->ts);
+			data_set(priv->event[direction]->data[proto_http_query_end_time]);
+		} else {
+			PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_response_end_time].value, p->ts);
+			data_set(priv->event[direction]->data[proto_http_response_end_time]);
+		}
 		// Payload done
 		event_process_end(priv->event[direction]);
 		priv->event[direction] = NULL;
