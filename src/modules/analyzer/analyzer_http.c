@@ -26,6 +26,7 @@
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint64.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/decode.h>
 
 struct mod_reg_info* analyzer_http_reg_info() {
 
@@ -113,11 +114,9 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	evt_request_data_items[analyzer_http_request_response_time].flags = DATA_REG_FLAG_NO_ALLOC;
 	
 	evt_request_data_items[analyzer_http_request_username].name = "username";
-	evt_request_data_items[analyzer_http_request_username].flags = DATA_REG_FLAG_NO_ALLOC;
 	evt_request_data_items[analyzer_http_request_username].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_password].name = "password";
-	evt_request_data_items[analyzer_http_request_password].flags = DATA_REG_FLAG_NO_ALLOC;
 	evt_request_data_items[analyzer_http_request_password].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_status].name = "status";
@@ -373,8 +372,60 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				dst_data[analyzer_http_request_server_name].value = headers->value;
 				continue;
 			}
-	
-			// TODO username and password
+
+			if (!PTYPE_STRING_GETVAL(dst_data[analyzer_http_request_username].value) && !strcasecmp(headers->key, "Authorization")) {
+
+				char *value_buff = strdup(PTYPE_STRING_GETVAL(headers->value));
+				char *value = value_buff;
+				if (!value) {
+					pom_oom(strlen(PTYPE_STRING_GETVAL(headers->value)) + 1);
+					continue;
+				}
+				int j;
+				for (j = 0; value[j] && value[j] != ' '; j++)
+					if (value[j] >= 'A' && value[j] <= 'Z')
+						value[j] += 'a' - 'A';
+				char *basic = strstr(value, "basic");
+				if (!basic) { // Not basic authentication
+					free(value_buff);
+					continue;
+				}
+				value = basic + strlen("basic ");
+				while (*value == ' ')
+					value++;
+				while (value[strlen(value)] == ' ')
+					value[strlen(value)] = 0;
+
+				int len = (strlen(value) / 4) * 3 + 1;
+				char *creds_buff = malloc(len);
+				if (!creds_buff) {
+					free(value_buff);
+					pom_oom(len);
+					continue;
+				}
+				memset(creds_buff, 0, len);
+				int outlen = decode_base64(creds_buff, value, len);
+				free(value_buff);
+				if (outlen == POM_ERR) {
+					free(creds_buff);
+					pomlog(POMLOG_DEBUG "Unable to decode basic auth header value : \"%s\"", headers->value);
+					continue;
+				}
+
+				char *colon = strchr(creds_buff, ':');
+				if (!colon) {
+					free(creds_buff);
+					pomlog(POMLOG_DEBUG "Unable to parse the basic auth credentials : \"%s\"", creds_buff);
+					continue;
+				}
+				*colon = 0;
+
+				PTYPE_STRING_SETVAL(dst_data[analyzer_http_request_username].value, creds_buff);
+				PTYPE_STRING_SETVAL(dst_data[analyzer_http_request_password].value, colon + 1);
+
+				free(creds_buff);
+				continue;
+			}
 		}
 
 
