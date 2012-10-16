@@ -18,9 +18,9 @@
  *
  */
 
-
 #include "analyzer_http_post.h"
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/decode.h>
 
 int analyzer_http_post_init(struct analyzer *analyzer) {
 
@@ -73,7 +73,7 @@ int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct anal
 			pom_oom(name_len);
 			return POM_ERR;
 		}
-		size_t name_size = analyzer_http_post_percent_decode(name, data, name_len);
+		size_t name_size = decode_percent(name, data, name_len);
 		*(name + name_size) = 0;
 
 		data = eq + 1;
@@ -89,7 +89,7 @@ int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct anal
 			return POM_ERR;
 		}
 
-		size_t value_size = analyzer_http_post_percent_decode(value, data, value_len);
+		size_t value_size = decode_percent(value, data, value_len);
 		*(value + value_size) = 0;
 
 
@@ -117,70 +117,3 @@ int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct anal
 }
 
 
-size_t analyzer_http_post_percent_decode(char *dst, char *src, size_t length) {
-
-	int state_search = 1;
-	size_t res_len = 0;
-
-	while (length > 0) {
-		if (state_search) {
-			if (*src == '%') {
-				state_search = 0;
-				src++;
-				length--;
-				continue;
-			} else if (*src == '+') {
-				*dst = ' ';
-			} else {
-				*dst = *src;	
-			}
-			src++;
-			dst++;
-			length--;
-			res_len++;
-		} else {
-
-			if (length < 2) {
-				*dst = '%';
-				*(dst + 1) = *src;
-				res_len += 2;
-				break;
-			}
-				
-			
-			int i, failed = 0;
-			unsigned char res = 0;
-			for (i = 0; i < 2; i++) {
-				if ((src[i] >= '0' && src[i] <= '9'))
-					res += (src[i] - '0') << (4 * (1 - i));
-				else if (src[i] >= 'a' && src[i] <= 'f')
-					res += (src[i] - 'a') << (4 * (1 - i));
-				else if (src[i] >= 'A' && src[i] <= 'F')
-					res += (src[i] - 'A') << (4 * (1 - i));
-				else {
-					// Copy the '%' sign and continue;
-					*dst = '%';
-					dst++;
-					res_len++;
-					break;
-				}
-			}
-
-			state_search = 1;
-
-			if (failed)
-				continue;
-
-			*dst = res;
-			dst++;
-			src += 2;
-			length -= 2;
-			res_len++;
-		}
-
-
-	}
-
-
-	return res_len;
-}

@@ -27,7 +27,7 @@ pom_ng_SOURCES = main.c main.h $(CORE_SRC) $(XMLRPC_SRC) $(ADDON_SRC)
 pom_ng_CFLAGS = @libxml2_CFLAGS@ -DPOM_LIBDIR='"$(mod_dir)"' -DDATAROOT='"$(pkgdatadir)"'
 pom_ng_LDADD = libpom-ng.la @xmlrpc_LIBS@ @LIBS@ @libxml2_LIBS@ @libmicrohttpd_LIBS@ @magic_LIBS@ @lua_LIBS@
 
-libpom_ng_la_SOURCES = analyzer.c analyzer.h common.c common.h core.c core.h ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h output.c output.h timer.c timer.h registry.c registry.h event.c data.c datastore.c datastore.h resource.c resource.h filter.c filter.h addon_plugin.c addon_plugin.h
+libpom_ng_la_SOURCES = analyzer.c analyzer.h common.c common.h core.c core.h decode.c ptype.c ptype.h input.c input.h packet.c packet.h proto.c proto.h conntrack.c conntrack.h jhash.h output.c output.h timer.c timer.h registry.c registry.h event.c data.c datastore.c datastore.h resource.c resource.h filter.c filter.h addon_plugin.c addon_plugin.h
 libpom_ng_la_CFLAGS = @libxml2_CFLAGS@ -DDATAROOT='"$(pkgdatadir)"'
 libpom_ng_la_LDFLAGS = @libxml2_LIBS@
 
