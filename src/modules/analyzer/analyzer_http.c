@@ -294,6 +294,9 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		if (!elist->evt)
 			return POM_ERR;
 
+		data_set(elist->evt->data[analyzer_http_request_query_size]);
+		data_set(elist->evt->data[analyzer_http_request_response_size]);
+
 		start_process = 1;
 
 	}
