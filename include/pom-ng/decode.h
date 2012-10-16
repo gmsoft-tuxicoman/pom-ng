@@ -22,5 +22,6 @@
 #define __POM_NG_DECODE_H__
 
 size_t decode_percent(char *dst, char *src, size_t length);
+size_t decode_base64(char *output, char *input, size_t out_len);
 
 #endif

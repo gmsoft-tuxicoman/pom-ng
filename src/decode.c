@@ -87,3 +87,65 @@ size_t decode_percent(char *dst, char *src, size_t length) {
 
 	return res_len;
 }
+
+
+size_t decode_base64(char *output, char *input, size_t out_len) {
+
+	size_t len = strlen(input);
+
+	if (len % 4) {
+		pomlog(POMLOG_DEBUG "Base64 input length not multiple of 4");
+		return POM_ERR;
+	}
+
+	if (out_len < ((len / 4) * 3 + 1)) {
+		pomlog(POMLOG_DEBUG "Base64 output length too short");
+		return POM_ERR;
+	}
+
+	char *block, value[4];
+	
+	len = POM_ERR;
+
+	block = input;
+	while (block[0]) {
+		int i;
+		for (i = 0; i < 4; i++) {
+			if (block[i] >= 'A' && block[i] <= 'Z') {
+				value[i] = block[i] - 'A';
+			} else if (block[i] >= 'a' && block[i] <= 'z') {
+				value[i] = block[i] - 'a' + 26;
+			} else if (block[i] >= '0' && block[i] <= '9') {
+				value[i] = block[i] - '0' + 52;
+			} else if (block[i] == '+') {
+				value[i] = 62;
+			} else if (block[i] == '/') {
+				value[i] = 63;
+			} else if (block[i] == '=') {
+				value[i] = 0;
+			}
+		}
+			
+		if (block[1] == '=')
+			return len;
+		output[0] = ((value[0] << 2) | (0x3 & (value[1] >> 4)));
+		len++;
+
+		if (block[2] == '=')
+			return len;
+		output[1] = ((value[1] << 4) | (0xf & (value[2] >> 2)));
+		len++;
+
+		if (block[3] == '=')
+			return len;
+		output[2] = ((value[2] << 6) | value[3]);
+		len++;
+
+		output += 3;
+		block += 4;
+
+	}
+
+	return len;
+
+}
