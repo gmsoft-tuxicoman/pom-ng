@@ -29,6 +29,7 @@ struct output_log_txt_event_field {
 	int id;
 	uint32_t hash;
 	unsigned int start_off, end_off;
+	char *key;
 };
 
 struct output_log_txt_file {
@@ -46,7 +47,6 @@ struct output_log_txt_event {
 	char *format;
 	
 	struct output_log_txt_event_field *fields;
-	unsigned int field_count;
 
 	struct output_log_txt_event *prev, *next;
 	struct output_log_txt_file *file;

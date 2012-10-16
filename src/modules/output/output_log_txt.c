@@ -102,6 +102,107 @@ int output_log_txt_cleanup(void *output_priv) {
 	return POM_OK;
 }
 
+static struct output_log_txt_event_field *output_log_txt_parse_fields(struct event_reg *evt, const char *format) {
+
+	unsigned int field_count = 0;
+	struct output_log_txt_event_field *fields = NULL;
+	const char *sep = NULL, *cur = format;
+	while ((sep = strchr(cur, '$'))) {
+		unsigned int start_off = sep - format;
+		sep++;
+
+		// Find the end of the name
+		cur = sep;
+		while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || *cur == '_')
+			cur++;
+		unsigned int end_off = cur - format;
+
+		// Copy the name in a temp variable
+		unsigned int name_len = end_off - start_off - 1;
+		char *field_name = malloc(name_len + 1);
+		if (!field_name) {
+			if (fields)
+				free(fields);
+			pom_oom(name_len + 1);
+			return NULL;
+		}
+		strncpy(field_name, sep, name_len);
+		field_name[name_len] = 0;
+	
+		// Find the corresponding field
+		struct data_reg *dreg = evt->info->data_reg;
+		int i;
+		for (i = 0; i < dreg->data_count && strcmp(dreg->items[i].name, field_name); i++);
+
+		if (!dreg->items[i].name) {
+			pomlog(POMLOG_WARN "Field %s not found in event %s", field_name, evt->info->name);
+			free(field_name);
+			sep = cur + 1;
+			continue;
+		}
+
+		field_count++;
+		struct output_log_txt_event_field *old_fields = fields;
+		fields = realloc(fields, sizeof(struct output_log_txt_event_field) * (field_count + 1));
+		if (!fields) {
+			free(old_fields);
+			pom_oom(sizeof(struct output_log_parsed_field *) * (field_count + 1));
+			return NULL;
+		}
+		memset(&fields[field_count - 1], 0, sizeof(struct output_log_txt_event_field) * 2);
+		// End marker
+		fields[field_count].id = -1;
+
+		struct output_log_txt_event_field *field = &fields[field_count - 1];
+
+		if (dreg->items[i].flags & DATA_REG_FLAG_LIST) {
+			// We are dealing with a list
+			const char *key = sep + name_len;
+			if (*key != '[') {
+				pomlog(POMLOG_WARN "Field %s is a list, need a key declaration", field_name);
+				free(field_name);
+				sep = cur + 1;
+				field_count--;
+				continue;
+			}
+			key++;
+
+			cur = key;
+			while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || (*cur >= 'A' && *cur <= 'Z') || *cur == '_')
+				cur++;
+			
+			if (*cur != ']') {
+				pomlog(POMLOG_WARN "Unmatched ']' for field %s", field_name);
+				free(field_name);
+				sep = cur + 1;
+				field_count--;
+				continue;
+			}
+			unsigned int key_len = cur - key;
+			field->key = malloc(key_len + 1);
+			if (!field->key) {
+				pom_oom(key_len + 1);
+				free(fields);
+				return NULL;
+			}
+			strncpy(field->key, key, key_len);
+			field->key[key_len] = 0;
+
+			end_off = cur - format + 1;
+
+		}
+		free(field_name);
+
+		field->id = i;
+		field->start_off = start_off;
+		field->end_off = end_off;
+
+	}
+
+	return fields;
+
+}
+
 int output_log_txt_open(void *output_priv) {
 
 	struct output_log_txt_priv *priv = output_priv;
@@ -267,51 +368,9 @@ int output_log_txt_open(void *output_priv) {
 		if (!log_evt->format)
 			goto err;
 
-		unsigned int field_count = 0;
-		struct output_log_txt_event_field *fields = NULL;
-		char *sep = NULL, *cur = format;
-		while ((sep = strchr(cur, '$'))) {
-			unsigned int start_off = sep - format;
-			sep++;
-			cur = sep;
-			while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || *cur == '_')
-				cur++;
-			unsigned int end_off = cur - format;
-			char name[256];
-			memset(name, 0, sizeof(name));
-			strncpy(name, sep, end_off - start_off - 1);
-			
-			struct data_reg *dreg = evt->info->data_reg;
-			int i;
-			for (i = 0; i < dreg->data_count && strcmp(dreg->items[i].name, name); i++);
+		log_evt->fields = output_log_txt_parse_fields(evt, format);
 
-			if (!dreg->items[i].name) {
-				pomlog(POMLOG_WARN "Field %s not found in event %s", name, evt_name);
-				sep = cur + 1;
-				continue;
-			}
-			// TODO add support for arrays
-
-			field_count++;
-			struct output_log_txt_event_field *old_fields = fields;
-			fields = realloc(fields, sizeof(struct output_log_txt_event_field) * (field_count + 1));
-			if (!fields) {
-				log_evt->fields = old_fields;
-				pom_oom(sizeof(struct output_log_parsed_field *) * (field_count + 1));
-				goto err;
-			}
-			memset(&fields[field_count - 1], 0, sizeof(struct output_log_txt_event_field) * 2);
-			struct output_log_txt_event_field *field = &fields[field_count - 1];
-			field->id = i;
-			field->start_off = start_off;
-			field->end_off = end_off;
-
-			log_evt->fields = fields;
-			
-		}
-		log_evt->field_count = field_count;
-
-		if (!fields) {
+		if (!log_evt->fields) {
 			pomlog(POMLOG_ERR "No field found in format string : \"%s\"", format);
 			goto err;
 		}
@@ -360,8 +419,15 @@ int output_log_txt_close(void *output_priv) {
 		if (evt->format)
 			free(evt->format);
 
-		if (evt->fields)
+		if (evt->fields) {
+			int i;
+			for (i = 0; evt->fields[i].id != -1; i++) {
+				if (evt->fields[i].key)
+					free(evt->fields[i].key);
+			}
+
 			free(evt->fields);
+		}
 
 		free(evt);
 	}
@@ -421,7 +487,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	unsigned int format_pos = 0;
 
 	// Write to the log file
-	for (i = 0; i < log_evt->field_count; i++) {
+	for (i = 0; log_evt->fields[i].id != -1; i++) {
 	
 		struct output_log_txt_event_field *field = &log_evt->fields[i];
 		if (format_pos < field->start_off) {
@@ -431,13 +497,32 @@ int output_log_txt_process(struct event *evt, void *obj) {
 		}
 
 		format_pos = field->end_off;
+	
+		char *value = NULL;
 
-		if (data_is_set(evt->data[field->id]) && evt->data[field->id].value) {
-			char *value = ptype_print_val_alloc(evt->data[field->id].value);
+		if (field->key) {
+			// Find the right item in the list
+			struct data_item *item;
+			for (item = evt->data[field->id].items; item; item = item->next) {
+				if (!strcasecmp(item->key, field->key)) {
+					value = ptype_print_val_alloc(item->value);
+					if (!value) {
+						pom_mutex_unlock(&file->lock);
+						return POM_ERR;
+					}
+					break;
+				}
+			}
+		} else if (data_is_set(evt->data[field->id]) && evt->data[field->id].value) {
+			// Find the value of the field
+			value = ptype_print_val_alloc(evt->data[field->id].value);
 			if (!value) {
 				pom_mutex_unlock(&file->lock);
 				return POM_ERR;
 			}
+		}
+
+		if (value) {
 			if (pom_write(file->fd, value, strlen(value)) != POM_OK) {
 				free(value);
 				goto write_err;
@@ -449,12 +534,10 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	}
 
 	// Write the last part after the last field
-	if (i == log_evt->field_count) {
-		if (format_pos < strlen(format)) {
-			unsigned int len = strlen(format) - format_pos;
-			if (pom_write(file->fd, format + format_pos, len) != POM_OK)
-				goto write_err;
-		}
+	if (format_pos < strlen(format)) {
+		unsigned int len = strlen(format) - format_pos;
+		if (pom_write(file->fd, format + format_pos, len) != POM_OK)
+			goto write_err;
 	}
 
 	if (pom_write(file->fd, "\n", 1) != POM_OK)
