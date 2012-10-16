@@ -151,7 +151,9 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 				return POM_OK; // Headers are incomplete
 
 			PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
+			data_set(pload->data[analyzer_jpeg_pload_width]);
 			PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
+			data_set(pload->data[analyzer_jpeg_pload_height]);
 			debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 			pload->state = analyzer_pload_buffer_state_analyzed;
 

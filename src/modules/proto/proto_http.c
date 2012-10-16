@@ -648,6 +648,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					memcpy(request_method, token, tok_len);
 					request_method[tok_len] = 0;
 					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_method].value, request_method);
+					data_set(priv->event[direction]->data[proto_http_query_method]);
 				}
 				break;
 			case 1:
@@ -660,6 +661,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					memcpy(url, token, tok_len);
 					url[tok_len] = 0;
 					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_url].value, url);
+					data_set(priv->event[direction]->data[proto_http_query_url]);
 				} else {
 					// Get the status code
 					uint16_t err_code = 0;
@@ -683,9 +685,11 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 						return PROTO_ERR;
 
 					PTYPE_UINT16_SETVAL(priv->event[direction]->data[proto_http_response_status].value, err_code);
+					data_set(priv->event[direction]->data[proto_http_response_status]);
 					priv->info[direction].last_err_code = err_code;
 
 					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_response_proto].value, response_proto);
+					data_set(priv->event[direction]->data[proto_http_response_proto]);
 					response_proto = NULL;
 				}
 
@@ -711,6 +715,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
 					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_proto].value, request_proto);
+					data_set(priv->event[direction]->data[proto_http_query_proto]);
 				}
 
 				break;
@@ -757,8 +762,10 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		memcpy(first_line, line, line_len);
 		first_line[line_len] = 0;
 		PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_first_line].value, first_line);
+		data_set(priv->event[direction]->data[proto_http_query_first_line]);
 
 		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_query_start_time].value, p->ts);
+		data_set(priv->event[direction]->data[proto_http_query_start_time]);
 
 		debug_http("entry %p, found query : \"%s\"", ce, first_line);
 
@@ -766,6 +773,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		debug_http("entry %p, response with status %u", ce, priv->info[direction].last_err_code);
 
 		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_response_start_time].value, p->ts);
+		data_set(priv->event[direction]->data[proto_http_response_start_time]);
 	}
 
 	priv->state[direction]++;

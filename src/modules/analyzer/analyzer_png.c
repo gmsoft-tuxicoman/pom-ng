@@ -105,7 +105,9 @@ static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer
 			pload->state = analyzer_pload_buffer_state_analyzed;
 	
 			PTYPE_UINT16_SETVAL(pload->data[analyzer_png_pload_width].value, width);
+			data_set(pload->data[analyzer_png_pload_width]);
 			PTYPE_UINT16_SETVAL(pload->data[analyzer_png_pload_height].value, height);
+			data_set(pload->data[analyzer_png_pload_height]);
 			debug_png("Got PNG of %ux%u", width, height);
 
 		} else {

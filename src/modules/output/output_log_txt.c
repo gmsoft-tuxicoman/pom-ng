@@ -432,7 +432,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 		format_pos = field->end_off;
 
-		if (evt->data[field->id].value) {
+		if (data_is_set(evt->data[field->id]) && evt->data[field->id].value) {
 			char *value = ptype_print_val_alloc(evt->data[field->id].value);
 			if (!value) {
 				pom_mutex_unlock(&file->lock);

@@ -326,15 +326,29 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		epriv->query_event = evt;
 
 		// Copy data contained into the query event
-		dst_data[analyzer_http_request_first_line].value = src_data[proto_http_query_first_line].value;
-		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_query_proto].value;
-		dst_data[analyzer_http_request_request_method].value = src_data[proto_http_query_method].value;
-		dst_data[analyzer_http_request_url].value = src_data[proto_http_query_url].value;
-		dst_data[analyzer_http_request_query_time].value = src_data[proto_http_query_start_time].value;
-
+		if (data_is_set(src_data[proto_http_query_first_line])) {
+			dst_data[analyzer_http_request_first_line].value = src_data[proto_http_query_first_line].value;
+			data_set(dst_data[analyzer_http_request_first_line]);
+		}
+		if (data_is_set(src_data[proto_http_query_proto])) {
+			dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_query_proto].value;
+			data_set(dst_data[analyzer_http_request_request_proto]);
+		}
+		if (data_is_set(src_data[proto_http_query_method])) {
+			dst_data[analyzer_http_request_request_method].value = src_data[proto_http_query_method].value;
+			data_set(dst_data[analyzer_http_request_request_method]);
+		}
+		if (data_is_set(src_data[proto_http_query_url])) {
+			dst_data[analyzer_http_request_url].value = src_data[proto_http_query_url].value;
+			data_set(dst_data[analyzer_http_request_url]);
+		}
+		if (data_is_set(src_data[proto_http_query_start_time])) {
+			dst_data[analyzer_http_request_query_time].value = src_data[proto_http_query_start_time].value;
+			data_set(dst_data[analyzer_http_request_query_time]);
+		}
+		
 		dst_data[analyzer_http_request_query_headers].items = src_data[proto_http_query_headers].items;
 		dst_data[analyzer_http_request_query_headers].flags = DATA_FLAG_NO_CLEAN;
-
 		headers = src_data[proto_http_query_headers].items;
 
 
@@ -346,9 +360,18 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		event_refcount_inc(evt);
 		epriv->response_event = evt;
 
-		dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
-		dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
-		dst_data[analyzer_http_request_response_time].value = src_data[proto_http_response_start_time].value;
+		if (data_is_set(src_data[proto_http_response_status])) {
+			dst_data[analyzer_http_request_status].value = src_data[proto_http_response_status].value;
+			data_set(dst_data[analyzer_http_request_status]);
+		}
+		if (data_is_set(src_data[proto_http_response_proto])) {
+			dst_data[analyzer_http_request_request_proto].value = src_data[proto_http_response_proto].value;
+			data_set(dst_data[analyzer_http_request_request_proto]);
+		}
+		if (data_is_set(src_data[proto_http_response_start_time])) {
+			dst_data[analyzer_http_request_response_time].value = src_data[proto_http_response_start_time].value;
+			data_set(dst_data[analyzer_http_request_response_time]);
+		}
 
 		if (!dst_data[analyzer_http_request_query_time].value) // If we don't know when we started, use the reply time instead
 			dst_data[analyzer_http_request_query_time].value = src_data[proto_http_response_start_time].value;
@@ -368,12 +391,13 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 	for (; headers; headers = headers->next) {
 		if (evt->reg == apriv->evt_query) {
 
-			if (!dst_data[analyzer_http_request_server_name].value && !strcasecmp(headers->key, "Host")) {
+			if (!data_is_set(dst_data[analyzer_http_request_server_name]) && !strcasecmp(headers->key, "Host")) {
 				dst_data[analyzer_http_request_server_name].value = headers->value;
+				data_set(dst_data[analyzer_http_request_server_name]);
 				continue;
 			}
 
-			if (!PTYPE_STRING_GETVAL(dst_data[analyzer_http_request_username].value) && !strcasecmp(headers->key, "Authorization")) {
+			if (!data_is_set(dst_data[analyzer_http_request_username]) && !strcasecmp(headers->key, "Authorization")) {
 
 				char *value_buff = strdup(PTYPE_STRING_GETVAL(headers->value));
 				char *value = value_buff;
@@ -421,7 +445,9 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				*colon = 0;
 
 				PTYPE_STRING_SETVAL(dst_data[analyzer_http_request_username].value, creds_buff);
+				data_set(dst_data[analyzer_http_request_username]);
 				PTYPE_STRING_SETVAL(dst_data[analyzer_http_request_password].value, colon + 1);
+				data_set(dst_data[analyzer_http_request_password]);
 
 				free(creds_buff);
 				continue;
@@ -451,7 +477,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 	}
 
 	// Get client/server ports if not fetched yet
-	if (stack_index > 1 && (!dst_data[analyzer_http_request_client_port].value || !dst_data[analyzer_http_request_server_port].value)) {
+	if (stack_index > 1 && (!data_is_set(dst_data[analyzer_http_request_client_port]) || !data_is_set(dst_data[analyzer_http_request_server_port]))) {
 		struct proto_process_stack *l4_stack = &stack[stack_index - 1];
 		struct ptype *sport = NULL, *dport = NULL;
 		unsigned int i;
@@ -466,19 +492,27 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		}
 
 		if (evt->reg == apriv->evt_query) {
-			if (sport && !dst_data[analyzer_http_request_client_port].value)
+			if (sport && !data_is_set(dst_data[analyzer_http_request_client_port])) {
 				dst_data[analyzer_http_request_client_port].value = ptype_alloc_from(sport);
-			if (dport && !dst_data[analyzer_http_request_server_port].value)
+				data_set(dst_data[analyzer_http_request_client_port]);
+			}
+			if (dport && !data_is_set(dst_data[analyzer_http_request_server_port])) {
 				dst_data[analyzer_http_request_server_port].value = ptype_alloc_from(dport);
+				data_set(dst_data[analyzer_http_request_server_port]);
+			}
 		} else {
-			if (sport && !dst_data[analyzer_http_request_server_port].value)
+			if (sport && !data_is_set(dst_data[analyzer_http_request_server_port])) {
 				dst_data[analyzer_http_request_server_port].value = ptype_alloc_from(sport);
-			if (dport && !dst_data[analyzer_http_request_client_port].value)
+				data_set(dst_data[analyzer_http_request_server_port]);
+			}
+			if (dport && !data_is_set(dst_data[analyzer_http_request_client_port])) {
 				dst_data[analyzer_http_request_client_port].value = ptype_alloc_from(dport);
+				data_set(dst_data[analyzer_http_request_client_port]);
+			}
 		}
 	}
 
-	if (stack_index > 2 && (!dst_data[analyzer_http_request_client_addr].value || !dst_data[analyzer_http_request_server_addr].value)) {
+	if (stack_index > 2 && (!data_is_set(dst_data[analyzer_http_request_client_addr]) || !data_is_set(dst_data[analyzer_http_request_server_addr]))) {
 		struct ptype *src = NULL, *dst = NULL;
 		struct proto_process_stack *l3_stack = &stack[stack_index - 2];
 		unsigned int i;
@@ -494,20 +528,30 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		}
 
 		if (evt->reg == apriv->evt_query) {
-			if (src && !dst_data[analyzer_http_request_client_addr].value)
+			if (src && !data_is_set(dst_data[analyzer_http_request_client_addr])) {
 				dst_data[analyzer_http_request_client_addr].value = ptype_alloc_from(src);
-			if (dst && !dst_data[analyzer_http_request_server_addr].value)
+				data_set(dst_data[analyzer_http_request_client_addr]);
+			}
+			if (dst && !data_is_set(dst_data[analyzer_http_request_server_addr])) {
 				dst_data[analyzer_http_request_server_addr].value = ptype_alloc_from(dst);
+				data_set(dst_data[analyzer_http_request_server_addr]);
+			}
 		} else {
-			if (src && !dst_data[analyzer_http_request_server_addr].value)
+			if (src && data_is_set(dst_data[analyzer_http_request_server_addr])) {
 				dst_data[analyzer_http_request_server_addr].value = ptype_alloc_from(src);
-			if (dst && !dst_data[analyzer_http_request_client_addr].value)
+				data_set(dst_data[analyzer_http_request_server_addr]);
+			}
+			if (dst && !data_is_set(dst_data[analyzer_http_request_client_addr])) {
 				dst_data[analyzer_http_request_client_addr].value = ptype_alloc_from(dst);
+				data_set(dst_data[analyzer_http_request_client_addr]);
+			}
 		}
 	}
 
-	if (!dst_data[analyzer_http_request_server_name].value)
+	if (!data_is_set(dst_data[analyzer_http_request_server_name])) {
 		dst_data[analyzer_http_request_server_name].value = dst_data[analyzer_http_request_server_addr].value;
+		data_set(dst_data[analyzer_http_request_server_name]);
+	}
 	
 	// Start processing our meta-event
 	if (start_process)

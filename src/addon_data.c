@@ -80,7 +80,10 @@ static int addon_data_iterator(lua_State *L) {
 	if (data_reg->items[id].flags & DATA_REG_FLAG_LIST) {
 		addon_data_push_item(L, data[id].items);
 	} else {
-		addon_ptype_push(L, data[id].value);
+		if (data_is_set(data[id]))
+			addon_ptype_push(L, data[id].value);
+		else
+			lua_pushnil(L);
 	}
 
 	id++;
@@ -115,7 +118,10 @@ static int addon_data_metatable(lua_State *L) {
 		addon_data_push_item(L, data[i].items);
 		return 1;
 	} else {
-		addon_ptype_push(L, data[i].value);
+		if (data_is_set(data[i]))
+			addon_ptype_push(L, data[i].value);
+		else
+			lua_pushnil(L);
 		return 1;
 	}
 

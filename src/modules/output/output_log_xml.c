@@ -279,7 +279,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 
 			// Got a single data
 			
-			if (!evt->data[i].value)
+			if (!data_is_set(evt->data[i]))
 				continue;
 
 			
@@ -290,16 +290,18 @@ int output_log_xml_process(struct event *evt, void *obj) {
 				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg->items[i].name) < 0)
 				goto err;
 
-			char *value = ptype_print_val_alloc(evt->data[i].value);
-			if (!value)
-				goto err;
+			if (evt->data[i].value) {
+				char *value = ptype_print_val_alloc(evt->data[i].value);
+				if (!value)
+					goto err;
 
-			if (xmlTextWriterWriteString(writer, BAD_CAST value) < 0) {
+				if (xmlTextWriterWriteString(writer, BAD_CAST value) < 0) {
+					free(value);
+					goto err;
+				}
+
 				free(value);
-				goto err;
 			}
-
-			free(value);
 
 			// </data>
 			
