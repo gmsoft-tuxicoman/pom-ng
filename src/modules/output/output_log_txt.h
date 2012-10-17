@@ -42,7 +42,7 @@ struct output_log_txt_file {
 
 struct output_log_txt_event {
 	struct event_reg *evt;
-	struct output_log_txt_priv *output_priv;
+	struct ptype *p_prefix;
 
 	char *format;
 	
@@ -61,11 +61,25 @@ struct output_log_txt_priv {
 
 };
 
+struct addon_log_txt_priv {
+	struct ptype *p_filename;
+	struct ptype *p_event;
+	struct ptype *p_format;
+
+	struct output_log_txt_event txt_evt;
+	struct output_log_txt_file txt_file;
+};
+
 int output_log_txt_init(struct output *o);
 int output_log_txt_open(void *output_priv);
 int output_log_txt_close(void *output_priv);
 int output_log_txt_cleanup(void *output_priv);
 int output_log_txt_process(struct event *evt, void *obj);
 
+int addon_log_txt_init(struct addon_plugin *a);
+int addon_log_txt_cleanup(void *addon_priv);
+int addon_log_txt_open(void *addon_priv);
+int addon_log_txt_close(void *addon_priv);
+int addon_log_txt_process(struct event *evt, void *addon_priv);
 
 #endif

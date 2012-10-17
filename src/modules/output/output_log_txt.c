@@ -338,7 +338,7 @@ int output_log_txt_open(void *output_priv) {
 			return POM_ERR;
 		}
 		memset(log_evt, 0, sizeof(struct output_log_txt_event));
-		log_evt->output_priv = priv;
+		log_evt->p_prefix = priv->p_prefix;
 
 		// Add this event to our list
 		log_evt->next = priv->events;
@@ -460,7 +460,6 @@ int output_log_txt_close(void *output_priv) {
 int output_log_txt_process(struct event *evt, void *obj) {
 
 	struct output_log_txt_event *log_evt = obj;
-	struct output_log_txt_priv *priv = log_evt->output_priv;
 
 	// Open the log file
 	struct output_log_txt_file *file = log_evt->file;
@@ -468,10 +467,16 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	pom_mutex_lock(&file->lock);
 	if (file->fd == -1) {
 		// File is not open, let's do it
-		char filename[FILENAME_MAX + 1] = {0};
-		char *prefix = PTYPE_STRING_GETVAL(priv->p_prefix);
-		strcpy(filename, prefix);
-		strncat(filename, file->path, FILENAME_MAX - strlen(filename));
+		char *filename = NULL;
+		if (log_evt->p_prefix) {
+			char fname[FILENAME_MAX + 1] = {0};
+			char *prefix = PTYPE_STRING_GETVAL(log_evt->p_prefix);
+			strcpy(fname, prefix);
+			strncat(fname, file->path, FILENAME_MAX - strlen(filename));
+			filename = fname;
+		} else {
+			filename = file->path;
+		}
 		file->fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0666);
 
 		if (file->fd == -1) {
@@ -552,4 +557,131 @@ write_err:
 	pomlog(POMLOG_ERR "Error while writing to log file : %s", file->path);
 	return POM_ERR;
 
+}
+
+int addon_log_txt_init(struct addon_plugin *a) {
+
+	struct addon_log_txt_priv *priv = malloc(sizeof(struct addon_log_txt_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct addon_log_txt_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct addon_log_txt_priv));
+
+	if (pthread_mutex_init(&priv->txt_file.lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing mutex : %s", pom_strerror(errno));
+		free(priv);
+		return POM_ERR;
+	}
+
+	priv->p_filename = ptype_alloc("string");
+	priv->p_event = ptype_alloc("string");
+	priv->p_format = ptype_alloc("string");
+	
+	if (!priv->p_filename || !priv->p_event || !priv->p_format)
+		goto err;
+
+	addon_plugin_set_priv(a, priv);
+
+	if (addon_plugin_add_param(a, "filename", "log.txt", priv->p_filename) != POM_OK)
+		goto err;
+	
+	if (addon_plugin_add_param(a, "event", "", priv->p_event) != POM_OK)
+		goto err;
+	
+	if (addon_plugin_add_param(a, "format", "log.txt", priv->p_format) != POM_OK)
+		goto err;
+
+	return POM_OK;
+
+err:
+	addon_log_txt_cleanup(priv);
+	return POM_ERR;
+}
+
+int addon_log_txt_cleanup(void *addon_priv) {
+
+	if (!addon_priv)
+		return POM_OK;
+	
+	struct addon_log_txt_priv *priv = addon_priv;
+	if (priv->p_filename)
+		ptype_cleanup(priv->p_filename);
+	if (priv->p_event)
+		ptype_cleanup(priv->p_event);
+	if (priv->p_format)
+		ptype_cleanup(priv->p_format);
+
+	pthread_mutex_destroy(&priv->txt_file.lock);
+
+	free(priv);
+
+	return POM_OK;
+}
+
+int addon_log_txt_open(void *addon_priv) {
+
+	struct addon_log_txt_priv *priv = addon_priv;
+
+	char *evt_name = PTYPE_STRING_GETVAL(priv->p_event);
+
+	if (!strlen(evt_name)) {
+		pomlog(POMLOG_ERR "You need to specify an event name");
+		return POM_ERR;
+	}
+	struct output_log_txt_event *txt_evt = &priv->txt_evt;
+
+	txt_evt->evt = event_find(evt_name);
+
+	if (!txt_evt->evt) {
+		pomlog(POMLOG_ERR "Event %s not found", evt_name);
+		return POM_ERR;
+	}
+
+	txt_evt->fields = output_log_txt_parse_fields(txt_evt->evt, PTYPE_STRING_GETVAL(priv->p_format));
+
+	if (!txt_evt->fields) {
+		pomlog(POMLOG_ERR "No field found in format");
+		return POM_ERR;
+	}
+
+	txt_evt->format = PTYPE_STRING_GETVAL(priv->p_format);
+
+	struct output_log_txt_file *txt_file = &priv->txt_file;
+
+	// Only the path field need to be filled
+	txt_file->path = PTYPE_STRING_GETVAL(priv->p_filename);
+	txt_file->fd = -1;
+
+	txt_evt->file = txt_file;
+
+	return POM_OK;
+}
+
+int addon_log_txt_close(void *addon_priv) {
+
+	struct addon_log_txt_priv *priv = addon_priv;
+
+	struct output_log_txt_event *txt_evt = &priv->txt_evt;
+
+	int i;
+	for (i = 0; txt_evt->fields[i].id != -1; i++) {
+		if (txt_evt->fields[i].key)
+			free(txt_evt->fields[i].key);
+	}
+
+	free(txt_evt->fields);
+
+	struct output_log_txt_file *txt_file = &priv->txt_file;
+	if (txt_file->fd != -1) {
+		close(txt_file->fd);
+		txt_file->fd = -1;
+	}
+
+	return POM_OK;
+}
+
+int addon_log_txt_process(struct event *evt, void *addon_priv) {
+	struct addon_log_txt_priv *priv = addon_priv;
+	return output_log_txt_process(evt, &priv->txt_evt);
 }

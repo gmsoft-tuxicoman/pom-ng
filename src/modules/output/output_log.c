@@ -51,6 +51,17 @@ int output_log_mod_register(struct mod_reg *mod) {
 	output_log_txt.close = output_log_txt_close;
 	output_log_txt.cleanup = output_log_txt_cleanup;
 
+	static struct addon_plugin_event_reg addon_log_txt = { 0 };
+	addon_log_txt.name = "log_txt";
+	addon_log_txt.mod = mod;
+
+	addon_log_txt.init = addon_log_txt_init;
+	addon_log_txt.open = addon_log_txt_open;
+	addon_log_txt.close = addon_log_txt_close;
+	addon_log_txt.cleanup = addon_log_txt_cleanup;
+
+	addon_log_txt.event_end = addon_log_txt_process;
+
 	static struct output_reg_info output_log_xml = { 0 };
 	output_log_xml.name = "log_xml";
 	output_log_xml.api_ver = OUTPUT_API_VER;
@@ -73,6 +84,7 @@ int output_log_mod_register(struct mod_reg *mod) {
 	addon_log_xml.event_end = output_log_xml_process;
 
 	if (output_register(&output_log_txt) != POM_OK ||
+		addon_plugin_event_register(&addon_log_txt) != POM_OK ||
 		output_register(&output_log_xml) != POM_OK ||
 		addon_plugin_event_register(&addon_log_xml)) {
 		output_log_mod_unregister();
@@ -87,6 +99,7 @@ int output_log_mod_unregister() {
 	int res = POM_OK;
 
 	res += output_unregister("log_txt");
+	res += addon_plugin_unregister("log_txt");
 	res += output_unregister("log_xml");
 	res += addon_plugin_unregister("log_xml");
 
