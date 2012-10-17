@@ -3,7 +3,8 @@ require "pom"
 
 http_out = output.new("http", {
 	{ "prefix", "string", "/tmp/", "Prefix where to save the files" },
-	{ "log_file", "string", "http.xml", "Log filename" },
+	{ "log_file", "string", "http.log", "Log filename" },
+	{ "log_format", "string", "$server_name $client_addr $username $url [$query_time] \"$first_line\" $status $response_size", "Log format" },
 	{ "dump_img", "bool", "yes", "Enable dumping images" },
 	{ "img_min_surface", "uint32", 300 * 300, "Minimum image surface (height * width)" },
 	{ "dump_vid", "bool", "yes", "Enable dumping videos" }
@@ -56,8 +57,10 @@ function http_out:open()
 	self.files:open()
 
 	-- Open the log_xml plugin to log requests on the disk
-	self.log = plugin.new("log_xml")
+	self.log = plugin.new("log_txt")
 	self.log:param_set("filename", self:param_get("log_file"))
+	self.log:param_set("event", "http_request")
+	self.log:param_set("format", self:param_get("log_format"))
 	self.log:open()
 
 	-- Listen to payloads
