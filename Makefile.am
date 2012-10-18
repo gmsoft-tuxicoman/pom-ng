@@ -19,8 +19,13 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = src src/modules include
 
-EXTRA_DIST = README
 
 doc_DATA = README
+
+ADDONS_FILES = addons/http.lua addons/libs/pom.lua
+RESOURCES_FILES = resources/output_log_txt.xml resources/payload_types.xml
+
+EXTRA_DIST = README $(ADDONS_FILES) $(RESOURCES_FILES)
+nobase_pkgdata_DATA = $(ADDONS_FILES) $(RESOURCES_FILES)
 
 
