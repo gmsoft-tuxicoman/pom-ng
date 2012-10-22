@@ -156,6 +156,10 @@ int proto_process_listeners(struct packet *p, struct proto_process_stack *s, uns
 
 	// Process packet listeners
 	struct proto *proto = s[stack_index].proto;
+	
+	if (!proto)
+		return POM_OK;
+
 	struct proto_packet_listener *l;
 	for (l = proto->packet_listeners; l; l = l->next) {
 		if (l->filter && !filter_proto_match(s, l->filter))

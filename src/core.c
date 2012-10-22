@@ -471,10 +471,8 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 	// Process packet listeners
 	if (res == PROTO_OK) {
-		int j;
-		for (j = i; j >= stack_index; j--) {
-			if (!stack[j].proto)
-				continue;
+		int j, min = stack_index - 1;
+		for (j = i; j >= min; j--) {
 			if (proto_process_listeners(p, stack, j) != POM_OK) {
 				res = PROTO_ERR;
 				break;
