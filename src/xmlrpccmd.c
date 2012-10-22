@@ -97,7 +97,7 @@ void xmlrcpcmd_serial_inc() {
 
 xmlrpc_value *xmlrpccmd_core_get_version(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
-	return xmlrpc_string_new(envP, "WIP");
+	return xmlrpc_string_new(envP, VERSION);
 }
 
 xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
