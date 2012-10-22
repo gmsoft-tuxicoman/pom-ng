@@ -1,0 +1,13 @@
+
+v0.0.3
+	Add support for vlan protocol aka 802.1q.
+	Fix payload processing when gzipped.
+	Fix chunked encoding support in proto_http.
+	Fix segfault in output log_txt.
+
+v0.0.2
+	Make all LUA functions go to the pom namespace.
+	Add proper versioning.
+
+v0.0.1
+	First version .
