@@ -375,6 +375,8 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				}
 
 				if (priv->info[s->direction].flags & HTTP_FLAG_CHUNKED) {
+					unsigned int remaining_size = 0;
+					void *pload = NULL;
 					if (!priv->info[s->direction].chunk_len) {
 
 						if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
@@ -401,10 +403,25 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 							priv->is_invalid = 1;
 							return PROTO_INVALID;
 						}
+
+						if (!priv->info[s->direction].chunk_len) {
+							// This is the last chunk
+							// Skip the last two bytes
+							packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
+							if (remaining_size >= 2) {
+								remaining_size -= 2;
+								if (packet_stream_parser_skip_bytes(parser, 2) != POM_OK) {
+									pomlog(POMLOG_ERR "Error while skipping 2 bytes from the stream");
+									return PROTO_ERR;
+								}
+							}
+							priv->info[s->direction].flags |= HTTP_FLAG_LAST_CHUNK;
+							if (proto_http_post_process(proto, p, stack, stack_index) != POM_OK)
+								return PROTO_ERR;
+							continue;
+						}
 					}
 
-					void *pload = NULL;
-					unsigned int remaining_size = 0;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
 					unsigned int chunk_remaining = priv->info[s->direction].chunk_len - priv->info[s->direction].chunk_pos;
 					s_next->pload = pload;
@@ -429,17 +446,10 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						priv->info[s->direction].chunk_pos = 0;
 						priv->info[s->direction].chunk_len = 0;
 
-						if (s_next->plen) {
+						int res = core_process_multi_packet(stack, stack_index + 1, p);
+						if (res == PROTO_ERR)
+							return PROTO_ERR;
 
-							int res = core_process_multi_packet(stack, stack_index + 1, p);
-							if (res == PROTO_ERR)
-								return PROTO_ERR;
-
-						} else {
-							// This is the last chunk as it's size is 0
-							packet_stream_parser_empty(parser);
-							break;
-						}
 
 						// Continue parsing the next chunk
 						continue;
@@ -495,7 +505,7 @@ static int proto_http_post_process(struct proto *proto, struct packet *p, struct
 
 	if (priv->state[direction] == HTTP_STATE_BODY && (
 		((info->flags & HTTP_FLAG_HAVE_CLEN) && (info->content_pos >= info->content_len)) // End of payload reached
-		|| ((info->flags & HTTP_FLAG_CHUNKED) && !info->chunk_len)) // Last chunk was processed
+		|| (info->flags & (HTTP_FLAG_CHUNKED & HTTP_FLAG_LAST_CHUNK))) // Last chunk was processed
 		) {
 
 		if (direction == priv->client_direction) {
