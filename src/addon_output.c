@@ -447,8 +447,7 @@ int addon_output_lua_register(lua_State *L) {
 		{ "register", addon_output_register },
 		{ 0 }
 	};
-	luaL_register(L, ADDON_POM_OUTPUT_LIB, l);
-
+	addon_pomlib_register(L, "output", l);
 
 	// Create the output instance metatable
 	struct luaL_Reg m[] = {

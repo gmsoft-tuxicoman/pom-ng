@@ -1,7 +1,7 @@
 
 require "pom"
 
-http_out = output.new("http", {
+http_out = pom.output.new("http", {
 	{ "prefix", "string", "/tmp/", "Prefix where to save the files" },
 	{ "log_file", "string", "http.log", "Log filename" },
 	{ "log_format", "string", "$server_name $client_addr $username $url [$query_time] \"$first_line\" $status $response_size", "Log format" },
@@ -53,11 +53,11 @@ end
 function http_out:open()
 
 	-- Open the file plugin that saves payloads to the disk
-	self.files = plugin.new("file")
+	self.files = pom.plugin.new("file")
 	self.files:open()
 
 	-- Open the log_xml plugin to log requests on the disk
-	self.log = plugin.new("log_txt")
+	self.log = pom.plugin.new("log_txt")
 	self.log:param_set("filename", self:param_get("log_file"))
 	self.log:param_set("event", "http_request")
 	self.log:param_set("format", self:param_get("log_format"))
@@ -92,7 +92,7 @@ end
 function http_register()
 	
 	-- Register our new output
-	output.register(http_out)	
+	pom.output.register(http_out)	
 end
 
 

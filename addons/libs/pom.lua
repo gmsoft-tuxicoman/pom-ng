@@ -1,6 +1,6 @@
 
-function pom.data_dump(data)
-	local data_iter = pom.data_iterator(data)
+function pom.data.dump(data)
+	local data_iter = pom.data.iterator(data)
 	while true do
 		local k, v
 		k,v = data_iter()
@@ -11,7 +11,7 @@ function pom.data_dump(data)
 		if t == "userdata" then
 			
 			-- iterate through each values in the table
-			local data_item_iter = pom.data_item_iterator(v);
+			local data_item_iter = pom.data.item_iterator(v);
 			while true do
 				local ik, iv
 				ik, iv = data_item_iter()

@@ -265,7 +265,7 @@ void addon_lua_register(lua_State *L) {
 		{ "log", addon_log },
 		{ 0 }
 	};
-	addon_pomlib_register(L, l);
+	addon_pomlib_register(L, NULL, l);
 
 	// Register the POMLOG_* variables
 	lua_pushinteger(L, 1);
@@ -367,14 +367,25 @@ int addon_pcall(lua_State *L, int nargs, int nresults) {
 	return POM_OK;
 }
 
-void addon_pomlib_register(lua_State *L, luaL_Reg *l) {
+void addon_pomlib_register(lua_State *L, const char *sub, luaL_Reg *l) {
 
-	lua_getglobal(L, ADDON_POM_LIB);
+	lua_getglobal(L, ADDON_POM_LIB); // Stack : pom (or nil)
 
 	if (lua_isnil(L, -1)) {
-		lua_newtable(L);
-		lua_pushvalue(L, -1);
-		lua_setglobal(L, ADDON_POM_LIB);
+		lua_pop(L, 1); // Stack : <empty>
+		lua_newtable(L); // Stack : pom
+		lua_pushvalue(L, -1); // Stack : pom, pom
+		lua_setglobal(L, ADDON_POM_LIB); // Stack : pom
+	}
+
+	if (sub) {
+		lua_getfield(L, -1, sub); // Stack : pom, sub (or nil)
+		if (lua_isnil(L, -1)) { // Stack : pom, nil
+			lua_pop(L, 1); // Stack : pom
+			lua_newtable(L); // Stack : pom, sub
+			lua_pushvalue(L, -1); // Stack : pom, sub, sub
+			lua_setfield(L, -3, sub); // Stack : pom, sub
+		}
 	}
 	
 	int i;

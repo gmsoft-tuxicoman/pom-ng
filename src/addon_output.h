@@ -28,7 +28,6 @@
 #define ADDON_OUTPUT_METATABLE		"addon.output"
 #define ADDON_OUTPUT_PRIV_METATABLE	"addon.output_priv"
 #define ADDON_OUTPUT_REG_METATABLE	"addon.output_reg"
-#define ADDON_POM_OUTPUT_LIB		"output"
 
 struct addon_output {
 

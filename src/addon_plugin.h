@@ -24,7 +24,6 @@
 #include <pom-ng/addon.h>
 
 #define ADDON_PLUGIN_METATABLE		"addon.plugin"
-#define ADDON_PLUGIN_LIB		"plugin"
 
 enum addon_plugin_type {
 	addon_plugin_type_event,

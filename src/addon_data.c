@@ -163,11 +163,11 @@ void addon_data_lua_register(lua_State *L) {
 	lua_settable(L, -3);
 
 	struct luaL_Reg l[] = {
-		{ "data_iterator", addon_data_get_iterator },
-		{ "data_item_iterator", addon_data_item_get_iterator },
+		{ "iterator", addon_data_get_iterator },
+		{ "item_iterator", addon_data_item_get_iterator },
 		{ 0 }
 	};
-	addon_pomlib_register(L, l);
+	addon_pomlib_register(L, "data", l);
 }
 
 void addon_data_push(lua_State *L, struct data *data, struct data_reg *data_reg) {

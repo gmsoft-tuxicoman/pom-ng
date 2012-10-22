@@ -315,7 +315,7 @@ int addon_plugin_lua_register(lua_State *L) {
 		{ 0 }
 	};
 
-	luaL_register(L, ADDON_PLUGIN_LIB, l);
+	addon_pomlib_register(L, "plugin", l);
 
 	struct luaL_Reg m[] = {
 		{ "__index", addon_plugin_metatable },
