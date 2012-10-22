@@ -472,7 +472,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 			char fname[FILENAME_MAX + 1] = {0};
 			char *prefix = PTYPE_STRING_GETVAL(log_evt->p_prefix);
 			strcpy(fname, prefix);
-			strncat(fname, file->path, FILENAME_MAX - strlen(filename));
+			strncat(fname, file->path, FILENAME_MAX - strlen(fname));
 			filename = fname;
 		} else {
 			filename = file->path;
