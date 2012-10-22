@@ -589,7 +589,7 @@ int addon_log_txt_init(struct addon_plugin *a) {
 	if (addon_plugin_add_param(a, "event", "", priv->p_event) != POM_OK)
 		goto err;
 	
-	if (addon_plugin_add_param(a, "format", "log.txt", priv->p_format) != POM_OK)
+	if (addon_plugin_add_param(a, "format", "", priv->p_format) != POM_OK)
 		goto err;
 
 	return POM_OK;
