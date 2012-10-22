@@ -47,6 +47,8 @@
 #define ANALYZER_PLOAD_BUFFER_IS_DEFLATE	0x4
 #define ANALYZER_PLOAD_BUFFER_IS_BASE64		0x8
 
+#define ANALYZER_PLOAD_BUFFER_IS_ENCODED	0xE
+
 struct analyzer {
 
 	struct analyzer_reg *info;

@@ -442,6 +442,8 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 		pload->zbuff->next_in = data;
 		pload->zbuff->avail_in = size;
 		pload->zbuff->avail_out = pload->buff_size - pload->buff_pos;
+		
+		int res;
 
 		do {
 
@@ -452,13 +454,8 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 			}
 			pload->zbuff->next_out = pload->buff + pload->buff_pos;
 
-			int res = inflate(pload->zbuff, Z_SYNC_FLUSH);
-			if (res == Z_STREAM_END) {
-				inflateEnd(pload->zbuff);
-				free(pload->zbuff);
-				pload->zbuff = NULL;
-				break;
-			} else if (res != Z_OK) {
+			res = inflate(pload->zbuff, Z_SYNC_FLUSH);
+			if (res != Z_OK && res != Z_STREAM_END) {
 				char *msg = pload->zbuff->msg;
 				if (!msg)
 					msg = "Unknown error";
@@ -472,6 +469,14 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 
 		} while (pload->zbuff->avail_in);
 
+		pload->buff_pos = pload->buff_size - pload->zbuff->avail_out;
+
+		if (res == Z_STREAM_END) {
+			inflateEnd(pload->zbuff);
+			free(pload->zbuff);
+			pload->zbuff = NULL;
+		}
+
 	} else {
 #endif /* HAVE_ZLIB */
 
@@ -483,7 +488,7 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 		}
 
 		memcpy(pload->buff + pload->buff_pos, data, size);
-		pload->buff_pos += size;
+		pload->buff_pos = pload->buff_size - pload->zbuff->avail_out;
 
 #ifdef HAVE_ZLIB
 	}
@@ -566,6 +571,13 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 #ifdef HAVE_LIBMAGIC
 	if (pload->state == analyzer_pload_buffer_state_magic) {
 		// We need to perform some magic
+
+		if (!pload->buff_size && (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_ENCODED))) {
+			// We need to decode/decompress the buffer before analyzing it
+			if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
+				return POM_ERR;
+		}
+
 		if (pload->buff_pos > ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE || (pload->expected_size && pload->expected_size < ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE)) {
 			// We have enough to perform some magic
 			
@@ -612,6 +624,12 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	if (pload->state == analyzer_pload_buffer_state_partial) {
 		// If we know what type of payload we are dealing with, try to analyze it
 		if (pload->type && pload->type->analyzer) {
+
+			if (!pload->buff_size && (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_ENCODED))) {
+				// We need to decode/decompress the buffer before analyzing it
+				if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
+					return POM_ERR;
+			}
 
 			struct analyzer_pload_reg *pload_analyzer = pload->type->analyzer;
 
@@ -718,17 +736,26 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				return POM_OK;
 			}
 
+
+		}
+
+		// There was some output for this pload, decode/decompress the buffer since it'll be needed
+		if (!pload->buff_size && (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_ENCODED))) {
+			if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
+				return POM_ERR;
 		}
 
 		struct analyzer_pload_instance *lst;
 		for (lst = pload->output_list; lst; lst = lst->next) {
 			if (lst->is_err)
 				continue;
-			int res;
+			int res = POM_OK;
 			if (pload->buff_size) {
-				res = lst->o->reg_info->write(lst->priv, pload->buff, pload->buff_pos);
+				if (pload->buff_pos)
+					res = lst->o->reg_info->write(lst->priv, pload->buff, pload->buff_pos);
 			} else {
-				res = lst->o->reg_info->write(lst->priv, data, size);
+				if (size)
+					res = lst->o->reg_info->write(lst->priv, data, size);
 			}
 			if (res != POM_OK) {
 				pomlog(POMLOG_ERR "Error while writing to an output");
@@ -742,6 +769,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		if (pload->buff_size) {
 			// The buffer was written, we can safely get rid of it
 			pload->buff_size = 0;
+			pload->buff_pos = 0;
 			free(pload->buff);
 			pload->buff = NULL;
 
