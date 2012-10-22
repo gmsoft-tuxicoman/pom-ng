@@ -28,7 +28,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-static struct proto *proto_arp = NULL, *proto_ipv4 = NULL;
+static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_vlan = NULL;
 
 struct mod_reg_info* proto_ethernet_reg_info() {
 
@@ -36,7 +36,7 @@ struct mod_reg_info* proto_ethernet_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ethernet_mod_register;
 	reg_info.unregister_func = proto_ethernet_mod_unregister;
-	reg_info.dependencies = "proto_arp, proto_ipv4, ptype_string, ptype_mac";
+	reg_info.dependencies = "proto_arp, proto_ipv4, proto_vlan, ptype_string, ptype_mac";
 
 	return &reg_info;
 }
@@ -75,8 +75,9 @@ static int proto_ethernet_init(struct proto *proto, struct registry_instance *i)
 	
 	proto_arp = proto_get("arp");
 	proto_ipv4 = proto_get("ipv4");
+	proto_vlan = proto_get("vlan");
 
-	if (!proto_arp || !proto_ipv4) {
+	if (!proto_arp || !proto_ipv4 || !proto_vlan) {
 		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
 		return POM_ERR;
 	}
@@ -110,9 +111,10 @@ static int proto_ethernet_process(struct proto *proto, struct packet *p, struct 
 		case 0x0806:
 			s_next->proto = proto_arp;
 			break;
-/*		case 0x8100:
+		case 0x8100:
 			s_next->proto = proto_vlan;
 			break;
+/*
 		case 0x86dd:
 			s_next->proto = proto_ipv6;
 			break;
