@@ -488,7 +488,7 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 		}
 
 		memcpy(pload->buff + pload->buff_pos, data, size);
-		pload->buff_pos = pload->buff_size - pload->zbuff->avail_out;
+		pload->buff_pos += size;
 
 #ifdef HAVE_ZLIB
 	}
