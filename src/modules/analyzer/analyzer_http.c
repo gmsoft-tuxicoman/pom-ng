@@ -130,6 +130,7 @@ int analyzer_http_init(struct analyzer *analyzer) {
 
 	evt_request_data_items[analyzer_http_request_post_data].name = "post_data";
 	evt_request_data_items[analyzer_http_request_post_data].flags = DATA_REG_FLAG_LIST;
+	evt_request_data_items[analyzer_http_request_post_data].value_type = ptype_get_type("string");
 	
 	evt_request_data_items[analyzer_http_request_query_size].name = "query_size";
 	evt_request_data_items[analyzer_http_request_query_size].value_type = ptype_get_type("uint64");
