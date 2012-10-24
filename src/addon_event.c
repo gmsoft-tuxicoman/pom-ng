@@ -79,7 +79,7 @@ int addon_event_process_begin(struct event *evt, void *obj, struct proto_process
 	// Push self
 	lua_pushvalue(L, -3); // Stack : self, evt_table, open_func, self
 	// Push event
-	if (addon_event_push(L, evt) != POM_OK) // Stack : self, evt_table, open_func, self, evt
+	if (addon_event_push(L, evt) != POM_OK) // Stack : self, evt_table, process_func, self, evt
 		return POM_ERR;
 
 	int res =  addon_pcall(L, 2, 0); // Stack : self, evt_table
@@ -115,7 +115,7 @@ int addon_event_process_end(struct event *evt, void *obj) {
 	// Push self
 	lua_pushvalue(L, -3); // Stack : self, evt_table, close_func, self
 	// Push event
-	if (addon_event_push(L, evt) != POM_OK) // Stack : self, evt_table, close_func, self, evt
+	if (addon_event_push(L, evt) != POM_OK) // Stack : self, evt_table, process_func, self, evt
 		return POM_ERR;
 
 	int res = addon_pcall(L, 2, 0); // Stack : self, evt_table
