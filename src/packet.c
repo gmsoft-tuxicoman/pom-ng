@@ -46,6 +46,9 @@
 #define debug_info_pool(x ...)
 #endif
 
+// Define to debug packet_info_pool allocation
+#undef PACKET_INFO_POOL_ALLOC_DEBUG
+
 static struct packet *packet_head, *packet_unused_head;
 static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -288,12 +291,15 @@ int packet_pool_release(struct packet *p) {
 	memset(p, 0, sizeof(struct packet));
 	
 	// Add it back to the unused list
-	
+
+#ifdef PACKET_INFO_POOL_ALLOC_DEBUG
+	free(p);
+#else
 	p->next = packet_unused_head;
 	if (p->next)
 		p->next->prev = p;
 	packet_unused_head = p;
-
+#endif
 	pom_mutex_unlock(&packet_list_mutex);
 
 	int res = POM_OK;
@@ -454,7 +460,8 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 	pthread_mutex_destroy(&pool->lock);
 
 	struct packet_info *tmp = NULL;
-	while (pool->used) {	
+#ifndef PACKET_INFO_POOL_ALLOC_DEBUG
+	while (pool->used) {
 		tmp = pool->used;
 		printf("Unreleased packet info %p !\n", tmp);
 		pool->used = tmp->pool_next;
@@ -466,7 +473,7 @@ int packet_info_pool_cleanup(struct packet_info_pool *pool) {
 		free(tmp->fields_value);
 		free(tmp);
 	}
-
+#endif
 	while (pool->unused) {
 		tmp = pool->unused;
 		pool->unused = tmp->pool_next;
@@ -842,6 +849,16 @@ static void packet_stream_end_process_packet(struct packet_stream *stream) {
 
 }
 
+static void packet_stream_free_packet(struct packet_stream_pkt *p) {
+
+	int i;
+	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].proto; i++)
+		packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
+	free(p->stack);
+	packet_pool_release(p->pkt);
+	free(p);
+}
+
 int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack) {
 
 	if (!stream || !pkt || !stack)
@@ -1037,17 +1054,10 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 				return PROTO_ERR;
 			}
 
-			int i;
-			for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
-				packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
-
-			free(p->stack);
-			packet_pool_release(p->pkt);
-
 			stream->cur_seq[cur_dir] += p->plen;
 			stream->cur_ack[cur_dir] = p->ack;
-
-			free(p);
+	
+			packet_stream_free_packet(p);
 
 			additional_processed = 1;
 		}
@@ -1217,14 +1227,7 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 
 
 		if (packet_stream_is_packet_old_dupe(stream, p, next_dir)) {
-
-			int i;
-			for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i++)
-				packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
-			free(p->stack);
-			packet_pool_release(p->pkt);
-			free(p);
-
+			packet_stream_free_packet(p);
 		} else {
 			break;
 		}
@@ -1288,16 +1291,10 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 		res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
 	}
 
-	int i;
-	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
-		packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
-
-	free(p->stack);
-	packet_pool_release(p->pkt);
 	stream->cur_seq[next_dir] = p->seq + p->plen;
 	stream->cur_ack[next_dir] = p->ack;
 
-	free(p);
+	packet_stream_free_packet(p);
 
 
 	if (res == PROTO_ERR) 
@@ -1308,22 +1305,15 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	// Check if additional packets can be processed
 	while ((p = packet_stream_get_next(stream, &next_dir))) {
 
-
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, p->pkt->ts.tv_sec, p->pkt->ts.tv_usec, p->seq, p->ack);
 
 		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == PROTO_ERR)
 			return POM_ERR;
 
-		for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].pkt_info; i ++)
-			packet_info_pool_release(&p->stack[i].proto->pkt_info_pool, p->stack[i].pkt_info);
-
-		free(p->stack);
-		packet_pool_release(p->pkt);
-
 		stream->cur_seq[next_dir] += p->plen;
 		stream->cur_ack[next_dir] = p->ack;
 
-		free(p);
+		packet_stream_free_packet(p);
 	}
 
 	return POM_OK;
@@ -1369,14 +1359,8 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 						res->prev->next = res->next;
 					}
 					
-					int j;
-					for (j = 1; j < CORE_PROTO_STACK_MAX && res->stack[j].pkt_info; j++)
-						packet_info_pool_release(&res->stack[j].proto->pkt_info_pool, res->stack[j].pkt_info);
-					free(res->stack);
-					
 					stream->cur_buff_size -= res->plen;
-					packet_pool_release(res->pkt);
-					free(res);
+					packet_stream_free_packet(res);
 					res = NULL;
 
 					// Next packet please
