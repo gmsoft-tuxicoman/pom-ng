@@ -198,17 +198,32 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_pushvalue(L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
 	lua_settable(L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
-	// Done playing with the __pload_listener table
-	pom_mutex_unlock(&p->lock);
-
 	// Add the pload to the args
 	addon_pload_push(L, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
 
+	// Done playing with the __pload_listener table
+	pom_mutex_unlock(&p->lock);
+
 	// Call the open function
-	addon_pcall(L, 3, 0); // Stack : self, __pload_listener
+	addon_pcall(L, 3, 1); // Stack : self, __pload_listener, result
+
+	int res = 0;
+	if (!lua_isboolean(L, -1)) {
+		pomlog(POMLOG_WARN "LUA coding error: pload open function result must be a boolean");
+	} else {
+		res = lua_toboolean(L, -1);
+	}
+
+	if (!res) { // The payload doesn't need to be processed, remove the payload_priv_table and the __pload_data
+		lua_pushlightuserdata(L, ppriv); // Stack : self, __pload_listener, result, pload_priv
+		lua_pushnil(L); // Stack : self, __pload_listener, result, pload_priv, nil
+		lua_settable(L, -4); // Stack : self, __pload_listener, result
+		lua_pushnil(L); // Stack : self, __pload_listener, result, nil
+		lua_setfield(L, -3, "__pload_data"); // Stack : self, __pload_listener, result
+	}
 
 	// Remove leftovers
-	lua_pop(L, 2); // Stack : empty
+	lua_pop(L, 3); // Stack : empty
 
 	return POM_OK;
 }
@@ -250,17 +265,42 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 	lua_pushvalue(L, -3); // Stack : self, __pload_listener, write_func, self
 	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
 	lua_gettable(L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
+
+	if (lua_isnil(L, -1)) {
+		// There is no pload_priv_table, payload doesn't need to be processed
+		pom_mutex_unlock(&p->lock);
+		lua_pop(L, 5); // Stack : empty
+		return POM_OK;
+	}
+
 	lua_getfield(L, -1, "__pload_data"); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
-	pom_mutex_unlock(&p->lock);
 
 	// Update the pload_data
 	addon_pload_data_update(L, -1, data, len);
+	pom_mutex_unlock(&p->lock);
 
-	int res = addon_pcall(L, 3, 0); // Stack : self, __pload_listener
+	int res = addon_pcall(L, 3, 1); // Stack : self, __pload_listener, result
 
-	lua_pop(L, 2); // Stack : empty
+	int write_res = 0;
 
-	return res;
+	if (res == POM_OK) {
+		if (!lua_isboolean(L, -1)) {
+			pomlog(POMLOG_WARN "LUA coding error: pload write function result must be a boolean");
+		} else {
+			write_res = lua_toboolean(L, -1);
+		}
+	}
+
+	if (!write_res) {
+		// Remove the pload_priv_table since it failed
+		lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, result, pload_priv
+		lua_pushnil(L); // Stack : self, __pload_listener, result, pload_priv, nil
+		lua_settable(L, -4); // Stack : self, __pload_listener, result
+	}
+
+	lua_pop(L, 3); // Stack : empty
+
+	return POM_OK;
 }
 
 // Called from C to close a pload
@@ -282,32 +322,43 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 	pom_mutex_lock(&p->lock);
 	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
-	// Remove the instance priv from the __pload_listener table
-	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, priv
-	lua_pushnil(L); // Stack : self, __pload_listener, priv, nil
-	lua_settable(L, -3); // Stack : self, __pload_listener
+	// Get the pload_priv_table
+	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, pload_priv
+	lua_gettable(L, -2); // Stack : self, __pload_listener, pload_priv_table
+
+	if (lua_isnil(L, -1)) {
+		// There is no pload_priv_table, the payload doesn't need to be processed
+		pom_mutex_unlock(&p->lock);
+		lua_pop(L, 3);
+		return POM_OK;
+	}
+
+	// Remove the payload_priv_table from __pload_listener
+	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, pload_priv_table, pload_priv
+	lua_pushnil(L); // Stack : self, __pload_listener, pload_priv_table, pload_priv, nil
+	lua_settable(L, -4); // Stack : self, __pload_listener, pload_priv_table
 
 	// Get the close function
-	lua_getfield(L, -1,  "close"); // Stack : self, __pload_listener, close_func
+	lua_getfield(L, -2,  "close"); // Stack : self, __pload_listener, pload_priv_table, close_func
+
+	// Done fidling with the __pload_listener table
+	pom_mutex_unlock(&p->lock);
+
+	if (lua_isnil(L, -1)) {
+		// There is no close function
+		lua_pop(L, 4); // Stack : empty
+		return POM_OK;
+	}
 
 	int res = POM_OK;
 
-	// Check if there is an close function
-	if (!lua_isnil(L, -1)) {
+	// Setup args
+	lua_pushvalue(L, 1); // Stack : self, __pload_listener, pload_priv_table, close_func, self
+	lua_pushvalue(L, -3); // Stack : self, __pload_listener, pload_priv_table, close_func, self, pload_priv_table
 
-		// Setup args
-		lua_pushvalue(L, -3); // Stack : self, __pload_listener, close_func, self
-		lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, close_func, self, pload_priv
-		lua_gettable(L, -4); // Stack : self, __pload_listener, close_func, self, pload_priv_table
-		pom_mutex_unlock(&p->lock);
+	res = addon_pcall(L, 2, 0); // Stack : self, __pload_listener, pload_priv_table
 
-		res = addon_pcall(L, 2, 0); // Stack : self, __pload_listener
-
-		lua_pop(L, 2); // Stack : empty
-	} else {
-		pom_mutex_unlock(&p->lock);
-		lua_pop(L, 3); // Stack : empty
-	}
+	lua_pop(L, 3); // Stack : empty
 
 	while (ppriv->plugins) {
 		tmp = ppriv->plugins;
