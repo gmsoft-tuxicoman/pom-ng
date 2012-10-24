@@ -15,16 +15,16 @@ function http_out:pload_open(priv, pload)
 	local event = pload.event
 
 	-- Make sure the payload is coming from the right event
-	if event.name ~= "http_request" then return end
+	if event.name ~= "http_request" then return false end
 
-	-- Check if we need to process this payload
-	local process = false
 	local pload_type = pload.type
 
 	-- Payload type is not identified
-	if pload_type == nil then return end
+	if pload_type == nil then return false end
 
 	local class = pload_type['class']
+
+	local process = false
 
 	-- Check for images and the minimum surface
 	if class == "image" and self:param_get("dump_img") then
@@ -36,17 +36,19 @@ function http_out:pload_open(priv, pload)
 	if class == "video" and self:param_get("dump_vid") then process = true end
 
 	-- Process it (or not)
-	if process then
-		local data = event.data
+	if not process then return false end
 
-		-- If we don't have a complete event and url is missing, then don't process it
-		if not data["url"] then return end
+	local data = event.data
 
-		local filename = self.prefix .. data["server_name"] .. data["url"]
-		pom.log(POMLOG_DEBUG, "Saving file into " .. filename)
-		self.files:pload_process(pload, { filename = filename } )
-		self.log:event_process(event)
-	end
+	-- If we don't have a complete event and url is missing, then don't process it
+	if not data["url"] then return false end
+
+	local filename = self.prefix .. data["server_name"] .. data["url"]
+	pom.log(POMLOG_DEBUG, "Saving file into " .. filename)
+	self.files:pload_process(pload, { filename = filename } )
+	self.log:event_process(event)
+
+	return true
 
 end
 
