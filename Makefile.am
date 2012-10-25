@@ -22,7 +22,7 @@ SUBDIRS = src src/modules include
 
 doc_DATA = README
 
-ADDONS_FILES = addons/http.lua addons/libs/pom.lua
+ADDONS_FILES = addons/output_http.lua addons/libs/pom.lua
 RESOURCES_FILES = resources/output_log_txt.xml resources/payload_types.xml
 
 EXTRA_DIST = README $(ADDONS_FILES) $(RESOURCES_FILES)
