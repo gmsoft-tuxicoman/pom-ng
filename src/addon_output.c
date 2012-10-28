@@ -308,6 +308,7 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
 	struct addon_instance_priv *p = ppriv->instance_priv;
+	int res = POM_OK;
 
 	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
 
@@ -330,7 +331,7 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 		// There is no pload_priv_table, the payload doesn't need to be processed
 		pom_mutex_unlock(&p->lock);
 		lua_pop(L, 3);
-		return POM_OK;
+		goto cleanup;
 	}
 
 	// Remove the payload_priv_table from __pload_listener
@@ -347,10 +348,9 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 	if (lua_isnil(L, -1)) {
 		// There is no close function
 		lua_pop(L, 4); // Stack : empty
-		return POM_OK;
+		goto cleanup;
 	}
 
-	int res = POM_OK;
 
 	// Setup args
 	lua_pushvalue(L, 1); // Stack : self, __pload_listener, pload_priv_table, close_func, self
@@ -360,6 +360,7 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 
 	lua_pop(L, 3); // Stack : empty
 
+cleanup:
 	while (ppriv->plugins) {
 		tmp = ppriv->plugins;
 		ppriv->plugins = tmp->next;
@@ -380,6 +381,10 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	// 2) open function
 	// 3) write function
 	// 4) close function
+
+	// Push nill if additional functions are missing
+	while (lua_gettop(L) < 4)
+		lua_pushnil(L);
 
 	// Stack : instance, read_func, write_func, close_func
 
@@ -407,17 +412,23 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	lua_pushliteral(L, "__pload_listener");
 	lua_newtable(L);
 
-	lua_pushliteral(L, "open");
-	lua_pushvalue(L, 2);
-	lua_settable(L, -3);
+	if (!lua_isnil(L, 2)) {
+		lua_pushliteral(L, "open");
+		lua_pushvalue(L, 2);
+		lua_settable(L, -3);
+	}
 
-	lua_pushliteral(L, "write");
-	lua_pushvalue(L, 3);
-	lua_settable(L, -3);
+	if (!lua_isnil(L, 3)) {
+		lua_pushliteral(L, "write");
+		lua_pushvalue(L, 3);
+		lua_settable(L, -3);
+	}
 
-	lua_pushliteral(L, "close");
-	lua_pushvalue(L, 4);
-	lua_settable(L, -3);
+	if (!lua_isnil(L, 4)) {
+		lua_pushliteral(L, "close");
+		lua_pushvalue(L, 4);
+		lua_settable(L, -3);
+	}
 
 	lua_settable(L, 1);
 	
