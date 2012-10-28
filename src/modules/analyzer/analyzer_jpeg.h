@@ -29,17 +29,18 @@
 
 #define ANALYZER_JPEG_PLOAD_TYPE "jpeg"
 
-#define ANALYZER_JPEG_PLOAD_DATA_COUNT 2
+#define ANALYZER_JPEG_PLOAD_DATA_COUNT 3
 
 enum analyzer_jpeg_pload_data {
 	analyzer_jpeg_pload_width = 0,
 	analyzer_jpeg_pload_height,
+	analyzer_jpeg_pload_exif
 };
 
 struct analyzer_jpeg_pload_priv {
 
 	struct jpeg_decompress_struct cinfo;
-	size_t jpeg_lib_pos;
+	unsigned long jpeg_lib_pos;
 
 	jmp_buf jmp_buff;
 

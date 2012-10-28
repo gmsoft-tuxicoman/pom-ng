@@ -18,8 +18,17 @@
  *
  */
 
+
+#include "../../../config.h"
 #include "analyzer_jpeg.h"
+#include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint32.h>
+
+#ifdef HAVE_LIBEXIF
+#include <exif-data.h>
+#endif
 
 #if 0
 #define debug_jpeg(x ...) pomlog(POMLOG_DEBUG x)
@@ -71,6 +80,10 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 	pload_jpeg_data_items[analyzer_jpeg_pload_width].value_type = ptype_get_type("uint16");
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].name = "height";
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].value_type = ptype_get_type("uint16");
+#ifdef HAVE_LIBEXIF
+	pload_jpeg_data_items[analyzer_jpeg_pload_exif].name = "exif";
+	pload_jpeg_data_items[analyzer_jpeg_pload_exif].flags = ANALYZER_DATA_FLAG_LIST;
+#endif
 
 	static struct data_reg pload_jpeg_data = {
 		.items = pload_jpeg_data_items,
@@ -87,6 +100,93 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
+
+#ifdef HAVE_LIBEXIF
+static void analyzer_jpeg_exif_entry_process(ExifEntry *entry, void *pload) {
+
+	ExifIfd ifd = exif_content_get_ifd(entry->parent);
+
+	const char *tag_name = exif_tag_get_name_in_ifd(entry->tag, ifd);
+	if (!tag_name) // Unknown tag
+		return;
+
+	struct ptype *value = NULL;
+	// First parse ascii values
+	if (entry->format == EXIF_FORMAT_ASCII) {
+		char *str = malloc(entry->size);
+		if (!str) {
+			pom_oom(entry->size);
+			return;
+		}
+		memcpy(str, entry->data, entry->size);
+		// Make sure it's NULL terminated
+		str[entry->size - 1] = 0;
+
+		value = ptype_alloc("string");
+		if (!value) {
+			free(str);
+			return;
+		}
+		PTYPE_STRING_SETVAL_P(value, str);
+	} else if (entry->components == 1) {
+		
+		ExifByteOrder byte_order = exif_data_get_byte_order(entry->parent->parent);
+		if (entry->format == EXIF_FORMAT_BYTE) {
+			value = ptype_alloc("uint8");
+			if (!value)
+				return;
+			PTYPE_UINT8_SETVAL(value, *entry->data);
+		} else if (entry->format == EXIF_FORMAT_SHORT)	{
+			value = ptype_alloc("uint16");
+			if (!value)
+				return;
+			PTYPE_UINT16_SETVAL(value, exif_get_short(entry->data, byte_order));
+		} else if (entry->format == EXIF_FORMAT_LONG) {
+			value = ptype_alloc("uint32");
+			if (!value)
+				return;
+			PTYPE_UINT32_SETVAL(value, exif_get_long(entry->data, byte_order));
+		}
+
+	}
+
+	if (!value) {
+		// Fallback for types not parsed by us yet
+		// FIXME this is subject to the locale
+
+		char buff[256];
+		buff[sizeof(buff) - 1] = 0;
+		exif_entry_get_value(entry, buff, sizeof(buff) - 1);
+
+		value = ptype_alloc("string");
+		if (!value)
+			return;
+		PTYPE_STRING_SETVAL(value, buff);
+
+	}
+
+	char *key = strdup(tag_name);
+	if (!key) {
+		pom_oom(strlen(tag_name) + 1);
+		return;
+	}
+
+	struct analyzer_pload_buffer *p = pload;
+	data_item_add_ptype(p->data, analyzer_jpeg_pload_exif, key, value);
+
+}
+
+static void analyzer_jpeg_exif_content_process(ExifContent *content, void *pload) {
+
+	ExifIfd ifd = exif_content_get_ifd(content);
+
+	// Don't parse IFD_1 which is the thumbnail IFD and the interop one which holds no interesting data
+	if (ifd == EXIF_IFD_1 || ifd == EXIF_IFD_INTEROPERABILITY)
+		return;
+
+	exif_content_foreach_entry(content, analyzer_jpeg_exif_entry_process, pload);
+}
+#endif
 
 static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
@@ -117,6 +217,11 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 
 		priv->cinfo.client_data = pload;
 
+#ifdef HAVE_LIBEXIF
+		// Save APP1
+		jpeg_save_markers(&priv->cinfo, JPEG_APP0 + 1, 0xFFFF);
+#endif
+
 		// Allocate the source
 		
 		struct jpeg_source_mgr *src = malloc(sizeof(struct jpeg_source_mgr));
@@ -141,35 +246,53 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 
 	}
 
+
+	if (priv->jpeg_lib_pos >= pload->buff_pos)
+		// Nothing more to process
+		return POM_OK;
+
 	int res = POM_OK;
+	if (!setjmp(priv->jmp_buff)) {
 
-	if (priv->jpeg_lib_pos < pload->buff_pos) {
+		if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
+			return POM_OK; // Headers are incomplete
 
-		if (!setjmp(priv->jmp_buff)) {
+		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
+		data_set(pload->data[analyzer_jpeg_pload_width]);
+		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
+		data_set(pload->data[analyzer_jpeg_pload_height]);
+		debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
-			if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
-				return POM_OK; // Headers are incomplete
+#ifdef HAVE_LIBEXIF		
+		// Parse the exif data
+		jpeg_saved_marker_ptr marker;
+		for (marker = priv->cinfo.marker_list; marker && marker->marker != JPEG_APP0 + 1; marker = marker->next);
 
-			PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
-			data_set(pload->data[analyzer_jpeg_pload_width]);
-			PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
-			data_set(pload->data[analyzer_jpeg_pload_height]);
-			debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
-			pload->state = analyzer_pload_buffer_state_analyzed;
+		if (marker) {
+			pomlog(POMLOG_DEBUG "Got %u bytes of exif data", marker->data_length);
+			ExifData *exif_data = exif_data_new_from_data(marker->data, marker->data_length);
+			if (!exif_data) {
+				pomlog(POMLOG_DEBUG "Unable to parse EXIF data");
+			}
 
-		} else {
-			pomlog(POMLOG_WARN "Error while parsing JPEG headers");
-			res = POM_ERR;
+			exif_data_foreach_content(exif_data, analyzer_jpeg_exif_content_process, pload);
+
+			exif_data_free(exif_data);
 		}
+#endif
 
-		free(priv->cinfo.err);
-		free(priv->cinfo.src);
-		jpeg_destroy_decompress(&priv->cinfo);
-		free(priv);
-		pload->analyzer_priv = NULL;
+		pload->state = analyzer_pload_buffer_state_analyzed;
 
-
+	} else {
+		pomlog(POMLOG_DEBUG "Error while parsing JPEG headers");
+		res = POM_ERR;
 	}
+
+	free(priv->cinfo.err);
+	free(priv->cinfo.src);
+	jpeg_destroy_decompress(&priv->cinfo);
+	free(priv);
+	pload->analyzer_priv = NULL;
 
 	return res;
 }

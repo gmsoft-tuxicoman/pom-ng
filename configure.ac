@@ -237,6 +237,14 @@ fi
 PKG_CHECK_MODULES(lua, [lua], [], AC_MSG_ERROR([lua is required to build this program])])
 AC_SUBST(lua_LIBS)
 
+# Check for libexif
+PKG_CHECK_MODULES(libexif, [libexif], [want_libexif=yes], [want_libexif=no])
+if test "x$want_libexif" = "xyes"
+then
+	AC_DEFINE(HAVE_LIBEXIF, , [libexif])
+	AC_SUBST(libexit_LIBS)
+	AC_SUBST(libexif_CFLAGS)
+fi
 
 AC_SUBST(ANALYZER_OBJS)
 AC_SUBST(DATASTORE_OBJS)
@@ -264,6 +272,7 @@ echo " * Libmagic         : $want_magic"
 echo " * Zlib             : $want_zlib"
 echo " * JPEG             : $want_jpeg"
 echo " * Sqlite3          : $want_sqlite3"
+echo " * libexif          : $want_libexif"
 echo ""
 echo "Author : Guy Martin <gmsoft@tuxicoman.be>"
 
