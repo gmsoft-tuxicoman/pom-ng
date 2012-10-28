@@ -67,7 +67,8 @@ struct data_item_reg {
 
 struct data *data_alloc_table(struct data_reg *d_reg);
 void data_cleanup_table(struct data *d, struct data_reg *d_reg);
-struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int data_id, char *key);
+struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int data_id, const char *key);
+int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, struct ptype *value);
 
 
 #endif

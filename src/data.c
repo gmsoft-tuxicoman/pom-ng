@@ -78,25 +78,35 @@ void data_cleanup_table(struct data *d, struct data_reg *d_reg) {
 
 }
 
-struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int data_id, char *key) {
+struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int data_id, const char *key) {
+
+	struct ptype *value = ptype_alloc_from_type(d_reg->items[data_id].value_type);
+	if (!value) 
+		return NULL;
+	
+	if (data_item_add_ptype(d, data_id, key, value) != POM_OK) {
+		ptype_cleanup(value);
+		return NULL;
+	}
+
+	return value;
+}
+
+int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, struct ptype *value) {
 
 	struct data_item *item = malloc(sizeof(struct data_item));
 	if (!item) {
 		pom_oom(sizeof(struct data_item));
-		return NULL;
+		return POM_ERR;
 	}
 	memset(item, 0, sizeof(struct data_item));
 	
 	item->key = key;
-
-	item->value = ptype_alloc_from_type(d_reg->items[data_id].value_type);
-	if (!item->value) {
-		free(item);
-		return NULL;
-	}
+	item->value = value;
 
 	item->next = d[data_id].items;
 	d[data_id].items = item;
-	return item->value;
+
+	return POM_OK;
 }
 
