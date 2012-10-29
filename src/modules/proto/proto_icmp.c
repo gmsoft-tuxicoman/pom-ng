@@ -69,6 +69,9 @@ static int proto_icmp_process(struct proto *proto, struct packet *p, struct prot
 
 	struct proto_process_stack *s = &stack[stack_index];
 
+	if (s->plen < sizeof(struct icmp))
+		return PROTO_INVALID;
+
 	struct icmp *ihdr = s->pload;
 
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_icmp_field_type], ihdr->icmp_type);
