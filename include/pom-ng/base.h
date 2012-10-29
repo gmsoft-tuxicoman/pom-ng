@@ -45,7 +45,7 @@
 #define POM_STRERROR_BUFF_SIZE 128
 
 // Thread safe version of strerror()
-char *pom_strerror(int err);
+char *pom_strerror(int err_num);
 
 // Out of memory handler
 void pom_oom_internal(size_t size, char *file, unsigned int line);

@@ -25,11 +25,11 @@
 #include <limits.h>
 #include <fcntl.h>
 
-char *pom_strerror(int err) {
+char *pom_strerror(int err_num) {
 
 	static __thread char buff[POM_STRERROR_BUFF_SIZE];
 	memset(buff, 0, POM_STRERROR_BUFF_SIZE);
-	strerror_r(errno, buff, POM_STRERROR_BUFF_SIZE - 1);
+	strerror_r(err_num, buff, POM_STRERROR_BUFF_SIZE - 1);
 
 	return buff;
 }
@@ -77,9 +77,9 @@ int pom_open(const char *filename, int flags, mode_t mode) {
 
 int pom_write(int fd, const void *buf, size_t count) {
 
-	size_t pos = 0;
+	ssize_t pos = 0;
 	while (pos < count) {
-		size_t len = write(fd, buf + pos, count - pos);
+		ssize_t len = write(fd, buf + pos, count - pos);
 		if (len < 0) {
 			pomlog(POMLOG_ERR "Write error : %s", pom_strerror(errno));
 			return POM_ERR;
