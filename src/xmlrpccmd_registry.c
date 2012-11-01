@@ -25,7 +25,7 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 10
+#define XMLRPCCMD_REGISTRY_NUM 11
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -33,6 +33,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.callback_func = xmlrpccmd_registry_list,
 		.signature = "S:",
 		.help = "List all the classes and their instances",
+	},
+
+	{
+		.name = "registry.setClassParam",
+		.callback_func = xmlrpccmd_registry_set_class_param,
+		.signature = "i:sss",
+		.help = "Set the value of a class parameter. Arguments are : class, parameter, value",
 	},
 
 	{
@@ -113,6 +120,42 @@ int xmlrpccmd_registry_register_all() {
 
 }
 
+static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, struct registry_param *param_head) {
+
+	xmlrpc_value *params = xmlrpc_array_new(envP);
+
+	struct registry_param *p;
+	for (p = param_head; p; p = p->next) {
+		char *value = ptype_print_val_alloc(p->value);
+		if (!value) {
+			xmlrpc_faultf(envP, "Error while getting parameter value of parameter %s", p->name);
+			continue;
+		}
+		xmlrpc_value *param = NULL;
+		
+		if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
+			// Don't provide a default value for immutable parameters
+			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s}",
+							"name", p->name,
+							"value", value,
+							"type", ptype_get_name(p->value),
+							"description", p->description);
+		} else {
+			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s,s:s}",
+							"name", p->name,
+							"value", value,
+							"type", ptype_get_name(p->value),
+							"default_value", p->default_value,
+							"description", p->description);
+		}
+		free(value);
+
+		xmlrpc_array_append_item(envP, params, param);
+		xmlrpc_DECREF(param);
+
+	}
+	return params;
+}
 
 xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
@@ -147,14 +190,18 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 			xmlrpc_DECREF(inst);
 		}
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A}",
+		xmlrpc_value *params = xmlrpccmd_registry_build_params(envP, c->global_params);
+
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
-							"instances", instances);
+							"instances", instances,
+							"parameters", params);
 
 		xmlrpc_DECREF(types);
 		xmlrpc_DECREF(instances);
+		xmlrpc_DECREF(params);
 		xmlrpc_array_append_item(envP, classes, cls);
 		xmlrpc_DECREF(cls);
 
@@ -191,6 +238,64 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 }
 
+xmlrpc_value *xmlrpccmd_registry_set_class_param(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *cls = NULL, *param = NULL, *value = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(sss)", &cls, &param, &value);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	registry_lock();
+
+	struct registry_class *c = registry_find_class(cls);
+	if (!c) {
+		xmlrpc_faultf(envP, "Class %s not found", cls);
+		goto err;
+	}
+
+	struct registry_param *p = c->global_params;
+	for (; p && strcmp(p->name, param); p = p->next);
+
+	if (!p) {
+		xmlrpc_faultf(envP, "Parameter %s not found", param);
+		goto err;
+	}
+
+	free(cls);
+	free(param);
+
+	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
+		registry_unlock();
+		free(value);
+		xmlrpc_faultf(envP, "Parameter %s cannot be modified as it is immutable", p->name);
+		return NULL;
+	}
+
+
+	if (registry_set_param_value(p, value) != POM_OK) {
+		registry_unlock();
+		xmlrpc_faultf(envP, "Unable to set parameter value to \"%s\"", value);
+		free(value);
+		return NULL;
+	}
+	free(value);
+	
+	c->serial++;
+	registry_classes_serial_inc();
+	
+	registry_unlock();
+
+	return xmlrpc_int_new(envP, 0);
+
+err:
+	registry_unlock();
+
+	free(cls);
+	free(param);
+	free(value);
+	return NULL;
+}
 
 xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
@@ -307,38 +412,6 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 	free(cls);
 	free(instance);
 
-	xmlrpc_value *params = xmlrpc_array_new(envP);
-
-	struct registry_param *p;
-	for (p = i->params; p; p = p->next) {
-		char *value = ptype_print_val_alloc(p->value);
-		if (!value) {
-			xmlrpc_faultf(envP, "Error while getting parameter value of parameter %s", p->name);
-			goto err;
-		}
-		xmlrpc_value *param = NULL;
-		
-		if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE) {
-			// Don't provide a default value for immutable parameters
-			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s}",
-							"name", p->name,
-							"value", value,
-							"type", ptype_get_name(p->value),
-							"description", p->description);
-		} else {
-			param = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s,s:s}",
-							"name", p->name,
-							"value", value,
-							"type", ptype_get_name(p->value),
-							"default_value", p->default_value,
-							"description", p->description);
-		}
-		free(value);
-
-		xmlrpc_array_append_item(envP, params, param);
-		xmlrpc_DECREF(param);
-
-	}
 
 	xmlrpc_value *funcs = xmlrpc_array_new(envP);
 
@@ -353,6 +426,8 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 	}
 
 	registry_unlock();
+
+	xmlrpc_value *params = xmlrpccmd_registry_build_params(envP, i->params);
 
 	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A}",
 				"name", i->name,
