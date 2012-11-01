@@ -36,6 +36,7 @@
 #define CORE_PROCESS_THREAD_MAX		64
 #define CORE_PROCESS_THREAD_DEFAULT	2
 
+#define CORE_REGISTRY "core"
 enum core_state {
 	core_state_idle = 0, // Core is idle
 	core_state_running, // Core is receiving packets from the input

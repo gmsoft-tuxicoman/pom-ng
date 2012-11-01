@@ -29,8 +29,7 @@
 #include "main.h"
 #include "proto.h"
 
-// Define this to debug core packets
-//#define CORE_DUMP_PKT_INFO
+#include <pom-ng/ptype_bool.h>
 
 static int core_run = 0; // Set to 1 while the processing thread should run
 static enum core_state core_cur_state = core_state_idle;
@@ -46,6 +45,9 @@ static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 static struct timeval core_clock[CORE_PROCESS_THREAD_MAX];
 static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static struct registry_class *core_registry_class = NULL;
+static struct ptype *core_param_dump_pkt = NULL;
+
 // Packet queue
 static struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
 static struct core_packet_queue *core_pkt_queue_unused = NULL;
@@ -55,6 +57,23 @@ static pthread_mutex_t core_pkt_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 int core_init(int num_threads) {
+
+	core_registry_class = registry_add_class(CORE_REGISTRY);
+	if (!core_registry_class)
+		return POM_ERR;
+
+	core_param_dump_pkt = ptype_alloc("bool");
+
+	struct registry_param *param = registry_new_param("dump_pkt", "no", core_param_dump_pkt, "Dump packets to logs", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (!param) {
+		ptype_cleanup(core_param_dump_pkt);
+		return POM_ERR;
+	}
+
+	if (registry_class_add_param(core_registry_class, param) != POM_OK) {
+		ptype_cleanup(core_param_dump_pkt);
+		registry_cleanup_param(param);
+	}
 
 	// Initialize the conditions for the sheduler thread
 	if (pthread_cond_init(&core_pkt_queue_restart_cond, NULL)) {
@@ -369,7 +388,6 @@ void *core_processing_thread_func(void *priv) {
 	return NULL;
 }
 
-#ifdef CORE_DUMP_PKT_INFO
 int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int res) {
 
 	char *res_str = "unknown result code";
@@ -417,17 +435,15 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 
 	return POM_OK;
 }
-#endif
 
 int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p) {
 
 	
 	int res = core_process_packet_stack(s, stack_index, p);
 
-#ifdef CORE_DUMP_PKT_INFO
-	if (res != PROTO_ERR)
+	char *dump_pkt = PTYPE_BOOL_GETVAL(core_param_dump_pkt);
+	if (*dump_pkt)
 		core_process_dump_info(s, p, res);
-#endif
 	
 	// Clean the stack
 	memset(&s[stack_index], 0, sizeof(struct proto_process_stack) * (CORE_PROTO_STACK_MAX - stack_index));
@@ -514,12 +530,13 @@ int core_process_packet(struct packet *p) {
 
 	int res = core_process_packet_stack(s, CORE_PROTO_STACK_START, p);
 
-#ifdef CORE_DUMP_PKT_INFO
-	core_process_dump_info(s, p, res);
-#endif
+	char *dump_pkt = PTYPE_BOOL_GETVAL(core_param_dump_pkt);
+	if (*dump_pkt)
+		core_process_dump_info(s, p, res);
 
 	if (res == PROTO_ERR)
 		return PROTO_ERR;
+
 	return PROTO_OK;
 }
 
