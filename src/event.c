@@ -289,8 +289,10 @@ int event_has_listener(struct event_reg *evt_reg) {
 int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index) {
 
 	int res = event_process_begin(evt, stack, stack_index);
-	if (res != POM_OK)
+	if (res != POM_OK) {
+		event_cleanup(evt);
 		return res;
+	}
 
 	return event_process_end(evt);
 }
@@ -325,11 +327,13 @@ int event_process_end(struct event *evt) {
 
 	if (!(evt->flags & EVENT_FLAG_PROCESS_BEGAN)) {
 		pomlog(POMLOG_ERR "Internal error: event %s processing hasn't begun", evt->reg->info->name);
+		event_cleanup(evt);
 		return POM_ERR;
 	}
 
 	if (evt->flags & EVENT_FLAG_PROCESS_DONE) {
 		pomlog(POMLOG_ERR "Internal error: event %s has already been processed entirely", evt->reg->info->name);
+		event_cleanup(evt);
 		return POM_ERR;
 	}
 
