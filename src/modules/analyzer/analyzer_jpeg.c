@@ -254,6 +254,12 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 	int res = POM_OK;
 	if (!setjmp(priv->jmp_buff)) {
 
+		if (priv->jpeg_lib_pos) {
+			// It's not garanteed that pload->buff points to the
+			// same memory area after each call, so we reset it here
+			priv->cinfo.src->next_input_byte = pload->buff + priv->jpeg_lib_pos;
+		}
+
 		if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
 			return POM_OK; // Headers are incomplete
 
@@ -269,7 +275,6 @@ static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyze
 		for (marker = priv->cinfo.marker_list; marker && marker->marker != JPEG_APP0 + 1; marker = marker->next);
 
 		if (marker) {
-			pomlog(POMLOG_DEBUG "Got %u bytes of exif data", marker->data_length);
 			ExifData *exif_data = exif_data_new_from_data(marker->data, marker->data_length);
 			if (!exif_data) {
 				pomlog(POMLOG_DEBUG "Unable to parse EXIF data");
