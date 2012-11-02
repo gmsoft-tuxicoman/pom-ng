@@ -29,13 +29,15 @@
 #define __FAVOR_BSD // We use BSD favor of the udp header
 #include <netinet/udp.h>
 
+static struct proto *proto_dns = NULL;
+
 struct mod_reg_info* proto_udp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_udp_mod_register;
 	reg_info.unregister_func = proto_udp_mod_unregister;
-	reg_info.dependencies = "ptype_uint16";
+	reg_info.dependencies = "proto_dns, ptype_uint16";
 
 	return &reg_info;
 }
@@ -75,6 +77,8 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 
 static int proto_udp_init(struct proto *proto, struct registry_instance *i) {
 
+	proto_dns = proto_get("dns");
+
 	return POM_OK;
 }
 
@@ -102,9 +106,9 @@ static int proto_udp_process(struct proto *proto, struct packet *p, struct proto
 	s_next->pload = s->pload + sizeof(struct udphdr);
 	s_next->plen = ulen - sizeof(struct udphdr);
 
-/*	if (dport == 53 || sport == 53)
-		s_next->proto = priv->proto_dns->proto;
-*/
+	if (dport == 53 || sport == 53)
+		s_next->proto = proto_dns;
+
 	return PROTO_OK;
 
 }
