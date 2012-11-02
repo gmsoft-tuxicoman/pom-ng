@@ -162,7 +162,7 @@ err:
 	return POM_ERR;
 }
 
-int proto_http_cleanup(struct proto * proto) {
+int proto_http_cleanup(struct proto *proto) {
 
 	if (proto->priv) {
 		struct proto_http_priv *priv = proto->priv;
