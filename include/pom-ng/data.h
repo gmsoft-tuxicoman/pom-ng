@@ -26,8 +26,6 @@
 #define DATA_REG_FLAG_LIST	0x1
 // Indicate that the data should not be allocated automatically
 #define DATA_REG_FLAG_NO_ALLOC	0x2
-// Indicate that this data is always set by the corresponding module
-#define DATA_REG_FLAG_ALWAYS_SET 0x4
 
 // Indicate that the data has been set
 #define DATA_FLAG_SET		0x1
