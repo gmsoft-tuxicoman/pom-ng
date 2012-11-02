@@ -540,6 +540,7 @@ int packet_multipart_add_packet(struct packet_multipart *multipart, struct packe
 	struct packet_multipart_pkt *tmp = multipart->tail;
 
 	// Check where to add the packet
+	
 	while (tmp) {
 
 		if (tmp->offset + tmp->len <= offset)
@@ -551,12 +552,7 @@ int packet_multipart_add_packet(struct packet_multipart *multipart, struct packe
 			return POM_OK;
 		}
 
-		if (tmp->offset > offset) {
-			pomlog(POMLOG_WARN "Offset missmatch for packet already in the buffer");
-			return POM_OK;
-		}
-		
-		tmp = tmp->next;
+		tmp = tmp->prev;
 
 	}
 
