@@ -649,6 +649,12 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 
 	struct packet_multipart_pkt *tmp = multipart->head;
 	for (; tmp; tmp = tmp->next) {
+		if (tmp->offset + tmp->len > multipart->cur) {
+			pomlog(POMLOG_DEBUG "Offset in packet fragment is bigger than packet size.");
+			packet_pool_release(p);
+			packet_multipart_cleanup(multipart);
+			return PROTO_INVALID;
+		}
 		memcpy(p->buff + tmp->offset, tmp->pkt->buff + tmp->pkt_buff_offset, tmp->len);
 	}
 
