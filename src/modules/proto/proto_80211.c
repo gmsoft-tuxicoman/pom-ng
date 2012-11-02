@@ -33,7 +33,7 @@
 #include <arpa/inet.h>
 #include <ieee80211.h>
 
-static struct proto *proto_arp = NULL, *proto_ipv4 = NULL;
+static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL;
 
 struct mod_reg_info* proto_80211_reg_info() {
 
@@ -41,7 +41,7 @@ struct mod_reg_info* proto_80211_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_80211_mod_register;
 	reg_info.unregister_func = proto_80211_mod_unregister;
-	reg_info.dependencies = "proto_arp, proto_ipv4, ptype_mac, ptype_string, ptype_uint8";
+	reg_info.dependencies = "proto_arp, proto_ipv4, proto_ipv6, ptype_mac, ptype_string, ptype_uint8";
 
 	return &reg_info;
 }
@@ -90,8 +90,9 @@ static int proto_80211_init(struct proto *proto, struct registry_instance *i) {
 	
 	proto_arp = proto_get("arp");
 	proto_ipv4 = proto_get("ipv4");
+	proto_ipv6 = proto_get("ipv6");
 
-	if (!proto_arp || !proto_ipv4) {
+	if (!proto_arp || !proto_ipv4 || !proto_ipv6) {
 		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
 		return POM_ERR;
 	}
@@ -253,6 +254,9 @@ static int proto_80211_process(struct proto *proto, struct packet *p, struct pro
 					break;
 				case 0x0806:
 					s_next->proto = proto_arp;
+					break;
+				case 0x86dd:
+					s_next->proto = proto_ipv6;
 					break;
 			}
 
