@@ -43,7 +43,7 @@ struct mod_reg_info* proto_ipv6_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ipv6_mod_register;
 	reg_info.unregister_func = proto_ipv6_mod_unregister;
-	reg_info.dependencies = "proto_icmp, proto_tcp, proto_udp, ptype_ipv6, ptype_uint8, ptype_uint32";
+	reg_info.dependencies = "proto_icmp6, proto_tcp, proto_udp, ptype_ipv6, ptype_uint8, ptype_uint32";
 
 	return &reg_info;
 }
