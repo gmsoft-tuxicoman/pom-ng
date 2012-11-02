@@ -94,6 +94,9 @@ struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int
 
 int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, struct ptype *value) {
 
+	if (!key)
+		return POM_ERR;
+
 	struct data_item *item = malloc(sizeof(struct data_item));
 	if (!item) {
 		pom_oom(sizeof(struct data_item));
