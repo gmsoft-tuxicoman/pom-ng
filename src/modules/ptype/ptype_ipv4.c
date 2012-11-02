@@ -100,7 +100,7 @@ int ptype_ipv4_parse(struct ptype *p, char *val) {
 
 	
 	// Let's see first if there is a /
-	int i;
+	unsigned int i;
 	for (i = 0; i < strlen(val); i++) {
 		if (val[i] == '/') {
 			char ip[INET_ADDRSTRLEN];

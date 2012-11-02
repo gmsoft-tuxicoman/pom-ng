@@ -112,7 +112,7 @@ static int proto_80211_process(struct proto *proto, struct packet *p, struct pro
 
 	struct ieee80211_hdr *i80211hdr = s->pload;
 
-	int offt = 0;
+	unsigned int offt = 0;
 
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_80211_field_type], i80211hdr->u1.fc.type);
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_80211_field_subtype], i80211hdr->u1.fc.subtype);

@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
 				char *user = optarg;
 				struct passwd pwd, *res;
 
-				size_t buffsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+				long buffsize = sysconf(_SC_GETPW_R_SIZE_MAX);
 				if (buffsize < 0) {
 					pomlog(POMLOG_ERR "Could not find out buffer size for getpwnam_r()");
 					return -1;

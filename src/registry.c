@@ -528,7 +528,7 @@ int registry_instance_add_function(struct registry_instance *i, char *name, int 
 err:
 	if (f->name)
 		free(name);
-	if (f->description);
+	if (f->description)
 		free(f->description);
 	
 	free(f);

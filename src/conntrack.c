@@ -83,7 +83,7 @@ int conntrack_tables_empty(struct conntrack_tables *ct) {
 	if (!ct)
 		return POM_OK;
 	if (ct->fwd_table) {
-		int i;
+		unsigned int i;
 		for (i = 0; i < ct->tables_size; i++) {
 			while (ct->fwd_table[i]) {
 				struct conntrack_list *tmp = ct->fwd_table[i];
@@ -94,7 +94,7 @@ int conntrack_tables_empty(struct conntrack_tables *ct) {
 	}
 
 	if (ct->rev_table) {
-		int i;
+		unsigned int i;
 		for (i = 0; i < ct->tables_size; i++) {
 			while (ct->rev_table[i]) {
 				struct conntrack_list *tmp = ct->rev_table[i];
@@ -132,8 +132,6 @@ int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev) {
 		return POM_ERR;
 
 	size_t size_fwd = ptype_get_value_size(fwd);
-	if (size_fwd < 0)
-		return POM_ERR;
 
 	if (!rev) {
 		// Only fwd direction
@@ -150,8 +148,6 @@ int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev) {
 		}
 	 } else {
 		size_t size_rev = ptype_get_value_size(rev);
-		if (size_rev < 0)
-			return POM_ERR;
 
 		// Try to use the best hash function
 		if (size_fwd == sizeof(uint16_t) && size_rev == sizeof(uint16_t)) { // exactly one word
@@ -519,10 +515,11 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 	}
 
 	// Unlock the tables
-	if (parent)
+	if (parent) {
 		debug_conntrack("Allocated conntrack %p with parent %p", res, parent);
-	else
+	} else {
 		debug_conntrack("Allocated conntrack %p with no parent", res);
+	}
 	pom_mutex_lock(&res->lock);
 	res->refcount++;
 	pom_mutex_unlock(&ct->lock);
@@ -707,10 +704,11 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 
 	// At this point, the conntrack should not be used at all !
 
-	if (ce->parent)
+	if (ce->parent) {
 		debug_conntrack("Cleaning up conntrack %p, with parent %p", ce, ce->parent->ce);
-	else
+	} else {
 		debug_conntrack("Cleaning up conntrack %p, with no parent", ce);
+	}
 
 	// Cleanup private stuff from the conntrack
 	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {

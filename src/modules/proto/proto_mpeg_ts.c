@@ -126,7 +126,7 @@ int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_pr
 
 	// Find the MPEG stream from the right input
 	
-	int i;
+	unsigned int i;
 	for (i = 0; i < priv->streams_array_size && priv->streams[i].input != p->input; i++);
 
 	struct proto_mpeg_ts_stream *stream = NULL;
@@ -419,7 +419,7 @@ int proto_mpeg_ts_stream_cleanup(void *priv, struct timeval *now) {
 	struct proto_mpeg_ts_conntrack_priv *cpriv = stream->ce->priv;
 
 	// Find out where it is in the table
-	int i;
+	unsigned int i;
 	for (i = 0; i < cpriv->streams_array_size && cpriv->streams[i].input != stream->input; i++);
 
 	if (i >= cpriv->streams_array_size) {
@@ -455,7 +455,7 @@ int proto_mpeg_ts_stream_cleanup(void *priv, struct timeval *now) {
 int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce) {
 
 	struct proto_mpeg_ts_conntrack_priv *priv = ce->priv;
-	int i;
+	unsigned int i;
 	for (i = 0; i < priv->streams_array_size; i++){ 
 		if (priv->streams[i].multipart) 
 			packet_multipart_cleanup(priv->streams[i].multipart);

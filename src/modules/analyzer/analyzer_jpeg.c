@@ -334,7 +334,7 @@ static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_b
 	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
 
 	// Find out remaining bytes
-	if (num_bytes >= cinfo->src->bytes_in_buffer) {
+	if ((size_t)num_bytes >= cinfo->src->bytes_in_buffer) {
 		priv->jpeg_lib_pos += num_bytes - cinfo->src->bytes_in_buffer;
 		cinfo->src->bytes_in_buffer = 0;
 	} else {

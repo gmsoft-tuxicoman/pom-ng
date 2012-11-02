@@ -77,7 +77,7 @@ int pom_open(const char *filename, int flags, mode_t mode) {
 
 int pom_write(int fd, const void *buf, size_t count) {
 
-	ssize_t pos = 0;
+	size_t pos = 0;
 	while (pos < count) {
 		ssize_t len = write(fd, buf + pos, count - pos);
 		if (len < 0) {

@@ -40,7 +40,7 @@ void pomlog_internal(const char *file, const char *format, ...) {
 
 
 
-	int level = *POMLOG_INFO;
+	unsigned int level = *POMLOG_INFO;
 	if (format[0] <= *POMLOG_DEBUG) {
 		level = format[0];
 		format++;
@@ -156,7 +156,7 @@ int pomlog_cleanup() {
 
 int pomlog_set_debug_level(unsigned int debug_level) {
 
-	if (debug_level > *POMLOG_DEBUG)
+	if (debug_level > (unsigned int) *POMLOG_DEBUG)
 		debug_level = *POMLOG_DEBUG;
 
 	pomlog_debug_level = debug_level;

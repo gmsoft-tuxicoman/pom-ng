@@ -230,7 +230,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->name) < 0)
 		goto err;
 
-	unsigned int i;
+	int i;
 	for (i = 0; i < evt->reg->info->data_reg->data_count; i++) {
 		if (evt->reg->info->data_reg->items[i].flags & ANALYZER_DATA_FLAG_LIST) {
 			// Got a data_list

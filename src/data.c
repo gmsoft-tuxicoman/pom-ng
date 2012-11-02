@@ -104,7 +104,7 @@ int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, s
 	}
 	memset(item, 0, sizeof(struct data_item));
 	
-	item->key = key;
+	item->key = (char*)key;
 	item->value = value;
 
 	item->next = d[data_id].items;

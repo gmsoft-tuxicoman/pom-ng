@@ -26,7 +26,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
 
-#define PACKET_HALF_SEQ (0x1 << 31)
+#define PACKET_HALF_SEQ (uint32_t)(0x1 << 31)
 
 #define PACKET_BUFFER_ALIGNMENT 4
 

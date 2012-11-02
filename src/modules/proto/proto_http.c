@@ -645,7 +645,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					if (!priv->event[direction])
 						return POM_ERR;
 
-					int i;
+					unsigned int i;
 					for (i = 0; i < tok_len; i++) {
 						if ((token[i]) < 'A' || (token[i] > 'Z' && token[i] < 'a') || (token[i] > 'z')) {
 							// Definitely not a HTTP method

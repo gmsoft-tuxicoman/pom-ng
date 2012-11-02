@@ -28,7 +28,7 @@
 struct filter_proto {
 	struct proto *proto; // If there is a proto, then it's a single match. Else it's a branch
 
-	unsigned int op;
+	int op;
 	struct filter_proto *a, *b;
 
 	int field_id;
