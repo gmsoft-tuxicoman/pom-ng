@@ -24,6 +24,7 @@
 #include <pom-ng/event.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_ipv4.h>
+#include <pom-ng/ptype_ipv6.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
@@ -42,7 +43,7 @@ struct mod_reg_info* proto_dns_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_dns_mod_register;
 	reg_info.unregister_func = proto_dns_mod_unregister;
-	reg_info.dependencies = "ptype_bool, ptype_ipv4, ptype_string, ptype_uint8, ptype_uint16, ptype_uint32";
+	reg_info.dependencies = "ptype_bool, ptype_ipv4, ptype_ipv6, ptype_string, ptype_uint8, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 }
@@ -414,6 +415,27 @@ static int proto_dns_process(struct proto *proto, struct packet *p, struct proto
 				PTYPE_IPV4_SETADDR(ipv4_val, ipv4);
 				if (data_item_add_ptype(evt_record->data, proto_dns_record_values, strdup("a"), ipv4_val) != POM_OK) {
 					ptype_cleanup(ipv4_val);
+					break;
+				}
+				process_event = 1;
+				break;
+			}
+
+			case ns_t_aaaa: {
+				if (rr.rdlen < sizeof(struct in6_addr)) {
+					event_cleanup(evt_record);
+					pomlog(POMLOG_DEBUG "RDLEN too small to contain ipv6");
+					return PROTO_INVALID;
+				}
+
+				struct ptype_ipv6_val ipv6 = { { { { 0 } } } };
+				memcpy(&ipv6, data_start, sizeof(struct in6_addr));
+				struct ptype *ipv6_val = ptype_alloc("ipv6");
+				if (!ipv6_val)
+					break;
+				PTYPE_IPV6_SETADDR(ipv6_val, ipv6);
+				if (data_item_add_ptype(evt_record->data, proto_dns_record_values, strdup("aaaa"), ipv6_val) != POM_OK) {
+					ptype_cleanup(ipv6_val);
 					break;
 				}
 				process_event = 1;
