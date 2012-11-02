@@ -1,3 +1,31 @@
+=============================================
+| .-----.-----.--------.______.-----.-----. |
+| |  _  |  _  |        |______|     |  _  | |
+| |   __|_____|__|__|__|      |__|__|___  | |
+| |__|                              |_____| |
+=============================================
+
 packet-o-matic new generation !
 
+About :
+=======
+This is a network forensics tool that parses network traffic from files, network
+interfaces and other and allow you to get any information you wish from what is
+happening. It parses network traffic into events and payloads which can then be
+logged, saved or anything else you might imagine.
 
+License :
+=========
+General Public License (GPL) v2 or later.
+
+Home page :
+===========
+http://www.packet-o-matic.org
+
+Documentation :
+===============
+For additional documentation, check the wiki pages at http://wiki.packet-o-matic.org
+
+Author :
+========
+Guy Martin <gmsoft@tuxicoman.be>
