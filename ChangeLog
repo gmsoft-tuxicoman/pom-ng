@@ -1,4 +1,21 @@
 
+v0.0.5
+	Add exif parsing support for jpeg images.
+	Fix LUA pload processing functions when open/write return false or not
+	all functions are provided.
+	Add ipv6 and icmp6 support.
+	Add DNS support.
+	Add class parameter support in XML-RPC interface.
+	Add core class parameter dump_pkt to debug processing of packets.
+	Fix multipart handling.
+	Fix warnings from GCC.
+
+v0.0.4
+	Update LUA API to have payload open/write functions return a boolean.
+	Fix segfault when processing HTTP POST data.
+	Fix leak of packet_info when first proto doesn't have packet_info and
+	packets are queued in packet_stream.
+
 v0.0.3
 	Add support for vlan protocol aka 802.1q.
 	Fix payload processing when gzipped.
@@ -10,4 +27,4 @@ v0.0.2
 	Add proper versioning.
 
 v0.0.1
-	First version .
+	First version.
