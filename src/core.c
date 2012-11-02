@@ -401,6 +401,9 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 		case PROTO_STOP:
 			res_str = "processing stopped";
 			break;
+		case PROTO_ERR:
+			res_str = "processing encountered an error";
+			break;
 	}
 
 	static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
