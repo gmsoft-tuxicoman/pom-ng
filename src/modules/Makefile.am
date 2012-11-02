@@ -23,7 +23,7 @@ DATASTORE_SRC = @DATASTORE_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_80211.la proto_arp.la proto_dns.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_ipv4.la proto_mpeg.la proto_radiotap.la proto_tcp.la proto_udp.la proto_vlan.la
-PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
+PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
@@ -121,6 +121,9 @@ ptype_mac_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_ipv4_la_SOURCES = ptype/ptype_ipv4.c ptype/ptype_ipv4.h
 ptype_ipv4_la_LDFLAGS = -module -avoid-version 
 ptype_ipv4_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_ipv6_la_SOURCES = ptype/ptype_ipv6.c ptype/ptype_ipv6.h
+ptype_ipv6_la_LDFLAGS = -module -avoid-version 
+ptype_ipv6_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_uint8_la_SOURCES = ptype/ptype_uint8.c ptype/ptype_uint8.h
 ptype_uint8_la_LDFLAGS = -module -avoid-version 
 ptype_uint8_la_LIBADD = $(top_builddir)/src/libpom-ng.la
