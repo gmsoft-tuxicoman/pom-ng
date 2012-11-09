@@ -23,16 +23,6 @@
 
 #define PROTO_DNS_FIELD_NUM 6
 
-enum proto_dns_fields {
-	proto_dns_field_id = 0,
-	proto_dns_field_response,
-	proto_dns_field_rcode,
-	proto_dns_field_qdcount,
-	proto_dns_field_ancount,
-	proto_dns_field_nscount,
-	proto_dns_field_arcount
-};
-
 struct dns_header {
 
 	uint16_t id;
@@ -66,43 +56,8 @@ struct dns_header {
 };
 
 
-struct proto_dns_priv {
-	struct event_reg *evt_record;
-};
-
-
-struct proto_dns_question {
-
-	char *qname;
-	uint16_t qtype;
-	uint16_t qclass;
-};
-
-struct proto_dns_rr {
-
-	char *name;
-	uint16_t type;
-	uint16_t cls;
-	uint32_t ttl;
-	uint16_t rdlen;
-	void * rdata;
-
-};
-
-#define PROTO_DNS_EVT_RECORD_DATA_COUNT 5
-
-enum {
-	proto_dns_record_name,
-	proto_dns_record_ttl,
-	proto_dns_record_type,
-	proto_dns_record_class,
-	proto_dns_record_values,
-};
-
 struct mod_reg_info* proto_dns_reg_info();
 static int proto_dns_mod_register(struct mod_reg *mod);
-static int proto_dns_init(struct proto *proto, struct registry_instance *ri);
-static int proto_dns_cleanup(struct proto *proto);
 static int proto_dns_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_dns_mod_unregister();
 
