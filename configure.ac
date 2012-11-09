@@ -200,7 +200,7 @@ fi
 if test "x$want_xmlrpc" = "xyes"
 then
 	AC_CHECK_LIB([xmlrpc_server], [xmlrpc_registry_process_call2], [AC_DEFINE(HAVE_XMLRPC_REGISTRY_PROCESS_CALL2, , [Has the new xmlrpc API])])
-	xmlrpc_LIBS="-lxmlrpc_server -lxmlrpc -lxmlrpc_util -lz -lm"
+	xmlrpc_LIBS="-lxmlrpc_server -lxmlrpc -lxmlrpc_util -lm"
 	xmlrpc_LIBS="${xmlrpc_LIBS} `xmlrpc-c-config server-util --libs`"
 	AC_DEFINE(USE_XMLRPC, , [Compile XML-RPC interface])
 fi
@@ -234,8 +234,13 @@ then
 fi
 
 # Check for Lua
-PKG_CHECK_MODULES(lua, [lua], [], AC_MSG_ERROR([lua is required to build this program])])
+PKG_CHECK_MODULES(lua, [lua5.1], [has_lua=yes], [has_lua=no])
+if test "x$has_lua" = "xno"
+then
+	PKG_CHECK_MODULES(lua, [lua], [], AC_MSG_ERROR([lua is required to build this program])])
+fi
 AC_SUBST(lua_LIBS)
+AC_SUBST(lua_CFLAGS)
 
 # Check for libexif
 PKG_CHECK_MODULES(libexif, [libexif], [want_libexif=yes], [want_libexif=no])
