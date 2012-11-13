@@ -92,21 +92,28 @@ static int proto_vlan_process(struct proto *proto, struct packet *p, struct prot
 
 	struct proto_process_stack *s = &stack[stack_index];
 
-	if (sizeof(struct vlan_header) > s->plen)
+	if (s->plen < PROTO_VLAN_HEADER_SIZE)
 		return PROTO_INVALID;
 
-	struct vlan_header *vhdr = s->pload;
+	uint16_t tci = ntohs(*(uint16_t*)s->pload);
+	uint16_t *ether_type = s->pload + sizeof(uint16_t);
+
+
+	uint16_t de = (tci & PROTO_VLAN_DE_MASK) >> PROTO_VLAN_DE_SHIFT;
+	uint16_t pcp = (tci & PROTO_VLAN_PCP_MASK) >> PROTO_VLAN_PCP_SHIFT;
+	uint16_t vid = tci & PROTO_VLAN_VID_MASK;
+
 	
-	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_vlan_field_vid], vhdr->vid);
-	PTYPE_BOOL_SETVAL(s->pkt_info->fields_value[proto_vlan_field_de], vhdr->de);
-	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_vlan_field_pcp], vhdr->pcp);
+	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_vlan_field_vid], vid);
+	PTYPE_BOOL_SETVAL(s->pkt_info->fields_value[proto_vlan_field_de], de);
+	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_vlan_field_pcp], pcp);
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	s_next->pload = s->pload + sizeof(struct vlan_header);
-	s_next->plen = s->plen - sizeof(struct vlan_header);
+	s_next->pload = s->pload + PROTO_VLAN_HEADER_SIZE;
+	s_next->plen = s->plen - PROTO_VLAN_HEADER_SIZE;
 
-	switch (ntohs(vhdr->ether_type)) {
+	switch (ntohs(*ether_type)) {
 		case 0x0800:
 			s_next->proto = proto_ipv4;
 			break;

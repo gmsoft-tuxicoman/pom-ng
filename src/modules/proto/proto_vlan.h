@@ -21,22 +21,13 @@
 #ifndef __PROTO_VLAN_H__
 #define __PROTO_VLAN_H__
 
-struct vlan_header {
+#define PROTO_VLAN_HEADER_SIZE	4
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-	uint16_t vid:12;
-	uint16_t de:1;
-	uint16_t pcp:3;
-#elif __BYTE_ORDER == __BIG_ENDIAN
-	uint16_t user_priority:3;
-	uint16_t de:1;
-	uint16_t pcp:12;
-#else
-# error "Please fix <endian.h>"
-#endif
-
-	uint16_t ether_type;
-};
+#define PROTO_VLAN_DE_MASK	0xE000
+#define PROTO_VLAN_DE_SHIFT	13
+#define PROTO_VLAN_PCP_MASK	0x1000
+#define PROTO_VLAN_PCP_SHIFT	12
+#define PROTO_VLAN_VID_MASK	0x0FFF
 
 #define PROTO_VLAN_FIELD_NUM 3
 
