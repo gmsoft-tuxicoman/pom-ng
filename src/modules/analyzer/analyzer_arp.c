@@ -21,7 +21,9 @@
 #include <pom-ng/ptype_ipv4.h>
 #include <pom-ng/ptype_mac.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint16.h>
 #include <pom-ng/proto_arp.h>
+#include <pom-ng/proto_vlan.h>
 #include <pom-ng/input.h>
 
 #include "analyzer_arp.h"
@@ -32,7 +34,7 @@ struct mod_reg_info *analyzer_arp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_arp_mod_register;
 	reg_info.unregister_func = analyzer_arp_mod_unregister;
-	reg_info.dependencies = "proto_arp, ptype_ipv4, ptype_mac, ptype_string";
+	reg_info.dependencies = "proto_arp, proto_vlan, ptype_ipv4, ptype_mac, ptype_string, ptype_uint16";
 
 	return &reg_info;
 }
@@ -72,6 +74,9 @@ static int analyzer_arp_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
+	priv->proto_vlan = proto_get("vlan");
+	if (!priv->proto_vlan)
+		goto err;
 
 	static struct data_item_reg evt_new_sta_data_items[ANALYZER_ARP_EVT_NEW_STA_DATA_COUNT] = { { 0 } };
 
@@ -79,6 +84,8 @@ static int analyzer_arp_init(struct analyzer *analyzer) {
 	evt_new_sta_data_items[analyzer_arp_new_sta_mac_addr].value_type = ptype_get_type("mac");
 	evt_new_sta_data_items[analyzer_arp_new_sta_ip_addr].name = "ip_addr";
 	evt_new_sta_data_items[analyzer_arp_new_sta_ip_addr].value_type = ptype_get_type("ipv4");
+	evt_new_sta_data_items[analyzer_arp_new_sta_vlan].name = "vlan";
+	evt_new_sta_data_items[analyzer_arp_new_sta_vlan].value_type = ptype_get_type("uint16");
 	evt_new_sta_data_items[analyzer_arp_new_sta_input].name = "input";
 	evt_new_sta_data_items[analyzer_arp_new_sta_input].value_type = ptype_get_type("string");
 
@@ -108,6 +115,8 @@ static int analyzer_arp_init(struct analyzer *analyzer) {
 	evt_sta_changed_data_items[analyzer_arp_sta_changed_new_mac_addr].value_type = ptype_get_type("mac");
 	evt_sta_changed_data_items[analyzer_arp_sta_changed_ip_addr].name = "ip_addr";
 	evt_sta_changed_data_items[analyzer_arp_sta_changed_ip_addr].value_type = ptype_get_type("ipv4");
+	evt_sta_changed_data_items[analyzer_arp_sta_changed_vlan].name = "vlan";
+	evt_sta_changed_data_items[analyzer_arp_sta_changed_vlan].value_type = ptype_get_type("uint16");
 	evt_sta_changed_data_items[analyzer_arp_sta_changed_input].name = "input";
 	evt_sta_changed_data_items[analyzer_arp_sta_changed_input].value_type = ptype_get_type("string");
 
@@ -197,6 +206,7 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 	struct analyzer_arp_priv *priv = analyzer->priv;
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 
 	struct in_addr arp_ip = PTYPE_IPV4_GETADDR(s->pkt_info->fields_value[proto_arp_field_sender_proto_addr]);
 
@@ -208,11 +218,15 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 	uint32_t id = arp_ip.s_addr & ANALYZER_ARP_HOST_MASK;
 	char *arp_mac = PTYPE_MAC_GETADDR(s->pkt_info->fields_value[proto_arp_field_sender_hw_addr]);
 
+	uint16_t vlan = 0;
+	if (s_prev->proto == priv->proto_vlan)
+		vlan = *PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[proto_vlan_field_vid]);
+
 	pom_mutex_lock(&priv->lock);
 
 	struct analyzer_arp_host *host;
 	for (host = priv->hosts[id]; host; host = host->next) {
-		if (host->ip.s_addr == arp_ip.s_addr)
+		if (host->ip.s_addr == arp_ip.s_addr && host->vlan == vlan)
 			break;
 	}
 
@@ -228,6 +242,7 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 
 		host->ip.s_addr = arp_ip.s_addr;
 		memcpy(host->mac, arp_mac, sizeof(host->mac));
+		host->vlan = vlan;
 
 		host->next = priv->hosts[id];
 		if (host->next)
@@ -248,6 +263,8 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 			data_set(evt_data[analyzer_arp_new_sta_mac_addr]);
 			ptype_copy(evt_data[analyzer_arp_new_sta_ip_addr].value, s->pkt_info->fields_value[proto_arp_field_sender_proto_addr]);
 			data_set(evt_data[analyzer_arp_new_sta_ip_addr]);
+			PTYPE_UINT16_SETVAL(evt_data[analyzer_arp_new_sta_vlan].value, vlan);
+			data_set(evt_data[analyzer_arp_new_sta_vlan]);
 			PTYPE_STRING_SETVAL(evt_data[analyzer_arp_new_sta_input].value, p->input->name);
 			data_set(evt_data[analyzer_arp_new_sta_input]);
 			if (event_process(evt, stack, stack_index) != POM_OK)
@@ -274,6 +291,8 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 			data_set(evt_data[analyzer_arp_sta_changed_new_mac_addr]);
 			ptype_copy(evt_data[analyzer_arp_sta_changed_ip_addr].value, s->pkt_info->fields_value[proto_arp_field_sender_proto_addr]);
 			data_set(evt_data[analyzer_arp_sta_changed_ip_addr]);
+			PTYPE_UINT16_SETVAL(evt_data[analyzer_arp_sta_changed_vlan].value, vlan);
+			data_set(evt_data[analyzer_arp_sta_changed_vlan]);
 			PTYPE_STRING_SETVAL(evt_data[analyzer_arp_sta_changed_input].value, p->input->name);
 			data_set(evt_data[analyzer_arp_sta_changed_input]);
 

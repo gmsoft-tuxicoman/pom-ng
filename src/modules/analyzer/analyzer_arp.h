@@ -27,20 +27,22 @@
 #define ANALYZER_ARP_HOST_TABLE_SIZE (1 << 12)
 #define ANALYZER_ARP_HOST_MASK (ANALYZER_ARP_HOST_TABLE_SIZE - 1)
 
-#define ANALYZER_ARP_EVT_NEW_STA_DATA_COUNT 3
+#define ANALYZER_ARP_EVT_NEW_STA_DATA_COUNT 4
 
 enum {
 	analyzer_arp_new_sta_mac_addr,
 	analyzer_arp_new_sta_ip_addr,
+	analyzer_arp_new_sta_vlan,
 	analyzer_arp_new_sta_input
 };
 
-#define ANALYZER_ARP_EVT_STA_CHANGED_DATA_COUNT 4
+#define ANALYZER_ARP_EVT_STA_CHANGED_DATA_COUNT 5
 
 enum {
 	analyzer_arp_sta_changed_old_mac_addr,
 	analyzer_arp_sta_changed_new_mac_addr,
 	analyzer_arp_sta_changed_ip_addr,
+	analyzer_arp_sta_changed_vlan,
 	analyzer_arp_sta_changed_input
 };
 
@@ -48,6 +50,7 @@ enum {
 struct analyzer_arp_host {
 
 	struct in_addr ip;
+	uint16_t vlan;
 	char mac[6];
 	struct analyzer_arp_host *prev, *next;
 
@@ -58,6 +61,7 @@ struct analyzer_arp_priv {
 	struct event_reg *evt_new_sta;
 	struct event_reg *evt_sta_changed;
 	struct proto_packet_listener *pkt_listener;
+	struct proto *proto_vlan;
 
 	pthread_mutex_t lock;
 	struct analyzer_arp_host *hosts[ANALYZER_ARP_HOST_TABLE_SIZE];

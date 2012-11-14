@@ -31,12 +31,6 @@
 
 #define PROTO_VLAN_FIELD_NUM 3
 
-enum proto_ethernet_fields {
-	proto_vlan_field_vid = 0,
-	proto_vlan_field_de,
-	proto_vlan_field_pcp,
-};
-
 struct mod_reg_info* proto_vlan_reg_info();
 static int proto_vlan_init(struct proto *proto, struct registry_instance *i);
 static int proto_vlan_mod_register(struct mod_reg *mod);

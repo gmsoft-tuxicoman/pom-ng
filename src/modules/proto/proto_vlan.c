@@ -24,6 +24,7 @@
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
 
+#include <pom-ng/proto_vlan.h>
 #include "proto_vlan.h"
 
 #include <arpa/inet.h>
