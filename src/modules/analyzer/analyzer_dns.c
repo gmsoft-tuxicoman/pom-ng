@@ -23,13 +23,17 @@
 #include <pom-ng/ptype_ipv4.h>
 #include <pom-ng/ptype_ipv6.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_bool.h>
+#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
 #include <pom-ng/proto_dns.h>
+#include <pom-ng/timer.h>
 
 #include "analyzer_dns.h"
 
 #include <arpa/nameser.h>
+
 
 struct mod_reg_info *analyzer_dns_reg_info() {
 
@@ -71,6 +75,12 @@ static int analyzer_dns_init(struct analyzer *analyzer) {
 
 	analyzer->priv = priv;
 
+	if (pthread_mutex_init(&priv->lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing query lock : %s", pom_strerror(errno));
+		free(priv);
+		return POM_ERR;
+	}
+
 	static struct data_item_reg evt_dns_record_data_items[ANALYZER_DNS_EVT_RECORD_DATA_COUNT] = { { 0 } };
 	evt_dns_record_data_items[analyzer_dns_record_name].name = "name";
 	evt_dns_record_data_items[analyzer_dns_record_name].value_type = ptype_get_type("string");
@@ -96,6 +106,8 @@ static int analyzer_dns_init(struct analyzer *analyzer) {
 	analyzer_dns_evt_record.data_reg = &evt_dns_record_data;
 	analyzer_dns_evt_record.listeners_notify = analyzer_dns_event_listeners_notify;
 
+	struct registry_param *p = NULL;
+
 	priv->proto_dns = proto_get("dns");
 	if (!priv->proto_dns)
 		goto err;
@@ -104,9 +116,31 @@ static int analyzer_dns_init(struct analyzer *analyzer) {
 	if (!priv->evt_record)
 		goto err;
 
+	priv->p_anti_spoof = ptype_alloc("bool");
+	if (!priv->p_anti_spoof)
+		goto err;
+
+	priv->p_qtimeout = ptype_alloc("uint32");
+	if (!priv->p_qtimeout)
+		goto err;
+
+	p = registry_new_param("anti_spoof", "no", priv->p_anti_spoof, "Prevent spoofing by accepting only replies that match a query", 0);
+	if (registry_instance_add_param(analyzer->reg_instance, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("q_timeout", "10", priv->p_qtimeout, "Query timeout for anti spoofing protection", 0);
+	if (registry_instance_add_param(analyzer->reg_instance, p) != POM_OK)
+		goto err;
+
+	p = NULL;
+
+
 	return POM_OK;
 
 err:
+	if (p)
+		registry_cleanup_param(p);
+
 	analyzer_dns_cleanup(analyzer);
 	return POM_ERR;
 
@@ -117,8 +151,14 @@ static int analyzer_dns_cleanup(struct analyzer *analyzer) {
 	struct analyzer_dns_priv *priv = analyzer->priv;
 
 	if (priv) {
+		pthread_mutex_destroy(&priv->lock);
+
 		if (priv->evt_record)
 			event_unregister(priv->evt_record);
+		if (priv->p_anti_spoof)
+			ptype_cleanup(priv->p_anti_spoof);
+		if (priv->p_qtimeout)
+			ptype_cleanup(priv->p_qtimeout);
 		free(priv);
 	}
 	
@@ -168,20 +208,20 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 		if (len > 63) {
 			if ((len & 0xC0) != 0xC0) {
 				pomlog(POMLOG_DEBUG "Invalid label length : 0x%X", len);
-				return PROTO_INVALID;
+				return POM_ERR;
 			}
 			// We have a pointer
 			uint16_t offset = ((data_tmp[0] & 0x3f) << 8) | data_tmp[1];
 			if (offset > msg_len) {
 				pomlog(POMLOG_DEBUG "Offset too big : %u > %zu", offset, msg_len);
-				return PROTO_INVALID;
+				return POM_ERR;
 			}
 			data_tmp = msg + offset;
 			len = *data_tmp;
 
 			if (len > 63) {
 				pomlog(POMLOG_DEBUG "Label pointer points to a pointer");
-				return PROTO_INVALID;
+				return POM_ERR;
 			}
 
 		}
@@ -190,7 +230,7 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 
 		if (data_tmp + len > msg_end) {
 			pomlog(POMLOG_DEBUG "Label length too big");
-			return PROTO_INVALID;
+			return POM_ERR;
 		}
 
 		label_len += len;
@@ -203,7 +243,7 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 	*name = malloc(label_len);
 	if (!*name) {
 		pom_oom(label_len);
-		return PROTO_ERR;
+		return POM_ERR;
 	}
 
 	char *name_cur = *name;
@@ -251,17 +291,17 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 		*data_len -= 1;
 	}
 
-	return PROTO_OK;
+	return POM_OK;
 }
 
 static int analyzer_dns_parse_question(void **data, size_t *data_len, struct analyzer_dns_question *q) {
 
 	int res = analyzer_dns_parse_name(NULL, data, data_len, &q->qname);
-	if (res != PROTO_OK)
+	if (res != POM_OK)
 		return res;
 	if (*data_len < (sizeof(uint16_t) * 2)) {
 		free(q->qname);
-		return PROTO_INVALID;
+		return POM_ERR;
 	}
 
 	*data_len -= sizeof(uint16_t) * 2;
@@ -272,20 +312,20 @@ static int analyzer_dns_parse_question(void **data, size_t *data_len, struct ana
 	q->qclass = analyzer_dns_get_uint16(*data);
 	*data += sizeof(uint16_t);
 
-	return PROTO_OK;
+	return POM_OK;
 
 }
 
 static int analyzer_dns_parse_rr(void *msg, void **data, size_t *data_len, struct analyzer_dns_rr *rr) {
 
 	int res = analyzer_dns_parse_name(msg, data, data_len, &rr->name);
-	if (res != PROTO_OK)
+	if (res != POM_OK)
 		return res;
 
 	if (*data_len < 10) {
 		pomlog(POMLOG_DEBUG "Data length too short to parse RR");
 		free(rr->name);
-		return PROTO_INVALID;
+		return POM_ERR;
 	}
 
 	rr->type = analyzer_dns_get_uint16(*data);
@@ -303,55 +343,242 @@ static int analyzer_dns_parse_rr(void *msg, void **data, size_t *data_len, struc
 	rr->rdata = *data;
 	*data_len -= 10;
 
-	return PROTO_OK;
+	return POM_OK;
 }
 
 
+static int analyzer_dns_query_timeout(void *obj, struct timeval *tv) {
+
+	struct analyzer_dns_priv *priv = obj;
+
+	pom_mutex_lock(&priv->lock);
+
+	if (!priv->entry_tail) {
+		pomlog(POMLOG_WARN "DNS query timeout fired but no queries in the list");
+		pom_mutex_unlock(&priv->lock);
+		return POM_OK;
+	}
+
+	struct analyzer_dns_query *tmp = priv->entry_tail;
+
+	if (tmp->prev)
+		tmp->prev->next = NULL;
+	else
+		priv->entry_head = NULL;
+
+	priv->entry_tail = tmp->prev;
+
+	timer_cleanup(tmp->t);
+	pom_mutex_unlock(&priv->lock);
+
+	ptype_cleanup(tmp->src_ip);
+	ptype_cleanup(tmp->dst_ip);
+	free(tmp->name);
+	free(tmp);
+
+	return POM_OK;
+}
+
 static int analyzer_dns_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	// Nothing left to do if it's a query or if it's a failed reply
 
 	struct analyzer_dns_priv *priv = object;
-
 	if (!event_has_listener(priv->evt_record))
-		return PROTO_OK;
+		return POM_OK;
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	struct proto_process_stack *s_dns = &stack[stack_index - 1];
+
+	// Nothing left to do if it's a query or a failed response and anti_spoof is not enabled
+	uint8_t rcode = *PTYPE_UINT8_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_rcode]);
+	char is_response = *PTYPE_BOOL_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_response]);
+	char anti_spoof = *PTYPE_BOOL_GETVAL(priv->p_anti_spoof);
+
+	// No need to analyze queries if anti_spoof is not enabled
+	// Same goes for failed replies, we only process them to remove queries from the queue
+	if ((!is_response || rcode) && !anti_spoof)
+		return POM_OK;
 
 	void *data_start = s->pload;
 	size_t data_remaining = s->plen; 
 
+	if (stack_index < 3) {
+		pomlog(POMLOG_DEBUG "Stack_index is supposed to be at least 3 for dns payloads");
+		return POM_ERR;
+	}
+
+
+	struct ptype *sport = NULL, *dport = NULL;
+	struct ptype *src = NULL, *dst = NULL;
+
+
+	struct proto_process_stack *s_l4 = &stack[stack_index - 2];
+	struct proto_process_stack *s_l3 = &stack[stack_index - 3];
+
+	unsigned int i;
+	for (i = 0; !sport || !dport; i++) {
+		char *name = s_l4->proto->info->pkt_fields[i].name;
+		if (!name)
+			break;
+		if (!sport && !strcmp(name, "sport"))
+			sport = s_l4->pkt_info->fields_value[i];
+		else if (!dport && !strcmp(name, "dport"))
+			dport = s_l4->pkt_info->fields_value[i];
+	}
+
+	if (!sport || !dport) {
+		pomlog(POMLOG_DEBUG "Unable to find source or destination port");
+		return POM_ERR;
+	}
+
+	for (i = 0; !src || !dst; i++) {
+		char *name = s_l3->proto->info->pkt_fields[i].name;
+		if (!name)
+			break;
+		if (!src && !strcmp(name, "src"))
+			src = s_l3->pkt_info->fields_value[i];
+		else if (!dst && !strcmp(name, "dst"))
+			dst = s_l3->pkt_info->fields_value[i];
+	}
+	if (!src || !dst) {
+		pomlog(POMLOG_DEBUG "Unable to find source or destination addresse");
+		return POM_ERR;
+	}
+
+
+
 	// Parse the question section
 	struct analyzer_dns_question question = { 0 };
-	int res = PROTO_OK;
+	int res = POM_OK;
 	res = analyzer_dns_parse_question(&data_start, &data_remaining, &question);
 
-	if (res != PROTO_OK)
+	if (res != POM_OK)
 		return res;
-	
+
 	pomlog(POMLOG_DEBUG "Got question \"%s\", type : %u, class : %u", question.qname, question.qtype, question.qclass);
+
+	if (anti_spoof) {
+		if (!is_response) {
+			// New DNS query, add it to the list
+			struct analyzer_dns_query *q = malloc(sizeof(struct analyzer_dns_query));
+			if (!q) {
+				pom_oom(sizeof(struct analyzer_dns_query));
+				return POM_ERR;
+			}
+			memset(q, 0, sizeof(struct analyzer_dns_query));
+			q->t = timer_alloc(priv, analyzer_dns_query_timeout);
+			if (!q->t) {
+				free(q);
+				return POM_ERR;
+			}
+
+			q->src_ip = ptype_alloc_from(src);
+			if (!q->src_ip) {
+				timer_cleanup(q->t);
+				free(q);
+				return POM_ERR;
+			}
+			q->dst_ip = ptype_alloc_from(dst);
+			if (!q->dst_ip) {
+				timer_cleanup(q->t);
+				ptype_cleanup(q->src_ip);
+				free(q);
+				return POM_ERR;
+			}
+
+			// TODO check that the port is correctly 16bit wide ?
+			q->src_port = *PTYPE_UINT16_GETVAL(sport);
+			q->dst_port = *PTYPE_UINT16_GETVAL(dport);
+
+			q->l4_proto = s_l4->proto;
+			q->id = *PTYPE_UINT16_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_id]);
+			q->type = question.qtype;
+			q->cls = question.qclass;
+			q->name = question.qname;
+
+			timer_queue(q->t, *PTYPE_UINT32_GETVAL(priv->p_qtimeout));
+			pom_mutex_lock(&priv->lock);
+			q->next = priv->entry_head;
+			if (q->next)
+				q->next->prev = q;
+			else 
+				priv->entry_tail = q;
+			priv->entry_head = q;
+			
+			pom_mutex_unlock(&priv->lock);
+
+			// Nothing else to do for queries
+			return POM_OK;
+		} else {
+			// Check for the response
+
+			pom_mutex_lock(&priv->lock);
+			struct analyzer_dns_query *tmp;
+			for (tmp = priv->entry_tail; tmp; tmp = tmp->prev) {
+				if (
+					tmp->l4_proto == s_l4->proto &&
+					tmp->id == *PTYPE_UINT16_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_id]) &&
+					tmp->type == question.qtype &&
+					tmp->cls == question.qclass &&
+					tmp->dst_port == *PTYPE_UINT16_GETVAL(sport) &&
+					tmp->src_port == *PTYPE_UINT16_GETVAL(dport) &&
+					ptype_compare_val(PTYPE_OP_EQ, tmp->src_ip, dst) &&
+					ptype_compare_val(PTYPE_OP_EQ, tmp->dst_ip, src) &&
+					!strcmp(tmp->name, question.qname)
+					)
+					break;
+			}
+			
+			if (!tmp) {
+				pom_mutex_unlock(&priv->lock);
+				pomlog(POMLOG_DEBUG "Ignoring response for \"%s\" as it might be spoofed", question.qname);
+				free(question.qname);
+				return POM_OK;
+			}
+			
+			timer_cleanup(tmp->t);
+
+			if (tmp->prev)
+				tmp->prev->next = tmp->next;
+			else
+				priv->entry_head = tmp->next;
+
+			if (tmp->next)
+				tmp->next->prev = tmp->prev;
+			else
+				priv->entry_tail = tmp->prev;
+
+			pom_mutex_unlock(&priv->lock);
+
+			ptype_cleanup(tmp->src_ip);
+			ptype_cleanup(tmp->dst_ip);
+			free(tmp->name);
+			free(tmp);
+		}
+	}
 
 	free(question.qname);
 
+	if (rcode) // No need for further processing
+		return POM_OK;
+
 	uint16_t *ancount, *nscount, *arcount;
-	ancount = PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[proto_dns_field_ancount]);
-	nscount = PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[proto_dns_field_nscount]);
-	arcount = PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[proto_dns_field_arcount]);
+	ancount = PTYPE_UINT16_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_ancount]);
+	nscount = PTYPE_UINT16_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_nscount]);
+	arcount = PTYPE_UINT16_GETVAL(s_dns->pkt_info->fields_value[proto_dns_field_arcount]);
 
 	uint32_t rr_count = *ancount + *nscount + *arcount;
 
-	unsigned int i;
 	for (i = 0; i < rr_count; i++) {
 		struct analyzer_dns_rr rr = { 0 };
-		res = analyzer_dns_parse_rr(s_prev->pload, &data_start, &data_remaining, &rr);
+		res = analyzer_dns_parse_rr(s_dns->pload, &data_start, &data_remaining, &rr);
 		if (res != POM_OK)
 			return res;
 
 		if (rr.rdlen > data_remaining) {
 			free(rr.name);
 			pomlog(POMLOG_DEBUG "RDLENGTH > remaining data : %u > %zu", rr.rdlen, data_remaining);
-			return PROTO_INVALID;
+			return POM_ERR;
 		}
 
 		pomlog(POMLOG_DEBUG "Got RR for %s, type %u", rr.name, rr.type);
@@ -361,7 +588,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 		struct event *evt_record = event_alloc(priv->evt_record);
 		if (!evt_record) {
 			free(rr.name);
-			return PROTO_ERR;
+			return POM_ERR;
 		}
 
 		PTYPE_STRING_SETVAL_P(evt_record->data[analyzer_dns_record_name].value, rr.name);
@@ -379,7 +606,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				if (rr.rdlen < sizeof(uint32_t)) {
 					event_cleanup(evt_record);
 					pomlog(POMLOG_DEBUG "RDLEN too small to contain ipv4");
-					return PROTO_INVALID;
+					return POM_ERR;
 				}
 
 				struct ptype_ipv4_val ipv4 = { { 0 } };
@@ -400,7 +627,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				if (rr.rdlen < sizeof(struct in6_addr)) {
 					event_cleanup(evt_record);
 					pomlog(POMLOG_DEBUG "RDLEN too small to contain ipv6");
-					return PROTO_INVALID;
+					return POM_ERR;
 				}
 
 				struct ptype_ipv6_val ipv6 = { { { { 0 } } } };
@@ -421,7 +648,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *cname = NULL;
 				void *tmp_data_start = data_start;
 				size_t tmp_data_remaining = data_remaining;
-				res = analyzer_dns_parse_name(s_prev->pload, &tmp_data_start, &tmp_data_remaining, &cname);
+				res = analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &cname);
 				if (res != POM_OK) {
 					pomlog(POMLOG_DEBUG "Could not parse CNAME");
 					event_cleanup(evt_record);
@@ -446,7 +673,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *ptr = NULL;
 				void *tmp_data_start = data_start;
 				size_t tmp_data_remaining = data_remaining;
-				res = analyzer_dns_parse_name(s_prev->pload, &tmp_data_start, &tmp_data_remaining, &ptr);
+				res = analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &ptr);
 				if (res != POM_OK) {
 					pomlog(POMLOG_DEBUG "Could not parse PTR");
 					event_cleanup(evt_record);
@@ -472,7 +699,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				if (rr.rdlen < 2 * sizeof(uint16_t)) {
 					pomlog(POMLOG_DEBUG "RDLEN too short to contain valid MX data");
 					event_cleanup(evt_record);
-					return PROTO_INVALID;
+					return POM_ERR;
 				}
 				
 				struct ptype *pref_val = ptype_alloc("uint16");
@@ -489,7 +716,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *mx = NULL;
 				void *tmp_data_start = data_start + sizeof(uint16_t);
 				size_t tmp_data_remaining = data_remaining - sizeof(uint16_t);
-				res = analyzer_dns_parse_name(s_prev->pload, &tmp_data_start, &tmp_data_remaining, &mx);
+				res = analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &mx);
 				if (res != POM_OK) {
 					pomlog(POMLOG_DEBUG "Could not parse MX");
 					event_cleanup(evt_record);
@@ -521,9 +748,9 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 		}
 
 		if (event_process(evt_record, stack, stack_index) != POM_OK)
-			return PROTO_ERR;
+			return POM_ERR;
 
 	}
 
-	return PROTO_OK;
+	return POM_OK;
 }

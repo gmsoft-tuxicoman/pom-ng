@@ -21,14 +21,31 @@
 #ifndef __ANALYZER_DNS_H__
 #define __ANALYZER_DNS_H__
 
+
+struct analyzer_dns_query {
+
+	struct ptype *src_ip, *dst_ip;
+	uint16_t src_port, dst_port;
+	uint16_t id, type, cls;
+	char *name;
+	struct timer *t;
+	struct proto *l4_proto;
+
+	struct analyzer_dns_query *prev, *next;
+
+};
+
 struct analyzer_dns_priv {
 	
-	struct analyzer_dns_entry *entry_head;
+	struct analyzer_dns_query *entry_head, *entry_tail;
 	struct event_reg *evt_record;
-	
+	struct ptype *p_anti_spoof;
+	struct ptype *p_qtimeout;
+
 	struct proto *proto_dns;
 	struct proto_packet_listener *dns_packet_listener;
 
+	pthread_mutex_t lock;
 };
 
 struct analyzer_dns_question {
