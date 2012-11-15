@@ -53,6 +53,7 @@ struct analyzer {
 
 	struct analyzer_reg *info;
 	void *priv;
+	struct registry_instance *reg_instance;
 
 	struct analyzer *prev, *next;
 

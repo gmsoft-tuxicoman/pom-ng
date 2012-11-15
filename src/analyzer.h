@@ -24,6 +24,8 @@
 
 #include <pom-ng/analyzer.h>
 
+#define ANALYZER_REGISTRY "analyzer"
+
 // We require at least that ammount of bytes before passing the buffer to libmagic
 #define ANALYZER_PLOAD_BUFFER_MAGIC_MIN_SIZE 64
 

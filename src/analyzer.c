@@ -28,6 +28,7 @@
 #include "output.h"
 #include "mod.h"
 #include "common.h"
+#include "registry.h"
 #include <pom-ng/resource.h>
 #include <pom-ng/ptype_string.h>
 
@@ -48,13 +49,14 @@ static magic_t magic_cookie = NULL;
 #endif
 
 static struct analyzer *analyzer_head = NULL;
-static pthread_mutex_t analyzer_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct analyzer_pload_type *analyzer_pload_types = NULL;
 static struct analyzer_pload_type *analyzer_binary_pload_type = NULL;
 static struct analyzer_pload_mime_type *analyzer_pload_mime_types = NULL;
 
 static struct analyzer_pload_output *analyzer_pload_outputs = NULL;
+
+static struct registry_class *analyzer_registry_class = NULL;
 
 
 static struct analyzer_pload_class pload_class_def[ANALYZER_PLOAD_CLASS_COUNT] = {
@@ -102,6 +104,10 @@ int analyzer_init() {
 		return POM_ERR;
 	}
 #endif
+
+	analyzer_registry_class = registry_add_class(ANALYZER_REGISTRY);
+	if (!analyzer_registry_class)
+		return POM_ERR;
 
 	struct resource *r = NULL;
 	struct resource_dataset *pload_types = NULL, *mime_types = NULL;
@@ -240,6 +246,11 @@ err:
 	magic_close(magic_cookie);
 #endif
 
+	if (analyzer_registry_class) {
+		registry_remove_class(analyzer_registry_class);
+		analyzer_registry_class = NULL;
+	}
+
 	return POM_ERR;
 }
 
@@ -250,21 +261,24 @@ int analyzer_register(struct analyzer_reg *reg_info) {
 		return POM_ERR;
 	}
 
-	pom_mutex_lock(&analyzer_lock);
-
 	// Allocate the analyzer
 	struct analyzer *analyzer = malloc(sizeof(struct analyzer));
 	if (!analyzer) {
-		pom_mutex_unlock(&analyzer_lock);
 		pom_oom(sizeof(struct analyzer));
 		return POM_ERR;
 	}
 	memset(analyzer, 0, sizeof(struct analyzer));
 	analyzer->info = reg_info;
 
+	analyzer->reg_instance = registry_add_instance(analyzer_registry_class, reg_info->name);
+	if (!analyzer->reg_instance) {
+		free(analyzer);
+		return POM_ERR;
+	}
+
 	if (reg_info->init) {
 		if (reg_info->init(analyzer) != POM_OK) {
-			pom_mutex_unlock(&analyzer_lock);
+			registry_remove_instance(analyzer->reg_instance);
 			free(analyzer);
 			pomlog(POMLOG_ERR "Error while initializing analyzer %s", reg_info->name);
 			return POM_ERR;
@@ -275,7 +289,6 @@ int analyzer_register(struct analyzer_reg *reg_info) {
 	if (analyzer->next)
 		analyzer->next->prev = analyzer;
 	analyzer_head = analyzer;
-	pom_mutex_unlock(&analyzer_lock);
 	
 	mod_refcount_inc(reg_info->mod);
 
@@ -286,14 +299,11 @@ int analyzer_register(struct analyzer_reg *reg_info) {
 
 int analyzer_unregister(char *name) {
 
-	pom_mutex_lock(&analyzer_lock);
 	struct analyzer *tmp;
 	for (tmp = analyzer_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
 
-	if (!tmp) {
-		pom_mutex_unlock(&analyzer_lock);
+	if (!tmp)
 		return POM_OK;
-	}
 
 	if (tmp->info->cleanup) {
 		if (tmp->info->cleanup(tmp) != POM_OK) {
@@ -301,6 +311,8 @@ int analyzer_unregister(char *name) {
 			return POM_ERR;
 		}
 	}
+
+	registry_remove_instance(tmp->reg_instance);
 
 	if (tmp->prev)
 		tmp->prev->next = tmp->next;
@@ -314,15 +326,11 @@ int analyzer_unregister(char *name) {
 	
 	free(tmp);
 
-	pom_mutex_unlock(&analyzer_lock);
-
 	return POM_OK;
 }
 
 int analyzer_cleanup() {
 	
-	pom_mutex_lock(&analyzer_lock);
-
 	while (analyzer_head) {
 
 		struct analyzer *tmp = analyzer_head;
@@ -337,8 +345,6 @@ int analyzer_cleanup() {
 
 		free(tmp);
 	}
-
-	pom_mutex_unlock(&analyzer_lock);
 
 	while (analyzer_pload_types) {
 		struct analyzer_pload_type *tmp = analyzer_pload_types;
@@ -360,6 +366,9 @@ int analyzer_cleanup() {
 #ifdef HAVE_LIBMAGIC
 	magic_close(magic_cookie);
 #endif
+
+	registry_remove_class(analyzer_registry_class);
+	analyzer_registry_class = NULL;
 
 	return POM_OK;
 
