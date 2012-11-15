@@ -19,7 +19,6 @@
  */
 
 #include "addon.h"
-#include "registry.h"
 
 #include "addon_event.h"
 #include "addon_output.h"
@@ -32,14 +31,9 @@
 
 
 
-static struct registry_class *addon_registry_class = NULL;
 static struct addon *addon_head = NULL;
 
 int addon_init() {
-
-	addon_registry_class = registry_add_class(ADDON_REGISTRY);
-	if (!addon_registry_class)
-		return POM_ERR;
 
 	// Load all the scripts
 	
@@ -136,8 +130,6 @@ err:
 	if (d)
 		closedir(d);
 
-	registry_remove_class(addon_registry_class);
-	addon_registry_class = NULL;
 	return POM_ERR;
 }
 
@@ -251,10 +243,6 @@ int addon_cleanup() {
 		free(tmp->filename);
 		free(tmp);
 	}
-
-	if (addon_registry_class)
-		registry_remove_class(addon_registry_class);
-	addon_registry_class = NULL;
 
 
 	return POM_OK;
