@@ -35,6 +35,12 @@
 #include <arpa/nameser.h>
 
 
+#if 0
+#define debug_dns(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_dns(x ...)
+#endif
+
 struct mod_reg_info *analyzer_dns_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -153,6 +159,17 @@ static int analyzer_dns_cleanup(struct analyzer *analyzer) {
 	if (priv) {
 		pthread_mutex_destroy(&priv->lock);
 
+		while (priv->entry_head) {
+			struct analyzer_dns_query *tmp = priv->entry_head;
+			priv->entry_head = tmp->next;
+
+			free(tmp->name);
+			ptype_cleanup(tmp->src_ip);
+			ptype_cleanup(tmp->dst_ip);
+			timer_cleanup(tmp->t);
+			free(tmp);
+		}
+
 		if (priv->evt_record)
 			event_unregister(priv->evt_record);
 		if (priv->p_anti_spoof)
@@ -207,20 +224,20 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 		// Check if it's a pointer or a normal label
 		if (len > 63) {
 			if ((len & 0xC0) != 0xC0) {
-				pomlog(POMLOG_DEBUG "Invalid label length : 0x%X", len);
+				debug_dns("Invalid label length : 0x%X", len);
 				return POM_ERR;
 			}
 			// We have a pointer
 			uint16_t offset = ((data_tmp[0] & 0x3f) << 8) | data_tmp[1];
 			if (offset > msg_len) {
-				pomlog(POMLOG_DEBUG "Offset too big : %u > %zu", offset, msg_len);
+				debug_dns("Offset too big : %u > %zu", offset, msg_len);
 				return POM_ERR;
 			}
 			data_tmp = msg + offset;
 			len = *data_tmp;
 
 			if (len > 63) {
-				pomlog(POMLOG_DEBUG "Label pointer points to a pointer");
+				debug_dns("Label pointer points to a pointer");
 				return POM_ERR;
 			}
 
@@ -229,7 +246,7 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 		len++;
 
 		if (data_tmp + len > msg_end) {
-			pomlog(POMLOG_DEBUG "Label length too big");
+			debug_dns("Label length too big");
 			return POM_ERR;
 		}
 
@@ -323,7 +340,7 @@ static int analyzer_dns_parse_rr(void *msg, void **data, size_t *data_len, struc
 		return res;
 
 	if (*data_len < 10) {
-		pomlog(POMLOG_DEBUG "Data length too short to parse RR");
+		debug_dns("Data length too short to parse RR");
 		free(rr->name);
 		return POM_ERR;
 	}
@@ -449,13 +466,10 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 
 	// Parse the question section
 	struct analyzer_dns_question question = { 0 };
-	int res = POM_OK;
-	res = analyzer_dns_parse_question(&data_start, &data_remaining, &question);
+	if (analyzer_dns_parse_question(&data_start, &data_remaining, &question) != POM_OK)
+		return POM_OK;
 
-	if (res != POM_OK)
-		return res;
-
-	pomlog(POMLOG_DEBUG "Got question \"%s\", type : %u, class : %u", question.qname, question.qtype, question.qclass);
+	debug_dns("Got question \"%s\", type : %u, class : %u", question.qname, question.qtype, question.qclass);
 
 	if (anti_spoof) {
 		if (!is_response) {
@@ -531,7 +545,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			
 			if (!tmp) {
 				pom_mutex_unlock(&priv->lock);
-				pomlog(POMLOG_DEBUG "Ignoring response for \"%s\" as it might be spoofed", question.qname);
+				debug_dns("Ignoring response for \"%s\" as it might be spoofed", question.qname);
 				free(question.qname);
 				return POM_OK;
 			}
@@ -571,24 +585,23 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 
 	for (i = 0; i < rr_count; i++) {
 		struct analyzer_dns_rr rr = { 0 };
-		res = analyzer_dns_parse_rr(s_dns->pload, &data_start, &data_remaining, &rr);
-		if (res != POM_OK)
-			return res;
+		if (analyzer_dns_parse_rr(s_dns->pload, &data_start, &data_remaining, &rr) != POM_OK)
+			return POM_OK;
 
 		if (rr.rdlen > data_remaining) {
 			free(rr.name);
-			pomlog(POMLOG_DEBUG "RDLENGTH > remaining data : %u > %zu", rr.rdlen, data_remaining);
-			return POM_ERR;
+			debug_dns("RDLENGTH > remaining data : %u > %zu", rr.rdlen, data_remaining);
+			return POM_OK;
 		}
 
-		pomlog(POMLOG_DEBUG "Got RR for %s, type %u", rr.name, rr.type);
+		debug_dns("Got RR for %s, type %u", rr.name, rr.type);
 
 		int process_event = 0;
 
 		struct event *evt_record = event_alloc(priv->evt_record);
 		if (!evt_record) {
 			free(rr.name);
-			return POM_ERR;
+			return POM_OK;
 		}
 
 		PTYPE_STRING_SETVAL_P(evt_record->data[analyzer_dns_record_name].value, rr.name);
@@ -605,8 +618,8 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			case ns_t_a: {
 				if (rr.rdlen < sizeof(uint32_t)) {
 					event_cleanup(evt_record);
-					pomlog(POMLOG_DEBUG "RDLEN too small to contain ipv4");
-					return POM_ERR;
+					debug_dns("RDLEN too small to contain ipv4");
+					return POM_OK;
 				}
 
 				struct ptype_ipv4_val ipv4 = { { 0 } };
@@ -626,8 +639,8 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			case ns_t_aaaa: {
 				if (rr.rdlen < sizeof(struct in6_addr)) {
 					event_cleanup(evt_record);
-					pomlog(POMLOG_DEBUG "RDLEN too small to contain ipv6");
-					return POM_ERR;
+					debug_dns("RDLEN too small to contain ipv6");
+					return POM_OK;
 				}
 
 				struct ptype_ipv6_val ipv6 = { { { { 0 } } } };
@@ -648,11 +661,10 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *cname = NULL;
 				void *tmp_data_start = data_start;
 				size_t tmp_data_remaining = data_remaining;
-				res = analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &cname);
-				if (res != POM_OK) {
-					pomlog(POMLOG_DEBUG "Could not parse CNAME");
+				if (analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &cname) != POM_OK) {
+					debug_dns("Could not parse CNAME");
 					event_cleanup(evt_record);
-					return res;
+					return POM_OK;
 				}
 
 				struct ptype *val = ptype_alloc("string");
@@ -673,11 +685,10 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *ptr = NULL;
 				void *tmp_data_start = data_start;
 				size_t tmp_data_remaining = data_remaining;
-				res = analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &ptr);
-				if (res != POM_OK) {
-					pomlog(POMLOG_DEBUG "Could not parse PTR");
+				if (analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &ptr) != POM_OK) {
+					debug_dns("Could not parse PTR");
 					event_cleanup(evt_record);
-					return res;
+					return POM_OK;
 				}
 
 				struct ptype *val = ptype_alloc("string");
@@ -697,9 +708,9 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			case ns_t_mx: {
 
 				if (rr.rdlen < 2 * sizeof(uint16_t)) {
-					pomlog(POMLOG_DEBUG "RDLEN too short to contain valid MX data");
+					debug_dns("RDLEN too short to contain valid MX data");
 					event_cleanup(evt_record);
-					return POM_ERR;
+					return POM_OK;
 				}
 				
 				struct ptype *pref_val = ptype_alloc("uint16");
@@ -716,11 +727,10 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *mx = NULL;
 				void *tmp_data_start = data_start + sizeof(uint16_t);
 				size_t tmp_data_remaining = data_remaining - sizeof(uint16_t);
-				res = analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &mx);
-				if (res != POM_OK) {
-					pomlog(POMLOG_DEBUG "Could not parse MX");
+				if (analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &mx) != POM_OK) {
+					debug_dns("Could not parse MX");
 					event_cleanup(evt_record);
-					return res;
+					return POM_OK;
 				}
 
 				struct ptype *val = ptype_alloc("string");
