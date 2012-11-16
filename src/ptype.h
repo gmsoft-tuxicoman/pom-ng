@@ -45,4 +45,6 @@ struct ptype_reg {
 
 void ptype_reg_lock(int write);
 void ptype_reg_unlock();
+
+size_t ptype_get_value_size(struct ptype *pt);
 #endif

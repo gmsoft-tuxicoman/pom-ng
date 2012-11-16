@@ -221,7 +221,7 @@ char *ptype_get_name(struct ptype *p);
 /// Get the ptype registered type
 struct ptype_reg *ptype_get_type(char *name);
 
-/// Get the size of pt->value
-size_t ptype_get_value_size(struct ptype *pt);
+/// Get a hash for the ptype
+uint32_t ptype_get_hash(struct ptype *pt);
 
 #endif

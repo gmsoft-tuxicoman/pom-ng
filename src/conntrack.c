@@ -22,6 +22,7 @@
 #include "conntrack.h"
 #include "jhash.h"
 #include "common.h"
+#include "ptype.h"
 
 #include <pthread.h>
 #include <pom-ng/timer.h>
@@ -131,22 +132,13 @@ int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev) {
 	if (!fwd)
 		return POM_ERR;
 
-	size_t size_fwd = ptype_get_value_size(fwd);
 
 	if (!rev) {
 		// Only fwd direction
 
-		// Try to use the best hash function
-		if (size_fwd == sizeof(uint32_t)) { // exactly one word
-			*hash = jhash_1word(*((uint32_t*)fwd->value), INITVAL);
-		} else if (size_fwd == 2 * sizeof(uint32_t))  { // exactly two words
-			*hash = jhash_2words(*((uint32_t*)fwd->value), *((uint32_t*)(fwd->value + sizeof(uint32_t))), INITVAL);
-		} else if (size_fwd == 3 * sizeof(uint32_t)) { // exactly 3 words
-			*hash = jhash_3words(*((uint32_t*)fwd->value), *((uint32_t*)(fwd->value + sizeof(uint32_t))), *((uint32_t*)(fwd->value + (2 * sizeof(uint32_t)))), INITVAL);
-		} else {
-			*hash = jhash((char*)fwd->value, size_fwd, INITVAL);
-		}
+		*hash = ptype_get_hash(fwd);
 	 } else {
+		size_t size_fwd = ptype_get_value_size(fwd);
 		size_t size_rev = ptype_get_value_size(rev);
 
 		// Try to use the best hash function

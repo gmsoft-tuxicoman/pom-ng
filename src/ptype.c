@@ -23,9 +23,12 @@
 
 #include "ptype.h"
 #include "mod.h"
+#include "jhash.h"
 
 #include <pthread.h>
 #include <string.h>
+
+#define INITVAL 0x69db45f0 // random value for hashing
 
 static struct ptype_reg *ptype_reg_head = NULL;
 
@@ -382,9 +385,23 @@ struct ptype_reg *ptype_get_type(char *name) {
 }
 
 size_t ptype_get_value_size(struct ptype *pt) {
-
-	if (!pt->type->info->value_size)
-		return -1;
 	return pt->type->info->value_size(pt);
 }
 
+uint32_t ptype_get_hash(struct ptype *pt) {
+
+	size_t size = pt->type->info->value_size(pt);
+
+	
+	// Try to use the best hash function
+	if (size == sizeof(uint32_t)) { // exactly one word
+		return jhash_1word(*((uint32_t*)pt->value), INITVAL);
+	} else if (size == 2 * sizeof(uint32_t))  { // exactly two words
+		return jhash_2words(*((uint32_t*)pt->value), *((uint32_t*)(pt->value + sizeof(uint32_t))), INITVAL);
+	} else if (size == 3 * sizeof(uint32_t)) { // exactly 3 words
+		return jhash_3words(*((uint32_t*)pt->value), *((uint32_t*)(pt->value + sizeof(uint32_t))), *((uint32_t*)(pt->value + (2 * sizeof(uint32_t)))), INITVAL);
+	}
+
+	// Fallback on all size function
+	return jhash((char*)pt->value, size, INITVAL);
+}
