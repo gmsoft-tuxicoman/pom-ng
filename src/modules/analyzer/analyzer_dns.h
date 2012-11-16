@@ -21,6 +21,7 @@
 #ifndef __ANALYZER_DNS_H__
 #define __ANALYZER_DNS_H__
 
+#include <pom-ng/analyzer_dns.h>
 
 struct analyzer_dns_query {
 
@@ -64,16 +65,6 @@ struct analyzer_dns_rr {
 	uint16_t rdlen;
 	void * rdata;
 
-};
-
-#define ANALYZER_DNS_EVT_RECORD_DATA_COUNT 5
-
-enum {
-	analyzer_dns_record_name,
-	analyzer_dns_record_ttl,
-	analyzer_dns_record_type,
-	analyzer_dns_record_class,
-	analyzer_dns_record_values,
 };
 
 struct mod_reg_info *analyzer_dns_reg_info();
