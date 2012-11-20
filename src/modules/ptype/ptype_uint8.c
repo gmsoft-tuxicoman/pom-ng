@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -42,25 +42,26 @@ struct mod_reg_info* ptype_uint8_reg_info() {
 
 int ptype_uint8_mod_register(struct mod_reg *mod) {
 
-	static struct ptype_reg_info pt_u32;
-	memset(&pt_u32, 0, sizeof(struct ptype_reg_info));
+	static struct ptype_reg_info pt_u8;
+	memset(&pt_u8, 0, sizeof(struct ptype_reg_info));
 
-	pt_u32.name = "uint8";
-	pt_u32.api_ver = PTYPE_API_VER;
+	pt_u8.name = "uint8";
+	pt_u8.api_ver = PTYPE_API_VER;
 
-	pt_u32.alloc = ptype_uint8_alloc;
-	pt_u32.cleanup = ptype_uint8_cleanup;
+	pt_u8.alloc = ptype_uint8_alloc;
+	pt_u8.cleanup = ptype_uint8_cleanup;
 	
-	pt_u32.parse_val = ptype_uint8_parse;
-	pt_u32.print_val = ptype_uint8_print;
-	pt_u32.compare_val = ptype_uint8_compare;
-	pt_u32.serialize = ptype_uint8_print;
-	pt_u32.unserialize = ptype_uint8_parse;
-	pt_u32.copy = ptype_uint8_copy;
+	pt_u8.parse_val = ptype_uint8_parse;
+	pt_u8.print_val = ptype_uint8_print;
+	pt_u8.compare_val = ptype_uint8_compare;
+	pt_u8.serialize = ptype_uint8_print;
+	pt_u8.unserialize = ptype_uint8_parse;
+	pt_u8.copy = ptype_uint8_copy;
+	pt_u8.value_size = ptype_uint8_value_size;
 
-	pt_u32.ops = PTYPE_OP_ALL;
+	pt_u8.ops = PTYPE_OP_ALL;
 
-	return ptype_register(&pt_u32, mod);
+	return ptype_register(&pt_u8, mod);
 
 }
 
@@ -151,4 +152,9 @@ int ptype_uint8_copy(struct ptype *dst, struct ptype *src) {
 
 	*((uint8_t*)dst->value) = *((uint8_t*)src->value);
 	return POM_OK;
+}
+
+size_t ptype_uint8_value_size(struct ptype *pt) {
+
+	return sizeof(uint8_t);
 }

@@ -57,6 +57,7 @@ int ptype_bool_mod_register(struct mod_reg *mod) {
 	pt_bool.serialize = ptype_bool_print;
 	pt_bool.unserialize = ptype_bool_parse;
 	pt_bool.copy = ptype_bool_copy;
+	pt_bool.value_size = ptype_bool_value_size;
 
 	pt_bool.ops = PTYPE_OP_ALL;
 
@@ -141,4 +142,9 @@ int ptype_bool_copy(struct ptype *dst, struct ptype *src) {
 	*((char*)dst->value) = *((char*) src->value);
 	return POM_OK;
 
+}
+
+size_t ptype_bool_value_size(struct ptype *pt) {
+
+	return sizeof(char);
 }

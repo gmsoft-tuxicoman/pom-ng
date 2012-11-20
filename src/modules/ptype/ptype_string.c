@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -53,6 +53,7 @@ int ptype_string_mod_register(struct mod_reg *mod) {
 	pt_string.unserialize = ptype_string_parse;
 
 	pt_string.copy = ptype_string_copy;
+	pt_string.value_size = ptype_string_value_size;
 
 	pt_string.ops = PTYPE_OP_EQ;
 
@@ -123,4 +124,14 @@ int ptype_string_copy(struct ptype *dst, struct ptype *src) {
 	strcpy(dst->value, src->value);
 
 	return POM_OK;
+}
+
+size_t ptype_string_value_size(struct ptype *pt) {
+
+	if (!pt->value)
+		return 0;
+
+	char *str = pt->value;
+
+	return strlen(str);
 }

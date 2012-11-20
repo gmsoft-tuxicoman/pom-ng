@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -57,6 +57,7 @@ int ptype_mac_mod_register(struct mod_reg *mod) {
 	pt_mac.serialize = ptype_mac_print;
 	pt_mac.unserialize = ptype_mac_parse;
 	pt_mac.copy = ptype_mac_copy;
+	pt_mac.value_size = ptype_mac_value_size;
 
 	pt_mac.ops = PTYPE_OP_EQ;
 
@@ -142,5 +143,10 @@ int ptype_mac_copy(struct ptype *dst, struct ptype *src) {
 	memcpy(d, s, sizeof(struct ptype_mac_val));
 
 	return POM_OK;
+}
 
+size_t ptype_mac_value_size(struct ptype *pt) {
+	
+	// This doesn't take the mask in account
+	return 6;
 }

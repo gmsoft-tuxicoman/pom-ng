@@ -188,5 +188,6 @@ int ptype_ipv6_copy(struct ptype *dst, struct ptype *src) {
 
 size_t ptype_ipv6_value_size(struct ptype *pt) {
 
+	// This doesn't check the mask
 	return sizeof(struct in6_addr);
 }

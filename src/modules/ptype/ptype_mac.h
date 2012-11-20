@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,7 +33,6 @@ int ptype_mac_parse(struct ptype *p, char *val);
 int ptype_mac_print(struct ptype *pt, char *val, size_t size);
 int ptype_mac_compare(int op, void *val_a, void *val_b);
 int ptype_mac_copy(struct ptype *dst, struct ptype *src);
-
-
+size_t ptype_mac_value_size(struct ptype *pt);
 
 #endif
