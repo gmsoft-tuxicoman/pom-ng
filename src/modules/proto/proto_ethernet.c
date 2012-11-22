@@ -20,12 +20,10 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
-#include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_mac.h>
 
 #include "proto_ethernet.h"
 
-#include <string.h>
 #include <arpa/inet.h>
 
 static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_vlan = NULL;
@@ -36,7 +34,7 @@ struct mod_reg_info* proto_ethernet_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ethernet_mod_register;
 	reg_info.unregister_func = proto_ethernet_mod_unregister;
-	reg_info.dependencies = "proto_arp, proto_ipv4, proto_ipv6, proto_vlan, ptype_string, ptype_mac";
+	reg_info.dependencies = "proto_arp, proto_ipv4, proto_ipv6, proto_vlan, ptype_mac";
 
 	return &reg_info;
 }
