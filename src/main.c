@@ -326,7 +326,7 @@ int main(int argc, char *argv[]) {
 
 	// Main loop
 	
-	pomlog(PACKAGE_NAME " started !");
+	pomlog(PACKAGE_NAME " started ! You can now connect using pom-ng-console.");
 
 	while (running)
 		sleep(10);
