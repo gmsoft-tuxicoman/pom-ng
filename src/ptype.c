@@ -283,23 +283,18 @@ int ptype_compare_val(int op, struct ptype *a, struct ptype *b) {
 
 	int res = 0;
 
-	if (a->type != b->type) {
-		pomlog(POMLOG_ERR "Cannot compare ptypes, type differs. What about you try not to compare pears with apples ...");
-		goto err; // false
-	}
+	if (a->type != b->type)
+		return 0;
 
 	if (!(a->type->info->ops & op)) {
 		pomlog(POMLOG_ERR "Invalid operation %s for ptype %s", ptype_get_op_sign(op), a->type->info->name);
-		goto err;
+		return 0;
 	}
 
 	if (op == PTYPE_OP_NEQ)
 		res = !(a->type->info->compare_val(PTYPE_OP_EQ, a->value, b->value));
 	else
 		res = (a->type->info->compare_val(op, a->value, b->value));
-
-err:
-
 	return res;
 }
 
