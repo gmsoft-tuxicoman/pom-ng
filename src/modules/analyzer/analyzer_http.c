@@ -27,6 +27,7 @@
 #include <pom-ng/ptype_uint64.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/decode.h>
+#include <pom-ng/dns.h>
 
 struct mod_reg_info* analyzer_http_reg_info() {
 
@@ -541,7 +542,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				data_set(dst_data[analyzer_http_request_server_addr]);
 			}
 		} else {
-			if (src && data_is_set(dst_data[analyzer_http_request_server_addr])) {
+			if (src && !data_is_set(dst_data[analyzer_http_request_server_addr])) {
 				dst_data[analyzer_http_request_server_addr].value = ptype_alloc_from(src);
 				data_set(dst_data[analyzer_http_request_server_addr]);
 			}
@@ -552,9 +553,20 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		}
 	}
 
-	if (!data_is_set(dst_data[analyzer_http_request_server_name])) {
-		dst_data[analyzer_http_request_server_name].value = dst_data[analyzer_http_request_server_addr].value;
-		data_set(dst_data[analyzer_http_request_server_name]);
+	if (!data_is_set(dst_data[analyzer_http_request_server_name]) && data_is_set(dst_data[analyzer_http_request_server_addr])) {
+		// Try to perform a reverse lookup
+		char *server_name = dns_reverse_lookup_ptype(dst_data[analyzer_http_request_server_addr].value);
+		if (server_name) {
+			dst_data[analyzer_http_request_server_name].value = ptype_alloc("string");
+			if (!dst_data[analyzer_http_request_server_name].value)
+				return POM_ERR;
+			PTYPE_STRING_SETVAL(dst_data[analyzer_http_request_server_name].value, server_name);
+			data_do_clean(dst_data[analyzer_http_request_server_name]);
+			data_set(dst_data[analyzer_http_request_server_name]);
+		} else {
+			dst_data[analyzer_http_request_server_name].value = dst_data[analyzer_http_request_server_addr].value;
+			data_set(dst_data[analyzer_http_request_server_name]);
+		}
 	}
 	
 	// Start processing our meta-event
