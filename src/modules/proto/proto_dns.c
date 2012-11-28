@@ -111,10 +111,8 @@ static int proto_dns_process(struct proto *proto, struct packet *p, struct proto
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_dns_field_arcount], arcount);
 
 
-	if (qdcount != 1) {
-		pomlog(POMLOG_DEBUG "Invalid DNS packet with qdcount != 1 : %u", qdcount);
+	if (qdcount != 1)
 		return PROTO_INVALID;
-	}
 
 	s_next->plen = s->plen - sizeof(struct dns_header);
 	s_next->pload = s->pload + sizeof(struct dns_header);
