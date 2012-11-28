@@ -29,6 +29,7 @@
 #include <dirent.h>
 #include <lualib.h>
 
+#include <pom-ng/dns.h>
 
 
 static struct addon *addon_head = NULL;
@@ -273,6 +274,13 @@ void addon_lua_register(lua_State *L) {
 	lua_pushcfunction(L, addon_log);
 	lua_setfield(L, LUA_GLOBALSINDEX, "print");
 
+	struct luaL_Reg dns_l[] = {
+		{ "forward_lookup", addon_dns_forward_lookup },
+		{ "reverse_lookup", addon_dns_reverse_lookup },
+		{ 0 }
+	};
+	addon_pomlib_register(L, "dns", dns_l);
+
 }
 
 struct addon *addon_get_from_registry(lua_State *L) {
@@ -422,3 +430,28 @@ int addon_log(lua_State *L) {
 	return 0;
 }
 
+int addon_dns_forward_lookup(lua_State *L) {
+
+	const char *name = luaL_checkstring(L, 1);
+
+	const char *out = dns_forward_lookup(name);
+	if (out)
+		lua_pushstring(L, out);
+	else
+		lua_pushnil(L);
+
+	return 1;
+}
+
+int addon_dns_reverse_lookup(lua_State *L) {
+
+	const char *name = luaL_checkstring(L, 1);
+
+	const char *out = dns_reverse_lookup(name);
+	if (out)
+		lua_pushstring(L, out);
+	else
+		lua_pushnil(L);
+
+	return 1;
+}
