@@ -28,6 +28,7 @@
 #include "timer.h"
 #include "main.h"
 #include "proto.h"
+#include "dns.h"
 
 #include <pom-ng/ptype_bool.h>
 
@@ -46,7 +47,7 @@ static struct timeval core_clock[CORE_PROCESS_THREAD_MAX];
 static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct registry_class *core_registry_class = NULL;
-static struct ptype *core_param_dump_pkt = NULL;
+static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL;
 
 // Packet queue
 static struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
@@ -63,22 +64,30 @@ int core_init(int num_threads) {
 		return POM_ERR;
 
 	core_param_dump_pkt = ptype_alloc("bool");
+	if (!core_param_dump_pkt)
+		return POM_ERR;
 
-	struct registry_param *param = registry_new_param("dump_pkt", "no", core_param_dump_pkt, "Dump packets to logs", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
-	if (!param) {
+	core_param_offline_dns = ptype_alloc("bool");
+	if (!core_param_offline_dns) {
 		ptype_cleanup(core_param_dump_pkt);
+		core_param_dump_pkt = NULL;
 		return POM_ERR;
 	}
 
-	if (registry_class_add_param(core_registry_class, param) != POM_OK) {
-		ptype_cleanup(core_param_dump_pkt);
-		registry_cleanup_param(param);
-	}
+	struct registry_param *param = registry_new_param("dump_pkt", "no", core_param_dump_pkt, "Dump packets to logs", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(core_registry_class, param) != POM_OK)
+		goto err;
+
+	param = registry_new_param("offline_dns", "yes", core_param_offline_dns, "Enable offline DNS resolved", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(core_registry_class, param) != POM_OK)
+		goto err;
+	
+	param = NULL;
 
 	// Initialize the conditions for the sheduler thread
 	if (pthread_cond_init(&core_pkt_queue_restart_cond, NULL)) {
 		pomlog(POMLOG_ERR "Error while initializing the restart condition : %s", pom_strerror(errno));
-		return POM_ERR;
+		goto err;
 	}
 
 	// Initialize the clock table
@@ -132,6 +141,10 @@ int core_init(int num_threads) {
 	return POM_OK;
 
 err:
+
+	if (param)
+		registry_cleanup_param(param);
+
 	core_cleanup(0);
 	return POM_ERR;
 
@@ -277,11 +290,8 @@ void *core_processing_thread_func(void *priv) {
 		
 		while (!core_pkt_queue_head && !tpriv->pkt_queue_head) {
 			if (core_thread_active == 0) {
-				if (core_get_state() == core_state_finishing) {
-					// Free the conntrack tables
-					proto_empty_conntracks();
+				if (core_get_state() == core_state_finishing)
 					core_set_state(core_state_idle);
-				}
 			}
 
 			if (!core_run) {
@@ -615,7 +625,30 @@ enum core_state core_get_state() {
 	return state;
 }
 
+// Placeholder for all the stuff to do when processing starts
+static int core_processing_start() {
+
+	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns) && dns_init() != POM_OK)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
+// Placeholder for all the stuff to do when processing stops
+static int core_processing_stop() {
+
+	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns))
+		dns_cleanup();
+
+	// Free all the conntracks
+	proto_empty_conntracks();
+
+	return POM_OK;
+}
+
 int core_set_state(enum core_state state) {
+
+	int res = POM_OK;
 
 	pom_mutex_lock(&core_state_lock);
 	core_cur_state = state;
@@ -627,6 +660,9 @@ int core_set_state(enum core_state state) {
 	}
 
 	if (state == core_state_idle) {
+
+		res = core_processing_stop();
+
 		struct timeval now;
 		gettimeofday(&now, NULL);
 		if (now.tv_usec < core_start_time.tv_usec) {
@@ -644,6 +680,7 @@ int core_set_state(enum core_state state) {
 
 	} else if (state == core_state_running) {
 		gettimeofday(&core_start_time, NULL);
+		res = core_processing_start();
 	} else if (state == core_state_finishing) {
 		//pom_mutex_lock(&core_pkt_queue_mutex);
 		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
@@ -655,9 +692,8 @@ int core_set_state(enum core_state state) {
 		//pom_mutex_unlock(&core_pkt_queue_mutex);
 	}
 	pom_mutex_unlock(&core_state_lock);
-	return POM_OK;
+	return res;
 }
-
 
 void core_pause_processing() {
 
