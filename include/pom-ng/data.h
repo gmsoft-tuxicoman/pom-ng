@@ -34,6 +34,8 @@
 
 #define data_set(x) ((x).flags |= DATA_FLAG_SET)
 #define data_is_set(x) ((x).flags & DATA_FLAG_SET)
+#define data_do_clean(x) ((x).flags &= ~DATA_FLAG_NO_CLEAN)
+#define data_no_clean(x) ((x).flags |= DATA_FLAG_NO_CLEAN)
 
 struct data_item {
 	char *key;
