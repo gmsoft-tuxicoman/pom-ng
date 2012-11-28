@@ -209,7 +209,7 @@ int dns_cleanup() {
 }
 
 
-uint32_t dns_record_hash(char *record) {
+uint32_t dns_record_hash(const char *record) {
 	return jhash(record, strlen(record), INITVAL) % DNS_TABLE_DEFAULT_SIZE;
 }
 
@@ -566,7 +566,7 @@ int dns_process_event(struct event *evt, void *obj) {
 	return POM_OK;
 }
 
-static struct dns_entry *dns_find_entry(char *record) {
+static struct dns_entry *dns_find_entry(const char *record) {
 
 	uint32_t hash = dns_record_hash(record);
 
@@ -580,7 +580,7 @@ static struct dns_entry *dns_find_entry(char *record) {
 
 }
 
-char* dns_forward_lookup(char *record) {
+char* dns_forward_lookup(const char *record) {
 
 	if (!dns_enabled)
 		return NULL;
@@ -603,7 +603,7 @@ char* dns_forward_lookup(char *record) {
 
 	return NULL;
 }
-char* dns_reverse_lookup(char *record) {
+char* dns_reverse_lookup(const char *record) {
 
 	if (!dns_enabled)
 		return NULL;

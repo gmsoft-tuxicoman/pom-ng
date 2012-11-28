@@ -22,8 +22,8 @@
 #ifndef __POM_NG_DNS_H__
 #define __POM_NG_DNS_H__
 
-char* dns_forward_lookup(char *record);
-char* dns_reverse_lookup(char *record);
+char* dns_forward_lookup(const char *record);
+char* dns_reverse_lookup(const char *record);
 
 char *dns_forward_lookup_ptype(struct ptype *record_pt);
 char *dns_reverse_lookup_ptype(struct ptype *record_pt);
