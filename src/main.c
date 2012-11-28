@@ -73,7 +73,7 @@ void print_usage() {
 		" -h, --help			print this usage\n"
 		" -u, --user=USER		drop privilege to this user\n"
 		" -s, --system-store=STORE	URI to use for the system datastore (default: '" POMNG_SYSTEM_DATASTORE "')\n"
-		" -t, --threads=num		number of processing threads to start (default: number of cpu)\n"
+		" -t, --threads=num		number of processing threads to start (default: number of cpu - 1)\n"
 		"\n"
 		);
 }
