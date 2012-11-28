@@ -1,3 +1,8 @@
+v0.0.6
+	Add offline DNS resolver.
+	Fix build on systems which rename lua to lua5.1.
+	Add vlan information into arp_new_sta and arp_sta_changed events.
+	Various cleanups and bug fix.
 
 v0.0.5
 	Add exif parsing support for jpeg images.
