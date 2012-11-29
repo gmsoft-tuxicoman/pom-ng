@@ -34,6 +34,7 @@
 #include <dirent.h>
 #include <regex.h>
 #include <stddef.h>
+#include <signal.h>
 
 // FIXME change this define when this value gets upstream
 #define DLT_MPEGTS DLT_USER0
@@ -65,6 +66,7 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_interface.read = input_pcap_read;
 	in_pcap_interface.close = input_pcap_close;
 	in_pcap_interface.cleanup = input_pcap_cleanup;
+	in_pcap_interface.interrupt = input_pcap_interrupt;
 	res += input_register(&in_pcap_interface);
 
 
@@ -78,6 +80,7 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_file.read = input_pcap_read;
 	in_pcap_file.close = input_pcap_close;
 	in_pcap_file.cleanup = input_pcap_cleanup;
+	in_pcap_file.interrupt = input_pcap_interrupt;
 	res += input_register(&in_pcap_file);
 
 	static struct input_reg_info in_pcap_dir;
@@ -90,6 +93,7 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_dir.read = input_pcap_read;
 	in_pcap_dir.close = input_pcap_close;
 	in_pcap_dir.cleanup = input_pcap_cleanup;
+	in_pcap_dir.interrupt = input_pcap_interrupt;
 	res += input_register(&in_pcap_dir);
 
 	return res;
@@ -698,3 +702,10 @@ static int input_pcap_cleanup(struct input *i) {
 
 }
 
+static int input_pcap_interrupt(struct input *i) {
+
+	struct input_pcap_priv *priv = i->priv;
+	pcap_breakloop(priv->p);
+	pthread_kill(i->thread, SIGCHLD);
+	return POM_OK;
+}

@@ -360,7 +360,13 @@ int input_instance_start_stop_handler(void *priv, struct ptype *run) {
 
 int input_stop(struct input *i) {
 
-	return registry_set_param(i->reg_instance, "running", "no");
+	// This is called by the inputs to terminate cleanly
+	// The input is already locked
+	
+	if (i->running == INPUT_RUN_RUNNING)
+		return registry_set_param(i->reg_instance, "running", "no");
+
+	return POM_OK;
 }
 
 int input_stop_all() {

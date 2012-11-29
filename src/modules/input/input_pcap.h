@@ -90,5 +90,6 @@ static int input_pcap_read(struct input *i);
 static int input_pcap_close(struct input *i);
 static int input_pcap_cleanup(struct input *i);
 
+static int input_pcap_interrupt(struct input *i);
 
 #endif
