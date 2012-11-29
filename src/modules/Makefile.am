@@ -27,7 +27,7 @@ PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.l
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la input_pcap.la input_dvb.la output_pcap.la
+EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la input_pcap.la input_dvb.la output_pcap.la output_tap.la
 
 
 analyzer_arp_la_SOURCES = analyzer/analyzer_arp.c analyzer/analyzer_arp.h
@@ -74,6 +74,9 @@ output_log_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_pcap_la_SOURCES = output/output_pcap.c output/output_pcap.h
 output_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
 output_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+output_tap_la_SOURCES = output/output_tap.c output/output_tap.h
+output_tap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+output_tap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 proto_80211_la_SOURCES = proto/proto_80211.c proto/proto_80211.h
 proto_80211_la_LDFLAGS = -module -avoid-version

@@ -209,6 +209,12 @@ LIBS="$OLD_LIBS"
 AC_SUBST(xmlrpc_SRC)
 AC_SUBST(xmlrpc_LIBS)
 
+# Check for Linux' tun header
+AC_CHECK_HEADERS([linux/if_tun.h], [want_tun=yes], [want_tun=no])
+if test "x$want_tun" = "xyes"
+then
+	OUTPUT_OBJS="$OUTPUT_OBJS output_tap.la"
+fi
 
 # Check for Zlib
 AC_CHECK_HEADERS([zlib.h], [want_zlib=yes], [want_zlib=no])
@@ -249,6 +255,12 @@ then
 	AC_DEFINE(HAVE_LIBEXIF, , [libexif])
 	AC_SUBST(libexit_LIBS)
 	AC_SUBST(libexif_CFLAGS)
+fi
+
+# Check that there is at least one datastore
+if test "x$DATASTORE_OBJS" = "x"
+then
+	AC_MSG_ERROR([At least one database backend is required.])
 fi
 
 AC_SUBST(ANALYZER_OBJS)
