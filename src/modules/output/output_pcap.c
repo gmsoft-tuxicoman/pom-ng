@@ -104,7 +104,7 @@ static int output_pcap_file_init(struct output *o) {
 	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
 
-	registry_param_set_callbacks(p, priv, output_pcap_filter_change, NULL);
+	registry_param_set_callbacks(p, priv, output_pcap_filter_parse, output_pcap_filter_update);
 
 	return POM_OK;
 
@@ -263,10 +263,19 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 
 }
 
-static int output_pcap_filter_change(void *priv, char *value) {
+static int output_pcap_filter_parse(void *priv, char *value) {
 
 	struct output_pcap_file_priv *p = priv;
 	return filter_proto_parse(value, strlen(value), &p->filter);
+}
+
+static int output_pcap_filter_update(void *priv, struct ptype *value) {
+
+	struct output_pcap_file_priv *p = priv;
+	if (p->listener)
+		proto_packet_listener_set_filter(p->listener, p->filter);
+	return POM_OK;
+
 }
 
 
