@@ -21,6 +21,7 @@
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/ptype_mac.h>
+#include <pom-ng/ptype_uint16.h>
 
 #include "proto_ethernet.h"
 
@@ -48,6 +49,9 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	fields[1].name = "dst";
 	fields[1].value_type = ptype_get_type("mac");
 	fields[1].description = "Destination address";
+	fields[2].name = "type";
+	fields[2].value_type = ptype_get_type("uint16");
+	fields[2].description = "Ethernet type";
 
 	static struct proto_reg_info proto_ethernet = { 0 };
 	proto_ethernet.name = "ethernet";
@@ -95,15 +99,18 @@ static int proto_ethernet_process(struct proto *proto, struct packet *p, struct 
 
 	struct ether_header *ehdr = s->pload;
 
+	uint16_t eth_type = ntohs(ehdr->ether_type);
+
 	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_src], ehdr->ether_shost);
 	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_dst], ehdr->ether_dhost);
+	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_ethernet_field_type], eth_type);
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	s_next->pload = s->pload + sizeof(struct ether_header);
 	s_next->plen = s->plen - sizeof(struct ether_header);
 
-	switch (ntohs(ehdr->ether_type)) {
+	switch (eth_type) {
 		case 0x0800:
 			s_next->proto = proto_ipv4;
 			break;

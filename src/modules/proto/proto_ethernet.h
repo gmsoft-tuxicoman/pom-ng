@@ -31,11 +31,12 @@ struct ether_header
 	uint16_t ether_type;
 } __attribute__ ((__packed__));
 
-#define PROTO_ETHERNET_FIELD_NUM 2
+#define PROTO_ETHERNET_FIELD_NUM 3
 
 enum proto_ethernet_fields {
 	proto_ethernet_field_src = 0,
 	proto_ethernet_field_dst,
+	proto_ethernet_field_type
 };
 
 struct mod_reg_info* proto_ethernet_reg_info();
