@@ -21,7 +21,7 @@
 #ifndef __PROTO_DNS_H__
 #define __PROTO_DNS_H__
 
-#define PROTO_DNS_FIELD_NUM 6
+#define PROTO_DNS_FIELD_NUM 7
 
 struct dns_header {
 
