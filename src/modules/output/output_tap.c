@@ -23,6 +23,7 @@
 
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_bool.h>
+#include <pom-ng/filter.h>
 
 #include <linux/if_tun.h>
 #include <unistd.h>
@@ -69,6 +70,7 @@ int output_tap_mod_register(struct mod_reg *mod) {
 	static struct addon_pload_param_reg params[] = {
 		{ "ifname", "string" },
 		{ "persistent", "bool" },
+		{ "filter", "string" },
 		{ 0 }
 	};
 
@@ -106,6 +108,7 @@ static struct output_tap_priv *tap_init() {
 
 	priv->p_ifname = ptype_alloc("string");
 	priv->p_persistent = ptype_alloc("bool");
+	priv->p_filter = ptype_alloc("string");
 
 	if (!priv->p_ifname || !priv->p_persistent) {
 		output_tap_cleanup(priv);
@@ -151,6 +154,12 @@ int output_tap_init(struct output *o) {
 	p = registry_new_param("persistent", "no", priv->p_persistent, "Create a persistent interface", 0);
 	if (output_instance_add_param(o, p) != POM_OK)
 		goto err;
+
+	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
+	if (output_instance_add_param(o, p) != POM_OK)
+		goto err;
+
+	registry_param_set_callbacks(p, priv, output_tap_filter_parse, output_tap_filter_update);
 	
 	return POM_OK;
 err:
@@ -167,6 +176,8 @@ int output_tap_cleanup(void *output_priv) {
 			ptype_cleanup(priv->p_ifname);
 		if (priv->p_persistent)
 			ptype_cleanup(priv->p_persistent);
+		if (priv->p_filter)
+			ptype_cleanup(priv->p_filter);
 		free(priv);
 	}
 
@@ -240,5 +251,19 @@ int output_tap_pkt_process(void *obj, struct packet *p, struct proto_process_sta
 		size -= wres;
 	}
 
+	return POM_OK;
+}
+
+static int output_tap_filter_parse(void *priv, char *value) {
+	
+	struct output_tap_priv *p = priv;
+	return filter_proto_parse(value, strlen(value), &p->filter);
+}
+
+static int output_tap_filter_update(void *priv, struct ptype *value) {
+
+	struct output_tap_priv *p = priv;
+	if (p->listener)
+		proto_packet_listener_set_filter(p->listener, p->filter);
 	return POM_OK;
 }

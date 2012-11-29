@@ -28,8 +28,10 @@ struct output_tap_priv {
 
 	struct ptype *p_ifname;
 	struct ptype *p_persistent;
+	struct ptype *p_filter;
 	int fd;
 	struct proto_packet_listener *listener;
+	struct filter_proto *filter;
 };
 
 struct mod_reg_info* output_tap_reg_info();
@@ -44,6 +46,8 @@ int output_tap_close(void *output_priv);
 
 int output_tap_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
+static int output_tap_filter_parse(void *priv, char *value);
+static int output_tap_filter_update(void *priv, struct ptype *value);
 
 
 
