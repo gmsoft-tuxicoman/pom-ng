@@ -132,11 +132,18 @@ int filter_proto_parse(char *expr, unsigned int len, struct filter_proto **f) {
 	int branch_found = 0;
 	int branch_op = 0;
 
-	if (len < 2) {
-		pomlog(POMLOG_ERR "Expression too short. Cannot parse.");
-		return POM_ERR;
+	while (len && *expr == ' ') {
+		expr++;
+		len--;
 	}
 
+	while (len && expr[len - 1] == ' ')
+		len--;
+
+	if (!len) {
+		*f = NULL;
+		return POM_OK;
+	}
 
 	for (i = 0; i < len; i++) {
 		if (stack_size == 0 && expr[i] == '|' && expr[i + 1] == '|')  {
