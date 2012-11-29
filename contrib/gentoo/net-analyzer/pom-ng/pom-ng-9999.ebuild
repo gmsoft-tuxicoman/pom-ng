@@ -11,7 +11,7 @@ SRC_URI=""
 LICENSE="GPL-2+"
 SLOT="0"
 KEYWORDS="~amd64"
-IUSE="magic pcap zlib jpeg sqlite console"
+IUSE="magic pcap zlib jpeg sqlite console exif"
 
 DEPEND="
 	net-libs/libmicrohttpd
@@ -23,7 +23,8 @@ DEPEND="
 	zlib? ( sys-libs/zlib )
 	jpeg? ( virtual/jpeg )
 	sqlite? ( dev-db/sqlite[threadsafe] )
-	console? ( net-analyzer/pom-ng-console )"
+	console? ( net-analyzer/pom-ng-console )
+	exif? ( media-libs/libexif )"
 RDEPEND="${DEPEND}"
 
 inherit git-2 autotools
