@@ -22,6 +22,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/conntrack.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint32.h>
 #include <arpa/inet.h>
 
 #include "proto_udp.h"
@@ -30,6 +31,7 @@
 #include <netinet/udp.h>
 
 static struct proto *proto_dns = NULL;
+static struct ptype *param_conntrack_timeout = NULL;
 
 struct mod_reg_info* proto_udp_reg_info() {
 
@@ -37,7 +39,7 @@ struct mod_reg_info* proto_udp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_udp_mod_register;
 	reg_info.unregister_func = proto_udp_mod_unregister;
-	reg_info.dependencies = "proto_dns, ptype_uint16";
+	reg_info.dependencies = "proto_dns, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 }
@@ -79,12 +81,33 @@ static int proto_udp_init(struct proto *proto, struct registry_instance *i) {
 
 	proto_dns = proto_get("dns");
 
+	param_conntrack_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!param_conntrack_timeout)
+		return POM_ERR;
+
+	struct registry_param *p = registry_new_param("conntrack_timeout", "600", param_conntrack_timeout, "Timeout for UDP connections", 0);
+	if (!p)
+		goto err;
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
 	return POM_OK;
+err:
+	if (p)
+		registry_cleanup_param(p);
+
+	if (param_conntrack_timeout) {
+		ptype_cleanup(param_conntrack_timeout);
+		param_conntrack_timeout = NULL;
+	}
+
+	return POM_ERR;
 }
 
 static int proto_udp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 
 	if (sizeof(struct udphdr) > s->plen)
 		return PROTO_INVALID;
@@ -100,6 +123,18 @@ static int proto_udp_process(struct proto *proto, struct packet *p, struct proto
 
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_udp_field_sport], sport);
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_udp_field_dport], dport);
+
+	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_udp_field_sport], s->pkt_info->fields_value[proto_udp_field_dport], s_prev->ce, &s->direction);
+
+	int res = POM_ERR;
+	if (s->ce->children) {
+		res = conntrack_delayed_cleanup(s->ce, 0);
+	} else {
+		uint32_t *conntrack_timeout = PTYPE_UINT32_GETVAL(param_conntrack_timeout);
+		res = conntrack_delayed_cleanup(s->ce, *conntrack_timeout);
+	}
+
+	conntrack_unlock(s->ce);
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
