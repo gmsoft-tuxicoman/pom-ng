@@ -128,6 +128,7 @@ static int proto_ethernet_process(struct proto *proto, struct packet *p, struct 
 		case 0x8863:
 		case 0x8864:
 			s_next->proto = proto_pppoe;
+			break;
 
 		default:
 			s_next->proto = NULL;
