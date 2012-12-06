@@ -87,10 +87,10 @@ static int proto_ppp_process(struct proto *proto, struct packet *p, struct proto
 	s_next->plen  = s->plen  - sizeof(struct ppp_header);
 
 	switch (ntohs(ehdr->ppp_type)) {
-		case 0x0800:
+		case 0x21:
 			s_next->proto = proto_ipv4;
 			break;
-		case 0x86dd:
+		case 0x57:
 			s_next->proto = proto_ipv6;
 			break;
 		default:
