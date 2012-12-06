@@ -29,7 +29,7 @@
 
 #include <arpa/inet.h>
 
-static struct proto *proto_arp = NULL, *proto_ipv4 = NULL;
+static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_pppoe = NULL;
 
 struct mod_reg_info* proto_vlan_reg_info() {
 
@@ -37,7 +37,7 @@ struct mod_reg_info* proto_vlan_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_vlan_mod_register;
 	reg_info.unregister_func = proto_vlan_mod_unregister;
-	reg_info.dependencies = "proto_arp, proto_ipv4, ptype_bool, ptype_uint8, ptype_uint16";
+	reg_info.dependencies = "proto_arp, proto_ipv4, proto_ipv6, proto_pppoe, ptype_bool, ptype_uint8, ptype_uint16";
 
 	return &reg_info;
 }
@@ -79,8 +79,10 @@ static int proto_vlan_init(struct proto *proto, struct registry_instance *i) {
 	
 	proto_arp = proto_get("arp");
 	proto_ipv4 = proto_get("ipv4");
+	proto_ipv6 = proto_get("ipv6");
+	proto_pppoe = proto_get("pppoe");
 
-	if (!proto_arp || !proto_ipv4) {
+	if (!proto_arp || !proto_ipv4 || !proto_ipv6 || !proto_pppoe) {
 		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
 		return POM_ERR;
 	}
@@ -124,14 +126,16 @@ static int proto_vlan_process(struct proto *proto, struct packet *p, struct prot
 		case 0x8100:
 			s_next->proto = proto;
 			break;
-/*
+
 		case 0x86dd:
 			s_next->proto = proto_ipv6;
 			break;
+
 		case 0x8863:
 		case 0x8864:
 			s_next->proto = proto_pppoe;
-*/
+			break;
+
 		default:
 			s_next->proto = NULL;
 			break;
