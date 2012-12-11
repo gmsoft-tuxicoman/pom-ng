@@ -107,7 +107,6 @@ err:
 static int proto_udp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 
 	if (sizeof(struct udphdr) > s->plen)
 		return PROTO_INVALID;
@@ -124,7 +123,8 @@ static int proto_udp_process(struct proto *proto, struct packet *p, struct proto
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_udp_field_sport], sport);
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_udp_field_dport], dport);
 
-	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_udp_field_sport], s->pkt_info->fields_value[proto_udp_field_dport], s_prev->ce, &s->direction);
+	if (conntrack_get(stack, stack_index) != POM_OK)
+		return POM_ERR;
 
 	int res = POM_ERR;
 	if (s->ce->children) {

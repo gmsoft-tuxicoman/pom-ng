@@ -240,7 +240,6 @@ static int proto_ipv6_process(struct proto *proto, struct packet *p, struct prot
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	struct proto_process_stack *s_prev = &stack[stack_index - 1];	
 
 	if (s->plen < sizeof(struct ip6_hdr))
 		return PROTO_INVALID;
@@ -255,14 +254,12 @@ static int proto_ipv6_process(struct proto *proto, struct packet *p, struct prot
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_ipv6_field_hlim], hdr->ip6_hlim);
 
 	// Handle conntrack stuff
-	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_ipv6_field_src], s->pkt_info->fields_value[proto_ipv6_field_dst], s_prev->ce, &s->direction);
-	if (!s->ce)
+	if (conntrack_get(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
 
 
 	s_next->pload = s->pload + sizeof(struct ip6_hdr);
 	s_next->plen = ntohs(hdr->ip6_plen);
-	s_next->direction = s->direction;
 
 	uint8_t nhdr = hdr->ip6_nxt;
 	int done = 0;

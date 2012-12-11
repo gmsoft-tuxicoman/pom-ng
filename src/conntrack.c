@@ -299,19 +299,35 @@ err:
 
 }
 
-struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction) {
+int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 
-	if (!fwd_value || !proto)
-		return NULL;
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+
+	if (s->ce)
+		return POM_OK;
+		
+	if (!s->proto || !s->proto->info->ct_info)
+		return POM_ERR;
+
+	struct ptype *fwd_value = s->pkt_info->fields_value[s->proto->info->ct_info->fwd_pkt_field_id];
+
+	struct ptype *rev_value = NULL;
+	if (s->proto->info->ct_info->rev_pkt_field_id != CONNTRACK_PKT_FIELD_NONE)
+		rev_value = s->pkt_info->fields_value[s->proto->info->ct_info->rev_pkt_field_id];
+
+	if (!fwd_value || !rev_value)
+		return POM_ERR;
 
 	uint32_t full_hash_fwd = 0, hash_fwd = 0, full_hash_rev = 0, hash_rev = 0;
 
 	if (conntrack_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {
 		pomlog(POMLOG_ERR "Error while computing forward hash for conntrack");
-		return NULL;
+		return POM_ERR;
 	}
 
-	struct conntrack_tables *ct = proto->ct;
+	struct conntrack_tables *ct = s->proto->ct;
 
 	// Lock the tables while browsing for a conntrack
 	pom_mutex_lock(&ct->lock);
@@ -319,45 +335,43 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 	if (!ct->fwd_table) {
 		pom_mutex_unlock(&ct->lock);
 		pomlog(POMLOG_ERR "Cannot get conntrack as the forward table is not allocated");
-		return NULL;
+		return POM_ERR;
 	}
 
 	// Try to find the conntrack in the forward table
 	hash_fwd = full_hash_fwd % ct->tables_size;
 
 	// Check if we can find this entry in the forward way
-	struct conntrack_entry *res = NULL;
 	if (ct->fwd_table[hash_fwd]) {
-		res = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, parent);
-		if (res) {
-			if (direction)
-				*direction = POM_DIR_FWD;
-
-			pom_mutex_lock(&res->lock);
-			res->refcount++;
+		s->ce = conntrack_find(ct->fwd_table[hash_fwd], fwd_value, rev_value, s_prev->ce);
+		if (s->ce) {
+			s->direction = POM_DIR_FWD;
+			s_next->direction = POM_DIR_FWD;
+			pom_mutex_lock(&s->ce->lock);
+			s->ce->refcount++;
 			pom_mutex_unlock(&ct->lock);
-			return res;
+			return POM_OK;;
 		}
 	}
 
 	// It wasn't found in the forward way, maybe in the reverse direction ?
 	if (rev_value && ct->rev_table[hash_fwd]) {
 		// Lookup the forward hash in the reverse table
-		res = conntrack_find(ct->rev_table[hash_fwd], rev_value, fwd_value, parent);
-		if (res) {
-			if (direction)
-				*direction = POM_DIR_REV;
-			pom_mutex_lock(&res->lock);
-			res->refcount++;
+		s->ce = conntrack_find(ct->rev_table[hash_fwd], rev_value, fwd_value, s_prev->ce);
+		if (s->ce) {
+			s->direction = POM_DIR_REV;
+			s_next->direction = POM_DIR_REV;
+			pom_mutex_lock(&s->ce->lock);
+			s->ce->refcount++;
 			pom_mutex_unlock(&ct->lock);
-			return res;
+			return POM_OK;
 		}
 
 	}
 
 	// It's not found in the reverse direction either, let's create it then
 
-	if (direction && *direction) {
+	if (s_prev->direction == POM_DIR_REV) {
 		// This indicates that the parent conntrack matched in a reverse direction
 		// Let's keep directions consistent and swap fwd and rev values
 		struct ptype *tmp = rev_value;
@@ -368,25 +382,25 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 		if (conntrack_hash(&full_hash_fwd, fwd_value, rev_value) == POM_ERR) {
 			pom_mutex_unlock(&ct->lock);
 			pomlog(POMLOG_ERR "Error while computing forward hash for conntrack");
-			return NULL;
+			return POM_ERR;
 		}
 		hash_fwd = full_hash_fwd % ct->tables_size;
 	}
 
 
 	// Alloc the conntrack entry
-	res = malloc(sizeof(struct conntrack_entry));
-	if (!res) {
+	struct conntrack_entry *ce = malloc(sizeof(struct conntrack_entry));
+	if (!ce) {
 		pom_mutex_unlock(&ct->lock);
 		pom_oom(sizeof(struct conntrack_entry));
-		return NULL;
+		return POM_ERR;
 	}
-	memset(res, 0, sizeof(struct conntrack_entry));
+	memset(ce, 0, sizeof(struct conntrack_entry));
 
-	if (pom_mutex_init_type(&res->lock, PTHREAD_MUTEX_ERRORCHECK) != POM_OK) {
+	if (pom_mutex_init_type(&ce->lock, PTHREAD_MUTEX_ERRORCHECK) != POM_OK) {
 		pom_mutex_unlock(&ct->lock);
-		free(res);
-		return NULL;
+		free(ce);
+		return POM_ERR;
 	}
 
 	struct conntrack_node_list *child = NULL;
@@ -395,82 +409,82 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 	// is supposed to have a refcount since conntrack_get is called after
 	// the parent's conntrack_get was called and before conntrack_refcount_dec
 	// was called by core_process_stack.
-	if (parent) {
+	if (s_prev->ce) {
 
 		child = malloc(sizeof(struct conntrack_node_list));
 		if (!child) {
-			pthread_mutex_destroy(&res->lock);
+			pthread_mutex_destroy(&ce->lock);
 			pom_mutex_unlock(&ct->lock);
-			free(res);
+			free(ce);
 			pom_oom(sizeof(struct conntrack_node_list));
-			return NULL;
+			return POM_ERR;
 		}
 		memset(child, 0, sizeof(struct conntrack_node_list));
 
-		child->ce = res;
-		child->ct = proto->ct;
+		child->ce = ce;
+		child->ct = s->proto->ct;
 		child->fwd_hash = full_hash_fwd;
 
-		res->parent = malloc(sizeof(struct conntrack_node_list));
-		if (!res->parent) {
-			pthread_mutex_destroy(&res->lock);
+		ce->parent = malloc(sizeof(struct conntrack_node_list));
+		if (!ce->parent) {
+			pthread_mutex_destroy(&ce->lock);
 			pom_mutex_unlock(&ct->lock);
 			free(child);
-			free(res);
+			free(ce);
 			pom_oom(sizeof(struct conntrack_node_list));
-			return NULL;
+			return POM_ERR;
 		}
-		res->parent->ce = parent;
-		res->parent->ct = parent->proto->ct;
-		res->parent->fwd_hash = parent->fwd_hash;
+		ce->parent->ce = s_prev->ce;
+		ce->parent->ct = s_prev->ce->proto->ct;
+		ce->parent->fwd_hash = s_prev->ce->fwd_hash;
 
 	}
 
-	res->proto = proto;
+	ce->proto = s->proto;
 
-	res->fwd_hash = full_hash_fwd;
+	ce->fwd_hash = full_hash_fwd;
 
 	struct conntrack_list *lst_fwd = NULL, *lst_rev = NULL;
 
-	res->fwd_value = ptype_alloc_from(fwd_value);
-	if (!res->fwd_value)
+	ce->fwd_value = ptype_alloc_from(fwd_value);
+	if (!ce->fwd_value)
 		goto err;
 
 	// Alloc the forward list
 	lst_fwd = malloc(sizeof(struct conntrack_list));
 	if (!lst_fwd) {
-		ptype_cleanup(res->fwd_value);
+		ptype_cleanup(ce->fwd_value);
 		pom_oom(sizeof(struct conntrack_list));
 		goto err;
 	}
 	memset(lst_fwd, 0, sizeof(struct conntrack_list));
-	lst_fwd->ce = res;
+	lst_fwd->ce = ce;
 
 	// Alloc the reverse list
 	if (rev_value) {
-		if (!direction || !*direction) { // Hash rev was already computed if we had to reverse the direction
+		if (s_prev->direction != POM_DIR_REV) { // Hash rev was already computed if we had to reverse the direction
 			if (conntrack_hash(&full_hash_rev, rev_value, fwd_value) == POM_ERR) {
 				pomlog(POMLOG_ERR "Error while computing reverse hash for conntrack");
 				pom_mutex_unlock(&ct->lock);
-				return NULL;
+				return POM_ERR;
 			}
 			hash_rev = full_hash_rev % ct->tables_size;
 		}
 
-		res->rev_hash = full_hash_rev;
+		ce->rev_hash = full_hash_rev;
 		lst_rev = malloc(sizeof(struct conntrack_list)); 
 		if (!lst_rev) {
-			ptype_cleanup(res->fwd_value);
+			ptype_cleanup(ce->fwd_value);
 			free(lst_fwd);
 			pom_oom(sizeof(struct conntrack_list));
 			goto err;
 		}
 		memset(lst_rev, 0, sizeof(struct conntrack_list));
-		lst_rev->ce = res;
+		lst_rev->ce = ce;
 
-		res->rev_value = ptype_alloc_from(rev_value);
-		if (!res->rev_value) {
-			ptype_cleanup(res->fwd_value);
+		ce->rev_value = ptype_alloc_from(rev_value);
+		if (!ce->rev_value) {
+			ptype_cleanup(ce->fwd_value);
 			free(lst_fwd);
 			free(lst_rev);
 			goto err;
@@ -496,32 +510,38 @@ struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_val
 
 	// Add the child to the parent if any
 	if (child) {
-		pom_mutex_lock(&parent->lock);
-		if (!parent->refcount)
+		pom_mutex_lock(&s_prev->ce->lock);
+		if (!s_prev->ce->refcount)
 			pomlog(POMLOG_WARN "Internal error, the parent is supposed to have a refcount > 0");
-		child->next = parent->children;
+		child->next = s_prev->ce->children;
 		if (child->next)
 			child->next->prev = child;
-		parent->children = child;
-		pom_mutex_unlock(&parent->lock);
+		s_prev->ce->children = child;
+		pom_mutex_unlock(&s_prev->ce->lock);
 	}
 
 	// Unlock the tables
-	if (parent) {
-		debug_conntrack("Allocated conntrack %p with parent %p", res, parent);
+	if (s_prev->ce) {
+		debug_conntrack("Allocated conntrack %p with parent %p", ce, s_prev->ce);
 	} else {
-		debug_conntrack("Allocated conntrack %p with no parent", res);
+		debug_conntrack("Allocated conntrack %p with no parent", ce);
 	}
-	pom_mutex_lock(&res->lock);
-	res->refcount++;
+	pom_mutex_lock(&ce->lock);
+	ce->refcount++;
 	pom_mutex_unlock(&ct->lock);
+
+	s->ce = ce;
+	s->direction = s_prev->direction;
+
+	// Propagate the direction to the payload as well
+	s_next->direction = s->direction;
 	
-	return res;
+	return POM_OK;
 
 err:
 	pom_mutex_unlock(&ct->lock);
 
-	pthread_mutex_destroy(&res->lock);
+	pthread_mutex_destroy(&ce->lock);
 	if (child)
 		free(child);
 
@@ -530,13 +550,19 @@ err:
 
 	if (lst_rev)
 		free(lst_rev);
+
+	if (ce->parent)
+		free(ce->parent);
 	
-	if (res->fwd_value)
-		ptype_cleanup(res->fwd_value);
+	if (ce->fwd_value)
+		ptype_cleanup(ce->fwd_value);
 
-	free(res);
+	if (ce->rev_value)
+		ptype_cleanup(ce->rev_value);
 
-	return NULL;
+	free(ce);
+
+	return POM_ERR;
 }
 
 void conntrack_lock(struct conntrack_entry *ce) {

@@ -24,9 +24,7 @@
 
 #include <pom-ng/base.h>
 
-#define CT_CONNTRACK_INFO_BIDIR			0x1
-#define CT_CONNTRACK_INFO_LIST			0x2
-#define CT_CONNTRACK_INFO_LIST_FREE_KEY		0x4
+#define CONNTRACK_PKT_FIELD_NONE -1
 
 struct proto_process_stack;
 
@@ -77,7 +75,7 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
-struct conntrack_entry *conntrack_get(struct proto *proto, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent, int *direction);
+int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index);
 struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, struct conntrack_entry *parent);
 
 void conntrack_lock(struct conntrack_entry *ce);

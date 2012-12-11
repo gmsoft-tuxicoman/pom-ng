@@ -137,7 +137,6 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
-	struct proto_process_stack *s_prev = &stack[stack_index - 1];	
 
 	struct in_addr saddr, daddr;
 	struct ip* hdr = s->pload;
@@ -160,14 +159,12 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_ipv4_field_ttl], hdr->ip_ttl);
 
 	// Handle conntrack stuff
-	s->ce = conntrack_get(s->proto, s->pkt_info->fields_value[proto_ipv4_field_src], s->pkt_info->fields_value[proto_ipv4_field_dst], s_prev->ce, &s->direction);
-	if (!s->ce)
+	if (conntrack_get(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
 
 
 	s_next->pload = s->pload + hdr_len;
 	s_next->plen = ntohs(hdr->ip_len) - hdr_len;
-	s_next->direction = s->direction;
 
 	struct proto *next_proto = NULL;
 	switch (hdr->ip_p) {
