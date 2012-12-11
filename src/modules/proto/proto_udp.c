@@ -67,6 +67,7 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 	proto_udp.ct_info = &ct_info;
 
 	proto_udp.init = proto_udp_init;
+	proto_udp.cleanup = proto_udp_cleanup;
 	proto_udp.process = proto_udp_process;
 
 	if (proto_register(&proto_udp) == POM_OK)
@@ -102,6 +103,16 @@ err:
 	}
 
 	return POM_ERR;
+}
+
+static int proto_udp_cleanup(struct proto *p) {
+
+	if (param_conntrack_timeout) {
+		ptype_cleanup(param_conntrack_timeout);
+		param_conntrack_timeout = NULL;
+	}
+
+	return POM_OK;
 }
 
 static int proto_udp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
