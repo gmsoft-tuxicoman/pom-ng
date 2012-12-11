@@ -705,7 +705,8 @@ static int input_pcap_cleanup(struct input *i) {
 static int input_pcap_interrupt(struct input *i) {
 
 	struct input_pcap_priv *priv = i->priv;
-	pcap_breakloop(priv->p);
+	if (priv->p)
+		pcap_breakloop(priv->p);
 	pthread_kill(i->thread, SIGCHLD);
 	return POM_OK;
 }
