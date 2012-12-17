@@ -61,7 +61,6 @@ static int proto_tftp_mod_register(struct mod_reg *mod) {
 	ct_info.cleanup_handler = proto_tftp_conntrack_cleanup;
 	proto_tftp.ct_info = &ct_info;
 
-	proto_tftp.init = proto_tftp_init;
 	proto_tftp.process = proto_tftp_process;
 
 	if (proto_register(&proto_tftp) == POM_OK)
@@ -69,13 +68,6 @@ static int proto_tftp_mod_register(struct mod_reg *mod) {
 
 
 	return POM_ERR;
-
-}
-
-
-static int proto_tftp_init(struct proto *proto, struct registry_instance *i) {
-	
-	return POM_OK;
 
 }
 
