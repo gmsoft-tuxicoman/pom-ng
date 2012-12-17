@@ -225,8 +225,8 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 			s_next->proto = e->proto;
 			void *priv = e->priv;
 
-			free(e);
-
+			proto_expectation_cleanup(e);
+			
 			s_next->ce = conntrack_get_unique_from_parent(s_next->proto, s->ce);
 			if (!s_next->ce)
 				return PROTO_ERR;
@@ -574,6 +574,8 @@ void proto_expectation_cleanup(struct proto_expectation *e) {
 
 	}
 
+	timer_cleanup(e->expiry);
+
 	free(e);
 }
 
@@ -612,12 +614,19 @@ int proto_expectation_set_field(struct proto_expectation *e, int stack_index, st
 	return POM_OK;
 }
 
-int proto_expectation_add(struct proto_expectation *e) {
+int proto_expectation_add(struct proto_expectation *e, unsigned int expiry) {
 
 	if (!e || !e->tail || !e->tail->proto) {
 		pomlog(POMLOG_ERR "Cannot add expectation as it's incomplete");
 		return POM_ERR;
 	}
+
+	e->expiry = timer_alloc(e, proto_expectation_expiry);
+	if (!e->expiry)
+		return POM_ERR;
+
+	if (timer_queue(e->expiry, expiry) != POM_OK)
+		return POM_ERR;
 	
 	struct proto *proto = e->tail->proto;
 	pom_rwlock_wlock(&proto->expectation_lock);
@@ -629,6 +638,34 @@ int proto_expectation_add(struct proto_expectation *e) {
 	proto->expectations = e;
 
 	pom_rwlock_unlock(&proto->expectation_lock);
+
+	return POM_OK;
+}
+
+int proto_expectation_expiry(void *priv, struct timeval *tv) {
+
+	struct proto_expectation *e = priv;
+	struct proto *proto = e->tail->proto;
+
+	timer_cleanup(e->expiry);
+	pom_rwlock_wlock(&proto->expectation_lock);
+
+	if (e->next)
+		e->next->prev = e->prev;
+
+	if (e->prev)
+		e->prev->next = e->next;
+	else
+		proto->expectations = e->next;
+
+	pom_rwlock_unlock(&proto->expectation_lock);
+
+	if (e->priv && proto->info->ct_info->cleanup_handler) {
+		if (proto->info->ct_info->cleanup_handler(e->priv) != POM_OK)
+			pomlog(POMLOG_WARN "Unable to free the conntrack priv of the proto_expectation");
+	}
+
+	proto_expectation_cleanup(e);
 
 	return POM_OK;
 }

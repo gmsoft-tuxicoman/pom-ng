@@ -21,7 +21,8 @@
 #ifndef __PROTO_TFTP_H__
 #define __PROTO_TFTP_H__
 
-#define PROTO_TFT_FIELD_NUM 1
+#define PROTO_TFTP_FIELD_NUM 1
+#define PROTO_TFTP_EXPT_TIMER 10
 
 enum tftp_opcodes {
 	tftp_rrq = 1,
@@ -43,5 +44,6 @@ static int proto_tftp_init(struct proto *proto, struct registry_instance *i);
 static int proto_tftp_mod_register(struct mod_reg *mod);
 static int proto_tftp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tftp_mod_unregister();
+static int proto_tftp_conntrack_cleanup(void *ce_priv);
 
 #endif

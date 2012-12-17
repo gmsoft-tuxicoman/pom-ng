@@ -45,7 +45,7 @@ struct mod_reg_info* proto_tftp_reg_info() {
 
 static int proto_tftp_mod_register(struct mod_reg *mod) {
 
-	static struct proto_pkt_field fields[PROTO_TFT_FIELD_NUM + 1] = { { 0 }};
+	static struct proto_pkt_field fields[PROTO_TFTP_FIELD_NUM + 1] = { { 0 }};
 	fields[0].name = "opcode";
 	fields[0].value_type = ptype_get_type("uint16");
 	fields[0].description = "OP code";
@@ -58,6 +58,7 @@ static int proto_tftp_mod_register(struct mod_reg *mod) {
 
 	static struct conntrack_info ct_info = { 0 };
 	ct_info.default_table_size = 1; // No hashing done here
+	ct_info.cleanup_handler = proto_tftp_conntrack_cleanup;
 	proto_tftp.ct_info = &ct_info;
 
 	proto_tftp.init = proto_tftp_init;
@@ -162,7 +163,7 @@ static int proto_tftp_process(struct proto *proto, struct packet *p, struct prot
 
 			proto_expectation_set_field(expt, -1, NULL, POM_DIR_REV);
 
-			if (proto_expectation_add(expt) != POM_OK) {
+			if (proto_expectation_add(expt, PROTO_TFTP_EXPT_TIMER) != POM_OK) {
 				free(new_cp->filename);
 				free(new_cp);
 				proto_expectation_cleanup(expt);
@@ -182,4 +183,16 @@ static int proto_tftp_process(struct proto *proto, struct packet *p, struct prot
 static int proto_tftp_mod_unregister() {
 
 	return proto_unregister("tftp");
+}
+
+static int proto_tftp_conntrack_cleanup(void *ce_priv) {
+
+	struct proto_tftp_conntrack_priv *priv = ce_priv;
+		
+	if (priv->filename)
+		free(priv->filename);
+
+	free(priv);
+
+	return POM_OK;
 }

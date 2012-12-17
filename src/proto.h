@@ -47,6 +47,7 @@ struct proto_expectation {
 	struct proto_expectation_stack *head, *tail;
 	struct proto *proto;
 	void *priv;
+	struct timer *expiry;
 	struct proto_expectation *prev, *next;
 };
 
@@ -55,5 +56,7 @@ int proto_init();
 int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 int proto_empty_conntracks();
 int proto_cleanup();
+
+int proto_expectation_expiry(void *priv, struct timeval *tv);
 
 #endif
