@@ -57,15 +57,35 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 		pomlog(POMLOG_ERR "Error while locking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
 		abort();												\
 	}														\
-}															
+}
 
 #define pom_mutex_unlock(x) {													\
 	if (pthread_mutex_unlock(x)) {												\
 		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
 		abort();													\
 	}															\
-}															
+}
 
+#define pom_rwlock_rlock(x) {													\
+	if (pthread_rwlock_rdlock(x)) {												\
+		pomlog(POMLOG_ERR "Error while read locking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+		abort();													\
+	}															\
+}
+
+#define pom_rwlock_wlock(x) {													\
+	if (pthread_rwlock_wrlock(x)) {												\
+		pomlog(POMLOG_ERR "Error while write locking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+		abort();													\
+	}															\
+}
+
+#define pom_rwlock_unlock(x) {													\
+	if (pthread_rwlock_unlock(x)) {												\
+		pomlog(POMLOG_ERR "Error while unlocking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+		abort();													\
+	}															\
+}
 // Wrapper for open() which creates the directory structure
 int pom_open(const char *filename, int flags, mode_t mode);
 
