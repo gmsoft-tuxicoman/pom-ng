@@ -53,7 +53,7 @@ static int proto_ipv6_init(struct proto *proto, struct registry_instance *i);
 static int proto_ipv6_mod_register(struct mod_reg *mod);
 static int proto_ipv6_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_ipv6_fragment_cleanup(struct conntrack_entry *ce, void *priv);
-static int proto_ipv6_conntrack_cleanup(struct conntrack_entry *ce);
+static int proto_ipv6_conntrack_cleanup(void *ce_priv);
 static int proto_ipv6_cleanup(struct proto *proto);
 static int proto_ipv6_mod_unregister();
 

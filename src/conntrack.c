@@ -730,7 +730,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 
 	// Cleanup private stuff from the conntrack
 	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
-		if (ce->proto->info->ct_info->cleanup_handler(ce) != POM_OK)
+		if (ce->proto->info->ct_info->cleanup_handler(ce->priv) != POM_OK)
 			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
 	}
 

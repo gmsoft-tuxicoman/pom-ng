@@ -350,11 +350,13 @@ static int proto_ipv4_fragment_cleanup(struct conntrack_entry *ce, void *priv) {
 
 }
 
-static int proto_ipv4_conntrack_cleanup(struct conntrack_entry *ce) {
+static int proto_ipv4_conntrack_cleanup(void *ce_priv) {
 
-	while (ce->priv) {
-		struct proto_ipv4_fragment *f = ce->priv;
-		ce->priv = f->next;
+	struct proto_ipv4_fragment *frag_list = ce_priv;
+
+	while (frag_list) {
+		struct proto_ipv4_fragment *f = frag_list;
+		frag_list = f->next;
 
 		if (!(f->flags & PROTO_IPV4_FLAG_PROCESSED))
 			pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");

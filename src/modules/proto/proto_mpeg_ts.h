@@ -78,7 +78,7 @@ int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i);
 int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 int proto_mpeg_ts_stream_cleanup(void *, struct timeval *now);
-int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce);
+int proto_mpeg_ts_conntrack_cleanup(void *ce_priv);
 int proto_mpeg_ts_cleanup(struct proto *proto);
 
 #endif

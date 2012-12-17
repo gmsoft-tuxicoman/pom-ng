@@ -451,9 +451,9 @@ int proto_mpeg_ts_stream_cleanup(void *priv, struct timeval *now) {
 	return POM_OK;
 }
 
-int proto_mpeg_ts_conntrack_cleanup(struct conntrack_entry *ce) {
+int proto_mpeg_ts_conntrack_cleanup(void *ce_priv) {
 
-	struct proto_mpeg_ts_conntrack_priv *priv = ce->priv;
+	struct proto_mpeg_ts_conntrack_priv *priv = ce_priv;
 	unsigned int i;
 	for (i = 0; i < priv->streams_array_size; i++){ 
 		if (priv->streams[i].multipart) 

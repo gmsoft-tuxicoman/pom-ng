@@ -65,7 +65,7 @@ struct conntrack_con_info_analyzer_list {
 struct conntrack_info {
 	unsigned int default_table_size;
 	int fwd_pkt_field_id, rev_pkt_field_id;
-	int (*cleanup_handler) (struct conntrack_entry *ce);
+	int (*cleanup_handler) (void *ce_priv);
 };
 
 struct conntrack_tables {

@@ -354,18 +354,17 @@ static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *
 }
 
 
-static int proto_tcp_conntrack_cleanup(struct conntrack_entry *ce) {
+static int proto_tcp_conntrack_cleanup(void *ce_priv) {
 
+	struct proto_tcp_conntrack_priv *priv = ce_priv;
+	if (!priv)
+		return POM_OK;
 
-	if (ce->priv) {
-		struct proto_tcp_conntrack_priv *priv = ce->priv;
-		if (priv->stream) {
-			if (packet_stream_cleanup(priv->stream) != POM_OK)
-				return POM_ERR;
-		}
-		free(ce->priv);
-
+	if (priv->stream) {
+		if (packet_stream_cleanup(priv->stream) != POM_OK)
+			return POM_ERR;
 	}
+	free(priv);
 
 
 	return POM_OK;

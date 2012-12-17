@@ -77,7 +77,7 @@ int proto_http_cleanup(struct proto *proto);
 static int proto_http_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_http_conntrack_reset(struct conntrack_entry *ce, int direction);
-static int proto_http_conntrack_cleanup(struct conntrack_entry *ce);
+static int proto_http_conntrack_cleanup(void *ce_priv);
 static int proto_http_mod_unregister();
 
 int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsigned int len, int direction, struct packet *p);

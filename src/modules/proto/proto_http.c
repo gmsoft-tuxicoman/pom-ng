@@ -542,9 +542,9 @@ static int proto_http_conntrack_reset(struct conntrack_entry *ce, int direction)
 	return POM_OK;
 }
 
-static int proto_http_conntrack_cleanup(struct conntrack_entry *ce) {
+static int proto_http_conntrack_cleanup(void *ce_priv) {
 
-	struct proto_http_conntrack_priv *priv = ce->priv;
+	struct proto_http_conntrack_priv *priv = ce_priv;
 	if (!priv)
 		return POM_OK;
 
