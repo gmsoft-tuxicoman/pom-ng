@@ -283,7 +283,7 @@ int ptype_compare_val(int op, struct ptype *a, struct ptype *b) {
 
 	int res = 0;
 
-	if (a->type != b->type)
+	if (!a || !b || a->type != b->type)
 		return 0;
 
 	if (!(a->type->info->ops & op)) {
