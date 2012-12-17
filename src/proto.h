@@ -36,6 +36,21 @@ struct proto_event_analyzer_list {
 
 };
 
+struct proto_expectation_stack {
+	
+	struct proto *proto;
+	struct ptype *fields[POM_DIR_TOT];
+	struct proto_expectation_stack *prev, *next;
+};
+
+struct proto_expectation {
+	struct proto_expectation_stack *head, *tail;
+	struct proto *proto;
+	void *priv;
+	struct proto_expectation *prev, *next;
+};
+
+
 int proto_init();
 int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 int proto_empty_conntracks();

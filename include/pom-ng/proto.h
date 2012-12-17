@@ -58,6 +58,9 @@ struct proto {
 	struct proto_packet_listener *packet_listeners;
 	struct proto_packet_listener *payload_listeners;
 
+	pthread_rwlock_t expectation_lock;
+	struct proto_expectation *expectations;
+
 	struct proto *next, *prev;
 
 };
@@ -90,7 +93,7 @@ struct proto_reg_info {
 	struct proto_event_reg *events;
 
 	int (*init) (struct proto *proto, struct registry_instance *i);
-	int (*process) (struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	int (*process) (struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 	int (*post_process) (struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 	int (*cleanup) (struct proto *proto);
 };
@@ -129,5 +132,14 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l);
 // Set a filter on a packet listener
 void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_proto *f);
 
+
+
+struct proto_expectation *proto_expectation_alloc(struct proto *proto, void *priv);
+int proto_expectation_append(struct proto_expectation *e, struct proto *p, struct ptype *fwd_value, struct ptype *rev_value);
+int proto_expectation_prepend(struct proto_expectation *e, struct proto *p, struct ptype *fwd_value, struct ptype *rev_value);
+struct proto_expectation *proto_expectation_alloc_from_conntrack(struct conntrack_entry *ce, struct proto *proto, void *priv);
+void proto_expectation_cleanup(struct proto_expectation *e);
+int proto_expectation_set_field(struct proto_expectation *e, int stack_index, struct ptype *value, int direction);
+int proto_expectation_add(struct proto_expectation *e);
 
 #endif

@@ -70,11 +70,14 @@ int proto_register(struct proto_reg_info *reg_info) {
 	memset(proto, 0, sizeof(struct proto));
 	proto->info = reg_info;
 
-	
+	if (pthread_rwlock_init(&proto->expectation_lock, NULL)) {
+		pomlog(POMLOG_ERR "Error while initializing the proto_expectation rwlock : %s", pom_strerror(errno));	
+		goto err_proto;
+	}
 
 	if (packet_info_pool_init(&proto->pkt_info_pool)) {
 		pomlog(POMLOG_ERR "Error while initializing the pkt_info_pool");
-		goto err_proto;
+		goto err_lock;
 	}
 
 	// Allocate the conntrack table
@@ -120,6 +123,8 @@ err_conntrack:
 	conntrack_tables_cleanup(proto->ct);
 err_packet_info:
 	packet_info_pool_cleanup(&proto->pkt_info_pool);
+err_lock:
+	pthread_rwlock_destroy(&proto->expectation_lock);
 err_proto:
 	free(proto);
 
@@ -129,25 +134,114 @@ err_proto:
 
 }
 
-int proto_process(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
+int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	if (!s)
-		return PROTO_ERR;
-	
-	struct proto *proto = s[stack_index].proto;
+	struct proto_process_stack *s = &stack[stack_index];
+
+	struct proto *proto = s->proto;
 
 	if (!proto || !proto->info->process)
 		return PROTO_ERR;
-	int result = proto->info->process(proto, p, s, stack_index);
+	int res = proto->info->process(proto, p, stack, stack_index);
 
-	if (result == PROTO_OK && s[stack_index].plen) {
+	if (res == PROTO_OK) {
 		
-		// Process packet listeners
+		// Process the expectations !
+		pom_rwlock_rlock(&proto->expectation_lock);
+		struct proto_expectation *e = proto->expectations;
+		while (e) {
+			
+			int expt_dir = POM_DIR_UNK;
 
+			struct proto_expectation_stack *es = e->tail;
+			struct ptype *fwd_value = s->pkt_info->fields_value[s->proto->info->ct_info->fwd_pkt_field_id];
+			struct ptype *rev_value = s->pkt_info->fields_value[s->proto->info->ct_info->rev_pkt_field_id];
+
+			if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) &&
+				(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
+				// Expectation matched the forward direction
+				expt_dir = POM_DIR_FWD;
+			} else if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) &&
+				(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
+				// Expectation matched the reverse direction
+				expt_dir = POM_DIR_REV;
+			}
+
+			if (expt_dir == POM_DIR_UNK) {
+				// Expectation not matched
+				e = e->next;
+				continue;
+			}
+			
+			es = es->prev;
+			int stack_index_tmp = stack_index - 1;
+			while (es) {
+
+				struct proto_process_stack *s_tmp = &stack[stack_index_tmp];
+
+				if (s_tmp->proto != es->proto) {
+					 e = e->next;
+					 continue;
+				}
+
+				fwd_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->fwd_pkt_field_id];
+				rev_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->rev_pkt_field_id];
+
+				if (expt_dir == POM_DIR_FWD) {
+					if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) ||
+						(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
+						e = e->next;
+						continue;
+					}
+				} else {
+					if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) ||
+						(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
+						e = e->next;
+						continue;
+					}
+
+				}
+
+				es = es->prev;
+				stack_index_tmp--;
+			}
+
+			// Expectation matched !
+			// Relock with write access
+			pom_rwlock_unlock(&proto->expectation_lock);
+			pom_rwlock_wlock(&proto->expectation_lock);
+
+			// Remove it from the list
+			
+			if (e->next)
+				e->next->prev = e->prev;
+
+			if (e->prev)
+				e->prev->next = e->next;
+			else
+				proto->expectations = e->next;
+
+			struct proto_process_stack *s_next = &stack[stack_index + 1];
+			s_next->proto = e->proto;
+			void *priv = e->priv;
+
+			free(e);
+
+			s_next->ce = conntrack_get_unique_from_parent(s_next->proto, s->ce);
+			if (!s_next->ce)
+				return PROTO_ERR;
+
+			s_next->ce->priv = priv;
+
+			break;
+
+		}
+		pom_rwlock_unlock(&proto->expectation_lock);
 	}
 
-	return result;
+	return res;
 }
+
 
 int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
 
@@ -348,4 +442,193 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 
 void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_proto *f) {
 	l->filter = f;
+}
+
+
+struct proto_expectation *proto_expectation_alloc(struct proto *proto, void *priv) {
+
+	struct proto_expectation *res = malloc(sizeof(struct proto_expectation));
+	if (!res) {
+		pom_oom(sizeof(struct proto_expectation));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct proto_expectation));
+	
+	res->priv = priv;
+	res->proto = proto;
+
+	return res;
+}
+
+static struct proto_expectation_stack *proto_expectation_stack_alloc(struct proto *p, struct ptype *fwd_value, struct ptype *rev_value) {
+
+	if (!p || !fwd_value)
+		return NULL;
+
+	struct proto_expectation_stack *es = malloc(sizeof(struct proto_expectation_stack));
+	if (!es) {
+		pom_oom(sizeof(struct proto_expectation_stack));
+		return NULL;
+	}
+	memset(es, 0, sizeof(struct proto_expectation_stack));
+	es->proto = p;
+
+	es->fields[POM_DIR_FWD] = ptype_alloc_from(fwd_value);
+	if (!es->fields[POM_DIR_FWD]) {
+		free(es);
+		return NULL;
+	}
+
+	if (rev_value) {
+		es->fields[POM_DIR_REV] = ptype_alloc_from(rev_value);
+		if (!es->fields[POM_DIR_REV]) {
+			ptype_cleanup(es->fields[POM_DIR_FWD]);
+			free(es);
+			return NULL;
+		}
+	}
+
+	return es;
+}
+
+int proto_expectation_append(struct proto_expectation *e, struct proto *p, struct ptype *fwd_value, struct ptype *rev_value) {
+
+	if (!e)
+		return POM_ERR;
+
+	struct proto_expectation_stack *es = proto_expectation_stack_alloc(p, fwd_value, rev_value);
+	if (!es)
+		return POM_ERR;
+
+	es->prev = e->tail;
+
+	if (es->prev)
+		es->prev->next = es;
+	else
+		e->head = es;
+
+	e->tail = es;
+
+	return POM_OK;
+}
+
+int proto_expectation_prepend(struct proto_expectation *e, struct proto *p, struct ptype *fwd_value, struct ptype *rev_value) {
+
+	if (!e)
+		return POM_ERR;
+
+	struct proto_expectation_stack *es = proto_expectation_stack_alloc(p, fwd_value, rev_value);
+	if (!es)
+		return POM_ERR;
+
+	es->next = e->head;
+
+	if (es->next)
+		es->next->prev = es;
+	else
+		e->tail = es;
+
+	e->head = es;
+
+	return POM_OK;
+}
+
+struct proto_expectation *proto_expectation_alloc_from_conntrack(struct conntrack_entry *ce, struct proto *proto, void *priv) {
+
+	struct proto_expectation *e = proto_expectation_alloc(proto, priv);
+
+	if (!e)
+		return NULL;
+
+	while (1) {
+		if (proto_expectation_prepend(e, ce->proto, ce->fwd_value, ce->rev_value) != POM_OK) {
+			proto_expectation_cleanup(e);
+			return NULL;
+		}
+	
+		if (!ce->parent)
+			break;
+
+		ce = ce->parent->ce;
+			
+	}
+
+
+	return e;
+}
+
+void proto_expectation_cleanup(struct proto_expectation *e) {
+
+	if (!e)
+		return;
+
+	while (e->head) {
+		struct proto_expectation_stack *es = e->head;
+		e->head = es->next;
+		if (es->fields[POM_DIR_FWD])
+			ptype_cleanup(es->fields[POM_DIR_FWD]);
+		if (es->fields[POM_DIR_REV])
+			ptype_cleanup(es->fields[POM_DIR_REV]);
+		
+		free(es);
+
+	}
+
+	free(e);
+}
+
+int proto_expectation_set_field(struct proto_expectation *e, int stack_index, struct ptype *value, int direction) {
+
+	struct proto_expectation_stack *es = NULL;
+
+	int i;
+	if (stack_index > 0) {
+		es = e->head;
+		for (i = 1; es && i < stack_index; i++)
+			es = es->next;
+	} else {
+		stack_index = -stack_index;
+		es = e->tail;
+		for (i = 1; es && i < stack_index; i++)
+			es = es->prev;
+	}
+
+	if (!es) {
+		pomlog(POMLOG_ERR "Invalid stack index in the expectation");
+		return POM_ERR;
+	}
+
+	if (es->fields[direction]) {
+		ptype_cleanup(es->fields[direction]);
+		es->fields[direction] = NULL;
+	}
+
+	if (value) {
+		es->fields[direction] = ptype_alloc_from(value);
+		if (!es->fields[direction])
+			return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+int proto_expectation_add(struct proto_expectation *e) {
+
+	if (!e || !e->tail || !e->tail->proto) {
+		pomlog(POMLOG_ERR "Cannot add expectation as it's incomplete");
+		return POM_ERR;
+	}
+	
+	struct proto *proto = e->tail->proto;
+	pom_rwlock_wlock(&proto->expectation_lock);
+
+	e->next = proto->expectations;
+	if (e->next)
+		e->next->prev = e;
+
+	proto->expectations = e;
+
+	pom_rwlock_unlock(&proto->expectation_lock);
+
+	return POM_OK;
 }
