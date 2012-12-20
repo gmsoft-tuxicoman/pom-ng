@@ -68,13 +68,6 @@ struct conntrack_info {
 	int (*cleanup_handler) (void *ce_priv);
 };
 
-struct conntrack_tables {
-	struct conntrack_list **fwd_table;
-	struct conntrack_list **rev_table;
-	pthread_mutex_t lock;
-	size_t tables_size;
-};
-
 int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index);
 struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, struct conntrack_entry *parent);
 

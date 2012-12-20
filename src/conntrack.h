@@ -27,6 +27,13 @@
 
 #define CONNTRACK_CHILDLESS_TIMEOUT	10
 
+struct conntrack_tables {
+	struct conntrack_list **fwd_table;
+	struct conntrack_list **rev_table;
+	pthread_mutex_t lock;
+	size_t tables_size;
+};
+
 struct conntrack_priv_list {
 	void *obj;
 	void *priv;
