@@ -55,13 +55,6 @@ struct conntrack_list {
 	struct conntrack_list *rev; ///< Reverse connection
 };
 
-struct conntrack_con_info_analyzer_list {
-
-	struct analyzer_reg *analyzer;
-	int (*process) (struct analyzer_reg *analyzer, struct proto_process_stack *stack, unsigned int stack_index);
-	struct conntrack_con_info_analyzer_list *prev, *next;
-};
-
 struct conntrack_info {
 	unsigned int default_table_size;
 	int fwd_pkt_field_id, rev_pkt_field_id;
