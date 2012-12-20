@@ -21,8 +21,11 @@
 #ifndef __PROTO_TFTP_H__
 #define __PROTO_TFTP_H__
 
-#define PROTO_TFTP_FIELD_NUM 1
-#define PROTO_TFTP_EXPT_TIMER 10
+#define PROTO_TFTP_FIELD_NUM	1
+#define PROTO_TFTP_EXPT_TIMER	30
+#define PROTO_TFTP_PKT_TIMER 	60
+#define PROTO_TFTP_BLK_SIZE	512
+#define PROTO_TFTP_STREAM_BUFF	16 * PROTO_TFTP_BLK_SIZE
 
 enum tftp_opcodes {
 	tftp_rrq = 1,
@@ -36,6 +39,7 @@ struct proto_tftp_conntrack_priv {
 
 	int is_invalid;
 	char *filename;
+	struct packet_stream *stream;
 
 };
 
@@ -44,5 +48,6 @@ static int proto_tftp_mod_register(struct mod_reg *mod);
 static int proto_tftp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tftp_mod_unregister();
 static int proto_tftp_conntrack_cleanup(void *ce_priv);
+static int proto_tftp_process_payload(struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif

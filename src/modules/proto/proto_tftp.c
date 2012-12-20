@@ -20,6 +20,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/core.h>
 #include <pom-ng/ptype_uint16.h>
 
 #include "proto_tftp.h"
@@ -75,6 +76,7 @@ static int proto_tftp_process(struct proto *proto, struct packet *p, struct prot
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	if (!s->ce) {
 		s->ce = conntrack_get_unique_from_parent(s->proto, s_prev->ce);
@@ -129,8 +131,7 @@ static int proto_tftp_process(struct proto *proto, struct packet *p, struct prot
 				return PROTO_INVALID;
 			}
 			debug_tftp("Got read/write request for filename \"%s\" with mode \"%s\"", filename, mode);
-
-
+			
 			struct proto_tftp_conntrack_priv *new_cp = malloc(sizeof(struct proto_tftp_conntrack_priv));
 			if (!new_cp) {
 				pom_oom(sizeof(struct proto_tftp_conntrack_priv));
@@ -138,37 +139,72 @@ static int proto_tftp_process(struct proto *proto, struct packet *p, struct prot
 			}
 			memset(new_cp, 0, sizeof(struct proto_tftp_conntrack_priv));
 
-			new_cp->filename = strdup(filename);
-			if (!new_cp->filename) {
-				pom_oom(filename_len + 1);
-				free(new_cp);
-				return PROTO_ERR;
+			if (filename) {
+				new_cp->filename = strdup(filename);
+				if (!new_cp->filename) {
+					pom_oom(strlen(filename) + 1);
+					return PROTO_ERR;
+				}
 			}
 
 			struct proto_expectation *expt = proto_expectation_alloc_from_conntrack(s_prev->ce, proto, new_cp);
 
 			if (!expt) {
-				free(new_cp->filename);
-				free(new_cp);
+				proto_tftp_conntrack_cleanup(new_cp);
 				return PROTO_ERR;
 			}
 
 			proto_expectation_set_field(expt, -1, NULL, POM_DIR_REV);
 
 			if (proto_expectation_add(expt, PROTO_TFTP_EXPT_TIMER) != POM_OK) {
-				free(new_cp->filename);
-				free(new_cp);
+				proto_tftp_conntrack_cleanup(new_cp);
 				proto_expectation_cleanup(expt);
 				return PROTO_ERR;
 			}
 
 			break;
 		}
+		case tftp_data: {
+			if (plen < 2) {
+				priv->is_invalid = 1;
+				return PROTO_INVALID;
+			}
+			uint16_t block_id = ntohs(*((uint16_t*)(pload)));
+			pload += sizeof(uint16_t);
+			plen -= sizeof(uint16_t);
+
+			s_next->pload = pload;
+			s_next->plen = plen;
+
+			if (!priv->stream) {
+				priv->stream = packet_stream_alloc(PROTO_TFTP_BLK_SIZE, 0, POM_DIR_FWD, PROTO_TFTP_STREAM_BUFF, s->ce, 0);
+				if (!priv->stream)
+					return PROTO_ERR;
+				packet_stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER, 0, proto_tftp_process_payload);
+			}
+
+			int res = packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
+			if (res == PROTO_OK)
+				return PROTO_STOP;
+
+			return res;
+		}
+
+		case tftp_ack:
+			// Nothing to do
+			break;
+
+		case tftp_error:
+			// An error occured, cleanup this conntrack soon
+			conntrack_delayed_cleanup(s->ce, 1);
+			break;
+
 		default:
 			priv->is_invalid = 1;
 			return PROTO_INVALID;
 	}
 
+	conntrack_delayed_cleanup(s->ce, PROTO_TFTP_PKT_TIMER);
 	return PROTO_OK;
 }
 
@@ -184,7 +220,16 @@ static int proto_tftp_conntrack_cleanup(void *ce_priv) {
 	if (priv->filename)
 		free(priv->filename);
 
+	if (priv->stream)
+		packet_stream_cleanup(priv->stream);
+
 	free(priv);
 
 	return POM_OK;
 }
+
+static int proto_tftp_process_payload(struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	return core_process_multi_packet(stack, stack_index, p);
+}
+
