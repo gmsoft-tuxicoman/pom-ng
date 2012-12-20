@@ -25,6 +25,8 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/conntrack.h>
 
+#define CONNTRACK_CHILDLESS_TIMEOUT	10
+
 struct conntrack_priv_list {
 	void *obj;
 	void *priv;

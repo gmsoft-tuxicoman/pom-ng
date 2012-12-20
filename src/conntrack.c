@@ -785,6 +785,10 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 			} else {
 				pomlog(POMLOG_WARN "Conntrack %s not found in parent's %s children list", ce, ce->parent->ce);
 			}
+
+			if (!ce->parent->ce->children) // Parent has no child anymore, clean it up after some time
+				conntrack_delayed_cleanup(ce->parent->ce, CONNTRACK_CHILDLESS_TIMEOUT);
+
 			conntrack_unlock(ce->parent->ce);
 		} else {
 			debug_conntrack("Parent conntrack %p not found while cleaning child %p !", ce->parent->ce, ce);
