@@ -21,6 +21,11 @@
 #ifndef __EVENT_H__
 #define __EVENT_H__
 
+struct event_reg {
+	struct event_reg_info *info;
+	struct event_listener *listeners;
+	struct event_reg *prev, *next;
+};
 
 struct event_listener {
 	void *obj;

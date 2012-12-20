@@ -209,6 +209,7 @@ int output_log_xml_close(void *output_priv) {
 int output_log_xml_process(struct event *evt, void *obj) {
 
 	struct output_log_xml_priv *priv = obj;
+	struct event_reg_info *evt_info = event_get_info(evt);
 
 	xmlBufferPtr buff = xmlBufferCreate();
 	if (!buff) {
@@ -227,12 +228,12 @@ int output_log_xml_process(struct event *evt, void *obj) {
 	
 	if (xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0 ||
 		xmlTextWriterStartElement(writer, BAD_CAST "event") < 0 ||
-		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->name) < 0)
+		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->name) < 0)
 		goto err;
 
 	int i;
-	for (i = 0; i < evt->reg->info->data_reg->data_count; i++) {
-		if (evt->reg->info->data_reg->items[i].flags & ANALYZER_DATA_FLAG_LIST) {
+	for (i = 0; i < evt_info->data_reg->data_count; i++) {
+		if (evt_info->data_reg->items[i].flags & ANALYZER_DATA_FLAG_LIST) {
 			// Got a data_list
 		
 			if (!evt->data[i].items)
@@ -241,7 +242,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 			// <data_list name="data_name">
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
 				xmlTextWriterStartElement(writer, BAD_CAST "data_list") < 0 ||
-				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg->items[i].name) < 0)
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->data_reg->items[i].name) < 0)
 				goto err;
 
 			// <value key="key1">
@@ -287,7 +288,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
 				xmlTextWriterStartElement(writer, BAD_CAST "data") < 0 ||
-				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt->reg->info->data_reg->items[i].name) < 0)
+				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->data_reg->items[i].name) < 0)
 				goto err;
 
 			if (evt->data[i].value) {

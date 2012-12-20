@@ -374,3 +374,14 @@ int event_refcount_dec(struct event *evt) {
 	
 	return POM_OK;
 }
+
+struct event_reg_info *event_get_info(struct event *evt) {
+	return evt->reg->info;
+}
+
+struct event_reg_info *event_reg_get_info(struct event_reg *evt_reg) {
+	return evt_reg->info;
+}
+struct ptype *event_data_item_add(struct event *evt, unsigned int id, const char *key) {
+	return data_item_add(evt->data, evt->reg->info->data_reg, id, key);
+}

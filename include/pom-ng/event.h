@@ -56,12 +56,6 @@ struct event_reg_info {
 	int (*cleanup) (struct event *evt);
 };
 
-struct event_reg {
-	struct event_reg_info *info;
-	struct event_listener *listeners;
-	struct event_reg *prev, *next;
-};
-
 struct event_reg *event_register(struct event_reg_info *reg_info);
 int event_unregister(struct event_reg *evt);
 
@@ -84,6 +78,10 @@ int event_process_end(struct event *evt);
 
 int event_refcount_inc(struct event *evt);
 int event_refcount_dec(struct event *evt);
+
+struct event_reg_info *event_get_info(struct event *evt);
+struct event_reg_info *event_reg_get_info(struct event_reg *evt_reg);
+struct ptype *event_data_item_add(struct event *evt, unsigned int id, const char *key);
 
 #endif
 

@@ -130,12 +130,13 @@ static struct output_log_txt_event_field *output_log_txt_parse_fields(struct eve
 		field_name[name_len] = 0;
 	
 		// Find the corresponding field
-		struct data_reg *dreg = evt->info->data_reg;
+		struct event_reg_info *evt_info = event_reg_get_info(evt);
+		struct data_reg *dreg = evt_info->data_reg;
 		int i;
 		for (i = 0; i < dreg->data_count && strcmp(dreg->items[i].name, field_name); i++);
 
 		if (!dreg->items[i].name) {
-			pomlog(POMLOG_WARN "Field %s not found in event %s", field_name, evt->info->name);
+			pomlog(POMLOG_WARN "Field %s not found in event %s", field_name, evt_info->name);
 			free(field_name);
 			sep = cur + 1;
 			continue;

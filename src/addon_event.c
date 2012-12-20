@@ -21,6 +21,7 @@
 #include "addon.h"
 #include "addon_event.h"
 #include "addon_data.h"
+#include "event.h"
 
 static int addon_event_get_field(lua_State *L) {
 

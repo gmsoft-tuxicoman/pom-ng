@@ -388,7 +388,8 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 
 	} else {
-		pomlog(POMLOG_ERR "Unexpected event %s", evt->reg->info->name);
+		struct event_reg_info *inf = event_get_info(evt);
+		pomlog(POMLOG_ERR "Unexpected event %s", inf->name);
 		return POM_ERR;
 	}
 

@@ -330,8 +330,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 				strncpy(value, colon, value_len);
 				value[value_len] = 0;
 
-
-				struct ptype *data_val = data_item_add(priv->event[s->direction]->data, priv->event[s->direction]->reg->info->data_reg, (priv->client_direction == s->direction ? proto_http_query_headers : proto_http_response_headers), name);
+				struct ptype *data_val = event_data_item_add(priv->event[s->direction], (priv->client_direction == s->direction ? proto_http_query_headers : proto_http_response_headers), name);
 				if (!data_val) {
 					free(name);
 					free(value);
