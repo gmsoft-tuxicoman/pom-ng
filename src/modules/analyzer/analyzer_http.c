@@ -18,7 +18,6 @@
  *
  */
 
-#include <sys/time.h>
 #include <stdio.h>
 #include "analyzer_http.h"
 #include "analyzer_http_post.h"
