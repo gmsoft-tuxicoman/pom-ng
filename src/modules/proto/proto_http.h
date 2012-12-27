@@ -29,16 +29,6 @@
 #define HTTP_STATE_HEADERS	2 // Receiving the headers of the query/response
 #define HTTP_STATE_BODY		3 // Receiving the body (payload) of a query/response
 
-/*
-#define HTTP_QUERY_HEADER	1 ///< Looking for the query line
-#define HTTP_QUERY		2 ///< This is a query
-#define HTTP_BODY_QUERY		3 ///< Handling the body
-#define HTTP_RESPONSE_HEADER	4 ///< Looking for the response line
-#define HTTP_RESPONSE		5 ///< This is a response
-#define HTTP_BODY_RESPONSE	6 ///< Handling the body of a response (e.g. POST)
-#define HTTP_INVALID		9 ///< Invalid HTTP message, will discard the rest of the connection
-*/
-
 #define HTTP_FLAG_HAVE_CLEN	0x01
 #define HTTP_FLAG_CHUNKED	0x04
 #define HTTP_FLAG_LAST_CHUNK	0x08
