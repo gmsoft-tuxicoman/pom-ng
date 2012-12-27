@@ -27,6 +27,9 @@
 #define PROTO_TFTP_BLK_SIZE	512
 #define PROTO_TFTP_STREAM_BUFF	16 * PROTO_TFTP_BLK_SIZE
 
+#define PROTO_TFTP_CONN_INVALID 0x1
+#define PROTO_TFTP_CONN_DONE	0x2
+
 enum tftp_opcodes {
 	tftp_rrq = 1,
 	tftp_wrq,
@@ -35,16 +38,22 @@ enum tftp_opcodes {
 	tftp_error
 };
 
+struct proto_tftp_priv {
+	struct event_reg *evt_file;
+};
+
 struct proto_tftp_conntrack_priv {
 
-	int is_invalid;
-	char *filename;
+	int flags;
 	struct packet_stream *stream;
+	struct event *evt;
 
 };
 
 struct mod_reg_info* proto_tftp_reg_info();
 static int proto_tftp_mod_register(struct mod_reg *mod);
+static int proto_tftp_init(struct proto *proto, struct registry_instance *ri);
+static int proto_tftp_cleanup(struct proto *proto);
 static int proto_tftp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tftp_mod_unregister();
 static int proto_tftp_conntrack_cleanup(void *ce_priv);
