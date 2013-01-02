@@ -48,6 +48,7 @@ struct proto_expectation {
 	struct proto *proto;
 	void *priv;
 	struct timer *expiry;
+	struct conntrack_session *session;
 	struct proto_expectation *prev, *next;
 };
 

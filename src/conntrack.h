@@ -34,6 +34,13 @@ struct conntrack_tables {
 	size_t tables_size;
 };
 
+struct conntrack_session {
+
+	unsigned int refcount;
+	struct conntrack_priv_list *privs;
+	pthread_mutex_t lock;
+};
+
 struct conntrack_priv_list {
 	void *obj;
 	void *priv;
@@ -64,5 +71,8 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 
 
 int conntrack_timer_process(void *priv, struct timeval *now);
+
+int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session);
+int conntrack_session_refcount_dec(struct conntrack_session *session);
 
 #endif

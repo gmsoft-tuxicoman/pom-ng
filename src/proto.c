@@ -223,15 +223,24 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 
 			struct proto_process_stack *s_next = &stack[stack_index + 1];
 			s_next->proto = e->proto;
-			void *priv = e->priv;
 
-			proto_expectation_cleanup(e);
 			
 			s_next->ce = conntrack_get_unique_from_parent(s_next->proto, s->ce);
-			if (!s_next->ce)
+			if (!s_next->ce) {
+				proto_expectation_cleanup(e);
 				return PROTO_ERR;
+			}
 
-			s_next->ce->priv = priv;
+			s_next->ce->priv = e->priv;
+
+			if (conntrack_session_bind(s_next->ce, e->session)) {
+				proto_expectation_cleanup(e);
+				return PROTO_ERR;
+			}
+			e->session = NULL;
+
+			proto_expectation_cleanup(e);
+
 
 			break;
 
@@ -574,6 +583,9 @@ void proto_expectation_cleanup(struct proto_expectation *e) {
 
 	}
 
+	if (e->session)
+		conntrack_session_refcount_dec(e->session);
+
 	timer_cleanup(e->expiry);
 
 	free(e);
@@ -614,7 +626,7 @@ int proto_expectation_set_field(struct proto_expectation *e, int stack_index, st
 	return POM_OK;
 }
 
-int proto_expectation_add(struct proto_expectation *e, unsigned int expiry) {
+int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, struct conntrack_session *session) {
 
 	if (!e || !e->tail || !e->tail->proto) {
 		pomlog(POMLOG_ERR "Cannot add expectation as it's incomplete");
@@ -627,6 +639,8 @@ int proto_expectation_add(struct proto_expectation *e, unsigned int expiry) {
 
 	if (timer_queue(e->expiry, expiry) != POM_OK)
 		return POM_ERR;
+
+	e->session = session;
 	
 	struct proto *proto = e->tail->proto;
 	pom_rwlock_wlock(&proto->expectation_lock);

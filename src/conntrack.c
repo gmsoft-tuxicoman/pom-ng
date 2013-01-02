@@ -753,6 +753,8 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 		ce->cleanup_timer = NULL;
 	}
 
+	if (ce->session)
+		conntrack_session_refcount_dec(ce->session);
 
 	conntrack_unlock(ce);
 	
@@ -917,4 +919,109 @@ int conntrack_timer_process(void *priv, struct timeval *now) {
 	conntrack_unlock(ce);
 
 	return res;
+}
+
+struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce) {
+
+	if (!ce->session) {
+		ce->session = malloc(sizeof(struct conntrack_session));
+		if (!ce->session) {
+			pom_oom(sizeof(struct conntrack_session));
+			return NULL;
+		}
+		memset(ce->session, 0, sizeof(struct conntrack_session));
+
+		if (pthread_mutex_init(&ce->session->lock, NULL)) {
+			pomlog(POMLOG_ERR "Error while initializing session mutex : %s", pom_strerror(errno));
+			free(ce->session);
+			ce->session = NULL;
+			return NULL;
+		}
+		ce->session->refcount++;
+	}
+	
+	pom_mutex_lock(&ce->session->lock);
+
+	return ce->session;
+}
+
+int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session) {
+
+	if (ce->session) {
+		pomlog(POMLOG_WARN "Warning, session already exists when trying to bind another session. TODO: implement merging");
+		conntrack_session_refcount_dec(ce->session);
+	}
+
+	pom_mutex_lock(&session->lock);
+	session->refcount++;
+	ce->session = session;
+	pom_mutex_unlock(&session->lock);
+
+	return POM_OK;
+}
+
+void conntrack_session_unlock(struct conntrack_session *session) {
+	pom_mutex_unlock(&session->lock);
+}
+
+
+int conntrack_session_refcount_dec(struct conntrack_session *session) {
+
+	pom_mutex_lock(&session->lock);
+	session->refcount--;
+
+	if (session->refcount) {
+		pom_mutex_unlock(&session->lock);
+		return POM_OK;
+	}
+
+	pom_mutex_unlock(&session->lock);
+
+	pthread_mutex_destroy(&session->lock);
+
+	while (session->privs) {
+		struct conntrack_priv_list *lst = session->privs;
+		session->privs = lst->next;
+		if (lst->cleanup) {
+			if (lst->cleanup(lst->obj, lst->priv) != POM_OK)
+				pomlog(POMLOG_WARN "Cleanup handler failed for session priv");
+		}
+		free(lst);
+	}
+
+	free(session);
+	return POM_OK;
+}
+
+
+int conntrack_session_add_priv(struct conntrack_session *s, void *obj, void *priv, int (*cleanup_handler) (void *obj, void *priv)) {
+	
+	struct conntrack_priv_list *lst = malloc(sizeof(struct conntrack_priv_list));
+	if (!lst) {
+		pom_oom(sizeof(struct conntrack_priv_list));
+		return POM_ERR;
+	}
+	memset(lst, 0, sizeof(struct conntrack_priv_list));
+	lst->obj = obj;
+	lst->priv = priv;
+	lst->cleanup = cleanup_handler;
+
+	lst->next = s->privs;
+	if (lst->next)
+		lst->next->prev = lst;
+
+	s->privs = lst;
+
+	return POM_OK;
+}
+
+void *conntrack_session_get_priv(struct conntrack_session *s, void *obj) {
+
+	struct conntrack_priv_list *lst = s->privs;
+	while (lst) {
+		if (lst->obj == obj)
+			return lst->priv;
+	}
+
+	return NULL;
 }

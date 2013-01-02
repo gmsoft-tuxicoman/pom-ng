@@ -39,6 +39,7 @@ struct conntrack_entry {
 	pthread_mutex_t lock;
 	struct conntrack_timer *cleanup_timer; ///< Cleanup the conntrack when this timer is reached
 	struct proto *proto; ///< Proto of this conntrack
+	struct conntrack_session *session; ///< Session to which this conntrack belongs
 	unsigned int refcount; ///< Reference count (mostly in how many proto_stack it's referenced)
 };
 
@@ -78,5 +79,10 @@ struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*
 int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry);
 int conntrack_timer_dequeue(struct conntrack_timer *t);
 int conntrack_timer_cleanup(struct conntrack_timer *t);
+
+struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce);
+void conntrack_session_unlock(struct conntrack_session *session);
+int conntrack_session_add_priv(struct conntrack_session *s, void *obj, void *priv, int (*cleanup_handler) (void *obj, void *priv));
+void *conntrack_session_get_priv(struct conntrack_session *s, void *obj);
 
 #endif
