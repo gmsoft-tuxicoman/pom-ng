@@ -21,13 +21,18 @@
 #ifndef __POM_NG_PROTO_TFTP_H__
 #define __POM_NG_PROTO_TFTP_H__
 
-#define PROTO_TFTP_EVT_FILE_DATA_COUNT 4
 
-enum {
-	proto_tftp_file_filename,
-	proto_tftp_file_mode,
-	proto_tftp_file_write,
-	proto_tftp_file_size,
+enum proto_tftp_fields {
+	proto_tftp_field_opcode = 0
 };
+
+enum tftp_opcodes {
+	tftp_rrq = 1,
+	tftp_wrq,
+	tftp_data,
+	tftp_ack,
+	tftp_error
+};
+
 
 #endif
