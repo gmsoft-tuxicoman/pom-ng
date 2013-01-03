@@ -679,6 +679,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 	conntrack_lock(ce);
 	if (ce->refcount) {
 		pomlog(POMLOG_ERR "Conntrack %p is still being referenced : %u !", ce, ce->refcount);
+		conntrack_delayed_cleanup(ce, 1);
 		conntrack_unlock(ce);
 		pom_mutex_unlock(&ct->lock);
 		return POM_OK;
