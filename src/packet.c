@@ -724,6 +724,12 @@ int packet_stream_set_timeout(struct packet_stream *stream, unsigned int same_di
 
 int packet_stream_cleanup(struct packet_stream *stream) {
 
+
+	if (stream->wait_list_head) {
+		pomlog(POMLOG_ERR "Internal error, cleaning up stream while packets still present!");
+		return POM_ERR;
+	}
+
 	while (stream->head[0] || stream->head[1]) {
 		if (packet_stream_force_dequeue(stream) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while processing remaining packets in the stream");
@@ -742,7 +748,8 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	while (stream->wait_list_unused) {
 		struct packet_stream_thread_wait *tmp = stream->wait_list_unused;
 		stream->wait_list_unused = tmp->next;
-		pthread_cond_destroy(&tmp->cond);
+		if (pthread_cond_destroy(&tmp->cond))
+			pomlog(POMLOG_WARN "Error while destroying list condition");
 		free(tmp);
 	}
 	
@@ -848,7 +855,6 @@ static void packet_stream_end_process_packet(struct packet_stream *stream) {
 		pthread_cond_broadcast(&stream->wait_list_head->cond);
 	}
 	pom_mutex_unlock(&stream->wait_lock);
-
 }
 
 static void packet_stream_free_packet(struct packet_stream_pkt *p) {
@@ -873,11 +879,12 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	int must_wait = 0;
 
+	pom_mutex_lock(&stream->wait_lock);
+
 	int res = pthread_mutex_trylock(&stream->lock);
 	if (res == EBUSY) {
 		// Already locked, let's wait a bit
 		must_wait = 1;
-		pom_mutex_lock(&stream->wait_lock);
 	} else if (res) {
 		pomlog(POMLOG_ERR "Error while locking packet stream lock : %s", pom_strerror(errno));
 		abort();
@@ -885,7 +892,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	} else {
 
 		// We got the processing lock. But was it really this thread's turn ?
-		pom_mutex_lock(&stream->wait_lock);
 
 		struct packet_stream_thread_wait *tmp = stream->wait_list_head;
 		// A thread with a packet preceding ours is waiting
@@ -1072,7 +1078,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		}
 
 		packet_stream_end_process_packet(stream);
-		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done processed", pthread_self(), stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 		return res;
 	}
 
@@ -1171,7 +1177,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
 	packet_stream_end_process_packet(stream);
 
-	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done", pthread_self(),  stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done queued", pthread_self(),  stream, pkt->ts.tv_sec, pkt->ts.tv_usec, seq, ack);
 	return PROTO_OK;
 }
 
