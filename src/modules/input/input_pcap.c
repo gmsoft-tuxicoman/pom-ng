@@ -89,7 +89,8 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	in_pcap_dir.api_ver = INPUT_API_VER;
 	in_pcap_dir.mod = mod;
 	in_pcap_dir.init = input_pcap_dir_init;
-	in_pcap_dir.open = input_pcap_dir_open;
+	// Do the open at read() time because scanning can take quite some time
+	//in_pcap_dir.open = input_pcap_dir_open;
 	in_pcap_dir.read = input_pcap_read;
 	in_pcap_dir.close = input_pcap_close;
 	in_pcap_dir.cleanup = input_pcap_cleanup;
@@ -352,11 +353,16 @@ static int input_pcap_dir_open(struct input *i) {
 
 	struct input_pcap_priv *p = i->priv;
 
-	if (input_pcap_dir_browse(p) != POM_OK)
-		return POM_ERR;
-	
 	struct input_pcap_dir_priv *dp = &p->tpriv.dir;
 
+	pomlog(POMLOG_INFO "Scanning directory %s for pcap files ...", PTYPE_STRING_GETVAL(dp->p_dir));
+
+	int found = input_pcap_dir_browse(p);
+	if (found == POM_ERR)
+		return POM_ERR;
+
+	pomlog(POMLOG_INFO "Found %u files", found);
+	
 	dp->cur_file = dp->files;
 
 	// Skip files which were not read
@@ -408,6 +414,8 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 	struct dirent *buf, *de;
 	size_t len = offsetof(struct dirent, d_name) + pathconf(path, _PC_NAME_MAX) + 1;
 	buf = malloc(len);
+
+	int tot_files = 0;
 
 	do {
 		int res = readdir_r(dir, buf, &de);
@@ -520,6 +528,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 
 		pomlog(POMLOG_DEBUG "Added file %s to the list", cur->full_path);
+		tot_files++;
 
 	} while (de);
 
@@ -528,7 +537,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 	closedir(dir);
 
-	return POM_OK;
+	return tot_files;
 
 }
 
@@ -541,8 +550,11 @@ static int input_pcap_dir_open_next(struct input_pcap_priv *p) {
 		if (!dp->cur_file->next) { // No more file
 			if (!rescanned) {
 				// Rescan the directory for possible new files
-				if (input_pcap_dir_browse(p) != POM_OK)
+				pomlog(POMLOG_INFO "Rescanning directory %s for pcap files ...", PTYPE_STRING_GETVAL(dp->p_dir));
+				int new_found = input_pcap_dir_browse(p);
+				if (new_found == POM_ERR)
 					return POM_ERR;
+				pomlog(POMLOG_INFO "Found %u new files", new_found);
 				rescanned = 1;
 				continue;
 			} else {
@@ -584,8 +596,12 @@ static int input_pcap_read(struct input *i) {
 
 	struct input_pcap_priv *p = i->priv;
 
+	if (p->type == input_pcap_type_dir && !p->tpriv.dir.files) {
+		if (input_pcap_dir_open(i) != POM_OK)
+			return POM_ERR;
+	}
+
 	struct pcap_pkthdr *phdr;
-	
 	const u_char *data;
 	int result = pcap_next_ex(p->p, &phdr, &data);
 	if (phdr->len > phdr->caplen) 
