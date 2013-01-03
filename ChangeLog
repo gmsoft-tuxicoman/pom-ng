@@ -1,3 +1,12 @@
+v0.0.7
+	Add output_tap.
+	Add ether type to proto_ethernet fields.
+	Add filter parameter to output tap.
+	Multiple filter fixes and additions.
+	Add protocol pppoe, ppp, tftp.
+	Add expectations support.
+	Various minor fix and cleanups.
+
 v0.0.6
 	Add offline DNS resolver.
 	Fix build on systems which rename lua to lua5.1.
