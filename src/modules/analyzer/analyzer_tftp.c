@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -72,7 +72,7 @@ static int analyzer_tftp_init(struct analyzer *analyzer) {
 	evt_file_data_items[analyzer_tftp_file_mode].value_type = ptype_get_type("string");
 	evt_file_data_items[analyzer_tftp_file_write].name = "write";
 	evt_file_data_items[analyzer_tftp_file_write].value_type = ptype_get_type("bool");
-	evt_file_data_items[analyzer_tftp_file_size].name = "mode";
+	evt_file_data_items[analyzer_tftp_file_size].name = "size";
 	evt_file_data_items[analyzer_tftp_file_size].value_type = ptype_get_type("uint32");
 
 	static struct data_reg evt_file_data = {
@@ -244,7 +244,6 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			PTYPE_BOOL_SETVAL(fq->evt->data[analyzer_tftp_file_write].value, opcode == tftp_wrq);
 			data_set(fq->evt->data[analyzer_tftp_file_write]);
 
-			data_set(fq->evt->data[analyzer_tftp_file_size]);
 
 
 			fq->next = spriv->files;
@@ -329,8 +328,13 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			if (analyzer_pload_buffer_append(f->pload, s_next->pload, s_next->plen) != POM_OK)
 				goto err;
 
+			uint32_t *size = PTYPE_UINT32_GETVAL(f->evt->data[analyzer_tftp_file_size].value);
+			*size += s_next->plen;
+
 			if (s_next->plen < ANALYZER_TFTP_BLK_SIZE) {
 				// Got last packet !
+				data_set(f->evt->data[analyzer_tftp_file_size]);
+				
 				int res = analyzer_pload_buffer_cleanup(f->pload);
 				res += event_process_end(f->evt);
 				f->evt = NULL;	
