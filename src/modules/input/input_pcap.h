@@ -53,6 +53,7 @@ struct input_pcap_dir_priv {
 	struct ptype *p_match;
 	struct input_pcap_dir_file *files;
 	struct input_pcap_dir_file *cur_file;
+	unsigned int interrupt_scan;
 };
 
 struct input_pcap_priv {

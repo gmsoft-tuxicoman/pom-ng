@@ -355,9 +355,16 @@ static int input_pcap_dir_open(struct input *i) {
 
 	struct input_pcap_dir_priv *dp = &p->tpriv.dir;
 
+	// Reset the interrupt flag
+	dp->interrupt_scan = 0;
+
 	pomlog(POMLOG_INFO "Scanning directory %s for pcap files ...", PTYPE_STRING_GETVAL(dp->p_dir));
 
 	int found = input_pcap_dir_browse(p);
+
+	if (dp->interrupt_scan)
+		return POM_ERR;
+
 	if (found == POM_ERR)
 		return POM_ERR;
 
@@ -417,7 +424,8 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 	int tot_files = 0;
 
-	do {
+	while (!priv->tpriv.dir.interrupt_scan) {
+
 		int res = readdir_r(dir, buf, &de);
 		if (res) {
 			pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
@@ -530,12 +538,15 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		pomlog(POMLOG_DEBUG "Added file %s to the list", cur->full_path);
 		tot_files++;
 
-	} while (de);
+	}
 
 	regfree(&preg);
 	free(buf);
 
 	closedir(dir);
+
+	if (priv->tpriv.dir.interrupt_scan)
+		return 0;
 
 	return tot_files;
 
@@ -552,6 +563,8 @@ static int input_pcap_dir_open_next(struct input_pcap_priv *p) {
 				// Rescan the directory for possible new files
 				pomlog(POMLOG_INFO "Rescanning directory %s for pcap files ...", PTYPE_STRING_GETVAL(dp->p_dir));
 				int new_found = input_pcap_dir_browse(p);
+				if (dp->interrupt_scan)
+					return POM_OK;
 				if (new_found == POM_ERR)
 					return POM_ERR;
 				pomlog(POMLOG_INFO "Found %u new files", new_found);
@@ -597,8 +610,12 @@ static int input_pcap_read(struct input *i) {
 	struct input_pcap_priv *p = i->priv;
 
 	if (p->type == input_pcap_type_dir && !p->tpriv.dir.files) {
-		if (input_pcap_dir_open(i) != POM_OK)
+		if (input_pcap_dir_open(i) != POM_OK) {
+			// Don't error out if the scan was interrupted
+			if (p->tpriv.dir.interrupt_scan)
+				return POM_OK;
 			return POM_ERR;
+		}
 	}
 
 	struct pcap_pkthdr *phdr;
@@ -721,6 +738,9 @@ static int input_pcap_cleanup(struct input *i) {
 static int input_pcap_interrupt(struct input *i) {
 
 	struct input_pcap_priv *priv = i->priv;
+	if (priv->type == input_pcap_type_dir)
+		priv->tpriv.dir.interrupt_scan = 1;
+
 	if (priv->p)
 		pcap_breakloop(priv->p);
 	pthread_kill(i->thread, SIGCHLD);
