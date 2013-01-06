@@ -29,6 +29,30 @@
 #define REGISTRY_CONFIG			"config"
 #define REGISTRY_CONFIG_NAME_MAX	256
 
+struct registry_param {
+	char *name;
+	char *default_value;
+	struct ptype *value;
+	char *description;
+	unsigned int flags;
+
+	void *callback_priv;
+	int (*set_pre_callback) (void *priv, char *value);
+	int (*set_post_callback) (void *priv, struct ptype *value);
+
+	struct registry_param *next, *prev;
+};
+
+struct registry_instance {
+	char *name;
+	struct registry_param *params;
+	struct registry_function *funcs;
+	uint32_t serial;
+	void *priv;
+	struct registry_instance *next, *prev;
+	struct registry_class *parent;
+};
+
 enum registry_config_entry_types {
 	registry_config_class_param,
 	registry_config_instance,

@@ -28,29 +28,8 @@
 #define REGISTRY_PARAM_FLAG_CLEANUP_VAL	1
 #define REGISTRY_PARAM_FLAG_IMMUTABLE	2
 
-struct registry_param {
-	char *name;
-	char *default_value;
-	struct ptype *value;
-	char *description;
-	unsigned int flags;
-
-	void *callback_priv;
-	int (*set_pre_callback) (void *priv, char *value);
-	int (*set_post_callback) (void *priv, struct ptype *value);
-
-	struct registry_param *next, *prev;
-};
-
-struct registry_instance {
-	char *name;
-	struct registry_param *params;
-	struct registry_function *funcs;
-	uint32_t serial;
-	void *priv;
-	struct registry_instance *next, *prev;
-	struct registry_class *parent;
-};
+struct registry_instance;
+struct registry_param;
 
 struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags);
 int registry_cleanup_param(struct registry_param *p);
