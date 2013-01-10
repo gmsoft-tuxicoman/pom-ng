@@ -29,6 +29,19 @@
 #define REGISTRY_CONFIG			"config"
 #define REGISTRY_CONFIG_NAME_MAX	256
 
+// Use the msb for started/stopped flag
+#define REGISTRY_PERF_TIMETICKS_STARTED (1LLU << 63)
+
+struct registry_perf {
+
+	char *name;
+	char *description;
+	char *unit;
+	enum registry_perf_type type;
+	uint64_t value;
+	struct registry_perf *next;
+};
+
 struct registry_param {
 	char *name;
 	char *default_value;
@@ -51,6 +64,8 @@ struct registry_instance {
 	void *priv;
 	struct registry_instance *next, *prev;
 	struct registry_class *parent;
+
+	struct registry_perf *perfs;
 };
 
 enum registry_config_entry_types {

@@ -25,7 +25,7 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 11
+#define XMLRPCCMD_REGISTRY_NUM 12
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -104,6 +104,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.callback_func = xmlrpccmd_registry_delete,
 		.signature = "i:s",
 		.help = "Delete a saved configuration",
+	},
+
+	{
+		.name = "registry.getPerfs",
+		.callback_func = xmlrpccmd_registry_get_perfs,
+		.signature = "A:A",
+		.help = "Fetch a set of performance objects"
 	}
 };
 
@@ -155,6 +162,41 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 
 	}
 	return params;
+}
+
+static xmlrpc_value *xmlrpccmd_registry_build_perfs(xmlrpc_env * const envP, struct registry_perf *perf_head) {
+
+	xmlrpc_value *perfs = xmlrpc_array_new(envP);
+
+	struct registry_perf *p;
+	for (p = perf_head; p; p = p->next) {
+	
+		char *type_str = "unknown";
+		switch (p->type) {
+			case registry_perf_type_counter:
+				type_str = "counter";
+				break;
+			case registry_perf_type_gauge:
+				type_str = "gauge";
+				break;
+			case registry_perf_type_timeticks:
+				type_str = "timeticks";
+				break;
+		}
+		
+		xmlrpc_value *perf = NULL;
+		perf = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:s}",
+							"name", p->name,
+							"type", type_str,
+							"unit", p->unit,
+							"description", p->description);
+
+		xmlrpc_array_append_item(envP, perfs, perf);
+		xmlrpc_DECREF(perf);
+
+	}
+
+	return perfs;
 }
 
 xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
@@ -425,17 +467,21 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 
 	}
 
-	registry_unlock();
-
 	xmlrpc_value *params = xmlrpccmd_registry_build_params(envP, i->params);
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A}",
+	xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, i->perfs);
+
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A}",
 				"name", i->name,
 				"serial", i->serial,
 				"parameters", params,
+				"performances", perfs,
 				"functions", funcs);
 
+	registry_unlock();
+
 	xmlrpc_DECREF(params);
+	xmlrpc_DECREF(perfs);
 	xmlrpc_DECREF(funcs);
 
 	return res;
@@ -633,4 +679,155 @@ xmlrpc_value *xmlrpccmd_registry_delete(xmlrpc_env * const envP, xmlrpc_value * 
 	free(name);
 
 	return xmlrpc_int_new(envP, 0);
+}
+
+xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	struct perf_entry {
+		char *cls_name;
+		struct registry_class *cls;
+		char *inst_name;
+		struct registry_instance *inst;
+		char *perf_name;
+		struct registry_perf *perf;
+		xmlrpc_value *value;
+	};
+
+
+	xmlrpc_value *array;
+	xmlrpc_decompose_value(envP, paramArrayP, "(A)", &array);
+
+	if (envP->fault_occurred || !array)
+		return NULL;
+
+	unsigned int perf_array_count = xmlrpc_array_size(envP, array);
+	size_t perf_array_size = sizeof(struct perf_entry) * perf_array_count;
+	struct perf_entry *perf_array = malloc(perf_array_size);
+	if (!perf_array) {
+		xmlrpc_DECREF(array);
+		pom_oom(perf_array_size);
+		return NULL;
+	}
+	memset(perf_array, 0, perf_array_size);
+
+	xmlrpc_value *res = xmlrpc_array_new(envP);
+
+	// Fetch each entry in the array
+	unsigned int i;
+	for (i = 0; i < perf_array_count; i++) {
+		xmlrpc_value *item = NULL;
+		xmlrpc_array_read_item(envP, array, i, &item);
+		if (envP->fault_occurred) {
+			xmlrpc_DECREF(array);
+			goto err;
+		}
+
+		// Fetch each structure, get the class, instance and perf
+		xmlrpc_decompose_value(envP, item, "{s:s,s:s,s:s,*}",
+						"class", &perf_array[i].cls_name,
+						"instance", &perf_array[i].inst_name,
+						"perf", &perf_array[i].perf_name
+						);
+
+		xmlrpc_DECREF(item);
+
+		if (envP->fault_occurred) {
+			xmlrpc_DECREF(array);
+			goto err;
+		}
+
+	}
+	xmlrpc_DECREF(array);
+
+	registry_lock();
+	for (i = 0; i < perf_array_count; i++) {
+		if (!perf_array[i].cls) {
+			perf_array[i].cls = registry_find_class(perf_array[i].cls_name);
+			if (!perf_array[i].cls) {
+				xmlrpc_faultf(envP, "Class %s not found", perf_array[i].cls_name);
+				registry_unlock();
+				goto err;
+			}
+			unsigned int j;
+
+			for (j = i + 1; j < perf_array_count; j++) {
+				if (!strcmp(perf_array[j].cls_name, perf_array[i].cls_name))
+					perf_array[j].cls = perf_array[i].cls;
+			}
+
+		}
+
+		if (!perf_array[i].inst) {
+			struct registry_instance *inst;
+			for (inst = perf_array[i].cls->instances; inst && strcmp(inst->name, perf_array[i].inst_name); inst = inst->next);
+			if (!inst) {
+				xmlrpc_faultf(envP, "Instance %s of class %s does not exists", perf_array[i].inst_name, perf_array[i].cls_name);
+				registry_unlock();
+				goto err;
+			}
+			perf_array[i].inst = inst;
+			
+			unsigned int j;
+			for (j = i + 1; j < perf_array_count; j++) {
+				if (perf_array[j].cls == perf_array[i].cls && !strcmp(perf_array[j].inst_name, perf_array[i].inst_name))
+					perf_array[j].inst = perf_array[i].inst;
+			}
+		}
+
+		if (!perf_array[i].perf) {
+			struct registry_perf *perf;
+			for (perf = perf_array[i].inst->perfs; perf && strcmp(perf->name, perf_array[i].perf_name); perf = perf->next);
+			if (!perf) {
+				xmlrpc_faultf(envP, "Perf %s of instance %s of class %s does not exists", perf_array[i].perf_name, perf_array[i].inst_name, perf_array[i].cls_name);
+				registry_unlock();
+				goto err;
+			}
+			perf_array[i].perf = perf;
+
+			unsigned int j;
+			for (j = i + 1; j < perf_array_count; j++) {
+				if (perf_array[j].inst == perf_array[i].inst && !strcmp(perf_array[j].perf_name, perf_array[i].perf_name))
+					perf_array[j].perf = perf_array[i].perf;
+			}
+		}
+
+		// Add the value to the result
+		
+		xmlrpc_value *item = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:I}",
+							"class", perf_array[i].cls_name,
+							"instance", perf_array[i].inst_name,
+							"perf", perf_array[i].perf_name,
+							"value", registry_perf_getval(perf_array[i].perf));
+		xmlrpc_array_append_item(envP, res, item);
+		xmlrpc_DECREF(item);
+	}
+	registry_unlock();
+	
+	for (i = 0; i < perf_array_count; i++) {
+		if (perf_array[i].cls_name)
+			free(perf_array[i].cls_name);
+		if (perf_array[i].inst_name)
+			free(perf_array[i].inst_name);
+		if (perf_array[i].perf_name)
+			free(perf_array[i].perf_name);
+	}
+
+	free(perf_array);
+
+	return res;
+err:
+
+	for (i = 0; i < perf_array_count; i++) {
+		if (perf_array[i].cls_name)
+			free(perf_array[i].cls_name);
+		if (perf_array[i].inst_name)
+			free(perf_array[i].inst_name);
+		if (perf_array[i].perf_name)
+			free(perf_array[i].perf_name);
+	}
+	free(perf_array);
+
+	xmlrpc_DECREF(res);
+
+	return NULL;
 }

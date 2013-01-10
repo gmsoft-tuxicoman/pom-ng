@@ -31,6 +31,13 @@
 struct registry_instance;
 struct registry_param;
 
+enum registry_perf_type {
+	registry_perf_type_counter,
+	registry_perf_type_gauge,
+	registry_perf_type_timeticks
+
+};
+
 struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags);
 int registry_cleanup_param(struct registry_param *p);
 int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value));
@@ -38,5 +45,12 @@ int registry_instance_add_param(struct registry_instance *i, struct registry_par
 int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
 
 int registry_uid_create(struct registry_instance *instance);
+
+struct registry_perf *registry_instance_add_perf(struct registry_instance *i, const char *name, enum registry_perf_type type, const char *description, const char *unit);
+void registry_perf_inc(struct registry_perf *p, uint64_t val);
+void registry_perf_dec(struct registry_perf *p, uint64_t val);
+void registry_perf_timeticks_stop(struct registry_perf *p);
+void registry_perf_timeticks_restart(struct registry_perf *p);
+uint64_t registry_perf_getval(struct registry_perf *p);
 
 #endif

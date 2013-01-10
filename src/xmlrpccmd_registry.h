@@ -36,5 +36,7 @@ xmlrpc_value *xmlrpccmd_registry_reset(xmlrpc_env * const envP, xmlrpc_value * c
 xmlrpc_value *xmlrpccmd_registry_load(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_registry_delete(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
+xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+
 #endif
 

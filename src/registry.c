@@ -333,6 +333,15 @@ int registry_remove_instance(struct registry_instance *i) {
 		free(f);
 	}
 
+	while (i->perfs) {
+		struct registry_perf *p = i->perfs;
+		i->perfs = p->next;
+		free(p->name);
+		free(p->description);
+		free(p->unit);
+		free(p);
+	}
+
 	if (i->prev)
 		i->prev->next = i->next;
 	else 
@@ -1374,4 +1383,137 @@ err:
 	datastore_dataset_query_cleanup(dsq_config);
 
 	return POM_ERR;
+}
+
+
+struct registry_perf *registry_instance_add_perf(struct registry_instance *i, const char *name, enum registry_perf_type type, const char *description, const char *unit) {
+
+	struct registry_perf *perf = malloc(sizeof(struct registry_perf));
+	if (!perf) {
+		pom_oom(sizeof(struct registry_perf));
+		return NULL;
+	}
+	memset(perf, 0, sizeof(struct registry_perf));
+
+	perf->name = strdup(name);
+	if (!perf->name) {
+		free(perf);
+		pom_oom(strlen(name) + 1);
+		return NULL;
+	}
+
+	perf->description = strdup(description);
+	if (!perf->description) {
+		free(perf->name);
+		free(perf);
+		pom_oom(strlen(description) + 1);
+		return NULL;
+	}
+
+	if (type == registry_perf_type_timeticks)
+		unit = "usec";
+
+	perf->unit = strdup(unit);
+	if (!perf->unit) {
+		free(perf->name);
+		free(perf->description);
+		free(perf);
+		pom_oom(strlen(unit) + 1);
+		return NULL;
+	}
+
+	perf->type = type;
+
+	registry_lock();
+	perf->next = i->perfs;
+	i->perfs = perf;
+	
+	registry_unlock();
+	
+	return perf;
+}
+
+void registry_perf_inc(struct registry_perf *p, uint64_t val) {
+
+	if (p->type == registry_perf_type_timeticks) {
+		pomlog(POMLOG_ERR "Trying to increase a perf item of type timeticks");
+		return;
+	}
+
+	__sync_fetch_and_add(&p->value, val);
+}
+
+void registry_perf_dec(struct registry_perf *p, uint64_t val) {
+
+	if (p->type != registry_perf_type_gauge) {
+		pomlog(POMLOG_ERR "Trying to decrease a perf item which is not of type gauge");
+		return;
+	}
+
+	__sync_fetch_and_sub(&p->value, val);
+}
+
+void registry_perf_timeticks_stop(struct registry_perf *p) {
+
+	if (p->type != registry_perf_type_timeticks) {
+		pomlog(POMLOG_ERR "Trying to stop a non timetick performance");
+		return;
+	}
+
+	if (!(p->value & REGISTRY_PERF_TIMETICKS_STARTED)) {
+		pomlog(POMLOG_ERR "Timeticks performance already stopped");
+		return;
+	}
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
+
+	// value currently holds the absolute start time expressed in usec
+	// Not sure if the below is correct ...
+	volatile uint64_t new_val = (now + REGISTRY_PERF_TIMETICKS_STARTED) - p->value;
+	p->value = new_val;
+	__sync_synchronize();
+}
+
+void registry_perf_timeticks_restart(struct registry_perf *p) {
+
+	if (p->type != registry_perf_type_timeticks) {
+		pomlog(POMLOG_ERR "Trying to restart a non timetick performance");
+		return;
+	}
+
+	if (p->value & REGISTRY_PERF_TIMETICKS_STARTED) {
+		pomlog(POMLOG_ERR "Timeticks performance already started");
+		return;
+	}
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
+
+	// value currently holds the runtime in usec
+	// Not sure if the below is correct ...
+	volatile uint64_t new_val = (now + REGISTRY_PERF_TIMETICKS_STARTED) - p->value;
+	p->value = new_val;
+	__sync_synchronize();
+}
+
+uint64_t registry_perf_getval(struct registry_perf *p) {
+
+	// Since we have memory barrier for updating the value
+	// I don't think there is the need for one for simply reading it
+	if (p->type != registry_perf_type_timeticks)
+		return p->value;
+
+	// It's a timeticks and it's not started
+	uint64_t value = p->value;
+	if (!(value & REGISTRY_PERF_TIMETICKS_STARTED))
+		return value;
+
+	// Handle the case when it's started
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
+	return now - (value - REGISTRY_PERF_TIMETICKS_STARTED);
 }
