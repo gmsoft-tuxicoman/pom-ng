@@ -41,6 +41,11 @@ struct input {
 	struct input_reg* reg;
 	struct registry_instance *reg_instance;
 	struct registry_param *reg_param_running;
+
+	struct registry_perf *perf_pkts_in;
+	struct registry_perf *perf_bytes_in;
+	struct registry_perf *perf_runtime;
+
 	int running;
 
 	void *priv;

@@ -159,8 +159,13 @@ int input_instance_add(char *type, char *name) {
 
 	if (pthread_mutex_init(&res->lock, NULL)) {
 		pomlog(POMLOG_ERR "Error while initializing the input mutex : %s", pom_strerror(errno));
-		goto err;
+		free(res);
+		return POM_ERR;
 	}
+
+	res->reg_instance = registry_add_instance(input_registry_class, name);
+	if (!res->reg_instance)
+		goto err;
 
 	res->reg = reg;
 	res->name = strdup(name);
@@ -169,9 +174,8 @@ int input_instance_add(char *type, char *name) {
 		goto err;
 	}
 
-	res->reg_instance = registry_add_instance(input_registry_class, name);
-	if (!res->reg_instance)
-		goto err;
+
+	res->reg_instance->priv = res;
 
 	struct ptype *param_running_val = ptype_alloc("bool");
 	if (!param_running_val)
@@ -213,10 +217,15 @@ int input_instance_add(char *type, char *name) {
 		goto err;
 	}
 
-	if (registry_uid_create(res->reg_instance) != POM_OK)
+	res->perf_pkts_in = registry_instance_add_perf(res->reg_instance, "pkts_in", registry_perf_type_counter, "Number of packets read", "pkts");
+	res->perf_bytes_in = registry_instance_add_perf(res->reg_instance, "bytes_in", registry_perf_type_counter, "Number of bytes read", "bytes");
+	res->perf_runtime = registry_instance_add_perf(res->reg_instance, "runtime", registry_perf_type_timeticks, "Runtime", NULL);
+
+	if (!res->perf_pkts_in || !res->perf_bytes_in || !res->perf_runtime)
 		goto err;
 
-	res->reg_instance->priv = res;
+	if (registry_uid_create(res->reg_instance) != POM_OK)
+		goto err;
 
 	if (reg->info->init) {
 		if (reg->info->init(res) != POM_OK) {
@@ -233,13 +242,8 @@ int input_instance_add(char *type, char *name) {
 	return POM_OK;
 
 err:
-	if (res->name)
-		free(res->name);
-
 	if (res->reg_instance)
 		registry_remove_instance(res->reg_instance);
-
-	free(res);
 
 	return POM_ERR;
 }
@@ -255,7 +259,7 @@ int input_instance_remove(struct registry_instance *ri) {
 		return POM_ERR;
 	}
 
-	if (i->reg->info->cleanup) {
+	if (i->priv && i->reg->info->cleanup) {
 		if (i->reg->info->cleanup(i) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while cleaning up input");
 			return POM_ERR;
@@ -264,7 +268,8 @@ int input_instance_remove(struct registry_instance *ri) {
 
 	pthread_mutex_destroy(&i->lock);
 
-	free(i->name);
+	if (i->name)
+		free(i->name);
 
 	if (i->prev)
 		i->prev->next = i->next;
@@ -395,6 +400,7 @@ void *input_process_thread(void *param) {
 	pom_mutex_lock(&i->lock);
 
 	pomlog("Input %s started", i->name);
+	registry_perf_timeticks_restart(i->perf_runtime);
 
 	while (i->running == INPUT_RUN_RUNNING) {
 	
@@ -414,6 +420,7 @@ void *input_process_thread(void *param) {
 
 
 	i->running = INPUT_RUN_STOPPED;
+	registry_perf_timeticks_stop(i->perf_runtime);
 	pom_mutex_unlock(&i->lock);
 	pomlog("Input %s stopped", i->name);
 

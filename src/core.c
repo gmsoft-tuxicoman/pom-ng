@@ -199,6 +199,12 @@ int core_cleanup(int emergency_cleanup) {
 
 int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity) {
 
+	
+	// Update the counters
+	struct input *i = p->input;
+	registry_perf_inc(i->perf_pkts_in, 1);
+	registry_perf_inc(i->perf_bytes_in, p->len);
+
 	pom_mutex_lock(&core_pkt_queue_mutex);
 
 	while (core_pkt_queue_usage >= CORE_PKT_QUEUE_MAX) {
