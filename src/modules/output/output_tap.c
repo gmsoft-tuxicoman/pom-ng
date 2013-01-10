@@ -147,16 +147,23 @@ int output_tap_init(struct output *o) {
 
 	output_set_priv(o, priv);
 
+	struct registry_instance *inst = output_get_reg_instance(o);
+	priv->perf_pkts_out = registry_instance_add_perf(inst, "pkts_out", registry_perf_type_counter, "Number of packets processed", "pkts");
+	priv->perf_bytes_out = registry_instance_add_perf(inst, "bytes_out", registry_perf_type_counter, "Number of bytes processed", "bytes");
+
+	if (!priv->perf_pkts_out || !priv->perf_bytes_out)
+		goto err;
+
 	struct registry_param *p = registry_new_param("ifname", "pom0", priv->p_ifname, "Name of the interface to create", 0);
-	if (output_instance_add_param(o, p) != POM_OK)
+	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("persistent", "no", priv->p_persistent, "Create a persistent interface", 0);
-	if (output_instance_add_param(o, p) != POM_OK)
+	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
-	if (output_instance_add_param(o, p) != POM_OK)
+	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
 
 	registry_param_set_callbacks(p, priv, output_tap_filter_parse, output_tap_filter_update);
@@ -250,6 +257,9 @@ int output_tap_pkt_process(void *obj, struct packet *p, struct proto_process_sta
 		pos += wres;
 		size -= wres;
 	}
+
+	registry_perf_inc(priv->perf_pkts_out, 1);
+	registry_perf_inc(priv->perf_bytes_out, s->plen);
 
 	return POM_OK;
 }

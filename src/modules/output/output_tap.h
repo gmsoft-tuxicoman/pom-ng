@@ -32,6 +32,9 @@ struct output_tap_priv {
 	int fd;
 	struct proto_packet_listener *listener;
 	struct filter_proto *filter;
+
+	struct registry_perf *perf_pkts_out;
+	struct registry_perf *perf_bytes_out;
 };
 
 struct mod_reg_info* output_tap_reg_info();

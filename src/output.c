@@ -128,6 +128,12 @@ int output_instance_add(char *type, char *name) {
 	if (!res->reg_instance)
 		goto err;
 
+	res->reg_instance->priv = res;
+
+	res->perf_runtime = registry_instance_add_perf(res->reg_instance, "runtime", registry_perf_type_timeticks, "Runtime", NULL);
+	if (!res->perf_runtime)
+		goto err;
+
 	struct ptype *param_running_val = ptype_alloc("bool");
 	if (!param_running_val)
 		goto err;
@@ -169,8 +175,6 @@ int output_instance_add(char *type, char *name) {
 
 	if (registry_uid_create(res->reg_instance) != POM_OK)
 		goto err;
-
-	res->reg_instance->priv = res;
 
 	if (reg->reg_info->init) {
 		if (reg->reg_info->init(res) != POM_OK) {
@@ -250,6 +254,7 @@ int output_instance_start_stop_handler(void *priv, struct ptype *run) {
 				return POM_ERR;
 			}
 		}
+		registry_perf_timeticks_restart(o->perf_runtime);
 		pomlog("Output %s started", o->info->reg_info->name);
 	} else {
 		if (o->info->reg_info->close) {
@@ -258,6 +263,7 @@ int output_instance_start_stop_handler(void *priv, struct ptype *run) {
 				return POM_ERR;
 			}
 		}
+		registry_perf_timeticks_stop(o->perf_runtime);
 		pomlog("Output %s stopped", o->info->reg_info->name);
 	}
 
@@ -300,7 +306,8 @@ void output_set_priv(struct output *o, void *priv) {
 	o->priv = priv;
 }
 
-int output_instance_add_param(struct output *o, struct registry_param *p) {
-	return registry_instance_add_param(o->reg_instance, p);
+struct registry_instance *output_get_reg_instance(struct output *o) {
+	return o->reg_instance;
 }
+
 

@@ -46,7 +46,7 @@ int output_register(struct output_reg_info *reg_info);
 int output_unregister(char *name);
 
 void output_set_priv(struct output *o, void *priv);
-int output_instance_add_param(struct output *o, struct registry_param *p);
+struct registry_instance *output_get_reg_instance(struct output *o);
 
 
 #endif

@@ -33,6 +33,8 @@ struct output {
 	struct registry_instance *reg_instance;
 	int running;
 
+	struct registry_perf *perf_runtime;
+
 	void *priv;
 
 	struct output *prev, *next;
