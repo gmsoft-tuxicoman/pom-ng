@@ -85,6 +85,9 @@ static int output_pcap_file_init(struct output *o) {
 		goto err;
 
 	struct registry_instance *inst = output_get_reg_instance(o);
+	priv->perf_pkts_out = registry_instance_add_perf(inst, "pkts_out", registry_perf_type_counter, "Number of packets written", "pkts");
+	priv->perf_bytes_out = registry_instance_add_perf(inst, "bytes_out", registry_perf_type_counter, "Number of packet bytes written", "bytes");
+
 	struct registry_param *p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
 	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
@@ -256,6 +259,8 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 		phdr.caplen = *snaplen;
 
 	pcap_dump((u_char*)priv->pdump, &phdr, stack->pload);
+	registry_perf_inc(priv->perf_pkts_out, 1);
+	registry_perf_inc(priv->perf_bytes_out, phdr.caplen);
 
 	if (PTYPE_BOOL_GETVAL(priv->p_unbuffered))
 		pcap_dump_flush(priv->pdump);

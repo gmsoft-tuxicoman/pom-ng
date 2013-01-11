@@ -43,6 +43,9 @@ struct output_pcap_file_priv {
 	struct ptype *p_unbuffered;
 	struct ptype *p_filter;
 
+	struct registry_perf *perf_pkts_out;
+	struct registry_perf *perf_bytes_out;
+
 };
 
 struct mod_reg_info *output_pcap_reg_info();
