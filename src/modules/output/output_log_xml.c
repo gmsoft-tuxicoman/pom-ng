@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -83,6 +83,10 @@ int output_log_xml_init(struct output *o) {
 	output_set_priv(o, priv);
 
 	struct registry_instance *inst = output_get_reg_instance(o);
+	priv->perf_events = registry_instance_add_perf(inst, "events", registry_perf_type_counter, "Number of events process", "events");
+	if (!priv->perf_events)
+		goto err;
+
 	struct registry_param *p = registry_new_param("filename", "log.xml", priv->p_filename, "XML log file", 0);
 	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
@@ -326,6 +330,9 @@ int output_log_xml_process(struct event *evt, void *obj) {
 	}
 
 	xmlBufferFree(buff);
+
+	if (priv->perf_events)
+		registry_perf_inc(priv->perf_events, 1);
 
 	return POM_OK;
 err:
