@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -74,6 +74,10 @@ int output_log_txt_init(struct output *o) {
 		goto err;
 
 	struct registry_instance *inst = output_get_reg_instance(o);
+	priv->perf_events = registry_instance_add_perf(inst, "events", registry_perf_type_counter, "Number of events process", "events");
+	if (!priv->perf_events)
+		goto err;
+
 	struct registry_param *p = registry_new_param("prefix", "/tmp/", priv->p_prefix, "Log files prefix", 0);
 	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
@@ -341,6 +345,7 @@ int output_log_txt_open(void *output_priv) {
 		}
 		memset(log_evt, 0, sizeof(struct output_log_txt_event));
 		log_evt->p_prefix = priv->p_prefix;
+		log_evt->priv = priv;
 
 		// Add this event to our list
 		log_evt->next = priv->events;
@@ -551,6 +556,9 @@ int output_log_txt_process(struct event *evt, void *obj) {
 		goto write_err;
 
 	pom_mutex_unlock(&file->lock);
+
+	if (log_evt->priv->perf_events)
+		registry_perf_inc(log_evt->priv->perf_events, 1);
 
 	return POM_OK;
 

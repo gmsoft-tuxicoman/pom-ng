@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ struct output_log_txt_file {
 struct output_log_txt_event {
 	struct event_reg *evt;
 	struct ptype *p_prefix;
+	struct output_log_txt_priv *priv;
 
 	char *format;
 	
@@ -59,6 +60,7 @@ struct output_log_txt_priv {
 	struct output_log_txt_file *files;
 	struct output_log_txt_event *events;
 
+	struct registry_perf *perf_events;
 };
 
 struct addon_log_txt_priv {
