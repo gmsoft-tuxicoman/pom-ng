@@ -49,6 +49,11 @@ struct proto {
 	pthread_rwlock_t expectation_lock;
 	struct proto_expectation *expectations;
 
+	struct registry_perf *perf_pkts;
+	struct registry_perf *perf_bytes;
+	struct registry_perf *perf_expt_pending;
+	struct registry_perf *perf_expt_matched;
+
 	struct proto *next, *prev;
 
 };

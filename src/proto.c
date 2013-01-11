@@ -95,6 +95,14 @@ int proto_register(struct proto_reg_info *reg_info) {
 		goto err_conntrack;
 	}
 
+	proto->perf_pkts = registry_instance_add_perf(proto->reg_instance, "pkts", registry_perf_type_counter, "Number of packets processed", "pkts");
+	proto->perf_bytes = registry_instance_add_perf(proto->reg_instance, "bytes", registry_perf_type_counter, "Number of bytes processed", "bytes");
+	proto->perf_expt_pending = registry_instance_add_perf(proto->reg_instance, "expectations_pending", registry_perf_type_gauge, "Number of expectations pending", "expectations");
+	proto->perf_expt_matched = registry_instance_add_perf(proto->reg_instance, "expectations_matched", registry_perf_type_counter, "Number of expectations matched", "expectations");
+
+	if (!proto->perf_pkts || !proto->perf_bytes || !proto->perf_expt_pending || !proto->perf_expt_matched)
+		goto err_registry;
+
 	if (reg_info->init) {
 		if (reg_info->init(proto, proto->reg_instance) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while registering proto %s", reg_info->name);
@@ -143,6 +151,9 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 	if (!proto || !proto->info->process)
 		return PROTO_ERR;
 	int res = proto->info->process(proto->priv, p, stack, stack_index);
+
+	registry_perf_inc(proto->perf_pkts, 1);
+	registry_perf_inc(proto->perf_bytes, s->plen);
 
 	if (res == PROTO_OK) {
 		
@@ -241,6 +252,8 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 
 			proto_expectation_cleanup(e);
 
+			registry_perf_dec(proto->perf_expt_pending, 1);
+			registry_perf_inc(proto->perf_expt_matched, 1);
 
 			break;
 
@@ -374,7 +387,7 @@ int proto_cleanup() {
 	struct proto *proto;
 	for (proto = proto_head; proto; proto = proto->next) {
 
-		if (proto->info->cleanup && proto->info->cleanup(proto) == POM_ERR)
+		if (proto->info->cleanup && proto->info->cleanup(proto->priv) == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
 		conntrack_tables_cleanup(proto->ct);
 
@@ -653,6 +666,8 @@ int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, stru
 
 	pom_rwlock_unlock(&proto->expectation_lock);
 
+	registry_perf_inc(proto->perf_expt_pending, 1);
+
 	return POM_OK;
 }
 
@@ -680,6 +695,8 @@ int proto_expectation_expiry(void *priv, struct timeval *tv) {
 	}
 
 	proto_expectation_cleanup(e);
+
+	registry_perf_dec(proto->perf_expt_pending, 1);
 
 	return POM_OK;
 }
