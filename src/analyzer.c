@@ -476,7 +476,7 @@ static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pl
 				return POM_OK;
 			}
 
-		} while (pload->zbuff->avail_in);
+		} while (pload->zbuff->avail_in && res == Z_OK);
 
 		pload->buff_pos = pload->buff_size - pload->zbuff->avail_out;
 
