@@ -32,6 +32,10 @@ struct output_file_priv {
 	
 	struct analyzer_pload_output_reg output_reg;
 
+	struct registry_perf *perf_files_closed;
+	struct registry_perf *perf_files_open;
+	struct registry_perf *perf_bytes_written;
+
 };
 
 struct output_file_pload_priv {
@@ -50,8 +54,8 @@ int output_file_close(void *output_priv);
 
 int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv);
 int addon_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
-int output_file_pload_write(void *pload_instance_priv, void *data, size_t len);
-int output_file_pload_close(void *pload_instance_priv);
+int output_file_pload_write(void *output_priv, void *pload_instance_priv, void *data, size_t len);
+int output_file_pload_close(void *output_priv, void *pload_instance_priv);
 
 
 

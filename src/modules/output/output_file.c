@@ -110,6 +110,13 @@ int output_file_init(struct output *o) {
 		goto err;
 
 	struct registry_instance *inst = output_get_reg_instance(o);
+	priv->perf_files_closed = registry_instance_add_perf(inst, "files_closed", registry_perf_type_counter, "Number of files fully written and closed", "files");
+	priv->perf_files_open = registry_instance_add_perf(inst, "files_open", registry_perf_type_gauge, "Number of files currently open", "files");
+	priv->perf_bytes_written = registry_instance_add_perf(inst, "bytes_written", registry_perf_type_counter, "Number of bytes written", "bytes");
+
+	if (!priv->perf_files_closed || !priv->perf_files_open || !priv->perf_bytes_written)
+		goto err;
+
 	struct registry_param *p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt, "Listen to all events that generate payloads", 0);
 	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
@@ -171,7 +178,7 @@ int output_file_close(void *output_priv) {
 	return POM_OK;
 }
 
-static int file_pload_open(struct analyzer_pload_instance *pi, const char *filename) {
+static int file_pload_open(struct analyzer_pload_instance *pi, const char *filename, struct output_file_priv *priv) {
 
 	// Create the private structure for the payload
 	struct output_file_pload_priv *ppriv = malloc(sizeof(struct output_file_pload_priv));
@@ -193,6 +200,9 @@ static int file_pload_open(struct analyzer_pload_instance *pi, const char *filen
 		free(ppriv);
 		return POM_ERR;
 	}
+
+	if (priv->perf_files_open)
+		registry_perf_inc(priv->perf_files_open, 1);
 
 	analyzer_pload_instance_set_priv(pi, ppriv);
 
@@ -218,36 +228,45 @@ int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv
 	strftime(buff, sizeof(buff), format, &tmp);
 	snprintf(filename + strlen(filename), FILENAME_MAX - strlen(filename), "%s-%u.bin", buff, (unsigned int)tv.tv_usec);
 
-	return file_pload_open(pi, filename);
+	return file_pload_open(pi, filename, output_priv);
 
 }
 
 int addon_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]) {
 
 	char *filename = PTYPE_STRING_GETVAL(params[0]);
-	return file_pload_open(pi, filename);
+	return file_pload_open(pi, filename, output_priv);
 }
 
 
-int output_file_pload_write(void *pload_instance_priv, void *data, size_t len) {
+int output_file_pload_write(void *output_priv, void *pload_instance_priv, void *data, size_t len) {
 
-
+	struct output_file_priv *priv = output_priv;
 	struct output_file_pload_priv *ppriv = pload_instance_priv;
 	int res = pom_write(ppriv->fd, data, len);
 	if (res == POM_ERR)
 		pomlog(POMLOG_ERR "Error while writing to file %s : %s", ppriv->filename, pom_strerror(errno));
+	else if (priv->perf_bytes_written)
+		registry_perf_inc(priv->perf_bytes_written, len);
+		
 
 	return res;
 
 }
 
-int output_file_pload_close(void *pload_instance_priv) {
+int output_file_pload_close(void *output_priv, void *pload_instance_priv) {
 
 	struct output_file_pload_priv *ppriv = pload_instance_priv;
 	int fd = ppriv->fd;
 	pomlog(POMLOG_DEBUG "File %s closed", ppriv->filename);
 	free(ppriv->filename);
 	free(ppriv);
+
+	struct output_file_priv *priv = output_priv;
+	if (priv->perf_files_open)
+		registry_perf_dec(priv->perf_files_open, 1);
+	if (priv->perf_files_closed)
+		registry_perf_inc(priv->perf_files_closed, 1);
 
 	return close(fd);
 }

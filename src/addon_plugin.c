@@ -452,12 +452,12 @@ int addon_plugin_add_param(struct addon_plugin *a, char *name, char *defval, str
 	return POM_OK;
 }
 
-int addon_plugin_pload_write(struct addon_plugin_reg *addon_reg, void *pload_instance_priv, void *data, size_t len) {
+int addon_plugin_pload_write(struct addon_plugin_reg *addon_reg, void *addon_priv, void *pload_instance_priv, void *data, size_t len) {
 
-	return addon_reg->pload_write(pload_instance_priv, data, len);
+	return addon_reg->pload_write(addon_priv, pload_instance_priv, data, len);
 }
 
-int addon_plugin_pload_close(struct addon_plugin_reg *addon_reg, void *pload_instance_priv) {
+int addon_plugin_pload_close(struct addon_plugin_reg *addon_reg, void *addon_priv, void *pload_instance_priv) {
 
-	return addon_reg->pload_close(pload_instance_priv);
+	return addon_reg->pload_close(addon_priv, pload_instance_priv);
 }

@@ -48,8 +48,8 @@ struct addon_plugin_reg {
 
 	// For payload plugins
 	int (*pload_open) (struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
-	int (*pload_write) (void *pload_instance_priv, void *data, size_t len);
-	int (*pload_close) (void *pload_instance_priv);
+	int (*pload_write) (void *addon_priv, void *pload_instance_priv, void *data, size_t len);
+	int (*pload_close) (void *addon_priv, void *pload_instance_priv);
 
 	struct addon_pload_param_reg *pload_params;
 	int pload_param_count;
@@ -68,7 +68,7 @@ struct addon_plugin {
 
 int addon_plugin_lua_register(lua_State *L);
 
-int addon_plugin_pload_write(struct addon_plugin_reg *addon_reg, void *pload_instance_priv, void *data, size_t len);
-int addon_plugin_pload_close(struct addon_plugin_reg *addon_reg, void *pload_instance_priv);
+int addon_plugin_pload_write(struct addon_plugin_reg *addon_reg, void *addon_priv, void *pload_instance_priv, void *data, size_t len);
+int addon_plugin_pload_close(struct addon_plugin_reg *addon_reg, void *addon_priv, void *pload_instance_priv);
 
 #endif

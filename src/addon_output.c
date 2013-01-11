@@ -229,7 +229,7 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 }
 
 // Called from C to write a pload
-static int addon_output_pload_write(void *pload_instance_priv, void *data, size_t len) {
+static int addon_output_pload_write(void *addon_priv, void *pload_instance_priv, void *data, size_t len) {
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
 	struct addon_instance_priv *p = ppriv->instance_priv;
@@ -240,8 +240,8 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 		if (tmp->is_err)
 			continue;
 
-		if (addon_plugin_pload_write(tmp->addon_reg, tmp->pi.priv, data, len) != POM_OK) {
-			addon_plugin_pload_close(tmp->addon_reg, tmp->pi.priv);
+		if (addon_plugin_pload_write(tmp->addon_reg, addon_priv, tmp->pi.priv, data, len) != POM_OK) {
+			addon_plugin_pload_close(tmp->addon_reg, addon_priv, tmp->pi.priv);
 			tmp->is_err = 1;
 		}
 	}
@@ -304,7 +304,7 @@ static int addon_output_pload_write(void *pload_instance_priv, void *data, size_
 }
 
 // Called from C to close a pload
-static int addon_output_pload_close(void *pload_instance_priv) {
+static int addon_output_pload_close(void *addon_priv, void *pload_instance_priv) {
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
 	struct addon_instance_priv *p = ppriv->instance_priv;
@@ -317,7 +317,7 @@ static int addon_output_pload_close(void *pload_instance_priv) {
 	for (tmp = ppriv->plugins; tmp; tmp = tmp->next) {
 		if (tmp->is_err)
 			continue;
-		addon_plugin_pload_close(tmp->addon_reg, tmp->pi.priv);
+		addon_plugin_pload_close(tmp->addon_reg, addon_priv, tmp->pi.priv);
 	}
 
 	pom_mutex_lock(&p->lock);

@@ -55,8 +55,8 @@ struct addon_plugin_pload_reg {
 	int (*close) (void *addon_priv);
 
 	int (*pload_open) (struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
-	int (*pload_write) (void *pload_instance_priv, void *data, size_t len);
-	int (*pload_close) (void *pload_instance_priv);
+	int (*pload_write) (void *addon_priv, void *pload_instance_priv, void *data, size_t len);
+	int (*pload_close) (void *addon_priv, void *pload_instance_priv);
 
 	struct addon_pload_param_reg *pload_params;
 };

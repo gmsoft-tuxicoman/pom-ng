@@ -138,8 +138,8 @@ struct analyzer_pload_output_reg {
 
 
 	int (*open) (struct analyzer_pload_instance *pi, void *output_priv);
-	int (*write) (void *pload_instance_priv, void *data, size_t len);
-	int (*close) (void *pload_instance_priv);
+	int (*write) (void *output_priv, void *pload_instance_priv, void *data, size_t len);
+	int (*close) (void *output_priv, void *pload_instance_priv);
 
 };
 
