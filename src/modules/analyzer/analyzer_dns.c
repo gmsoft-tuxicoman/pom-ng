@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -434,7 +434,8 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 
 	unsigned int i;
 	for (i = 0; !sport || !dport; i++) {
-		char *name = s_l4->proto->info->pkt_fields[i].name;
+		struct proto_reg_info *l4_info = proto_get_info(s_l4->proto);
+		char *name = l4_info->pkt_fields[i].name;
 		if (!name)
 			break;
 		if (!sport && !strcmp(name, "sport"))
@@ -449,7 +450,8 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 	}
 
 	for (i = 0; !src || !dst; i++) {
-		char *name = s_l3->proto->info->pkt_fields[i].name;
+		struct proto_reg_info *l3_info = proto_get_info(s_l3->proto);
+		char *name = l3_info->pkt_fields[i].name;
 		if (!name)
 			break;
 		if (!src && !strcmp(name, "src"))

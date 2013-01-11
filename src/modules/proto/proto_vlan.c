@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 
 #include <arpa/inet.h>
 
-static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_pppoe = NULL;
+static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_pppoe = NULL, *proto_vlan = NULL;
 
 struct mod_reg_info* proto_vlan_reg_info() {
 
@@ -81,6 +81,7 @@ static int proto_vlan_init(struct proto *proto, struct registry_instance *i) {
 	proto_ipv4 = proto_get("ipv4");
 	proto_ipv6 = proto_get("ipv6");
 	proto_pppoe = proto_get("pppoe");
+	proto_vlan = proto;
 
 	if (!proto_arp || !proto_ipv4 || !proto_ipv6 || !proto_pppoe) {
 		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
@@ -91,7 +92,7 @@ static int proto_vlan_init(struct proto *proto, struct registry_instance *i) {
 
 }
 
-static int proto_vlan_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_vlan_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 
@@ -124,7 +125,7 @@ static int proto_vlan_process(struct proto *proto, struct packet *p, struct prot
 			s_next->proto = proto_arp;
 			break;
 		case 0x8100:
-			s_next->proto = proto;
+			s_next->proto = proto_vlan;
 			break;
 
 		case 0x86dd:

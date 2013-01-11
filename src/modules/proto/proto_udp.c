@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -106,7 +106,7 @@ err:
 	return POM_ERR;
 }
 
-static int proto_udp_cleanup(struct proto *p) {
+static int proto_udp_cleanup(void *proto_priv) {
 
 	if (param_conntrack_timeout) {
 		ptype_cleanup(param_conntrack_timeout);
@@ -116,7 +116,7 @@ static int proto_udp_cleanup(struct proto *p) {
 	return POM_OK;
 }
 
-static int proto_udp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_udp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 

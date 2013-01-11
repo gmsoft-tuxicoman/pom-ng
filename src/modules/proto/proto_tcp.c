@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -98,7 +98,6 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 
 }
 
-
 static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 
 
@@ -108,7 +107,7 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct proto_tcp_priv));
-	proto->priv = priv;
+	proto_set_priv(proto, priv);
 
 	priv->param_tcp_syn_sent_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_syn_recv_t = ptype_alloc_unit("uint16", "seconds");
@@ -179,7 +178,7 @@ err:
 	return POM_ERR;
 }
 
-static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct tcphdr* hdr = s->pload;
@@ -226,7 +225,7 @@ static int proto_tcp_process(struct proto *proto, struct packet *p, struct proto
 	if (conntrack_get(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
 
-	struct proto_tcp_priv *ppriv = proto->priv;
+	struct proto_tcp_priv *ppriv = proto_priv;
 	struct proto_tcp_conntrack_priv *priv = s->ce->priv;
 
 	uint16_t *delay = NULL;
@@ -370,9 +369,9 @@ static int proto_tcp_conntrack_cleanup(void *ce_priv) {
 	return POM_OK;
 }
 
-static int proto_tcp_cleanup(struct proto *proto) {
+static int proto_tcp_cleanup(void *proto_priv) {
 
-	struct proto_tcp_priv *priv = proto->priv;
+	struct proto_tcp_priv *priv = proto_priv;
 
 	if (priv) {
 		if (priv->param_tcp_syn_sent_t)

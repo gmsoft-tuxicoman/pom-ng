@@ -37,7 +37,7 @@ enum proto_icmp_fields {
 
 struct mod_reg_info* proto_icmp_reg_info();
 static int proto_icmp_mod_register(struct mod_reg *mod);
-static int proto_icmp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_icmp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_icmp_mod_unregister();
 
 #endif

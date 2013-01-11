@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -142,7 +142,7 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 
 	if (!proto || !proto->info->process)
 		return PROTO_ERR;
-	int res = proto->info->process(proto, p, stack, stack_index);
+	int res = proto->info->process(proto->priv, p, stack, stack_index);
 
 	if (res == PROTO_OK) {
 		
@@ -299,7 +299,7 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 		return PROTO_ERR;
 	
 	if (proto->info->post_process)
-		return proto->info->post_process(proto, p, s, stack_index);
+		return proto->info->post_process(proto->priv, p, s, stack_index);
 
 	return POM_OK;
 }
@@ -314,7 +314,7 @@ int proto_unregister(char *name) {
 		return POM_OK;
 	}
 	
-	if (proto->info->cleanup && proto->info->cleanup(proto)) {
+	if (proto->info->cleanup && proto->info->cleanup(proto->priv)) {
 		pom_mutex_unlock(&proto_list_lock);
 		pomlog(POMLOG_ERR "Error while cleaning up the protocol %s", name);
 		return POM_ERR;
@@ -682,4 +682,16 @@ int proto_expectation_expiry(void *priv, struct timeval *tv) {
 	proto_expectation_cleanup(e);
 
 	return POM_OK;
+}
+
+void proto_set_priv(struct proto *p, void *priv) {
+	p->priv = priv;
+}
+
+void *proto_get_priv(struct proto *p) {
+	return p->priv;
+}
+
+struct proto_reg_info *proto_get_info(struct proto *p) {
+	return p->info;
 }

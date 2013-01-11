@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,7 +41,7 @@ int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i) {
 	}
 	memset(priv, 0, sizeof(struct proto_mpeg_ts_priv));
 
-	proto->priv = priv;
+	proto_set_priv(proto, priv);
 
 	struct registry_param *p = NULL;
 
@@ -75,14 +75,14 @@ err:
 
 }
 
-int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	// WARNING THIS CODE ASSUMES THAT PACKETS ARRIVE IN ORDER
 	// This should be achieved by packet threads affinity on an input level
 	// If MPEG packets are not the link layer, then care should be taken to 
 	// send them in the right order. For example by reoderding RTP or TCP packets containing them
 
-	struct proto_mpeg_ts_priv *ppriv = proto->priv;
+	struct proto_mpeg_ts_priv *ppriv = proto_priv;
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	unsigned char *buff = s->pload;
@@ -470,11 +470,10 @@ int proto_mpeg_ts_conntrack_cleanup(void *ce_priv) {
 	return POM_OK;
 }
 
-int proto_mpeg_ts_cleanup(struct proto *proto) {
+int proto_mpeg_ts_cleanup(void *proto_priv) {
 
-
-	if (proto->priv) {
-		struct proto_mpeg_ts_priv *priv = proto->priv;
+	if (proto_priv) {
+		struct proto_mpeg_ts_priv *priv = proto_priv;
 
 		if (priv->param_mpeg_ts_stream_timeout)
 			ptype_cleanup(priv->param_mpeg_ts_stream_timeout);

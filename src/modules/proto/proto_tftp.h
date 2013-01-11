@@ -38,7 +38,8 @@ struct proto_tftp_conntrack_priv {
 
 struct mod_reg_info* proto_tftp_reg_info();
 static int proto_tftp_mod_register(struct mod_reg *mod);
-static int proto_tftp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_tftp_init(struct proto *proto, struct registry_instance *i);
+static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_tftp_mod_unregister();
 static int proto_tftp_conntrack_cleanup(void *ce_priv);
 static int proto_tftp_process_payload(struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);

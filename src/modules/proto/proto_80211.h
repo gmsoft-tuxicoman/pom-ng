@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -34,7 +34,7 @@ enum proto_80211_fields {
 struct mod_reg_info* proto_80211_reg_info();
 static int proto_80211_init(struct proto *proto, struct registry_instance *i);
 static int proto_80211_mod_register(struct mod_reg *mod);
-static int proto_80211_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_80211_mod_unregister();
 
 #endif

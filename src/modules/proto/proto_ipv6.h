@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -51,10 +51,10 @@ struct proto_ipv6_fragment {
 struct mod_reg_info* proto_ipv6_reg_info();
 static int proto_ipv6_init(struct proto *proto, struct registry_instance *i);
 static int proto_ipv6_mod_register(struct mod_reg *mod);
-static int proto_ipv6_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_ipv6_fragment_cleanup(struct conntrack_entry *ce, void *priv);
 static int proto_ipv6_conntrack_cleanup(void *ce_priv);
-static int proto_ipv6_cleanup(struct proto *proto);
+static int proto_ipv6_cleanup(void *proto_priv);
 static int proto_ipv6_mod_unregister();
 
 #endif

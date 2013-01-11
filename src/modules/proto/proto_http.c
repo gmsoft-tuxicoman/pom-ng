@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,8 +52,6 @@ struct mod_reg_info* proto_http_reg_info() {
 
 static int proto_http_mod_register(struct mod_reg *mod) {
 
-
-
 	static struct proto_reg_info proto_http = { 0 };
 	proto_http.name = "http";
 	proto_http.api_ver = PROTO_API_VER;
@@ -87,7 +85,7 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 	}
 	memset(priv, 0, sizeof(struct proto_http_priv));
 
-	proto->priv = priv;
+	proto_set_priv(proto, priv);
 
 	// Register the http_query event
 	static struct data_item_reg evt_query_data_items[PROTO_HTTP_EVT_QUERY_DATA_COUNT] = { { 0 } };
@@ -158,14 +156,14 @@ static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 	return POM_OK;
 
 err:
-	proto_http_cleanup(proto);
+	proto_http_cleanup(priv);
 	return POM_ERR;
 }
 
-int proto_http_cleanup(struct proto *proto) {
+int proto_http_cleanup(void *proto_priv) {
 
-	if (proto->priv) {
-		struct proto_http_priv *priv = proto->priv;
+	if (proto_priv) {
+		struct proto_http_priv *priv = proto_priv;
 		if (priv->evt_query)
 			event_unregister(priv->evt_query);
 		if (priv->evt_response)
@@ -177,7 +175,7 @@ int proto_http_cleanup(struct proto *proto) {
 	return POM_OK;
 }
 
-static int proto_http_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_http_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
@@ -415,7 +413,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 								}
 							}
 							priv->info[s->direction].flags |= HTTP_FLAG_LAST_CHUNK;
-							if (proto_http_post_process(proto, p, stack, stack_index) != POM_OK)
+							if (proto_http_post_process(priv, p, stack, stack_index) != POM_OK)
 								return PROTO_ERR;
 							continue;
 						}
@@ -475,7 +473,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 						debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
 
 						// Do the post processing
-						if (proto_http_post_process(proto, p, stack, stack_index) != POM_OK)
+						if (proto_http_post_process(priv, p, stack, stack_index) != POM_OK)
 							return PROTO_ERR;
 					} else {
 						packet_stream_parser_empty(parser);
@@ -494,7 +492,7 @@ static int proto_http_process(struct proto *proto, struct packet *p, struct prot
 }
 
 
-static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_http_post_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct conntrack_entry *ce = stack[stack_index].ce;
 	int direction = stack[stack_index].direction;
@@ -592,7 +590,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 	if (len < strlen("HTTP/"))
 		return PROTO_INVALID;
 
-	struct proto_http_priv *ppriv = ce->proto->priv;
+	struct proto_http_priv *ppriv = proto_get_priv(ce->proto);
 	struct proto_http_conntrack_priv *priv = ce->priv;
 
 	int tok_num = 0;

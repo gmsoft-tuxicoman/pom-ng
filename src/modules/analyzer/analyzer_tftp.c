@@ -220,7 +220,8 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			struct proto_process_stack *s_prev = &stack[stack_index - 1];
 			unsigned int i;
 			for (i = 0; !fq->port ; i++) {
-				char *name = s_prev->proto->info->pkt_fields[i].name;
+				struct proto_reg_info *pinfo = proto_get_info(s_prev->proto);
+				char *name = pinfo->pkt_fields[i].name;
 				if (!name) {
 					pomlog(POMLOG_ERR "Source port not found in RRQ/WRQ packets");
 					goto err;
@@ -269,7 +270,8 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				unsigned int i;
 				uint16_t sport = 0, dport = 0;
 				for (i = 0; !sport || !dport ; i++) {
-					char *name = s_prev->proto->info->pkt_fields[i].name;
+					struct proto_reg_info *pinfo = proto_get_info(s_prev->proto);
+					char *name = pinfo->pkt_fields[i].name;
 					if (!name) {
 						pomlog(POMLOG_ERR "Source port not found in data packets");
 						goto err;

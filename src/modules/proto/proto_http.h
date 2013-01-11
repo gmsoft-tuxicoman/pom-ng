@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -63,9 +63,9 @@ struct proto_http_conntrack_priv {
 struct mod_reg_info* proto_http_reg_info();
 static int proto_http_mod_register(struct mod_reg *mod);
 static int proto_http_init(struct proto *proto, struct registry_instance *ri);
-int proto_http_cleanup(struct proto *proto);
-static int proto_http_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int proto_http_post_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int proto_http_cleanup(void *proto_priv);
+static int proto_http_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_http_post_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_http_conntrack_reset(struct conntrack_entry *ce, int direction);
 static int proto_http_conntrack_cleanup(void *ce_priv);
 static int proto_http_mod_unregister();

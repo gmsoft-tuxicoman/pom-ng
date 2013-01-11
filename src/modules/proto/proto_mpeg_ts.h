@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -75,10 +75,10 @@ struct proto_mpeg_ts_conntrack_priv {
 };
 
 int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i);
-int proto_mpeg_ts_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 int proto_mpeg_ts_process_stream(void *priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 int proto_mpeg_ts_stream_cleanup(void *, struct timeval *now);
 int proto_mpeg_ts_conntrack_cleanup(void *ce_priv);
-int proto_mpeg_ts_cleanup(struct proto *proto);
+int proto_mpeg_ts_cleanup(void *proto_priv);
 
 #endif

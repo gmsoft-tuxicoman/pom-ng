@@ -21,6 +21,7 @@
 
 #include "filter.h"
 #include "core.h"
+#include "proto.h"
 
 int filter_proto_match(struct proto_process_stack *stack, struct filter_proto *f) {
 

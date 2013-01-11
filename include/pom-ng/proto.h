@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,29 +41,8 @@
 #define PROTO_STOP	-2
 #define PROTO_INVALID	-3
 
-struct proto {
+struct proto;
 
-	struct proto_reg_info *info;
-	
-	/// Conntrack tables
-	struct conntrack_tables *ct;
-
-	// Packet info pool
-	struct packet_info_pool pkt_info_pool;
-
-	struct registry_instance *reg_instance;
-
-	void *priv;
-
-	struct proto_packet_listener *packet_listeners;
-	struct proto_packet_listener *payload_listeners;
-
-	pthread_rwlock_t expectation_lock;
-	struct proto_expectation *expectations;
-
-	struct proto *next, *prev;
-
-};
 
 struct proto_process_stack {
 	struct proto *proto;
@@ -93,9 +72,9 @@ struct proto_reg_info {
 	struct proto_event_reg *events;
 
 	int (*init) (struct proto *proto, struct registry_instance *i);
-	int (*process) (struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-	int (*post_process) (struct proto *proto, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-	int (*cleanup) (struct proto *proto);
+	int (*process) (void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+	int (*post_process) (void *proto_priv, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+	int (*cleanup) (void *proto_priv);
 };
 
 struct proto_packet_listener {
@@ -142,4 +121,7 @@ void proto_expectation_cleanup(struct proto_expectation *e);
 int proto_expectation_set_field(struct proto_expectation *e, int stack_index, struct ptype *value, int direction);
 int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, struct conntrack_session *session);
 
+void proto_set_priv(struct proto *p, void *priv);
+void *proto_get_priv(struct proto *p);
+struct proto_reg_info *proto_get_info(struct proto *p);
 #endif

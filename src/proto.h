@@ -29,6 +29,30 @@
 
 #define PROTO_REGISTRY "proto"
 
+struct proto {
+
+	struct proto_reg_info *info;
+	
+	/// Conntrack tables
+	struct conntrack_tables *ct;
+
+	// Packet info pool
+	struct packet_info_pool pkt_info_pool;
+
+	struct registry_instance *reg_instance;
+
+	void *priv;
+
+	struct proto_packet_listener *packet_listeners;
+	struct proto_packet_listener *payload_listeners;
+
+	pthread_rwlock_t expectation_lock;
+	struct proto_expectation *expectations;
+
+	struct proto *next, *prev;
+
+};
+
 struct proto_event_analyzer_list {
 
 	struct proto_event_analyzer_reg *analyzer_reg;

@@ -35,6 +35,8 @@
 #define debug_tftp(x ...)
 #endif
 
+struct proto *proto_tftp = NULL;
+
 struct mod_reg_info* proto_tftp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -64,6 +66,7 @@ static int proto_tftp_mod_register(struct mod_reg *mod) {
 	ct_info.cleanup_handler = proto_tftp_conntrack_cleanup;
 	proto_tftp.ct_info = &ct_info;
 
+	proto_tftp.init = proto_tftp_init;
 	proto_tftp.process = proto_tftp_process;
 
 	if (proto_register(&proto_tftp) == POM_OK)
@@ -74,7 +77,13 @@ static int proto_tftp_mod_register(struct mod_reg *mod) {
 
 }
 
-static int proto_tftp_process(struct proto *proto, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+static int proto_tftp_init(struct proto *proto, struct registry_instance *i) {
+
+	proto_tftp = proto;
+	return POM_OK;
+}
+
+static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
@@ -141,7 +150,7 @@ static int proto_tftp_process(struct proto *proto, struct packet *p, struct prot
 			// We don't need to do anything with the session
 			conntrack_session_unlock(session);
 
-			struct proto_expectation *expt = proto_expectation_alloc_from_conntrack(s_prev->ce, proto, NULL);
+			struct proto_expectation *expt = proto_expectation_alloc_from_conntrack(s_prev->ce, proto_tftp, NULL);
 
 			if (!expt)
 				return PROTO_ERR;

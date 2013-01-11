@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -487,7 +487,8 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		struct ptype *sport = NULL, *dport = NULL;
 		unsigned int i;
 		for (i = 0; !sport || !dport; i++) {
-			char *name = l4_stack->proto->info->pkt_fields[i].name;
+			struct proto_reg_info *l4_info = proto_get_info(l4_stack->proto);
+			char *name = l4_info->pkt_fields[i].name;
 			if (!name)
 				break;
 			if (!sport && !strcmp(name, "sport"))
@@ -522,7 +523,8 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		struct proto_process_stack *l3_stack = &stack[stack_index - 2];
 		unsigned int i;
 		for (i = 0; !src || !dst ; i++) {
-			char *name = l3_stack->proto->info->pkt_fields[i].name;
+			struct proto_reg_info *l3_info = proto_get_info(l3_stack->proto);
+			char *name = l3_info->pkt_fields[i].name;
 			if (!name)
 				break;
 
