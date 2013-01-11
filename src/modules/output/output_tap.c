@@ -258,8 +258,10 @@ int output_tap_pkt_process(void *obj, struct packet *p, struct proto_process_sta
 		size -= wres;
 	}
 
-	registry_perf_inc(priv->perf_pkts_out, 1);
-	registry_perf_inc(priv->perf_bytes_out, s->plen);
+	if (priv->perf_pkts_out)
+		registry_perf_inc(priv->perf_pkts_out, 1);
+	if (priv->perf_bytes_out)
+		registry_perf_inc(priv->perf_bytes_out, s->plen);
 
 	return POM_OK;
 }
