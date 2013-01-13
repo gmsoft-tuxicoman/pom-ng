@@ -80,19 +80,23 @@ int proto_register(struct proto_reg_info *reg_info) {
 		goto err_lock;
 	}
 
+	proto->reg_instance = registry_add_instance(proto_registry_class, reg_info->name);
+	if (!proto->reg_instance) {
+		pomlog(POMLOG_ERR "Error while adding the registry instanc for protocol %s", reg_info->name);
+		goto err_packet_info;
+	}
+
+
 	// Allocate the conntrack table
 	if (reg_info->ct_info) {
 		proto->ct = conntrack_tables_alloc(reg_info->ct_info->default_table_size, (reg_info->ct_info->rev_pkt_field_id == -1 ? 0 : 1));
 		if (!proto->ct) {
 			pomlog(POMLOG_ERR "Error while allocating conntrack tables");
-			goto err_packet_info;
+			goto err_registry;
 		}
-	}
 
-	proto->reg_instance = registry_add_instance(proto_registry_class, reg_info->name);
-	if (!proto->reg_instance) {
-		pomlog(POMLOG_ERR "Error while adding the registry instanc for protocol %s", reg_info->name);
-		goto err_conntrack;
+		proto->perf_conn_cur = registry_instance_add_perf(proto->reg_instance, "conn_cur", registry_perf_type_gauge, "Current number of monitored connection", "connections");
+		proto->perf_conn_tot = registry_instance_add_perf(proto->reg_instance, "conn_tot", registry_perf_type_counter, "Total number of connections", "connections");
 	}
 
 	proto->perf_pkts = registry_instance_add_perf(proto->reg_instance, "pkts", registry_perf_type_counter, "Number of packets processed", "pkts");
@@ -101,12 +105,12 @@ int proto_register(struct proto_reg_info *reg_info) {
 	proto->perf_expt_matched = registry_instance_add_perf(proto->reg_instance, "expectations_matched", registry_perf_type_counter, "Number of expectations matched", "expectations");
 
 	if (!proto->perf_pkts || !proto->perf_bytes || !proto->perf_expt_pending || !proto->perf_expt_matched)
-		goto err_registry;
+		goto err_conntrack;
 
 	if (reg_info->init) {
 		if (reg_info->init(proto, proto->reg_instance) == POM_ERR) {
 			pomlog(POMLOG_ERR "Error while registering proto %s", reg_info->name);
-			goto err_registry;
+			goto err_conntrack;
 		}
 	}
 
@@ -125,10 +129,10 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 	return POM_OK;
 
-err_registry:
-	registry_remove_instance(proto->reg_instance);
 err_conntrack:
 	conntrack_tables_cleanup(proto->ct);
+err_registry:
+	registry_remove_instance(proto->reg_instance);
 err_packet_info:
 	packet_info_pool_cleanup(&proto->pkt_info_pool);
 err_lock:

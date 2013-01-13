@@ -276,6 +276,9 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		pom_mutex_unlock(&ct->lock);
 		debug_conntrack("Allocated conntrack %p with parent %p (uniq child)", res, parent);
 
+		registry_perf_inc(proto->perf_conn_cur, 1);
+		registry_perf_inc(proto->perf_conn_tot, 1);
+
 	} else if (parent->children->next) {
 		pomlog(POMLOG_ERR "Error, parent has more than one child while it was supposed to have only one");
 	} else {
@@ -536,6 +539,9 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	// Propagate the direction to the payload as well
 	s_next->direction = s->direction;
 	
+	registry_perf_inc(ce->proto->perf_conn_cur, 1);
+	registry_perf_inc(ce->proto->perf_conn_tot, 1);
+
 	return POM_OK;
 
 err:
@@ -824,6 +830,8 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 		ptype_cleanup(ce->rev_value);
 
 	pthread_mutex_destroy(&ce->lock);
+
+	registry_perf_dec(ce->proto->perf_conn_cur, 1);
 
 	free(ce);
 
