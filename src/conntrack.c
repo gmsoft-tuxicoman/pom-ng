@@ -315,13 +315,15 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 		return POM_ERR;
 
 	struct ptype *fwd_value = s->pkt_info->fields_value[s->proto->info->ct_info->fwd_pkt_field_id];
+	if (!fwd_value)
+		return POM_ERR;
 
 	struct ptype *rev_value = NULL;
-	if (s->proto->info->ct_info->rev_pkt_field_id != CONNTRACK_PKT_FIELD_NONE)
+	if (s->proto->info->ct_info->rev_pkt_field_id != CONNTRACK_PKT_FIELD_NONE) {
 		rev_value = s->pkt_info->fields_value[s->proto->info->ct_info->rev_pkt_field_id];
-
-	if (!fwd_value || !rev_value)
-		return POM_ERR;
+		if (!rev_value)
+			return POM_ERR;
+	}
 
 	uint32_t full_hash_fwd = 0, hash_fwd = 0, full_hash_rev = 0, hash_rev = 0;
 
