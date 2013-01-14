@@ -29,9 +29,7 @@ char *pom_strerror(int err_num) {
 
 	static __thread char buff[POM_STRERROR_BUFF_SIZE];
 	memset(buff, 0, POM_STRERROR_BUFF_SIZE);
-	strerror_r(err_num, buff, POM_STRERROR_BUFF_SIZE - 1);
-
-	return buff;
+	return strerror_r(err_num, buff, POM_STRERROR_BUFF_SIZE - 1);
 }
 
 
