@@ -224,6 +224,8 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 	if ((tmp->flags & PROTO_IPV6_FLAG_GOT_LAST) && !tmp->multipart->gaps)
 		tmp->flags |= PROTO_IPV6_FLAG_PROCESSED;
 
+	// We need to unlock the conntrack to avoid a deadlock when processing packets
+	conntrack_unlock(s->ce);
 
 	if ((tmp->flags & PROTO_IPV6_FLAG_PROCESSED)) {
 		int res = packet_multipart_process(tmp->multipart, stack, stack_index + 1);
@@ -261,7 +263,21 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 	s_next->pload = s->pload + sizeof(struct ip6_hdr);
 	s_next->plen = ntohs(hdr->ip6_plen);
 
+	if (s->ce->children) {
+		if (conntrack_delayed_cleanup(s->ce, 0) != POM_OK) {
+			conntrack_unlock(s->ce);
+			return PROTO_ERR;
+		}
+	} else {
+		uint32_t *conntrack_timeout = PTYPE_UINT32_GETVAL(param_conntrack_timeout);
+		if (conntrack_delayed_cleanup(s->ce, *conntrack_timeout) != POM_OK) {
+			conntrack_unlock(s->ce);
+			return PROTO_ERR;
+		}
+	}
+
 	uint8_t nhdr = hdr->ip6_nxt;
+	int locked = 1;
 	int done = 0;
 	int res = PROTO_OK;
 	while (!done) {
@@ -298,6 +314,7 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 
 			case IPPROTO_FRAGMENT: // 44
 				res = proto_ipv6_process_fragment(p, stack, stack_index);
+				locked = 0;
 				done = 1;
 				break;
 
@@ -310,16 +327,8 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 		}
 	}
 
-
-	if (s->ce->children) {
-		if (conntrack_delayed_cleanup(s->ce, 0) != POM_OK)
-			res = PROTO_ERR;
-	} else {
-		uint32_t *conntrack_timeout = PTYPE_UINT32_GETVAL(param_conntrack_timeout);
-		if (conntrack_delayed_cleanup(s->ce, *conntrack_timeout) != POM_OK)
-			res = PROTO_ERR;
-	}
-	conntrack_unlock(s->ce);
+	if (locked)
+		conntrack_unlock(s->ce);
 	return res;
 }
 

@@ -672,6 +672,8 @@ static int input_dvb_read(struct input *i) {
 	pkt->input = i;
 	pkt->datalink = p->proto_mpeg_ts;
 
+	unsigned char *pload = pkt->buff;
+
 	do {
 
 		r = read(p->dvr_fd, pkt->buff + len, MPEG_TS_LEN - len);
@@ -694,7 +696,7 @@ static int input_dvb_read(struct input *i) {
 
 		char *filter_null_pid = PTYPE_BOOL_GETVAL(p->filter_null_pid);
 		if (*filter_null_pid) {
-			uint16_t pid = ((((char*)pkt->buff)[1] & 0x1F) << 8) | ((char *)pkt->buff)[2];
+			uint16_t pid = ((pload[1] & 0x1F) << 8) | (pload)[2];
 			if (len > 3 && pid == 0x1FFF) // 0x1FFF is the NULL PID
 				len = 0;
 		}
@@ -703,7 +705,7 @@ static int input_dvb_read(struct input *i) {
 
 
 	// Check sync byte
-	if (*(unsigned char *)(pkt->buff) != 0x47) {
+	if (pload[0] != 0x47) {
 		pomlog(POMLOG_ERR "Error, stream out of sync !");
 		return POM_ERR;
 	}
@@ -713,7 +715,7 @@ static int input_dvb_read(struct input *i) {
 		return POM_ERR;
 	}
 
-	uint16_t pid = ((((char*)pkt->buff)[1] & 0x1F) << 8) | ((char *)pkt->buff)[2];
+	uint16_t pid = ((pload[1] & 0x1F) << 8) | pload[2];
 
 	return core_queue_packet(pkt, CORE_QUEUE_HAS_THREAD_AFFINITY, pid);
 
