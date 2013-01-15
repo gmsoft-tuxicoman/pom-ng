@@ -52,37 +52,42 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 #define pom_oom(x) pom_oom_internal(x, __FILE__, __LINE__)
 
 // Locking handlers
-#define pom_mutex_lock(x) {												\
-	if (pthread_mutex_lock(x)) {											\
-		pomlog(POMLOG_ERR "Error while locking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
-		abort();												\
-	}														\
+#define pom_mutex_lock(x) {													\
+	int err_num = pthread_mutex_lock(x);											\
+	if (err_num) {														\
+		pomlog(POMLOG_ERR "Error while locking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
+		abort();													\
+	}															\
 }
 
 #define pom_mutex_unlock(x) {													\
-	if (pthread_mutex_unlock(x)) {												\
-		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+	int err_num = pthread_mutex_unlock(x);											\
+	if (err_num) {														\
+		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
 		abort();													\
 	}															\
 }
 
 #define pom_rwlock_rlock(x) {													\
-	if (pthread_rwlock_rdlock(x)) {												\
-		pomlog(POMLOG_ERR "Error while read locking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+	int err_num = pthread_rwlock_rdlock(x);											\
+	if (err_num) {														\
+		pomlog(POMLOG_ERR "Error while read locking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
 		abort();													\
 	}															\
 }
 
 #define pom_rwlock_wlock(x) {													\
-	if (pthread_rwlock_wrlock(x)) {												\
-		pomlog(POMLOG_ERR "Error while write locking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+	int err_num = pthread_rwlock_wrlock(x);											\
+	if (err_num) {														\
+		pomlog(POMLOG_ERR "Error while write locking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
 		abort();													\
 	}															\
 }
 
 #define pom_rwlock_unlock(x) {													\
-	if (pthread_rwlock_unlock(x)) {												\
-		pomlog(POMLOG_ERR "Error while unlocking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(errno));	\
+	int err_num = pthread_rwlock_unlock(x);											\
+	if (err_num) {														\
+		pomlog(POMLOG_ERR "Error while unlocking rwlock in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
 		abort();													\
 	}															\
 }
