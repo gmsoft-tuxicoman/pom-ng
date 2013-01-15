@@ -307,6 +307,8 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 		tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
 
 
+	conntrack_unlock(s->ce);
+	
 	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED)) {
 		int res = packet_multipart_process(tmp->multipart, stack, stack_index + 1);
 		tmp->multipart = NULL; // Multipart will be cleared automatically
@@ -315,8 +317,7 @@ static int proto_ipv4_process(struct proto *proto, struct packet *p, struct prot
 			return PROTO_ERR;
 		}
 	}
-	conntrack_unlock(s->ce);
-	
+
 	return PROTO_STOP; // Stop processing the packet
 
 }
