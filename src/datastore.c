@@ -178,6 +178,12 @@ int datastore_instance_add(char *type, char *name) {
 	if (!res->reg_instance)
 		goto err;
 
+	res->perf_read_queries = registry_instance_add_perf(res->reg_instance, "read_queries", registry_perf_type_counter, "Number of read queries issued", "queries");
+	res->perf_write_queries = registry_instance_add_perf(res->reg_instance, "write_queries", registry_perf_type_counter, "Number of write queries issued", "queries");
+
+	if (!res->perf_read_queries || !res->perf_write_queries)
+		goto err;
+
 	struct ptype *datastore_type = ptype_alloc("string");
 	if (!datastore_type)
 		goto err;
@@ -234,6 +240,9 @@ err:
 int datastore_instance_remove(struct registry_instance *ri) {
 	
 	struct datastore *d = ri->priv;
+
+	if (!d)
+		return POM_OK;
 
 	if (d->reg->info->cleanup) {
 		if (d->reg->info->cleanup(d) != POM_OK) {
@@ -947,6 +956,7 @@ int datastore_dataset_read(struct dataset_query *dsq) {
 
 	// FIXME handle error
 
+	registry_perf_inc(d->perf_read_queries, 1);
 	return d->reg->info->dataset_read(dsq);
 
 }
@@ -991,6 +1001,7 @@ int datastore_dataset_write(struct dataset_query *dsq) {
 	
 	// FIXME handle error
 	
+	registry_perf_inc(d->perf_write_queries, 1);
 	return d->reg->info->dataset_write(dsq);
 
 }

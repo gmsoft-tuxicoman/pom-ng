@@ -128,6 +128,8 @@ struct datastore {
 	struct registry_instance *reg_instance;
 	struct registry_param *reg_param_running;
 
+	struct registry_perf *perf_read_queries;
+	struct registry_perf *perf_write_queries;
 
 	struct dataset *datasets; ///< List of all the datasets
 	struct dataset *dataset_db; ///< Dataset containing the lists of dataset
