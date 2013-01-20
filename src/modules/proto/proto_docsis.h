@@ -28,10 +28,21 @@
 #define PROTO_DOCSIS_FIELD_NUM 3
 #define PROTO_DOCSIS_MGMT_FIELD_NUM 7
 
+struct proto_docsis_priv {
+
+	struct proto *proto_ethernet;
+	struct proto *proto_docsis_mgmt;
+	struct registry_perf *perf_encrypted_pkts;
+	struct registry_perf *perf_encrypted_bytes;
+
+};
+
+
 struct mod_reg_info* proto_docsis_reg_info();
 static int proto_docsis_mod_register(struct mod_reg *mod);
 static int proto_docsis_mod_unregister();
 static int proto_docsis_init(struct proto *proto, struct registry_instance *i);
+static int proto_docsis_cleanup(void *proto_priv);
 static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_docsis_mgmt_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 

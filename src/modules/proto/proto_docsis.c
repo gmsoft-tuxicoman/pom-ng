@@ -30,8 +30,6 @@
 
 #include "proto_docsis.h"
 
-static struct proto *proto_ethernet = NULL, *proto_docsis_mgmt = NULL;
-
 struct mod_reg_info* proto_docsis_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -97,6 +95,7 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 	proto_docsis.mod = mod;
 	proto_docsis.pkt_fields = docsis_fields;
 	proto_docsis.init = proto_docsis_init;
+	proto_docsis.cleanup = proto_docsis_cleanup;
 	proto_docsis.process = proto_docsis_process;
 
 	if (proto_register(&proto_docsis) != POM_OK) {
@@ -118,14 +117,34 @@ static int proto_docsis_mod_unregister() {
 
 static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 
-	proto_ethernet = proto_get("ethernet");
-	proto_docsis_mgmt = proto_get("docsis_mgmt");
-
-	if (!proto_ethernet || !proto_docsis_mgmt)
+	struct proto_docsis_priv *priv = malloc(sizeof(struct proto_docsis_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_docsis_priv));
 		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct proto_docsis_priv));
+	proto_set_priv(proto, priv);
+
+	priv->proto_ethernet = proto_get("ethernet");
+	priv->proto_docsis_mgmt = proto_get("docsis_mgmt");
+	priv->perf_encrypted_pkts = registry_instance_add_perf(i, "encrypted_pkts", registry_perf_type_counter, "Number of encrypted packets", "pkts");
+	priv->perf_encrypted_bytes = registry_instance_add_perf(i, "encrypted_bytes", registry_perf_type_counter, "Number of bytes in encrypted packets", "bytes");
+
+	if (!priv->proto_ethernet || !priv->proto_docsis_mgmt || !priv->perf_encrypted_pkts || !priv->perf_encrypted_bytes) {
+		free(priv);
+		return POM_ERR;
+	}
 
 	return POM_OK;
 
+}
+
+static int proto_docsis_cleanup(void *proto_priv) {
+
+	if (proto_priv)
+		free(proto_priv);
+	
+	return POM_OK;
 }
 
 static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -133,6 +152,7 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	struct docsis_hdr *dhdr = s->pload;
+	struct proto_docsis_priv *priv = proto_priv;
 
 	if (s->plen < sizeof(struct docsis_hdr) || ntohs(dhdr->len) > s->plen)
 		return PROTO_INVALID;
@@ -152,9 +172,12 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 		hdr_len += dhdr->mac_parm;
 
 		// Don't process crypted packets any further
-		struct docsis_ehdr *ehdr = (struct docsis_ehdr*) (dhdr + offsetof(struct docsis_hdr, hcs));
-		if (ehdr->eh_type == EH_TYPE_BP_DOWN || ehdr->eh_type == EH_TYPE_BP_DOWN)
+		struct docsis_ehdr *ehdr = (struct docsis_ehdr*) (s->pload + offsetof(struct docsis_hdr, hcs));
+		if (ehdr->eh_type == EH_TYPE_BP_DOWN || ehdr->eh_type == EH_TYPE_BP_UP) {
+			registry_perf_inc(priv->perf_encrypted_pkts, 1);
+			registry_perf_inc(priv->perf_encrypted_bytes, s->plen);
 			return PROTO_OK;
+		}
 			
 	}
 
@@ -166,11 +189,11 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 		case FC_TYPE_ISOLATION_PKT_MAC:
 			// We don't need the 4 bytes of ethernet checksum
 			s_next->plen -= 4;
-			s_next->proto = proto_ethernet;
+			s_next->proto = priv->proto_ethernet;
 			break;
 		case FC_TYPE_MAC_SPC:
 			if (dhdr->fc_parm == FCP_MGMT) {
-				s_next->proto = proto_docsis_mgmt;
+				s_next->proto = priv->proto_docsis_mgmt;
 				break;
 			}
 			break;
