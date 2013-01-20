@@ -150,6 +150,10 @@ static int input_dvb_common_init(struct input *i) {
 		goto err;
 	}
 
+	priv->perf_null_discarded = registry_instance_add_perf(i->reg_instance, "null_discarded", registry_perf_type_counter, "Number of NULL MPEG packets discarded.", "pkts");
+	if (!priv->perf_null_discarded)
+		goto err;
+
 	priv->filter_null_pid = ptype_alloc("bool");
 
 	struct registry_param *p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
@@ -697,8 +701,10 @@ static int input_dvb_read(struct input *i) {
 		char *filter_null_pid = PTYPE_BOOL_GETVAL(p->filter_null_pid);
 		if (*filter_null_pid) {
 			uint16_t pid = ((pload[1] & 0x1F) << 8) | (pload)[2];
-			if (len > 3 && pid == 0x1FFF) // 0x1FFF is the NULL PID
+			if (len > 3 && pid == 0x1FFF) { // 0x1FFF is the NULL PID
 				len = 0;
+				registry_perf_inc(p->perf_null_discarded, 1);
+			}
 		}
 
 	} while (len < MPEG_TS_LEN);

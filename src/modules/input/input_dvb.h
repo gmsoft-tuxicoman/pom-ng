@@ -57,6 +57,8 @@ struct input_dvb_priv {
 		struct input_dvb_s_priv s;
 	} tpriv;
 
+	struct registry_perf *perf_null_discarded;
+
 };
 
 struct input_dvb_lnb_param {
