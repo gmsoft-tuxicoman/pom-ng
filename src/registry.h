@@ -40,6 +40,10 @@ struct registry_perf {
 	enum registry_perf_type type;
 	uint64_t value;
 	struct registry_perf *next;
+
+	int (*update_hook) (uint64_t cur_val, void *priv);
+	void *hook_priv;
+	pthread_mutex_t hook_lock;
 };
 
 struct registry_param {

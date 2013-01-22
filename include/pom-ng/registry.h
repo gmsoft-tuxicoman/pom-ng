@@ -47,6 +47,7 @@ int registry_instance_add_function(struct registry_instance *i, char *name, int 
 int registry_uid_create(struct registry_instance *instance);
 
 struct registry_perf *registry_instance_add_perf(struct registry_instance *i, const char *name, enum registry_perf_type type, const char *description, const char *unit);
+void registry_perf_set_update_hook(struct registry_perf *p, int (*update_hook) (uint64_t *cur_val, void *priv), void *hook_priv);
 void registry_perf_inc(struct registry_perf *p, uint64_t val);
 void registry_perf_dec(struct registry_perf *p, uint64_t val);
 void registry_perf_timeticks_stop(struct registry_perf *p);

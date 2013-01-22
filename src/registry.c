@@ -336,6 +336,15 @@ int registry_remove_instance(struct registry_instance *i) {
 	while (i->perfs) {
 		struct registry_perf *p = i->perfs;
 		i->perfs = p->next;
+
+		if (p->update_hook) {
+			int res = pthread_mutex_destroy(&p->hook_lock);
+			if (res) {
+				pomlog(POMLOG_ERR "Error while destroying perf hook lock : %s", pom_strerror(errno));
+				abort();
+			}
+		}
+
 		free(p->name);
 		free(p->description);
 		free(p->unit);
@@ -1433,10 +1442,46 @@ struct registry_perf *registry_instance_add_perf(struct registry_instance *i, co
 	return perf;
 }
 
+void registry_perf_set_update_hook(struct registry_perf *p, int (*update_hook) (uint64_t *cur_val, void *priv), void *hook_priv) {
+
+	if (p->type == registry_perf_type_timeticks) {
+		pomlog(POMLOG_ERR "Trying to set an update hook on a timeticks perf");
+		return;
+	}
+
+	if (!update_hook) {
+		if (p->update_hook) {
+			int res = pthread_mutex_destroy(&p->hook_lock);
+			if (res) {
+				pomlog(POMLOG_ERR "Error while destroying the perf hook lock : %s", pom_strerror(res));
+				abort();
+			}
+		}
+		p->update_hook = NULL;
+		p->hook_priv = NULL;
+		return;
+	}
+
+	if (!p->update_hook) {
+		int res = pthread_mutex_init(&p->hook_lock, NULL);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while initializing the perf hook lock : %s", pom_strerror(res));
+			abort();
+		}
+	}
+
+	p->update_hook = update_hook;
+	p->hook_priv = hook_priv;
+
+}
+
 void registry_perf_inc(struct registry_perf *p, uint64_t val) {
 
 	if (p->type == registry_perf_type_timeticks) {
 		pomlog(POMLOG_ERR "Trying to increase a perf item of type timeticks");
+		return;
+	} else if (p->update_hook) {
+		pomlog(POMLOG_ERR "Trying to increase a perf item with an update hook");
 		return;
 	}
 
@@ -1447,6 +1492,9 @@ void registry_perf_dec(struct registry_perf *p, uint64_t val) {
 
 	if (p->type != registry_perf_type_gauge) {
 		pomlog(POMLOG_ERR "Trying to decrease a perf item which is not of type gauge");
+		return;
+	} else if (p->update_hook) {
+		pomlog(POMLOG_ERR "Trying to decrease a perf item with an update hook");
 		return;
 	}
 
@@ -1503,8 +1551,18 @@ uint64_t registry_perf_getval(struct registry_perf *p) {
 
 	// Since we have memory barrier for updating the value
 	// I don't think there is the need for one for simply reading it
-	if (p->type != registry_perf_type_timeticks)
+	if (p->type != registry_perf_type_timeticks) {
+
+		if (p->update_hook) {
+			pom_mutex_lock(&p->hook_lock);
+			if (p->update_hook(&p->value, p->hook_priv) != POM_OK)
+				pomlog(POMLOG_WARN "Warning: update of performance %s value failed.", p->name);
+			pom_mutex_unlock(&p->hook_lock);
+		}
+
 		return p->value;
+
+	}
 
 	// It's a timeticks and it's not started
 	uint64_t value = p->value;
