@@ -58,6 +58,10 @@ struct input_dvb_priv {
 	} tpriv;
 
 	struct registry_perf *perf_null_discarded;
+	struct registry_perf *perf_signal;
+	struct registry_perf *perf_snr;
+	struct registry_perf *perf_unc;
+	struct registry_perf *perf_ber;
 
 };
 
@@ -86,6 +90,11 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 static int input_dvb_read(struct input *i);
 static int input_dvb_close(struct input *i);
 static int input_dvb_cleanup(struct input *i);
+
+static int input_dvb_perf_update_signal(uint64_t *value, void *priv);
+static int input_dvb_perf_update_snr(uint64_t *value, void *priv);
+static int input_dvb_perf_update_unc(uint64_t *value, void *priv);
+static int input_dvb_perf_update_ber(uint64_t *value, void *priv);
 
 #endif
 

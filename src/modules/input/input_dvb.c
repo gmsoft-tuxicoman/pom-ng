@@ -151,8 +151,17 @@ static int input_dvb_common_init(struct input *i) {
 	}
 
 	priv->perf_null_discarded = registry_instance_add_perf(i->reg_instance, "null_discarded", registry_perf_type_counter, "Number of NULL MPEG packets discarded.", "pkts");
-	if (!priv->perf_null_discarded)
+	priv->perf_signal = registry_instance_add_perf(i->reg_instance, "signal", registry_perf_type_gauge, "Signal", "dB");
+	priv->perf_snr = registry_instance_add_perf(i->reg_instance, "snr", registry_perf_type_gauge, "Signal to Noise ratio (SNR)", "dB");
+	priv->perf_unc = registry_instance_add_perf(i->reg_instance, "unc", registry_perf_type_counter, "Uncorrected blocks", "blocks");
+	priv->perf_ber = registry_instance_add_perf(i->reg_instance, "ber", registry_perf_type_gauge, "Bit error rate (BER)", "bits/block");
+	if (!priv->perf_null_discarded | !priv->perf_signal | !priv->perf_snr | !priv->perf_unc | !priv->perf_ber)
 		goto err;
+
+	registry_perf_set_update_hook(priv->perf_signal, input_dvb_perf_update_signal, priv);
+	registry_perf_set_update_hook(priv->perf_snr, input_dvb_perf_update_snr, priv);
+	registry_perf_set_update_hook(priv->perf_unc, input_dvb_perf_update_unc, priv);
+	registry_perf_set_update_hook(priv->perf_ber, input_dvb_perf_update_ber, priv);
 
 	priv->filter_null_pid = ptype_alloc("bool");
 
@@ -784,4 +793,69 @@ static int input_dvb_cleanup(struct input *i) {
 
 	return POM_OK;
 
+}
+
+static int input_dvb_perf_update_signal(uint64_t *value, void *priv) {
+
+	struct input_dvb_priv *p = priv;
+
+	uint16_t signal = 0;
+	if (ioctl(p->frontend_fd, FE_READ_SIGNAL_STRENGTH, &signal)) {
+		uint16_t *adapter = PTYPE_UINT16_GETVAL(p->adapter);
+		uint16_t *frontend = PTYPE_UINT16_GETVAL(p->frontend);
+		pomlog(POMLOG_ERR "Error while fetching signal from adapter %u, frontend %u : %s", *adapter, *frontend, pom_strerror(errno));
+		return POM_ERR;
+	}
+	*value = signal;
+
+	return POM_OK;
+}
+
+static int input_dvb_perf_update_snr(uint64_t *value, void *priv) {
+
+	struct input_dvb_priv *p = priv;
+
+	uint16_t snr = 0;
+	if (ioctl(p->frontend_fd, FE_READ_SNR, &snr)) {
+		uint16_t *adapter = PTYPE_UINT16_GETVAL(p->adapter);
+		uint16_t *frontend = PTYPE_UINT16_GETVAL(p->frontend);
+		pomlog(POMLOG_ERR "Error while fetching SNR from adapter %u, frontend %u : %s", *adapter, *frontend, pom_strerror(errno));
+		return POM_ERR;
+	}
+	*value = snr;
+
+	return POM_OK;
+}
+
+static int input_dvb_perf_update_unc(uint64_t *value, void *priv) {
+
+	struct input_dvb_priv *p = priv;
+
+	uint16_t unc = 0;
+	if (ioctl(p->frontend_fd, FE_READ_UNCORRECTED_BLOCKS, &unc)) {
+		uint16_t *adapter = PTYPE_UINT16_GETVAL(p->adapter);
+		uint16_t *frontend = PTYPE_UINT16_GETVAL(p->frontend);
+		pomlog(POMLOG_ERR "Error while fetching uncorrected blocks from adapter %u, frontend %u : %s", *adapter, *frontend, pom_strerror(errno));
+		return POM_ERR;
+	}
+	// uncorrected blocks value get cleared after polling
+	*value += unc;
+
+	return POM_OK;
+}
+
+static int input_dvb_perf_update_ber(uint64_t *value, void *priv) {
+
+	struct input_dvb_priv *p = priv;
+
+	uint16_t ber = 0;
+	if (ioctl(p->frontend_fd, FE_READ_BER, &ber)) {
+		uint16_t *adapter = PTYPE_UINT16_GETVAL(p->adapter);
+		uint16_t *frontend = PTYPE_UINT16_GETVAL(p->frontend);
+		pomlog(POMLOG_ERR "Error while fetching the bit error rate from adapter %u, frontend %u : %s", *adapter, *frontend, pom_strerror(errno));
+		return POM_ERR;
+	}
+	*value = ber;
+
+	return POM_OK;
 }
