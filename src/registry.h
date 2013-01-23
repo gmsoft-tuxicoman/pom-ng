@@ -41,7 +41,7 @@ struct registry_perf {
 	uint64_t value;
 	struct registry_perf *next;
 
-	int (*update_hook) (uint64_t cur_val, void *priv);
+	int (*update_hook) (uint64_t *cur_val, void *priv);
 	void *hook_priv;
 	pthread_mutex_t hook_lock;
 };
@@ -99,6 +99,7 @@ struct registry_class {
 	struct registry_instance *instances;
 	struct registry_instance_type *types;
 	struct registry_param *global_params;
+	struct registry_perf *perfs;
 	uint32_t serial;
 	int (*instance_add) (char *type, char *name);
 	int (*instance_remove) (struct registry_instance *i);
@@ -120,6 +121,8 @@ struct registry_class *registry_get();
 
 struct registry_class* registry_add_class(char *name);
 int registry_remove_class(struct registry_class *c);
+
+struct registry_perf *registry_class_add_perf(struct registry_class *c, const char *name, enum registry_perf_type type, const char *description, const char *unit);
 
 int registry_add_instance_type(struct registry_class *c, char *name);
 int registry_remove_instance_type(struct registry_class *c, char *name);

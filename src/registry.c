@@ -1394,8 +1394,7 @@ err:
 	return POM_ERR;
 }
 
-
-struct registry_perf *registry_instance_add_perf(struct registry_instance *i, const char *name, enum registry_perf_type type, const char *description, const char *unit) {
+struct registry_perf *registry_perf_alloc(const char *name, enum registry_perf_type type, const char *description, const char *unit) {
 
 	struct registry_perf *perf = malloc(sizeof(struct registry_perf));
 	if (!perf) {
@@ -1433,13 +1432,35 @@ struct registry_perf *registry_instance_add_perf(struct registry_instance *i, co
 
 	perf->type = type;
 
-	registry_lock();
-	perf->next = i->perfs;
-	i->perfs = perf;
+	return perf;
+}
+
+struct registry_perf *registry_class_add_perf(struct registry_class *c, const char *name, enum registry_perf_type type, const char *description, const char *unit) {
 	
+	struct registry_perf *p = registry_perf_alloc(name, type, description, unit);
+	if (!p)
+		return NULL;
+
+	registry_lock();
+	p->next = c->perfs;
+	c->perfs = p;
 	registry_unlock();
 	
-	return perf;
+	return p;
+}
+
+struct registry_perf *registry_instance_add_perf(struct registry_instance *i, const char *name, enum registry_perf_type type, const char *description, const char *unit) {
+
+	struct registry_perf *p = registry_perf_alloc(name, type, description, unit);
+	if (!p)
+		return NULL;
+
+	registry_lock();
+	p->next = i->perfs;
+	i->perfs = p;
+	registry_unlock();
+	
+	return p;
 }
 
 void registry_perf_set_update_hook(struct registry_perf *p, int (*update_hook) (uint64_t *cur_val, void *priv), void *hook_priv) {

@@ -234,15 +234,19 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		xmlrpc_value *params = xmlrpccmd_registry_build_params(envP, c->global_params);
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A}",
+		xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, c->perfs);
+
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A,s:A}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
 							"instances", instances,
+							"performances", perfs,
 							"parameters", params);
 
 		xmlrpc_DECREF(types);
 		xmlrpc_DECREF(instances);
+		xmlrpc_DECREF(perfs);
 		xmlrpc_DECREF(params);
 		xmlrpc_array_append_item(envP, classes, cls);
 		xmlrpc_DECREF(cls);
@@ -723,12 +727,24 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 		}
 
 		// Fetch each structure, get the class, instance and perf
-		xmlrpc_decompose_value(envP, item, "{s:s,s:s,s:s,*}",
+		xmlrpc_decompose_value(envP, item, "{s:s,s:s,*}",
 						"class", &perf_array[i].cls_name,
-						"instance", &perf_array[i].inst_name,
 						"perf", &perf_array[i].perf_name
 						);
+		if (envP->fault_occurred) {
+			perf_array[i].cls_name = NULL;
+			perf_array[i].perf_name = NULL;
+			xmlrpc_DECREF(item);
+			xmlrpc_DECREF(array);
+			goto err;
+		}
 
+		xmlrpc_value *inst_nameP = NULL;
+		xmlrpc_struct_find_value(envP, item, "instance", &inst_nameP);
+		if (inst_nameP) {
+			xmlrpc_read_string(envP, inst_nameP, (const char ** const) &perf_array[i].inst_name);
+			xmlrpc_DECREF(inst_nameP);
+		}
 		xmlrpc_DECREF(item);
 
 		if (envP->fault_occurred) {
@@ -757,7 +773,7 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 
 		}
 
-		if (!perf_array[i].inst) {
+		if (!perf_array[i].inst && perf_array[i].inst_name) {
 			struct registry_instance *inst;
 			for (inst = perf_array[i].cls->instances; inst && strcmp(inst->name, perf_array[i].inst_name); inst = inst->next);
 			if (!inst) {
@@ -769,16 +785,20 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 			
 			unsigned int j;
 			for (j = i + 1; j < perf_array_count; j++) {
-				if (perf_array[j].cls == perf_array[i].cls && !strcmp(perf_array[j].inst_name, perf_array[i].inst_name))
+				if (perf_array[j].cls == perf_array[i].cls && perf_array[j].inst_name && !strcmp(perf_array[j].inst_name, perf_array[i].inst_name))
 					perf_array[j].inst = perf_array[i].inst;
 			}
 		}
 
 		if (!perf_array[i].perf) {
 			struct registry_perf *perf;
-			for (perf = perf_array[i].inst->perfs; perf && strcmp(perf->name, perf_array[i].perf_name); perf = perf->next);
+			for (perf = (perf_array[i].inst ? perf_array[i].inst->perfs : perf_array[i].cls->perfs); perf && strcmp(perf->name, perf_array[i].perf_name); perf = perf->next);
 			if (!perf) {
-				xmlrpc_faultf(envP, "Perf %s of instance %s of class %s does not exists", perf_array[i].perf_name, perf_array[i].inst_name, perf_array[i].cls_name);
+				if (perf_array[i].inst_name) {
+					xmlrpc_faultf(envP, "Perf %s of instance %s of class %s does not exists", perf_array[i].perf_name, perf_array[i].inst_name, perf_array[i].cls_name);
+				} else {
+					xmlrpc_faultf(envP, "Perf %s of class %s does not exists", perf_array[i].perf_name, perf_array[i].cls_name);
+				}
 				registry_unlock();
 				goto err;
 			}
@@ -793,11 +813,19 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 
 		// Add the value to the result
 		
-		xmlrpc_value *item = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:I}",
+		xmlrpc_value *item = NULL;
+		if (perf_array[i].inst_name) {
+			item = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:I}",
 							"class", perf_array[i].cls_name,
 							"instance", perf_array[i].inst_name,
 							"perf", perf_array[i].perf_name,
 							"value", registry_perf_getval(perf_array[i].perf));
+		} else {
+			item = xmlrpc_build_value(envP, "{s:s,s:s,s:I}",
+							"class", perf_array[i].cls_name,
+							"perf", perf_array[i].perf_name,
+							"value", registry_perf_getval(perf_array[i].perf));
+		}
 		xmlrpc_array_append_item(envP, res, item);
 		xmlrpc_DECREF(item);
 	}
