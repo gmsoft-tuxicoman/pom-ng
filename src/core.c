@@ -56,12 +56,22 @@ static unsigned int core_pkt_queue_usage = 0;
 static pthread_cond_t core_pkt_queue_restart_cond;
 static pthread_mutex_t core_pkt_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Perf objects
+struct registry_perf *perf_pkt_queue = NULL;
+struct registry_perf *perf_thread_active = NULL;
+
 
 int core_init(int num_threads) {
 
 	core_registry_class = registry_add_class(CORE_REGISTRY);
 	if (!core_registry_class)
 		return POM_ERR;
+
+	perf_pkt_queue = registry_class_add_perf(core_registry_class, "pkt_queue", registry_perf_type_gauge, "Number of packets in the queue waiting to be processed", "pkts");
+	perf_thread_active = registry_class_add_perf(core_registry_class, "active_thread", registry_perf_type_gauge, "Number of active threads", "threads");
+
+	if (!perf_pkt_queue || !perf_thread_active)
+		return POM_OK;
 
 	core_param_dump_pkt = ptype_alloc("bool");
 	if (!core_param_dump_pkt)
@@ -244,6 +254,7 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 	memset(tmp, 0, sizeof(struct core_packet_queue));
 	tmp->pkt = p;
 	core_pkt_queue_usage++;
+	registry_perf_inc(perf_pkt_queue, 1);
 
 	if (flags & CORE_QUEUE_HAS_THREAD_AFFINITY) {
 	
@@ -313,6 +324,7 @@ void *core_processing_thread_func(void *priv) {
 
 		}
 		core_thread_active++;
+		registry_perf_inc(perf_thread_active, 1);
 
 		struct core_packet_queue *tmp = NULL;
 		
@@ -348,6 +360,7 @@ void *core_processing_thread_func(void *priv) {
 		core_pkt_queue_unused = tmp;
 
 		core_pkt_queue_usage--;
+		registry_perf_dec(perf_pkt_queue, 1);
 
 		pom_mutex_unlock(&core_pkt_queue_mutex);
 
@@ -396,6 +409,7 @@ void *core_processing_thread_func(void *priv) {
 
 		}
 		core_thread_active--;
+		registry_perf_dec(perf_thread_active, 1);
 
 	}
 	pom_mutex_unlock(&core_pkt_queue_mutex);
