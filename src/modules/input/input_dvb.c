@@ -799,6 +799,9 @@ static int input_dvb_perf_update_signal(uint64_t *value, void *priv) {
 
 	struct input_dvb_priv *p = priv;
 
+	if (p->frontend_fd == -1)
+		return POM_OK;
+
 	uint16_t signal = 0;
 	if (ioctl(p->frontend_fd, FE_READ_SIGNAL_STRENGTH, &signal)) {
 		uint16_t *adapter = PTYPE_UINT16_GETVAL(p->adapter);
@@ -814,6 +817,9 @@ static int input_dvb_perf_update_signal(uint64_t *value, void *priv) {
 static int input_dvb_perf_update_snr(uint64_t *value, void *priv) {
 
 	struct input_dvb_priv *p = priv;
+
+	if (p->frontend_fd == -1)
+		return POM_OK;
 
 	uint16_t snr = 0;
 	if (ioctl(p->frontend_fd, FE_READ_SNR, &snr)) {
@@ -831,6 +837,9 @@ static int input_dvb_perf_update_unc(uint64_t *value, void *priv) {
 
 	struct input_dvb_priv *p = priv;
 
+	if (p->frontend_fd == -1)
+		return POM_OK;
+
 	uint16_t unc = 0;
 	if (ioctl(p->frontend_fd, FE_READ_UNCORRECTED_BLOCKS, &unc)) {
 		uint16_t *adapter = PTYPE_UINT16_GETVAL(p->adapter);
@@ -847,6 +856,9 @@ static int input_dvb_perf_update_unc(uint64_t *value, void *priv) {
 static int input_dvb_perf_update_ber(uint64_t *value, void *priv) {
 
 	struct input_dvb_priv *p = priv;
+
+	if (p->frontend_fd == -1)
+		return POM_OK;
 
 	uint16_t ber = 0;
 	if (ioctl(p->frontend_fd, FE_READ_BER, &ber)) {
