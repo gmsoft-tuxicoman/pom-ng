@@ -272,12 +272,13 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 						(s->direction == priv->client_direction && (!(info->flags & HTTP_FLAG_HAVE_CLEN)))
 						
 						) {
+							struct data *evt_data = event_get_data(priv->event[s->direction]);
 							if (s->direction == priv->client_direction) {
-								PTYPE_TIMESTAMP_SETVAL(priv->event[s->direction]->data[proto_http_query_end_time].value, p->ts);
-								data_set(priv->event[s->direction]->data[proto_http_query_end_time]);
+								PTYPE_TIMESTAMP_SETVAL(evt_data[proto_http_query_end_time].value, p->ts);
+								data_set(evt_data[proto_http_query_end_time]);
 							} else {
-								PTYPE_TIMESTAMP_SETVAL(priv->event[s->direction]->data[proto_http_response_end_time].value, p->ts);
-								data_set(priv->event[s->direction]->data[proto_http_response_end_time]);
+								PTYPE_TIMESTAMP_SETVAL(evt_data[proto_http_response_end_time].value, p->ts);
+								data_set(evt_data[proto_http_response_end_time]);
 							}
 
 							// Process the event
@@ -504,13 +505,13 @@ static int proto_http_post_process(void *proto_priv, struct packet *p, struct pr
 		((info->flags & HTTP_FLAG_HAVE_CLEN) && (info->content_pos >= info->content_len)) // End of payload reached
 		|| (info->flags & (HTTP_FLAG_CHUNKED & HTTP_FLAG_LAST_CHUNK))) // Last chunk was processed
 		) {
-
+		struct data *evt_data = event_get_data(priv->event[direction]);
 		if (direction == priv->client_direction) {
-			PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_query_end_time].value, p->ts);
-			data_set(priv->event[direction]->data[proto_http_query_end_time]);
+			PTYPE_TIMESTAMP_SETVAL(evt_data[proto_http_query_end_time].value, p->ts);
+			data_set(evt_data[proto_http_query_end_time]);
 		} else {
-			PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_response_end_time].value, p->ts);
-			data_set(priv->event[direction]->data[proto_http_response_end_time]);
+			PTYPE_TIMESTAMP_SETVAL(evt_data[proto_http_response_end_time].value, p->ts);
+			data_set(evt_data[proto_http_response_end_time]);
 		}
 		// Payload done
 		event_process_end(priv->event[direction]);
@@ -563,7 +564,7 @@ static int proto_http_conntrack_cleanup(void *ce_priv) {
 		}
 
 		if (priv->event[direction]) {
-			if (priv->event[direction]->flags & EVENT_FLAG_PROCESS_BEGAN) {
+			if (event_is_started(priv->event[direction])) {
 				debug_http("entry %p, processing event on cleanup !", ce);
 				event_process_end(priv->event[direction]);
 			} else {
@@ -669,11 +670,14 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_method, token, tok_len);
 					request_method[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_method].value, request_method);
-					data_set(priv->event[direction]->data[proto_http_query_method]);
+
+					struct data *evt_data = event_get_data(priv->event[direction]);
+
+					PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_method].value, request_method);
+					data_set(evt_data[proto_http_query_method]);
 				}
 				break;
-			case 1:
+			case 1: {
 				if (priv->client_direction == direction) {
 					char *url = malloc(tok_len + 1);
 					if (!url) {
@@ -682,8 +686,9 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(url, token, tok_len);
 					url[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_url].value, url);
-					data_set(priv->event[direction]->data[proto_http_query_url]);
+					struct data *evt_data = event_get_data(priv->event[direction]);
+					PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_url].value, url);
+					data_set(evt_data[proto_http_query_url]);
 				} else {
 					// Get the status code
 					uint16_t err_code = 0;
@@ -706,16 +711,18 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					if (!priv->event[direction])
 						return PROTO_ERR;
 
-					PTYPE_UINT16_SETVAL(priv->event[direction]->data[proto_http_response_status].value, err_code);
-					data_set(priv->event[direction]->data[proto_http_response_status]);
+					struct data *evt_data = event_get_data(priv->event[direction]);
+					PTYPE_UINT16_SETVAL(evt_data[proto_http_response_status].value, err_code);
+					data_set(evt_data[proto_http_response_status]);
 					priv->info[direction].last_err_code = err_code;
 
-					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_response_proto].value, response_proto);
-					data_set(priv->event[direction]->data[proto_http_response_proto]);
+					PTYPE_STRING_SETVAL_P(evt_data[proto_http_response_proto].value, response_proto);
+					data_set(evt_data[proto_http_response_proto]);
 					response_proto = NULL;
 				}
 
 				break;
+			}
 			case 2:
 				if (priv->client_direction == direction) {
 					// This payload was identified as a possible query
@@ -736,8 +743,10 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 					memcpy(request_proto, token, tok_len);
 					request_proto[tok_len] = 0;
-					PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_proto].value, request_proto);
-					data_set(priv->event[direction]->data[proto_http_query_proto]);
+					
+					struct data *evt_data = event_get_data(priv->event[direction]);
+					PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_proto].value, request_proto);
+					data_set(evt_data[proto_http_query_proto]);
 				}
 
 				break;
@@ -768,6 +777,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 		return PROTO_INVALID;
 	}
 
+	struct data *evt_data = event_get_data(priv->event[direction]);
 	if (priv->client_direction == direction) {
 		
 		if (tok_num < 3) {
@@ -783,19 +793,19 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 
 		memcpy(first_line, line, line_len);
 		first_line[line_len] = 0;
-		PTYPE_STRING_SETVAL_P(priv->event[direction]->data[proto_http_query_first_line].value, first_line);
-		data_set(priv->event[direction]->data[proto_http_query_first_line]);
+		PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_first_line].value, first_line);
+		data_set(evt_data[proto_http_query_first_line]);
 
-		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_query_start_time].value, p->ts);
-		data_set(priv->event[direction]->data[proto_http_query_start_time]);
+		PTYPE_TIMESTAMP_SETVAL(evt_data[proto_http_query_start_time].value, p->ts);
+		data_set(evt_data[proto_http_query_start_time]);
 
 		debug_http("entry %p, found query : \"%s\"", ce, first_line);
 
 	} else {
 		debug_http("entry %p, response with status %u", ce, priv->info[direction].last_err_code);
 
-		PTYPE_TIMESTAMP_SETVAL(priv->event[direction]->data[proto_http_response_start_time].value, p->ts);
-		data_set(priv->event[direction]->data[proto_http_response_start_time]);
+		PTYPE_TIMESTAMP_SETVAL(evt_data[proto_http_response_start_time].value, p->ts);
+		data_set(evt_data[proto_http_response_start_time]);
 	}
 
 	priv->state[direction]++;

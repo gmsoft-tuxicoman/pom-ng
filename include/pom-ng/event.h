@@ -34,16 +34,8 @@
 // Indicate that the event generates a payload
 #define EVENT_REG_FLAG_PAYLOAD		0x1
 
-struct event {
-	struct event_reg *reg;
-	unsigned int flags;
-	struct conntrack_entry *ce;
-	void *priv;
-	unsigned int refcount;
-	struct data *data;
-
-	struct event_listener* tmp_listeners;
-};
+struct event_reg;
+struct event;
 
 struct event_reg_info {
 	char *source_name;
@@ -80,8 +72,15 @@ int event_refcount_inc(struct event *evt);
 int event_refcount_dec(struct event *evt);
 
 struct event_reg_info *event_get_info(struct event *evt);
+struct event_reg *event_get_reg(struct event *evt);
+struct data *event_get_data(struct event *evt);
 struct event_reg_info *event_reg_get_info(struct event_reg *evt_reg);
 struct ptype *event_data_item_add(struct event *evt, unsigned int id, const char *key);
+void *event_get_priv(struct event *evt);
+void event_set_priv(struct event *evt, void *priv);
+struct conntrack_entry *event_get_conntrack(struct event *evt);
+unsigned int event_is_started(struct event *evt);
+unsigned int event_is_done(struct event *evt);
 
 #endif
 

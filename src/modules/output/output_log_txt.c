@@ -512,10 +512,11 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	
 		char *value = NULL;
 
+		struct data *evt_data = event_get_data(evt);
 		if (field->key) {
 			// Find the right item in the list
 			struct data_item *item;
-			for (item = evt->data[field->id].items; item; item = item->next) {
+			for (item = evt_data[field->id].items; item; item = item->next) {
 				if (!strcasecmp(item->key, field->key)) {
 					value = ptype_print_val_alloc(item->value);
 					if (!value) {
@@ -525,9 +526,9 @@ int output_log_txt_process(struct event *evt, void *obj) {
 					break;
 				}
 			}
-		} else if (data_is_set(evt->data[field->id]) && evt->data[field->id].value) {
+		} else if (data_is_set(evt_data[field->id]) && evt_data[field->id].value) {
 			// Find the value of the field
-			value = ptype_print_val_alloc(evt->data[field->id].value);
+			value = ptype_print_val_alloc(evt_data[field->id].value);
 			if (!value) {
 				pom_mutex_unlock(&file->lock);
 				return POM_ERR;

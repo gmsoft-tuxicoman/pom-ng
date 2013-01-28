@@ -605,15 +605,16 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			free(rr.name);
 			return POM_OK;
 		}
-
-		PTYPE_STRING_SETVAL_P(evt_record->data[analyzer_dns_record_name].value, rr.name);
-		data_set(evt_record->data[analyzer_dns_record_name]);
-		PTYPE_UINT32_SETVAL(evt_record->data[analyzer_dns_record_ttl].value, rr.ttl);
-		data_set(evt_record->data[analyzer_dns_record_ttl]);
-		PTYPE_UINT16_SETVAL(evt_record->data[analyzer_dns_record_type].value, rr.type);
-		data_set(evt_record->data[analyzer_dns_record_type]);
-		PTYPE_UINT16_SETVAL(evt_record->data[analyzer_dns_record_class].value, rr.cls);
-		data_set(evt_record->data[analyzer_dns_record_class]);
+		
+		struct data *evt_data = event_get_data(evt_record);
+		PTYPE_STRING_SETVAL_P(evt_data[analyzer_dns_record_name].value, rr.name);
+		data_set(evt_data[analyzer_dns_record_name]);
+		PTYPE_UINT32_SETVAL(evt_data[analyzer_dns_record_ttl].value, rr.ttl);
+		data_set(evt_data[analyzer_dns_record_ttl]);
+		PTYPE_UINT16_SETVAL(evt_data[analyzer_dns_record_type].value, rr.type);
+		data_set(evt_data[analyzer_dns_record_type]);
+		PTYPE_UINT16_SETVAL(evt_data[analyzer_dns_record_class].value, rr.cls);
+		data_set(evt_data[analyzer_dns_record_class]);
 
 
 		switch (rr.type) {
@@ -630,7 +631,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				if (!ipv4_val)
 					break;
 				PTYPE_IPV4_SETADDR(ipv4_val, ipv4);
-				if (data_item_add_ptype(evt_record->data, analyzer_dns_record_values, strdup("a"), ipv4_val) != POM_OK) {
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("a"), ipv4_val) != POM_OK) {
 					ptype_cleanup(ipv4_val);
 					break;
 				}
@@ -651,7 +652,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				if (!ipv6_val)
 					break;
 				PTYPE_IPV6_SETADDR(ipv6_val, ipv6);
-				if (data_item_add_ptype(evt_record->data, analyzer_dns_record_values, strdup("aaaa"), ipv6_val) != POM_OK) {
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("aaaa"), ipv6_val) != POM_OK) {
 					ptype_cleanup(ipv6_val);
 					break;
 				}
@@ -675,7 +676,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 					break;
 				}
 				PTYPE_STRING_SETVAL_P(val, cname);
-				if (data_item_add_ptype(evt_record->data, analyzer_dns_record_values, strdup("cname"), val) != POM_OK) {
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("cname"), val) != POM_OK) {
 					ptype_cleanup(val);
 					break;
 				}
@@ -699,7 +700,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 					break;
 				}
 				PTYPE_STRING_SETVAL_P(val, ptr);
-				if (data_item_add_ptype(evt_record->data, analyzer_dns_record_values, strdup("ptr"), val) != POM_OK) {
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("ptr"), val) != POM_OK) {
 					ptype_cleanup(val);
 					break;
 				}
@@ -721,7 +722,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				uint16_t pref = analyzer_dns_get_uint16(data_start);
 				PTYPE_UINT16_SETVAL(pref_val, pref);
 
-				if (data_item_add_ptype(evt_record->data, analyzer_dns_record_values, strdup("mx_pref"), pref_val) != POM_OK) {
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("mx_pref"), pref_val) != POM_OK) {
 					ptype_cleanup(pref_val);
 					break;
 				}
@@ -741,7 +742,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 					break;
 				}
 				PTYPE_STRING_SETVAL_P(val, mx);
-				if (data_item_add_ptype(evt_record->data, analyzer_dns_record_values, strdup("ptr"), val) != POM_OK) {
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("ptr"), val) != POM_OK) {
 					ptype_cleanup(val);
 					break;
 				}

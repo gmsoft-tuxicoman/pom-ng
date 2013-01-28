@@ -237,13 +237,14 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				free(fq);
 				goto err;
 			}
-			
-			PTYPE_STRING_SETVAL(fq->evt->data[analyzer_tftp_file_filename].value, filename);
-			data_set(fq->evt->data[analyzer_tftp_file_filename]);
-			PTYPE_STRING_SETVAL(fq->evt->data[analyzer_tftp_file_mode].value, mode);
-			data_set(fq->evt->data[analyzer_tftp_file_mode]);
-			PTYPE_BOOL_SETVAL(fq->evt->data[analyzer_tftp_file_write].value, opcode == tftp_wrq);
-			data_set(fq->evt->data[analyzer_tftp_file_write]);
+			struct data *evt_data = event_get_data(fq->evt);
+
+			PTYPE_STRING_SETVAL(evt_data[analyzer_tftp_file_filename].value, filename);
+			data_set(evt_data[analyzer_tftp_file_filename]);
+			PTYPE_STRING_SETVAL(evt_data[analyzer_tftp_file_mode].value, mode);
+			data_set(evt_data[analyzer_tftp_file_mode]);
+			PTYPE_BOOL_SETVAL(evt_data[analyzer_tftp_file_write].value, opcode == tftp_wrq);
+			data_set(evt_data[analyzer_tftp_file_write]);
 
 
 
@@ -261,6 +262,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 		case tftp_data: {
 
 			struct analyzer_tftp_file *f = conntrack_get_priv(s->ce, obj);
+			struct data *evt_data = NULL;
 
 			if (!f) {
 				// The file is not yet associated to this connection
@@ -285,7 +287,8 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 
 				// Find the file in the session list
 				for (f = spriv->files; ; f = f->next) {
-					if (*PTYPE_BOOL_GETVAL(f->evt->data[analyzer_tftp_file_write].value)) {
+					evt_data = event_get_data(f->evt);
+					if (*PTYPE_BOOL_GETVAL(evt_data[analyzer_tftp_file_write].value)) {
 						if (f->port == sport)
 							break;
 					} else {
@@ -317,6 +320,8 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 					goto err;
 
 				conntrack_add_priv(s->ce, obj, f, analyzer_tftp_conntrack_priv_cleanup);
+			} else {
+				evt_data = event_get_data(f->evt);
 			}
 			conntrack_session_unlock(session);
 		
@@ -330,12 +335,12 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			if (analyzer_pload_buffer_append(f->pload, s_next->pload, s_next->plen) != POM_OK)
 				goto err;
 
-			uint32_t *size = PTYPE_UINT32_GETVAL(f->evt->data[analyzer_tftp_file_size].value);
+			uint32_t *size = PTYPE_UINT32_GETVAL(evt_data[analyzer_tftp_file_size].value);
 			*size += s_next->plen;
 
 			if (s_next->plen < ANALYZER_TFTP_BLK_SIZE) {
 				// Got last packet !
-				data_set(f->evt->data[analyzer_tftp_file_size]);
+				data_set(evt_data[analyzer_tftp_file_size]);
 				
 				int res = analyzer_pload_buffer_cleanup(f->pload);
 				res += event_process_end(f->evt);

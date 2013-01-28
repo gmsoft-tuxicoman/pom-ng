@@ -258,7 +258,7 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 			if (!evt)
 				return POM_ERR;
 
-			struct data *evt_data = evt->data;
+			struct data *evt_data = event_get_data(evt);
 			ptype_copy(evt_data[analyzer_arp_new_sta_mac_addr].value, s->pkt_info->fields_value[proto_arp_field_sender_hw_addr]);
 			data_set(evt_data[analyzer_arp_new_sta_mac_addr]);
 			ptype_copy(evt_data[analyzer_arp_new_sta_ip_addr].value, s->pkt_info->fields_value[proto_arp_field_sender_proto_addr]);
@@ -284,7 +284,7 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 				return POM_ERR;
 			}
 
-			struct data *evt_data = evt->data;
+			struct data *evt_data = event_get_data(evt);
 			PTYPE_MAC_SETADDR(evt_data[analyzer_arp_sta_changed_old_mac_addr].value, host->mac);
 			data_set(evt_data[analyzer_arp_sta_changed_old_mac_addr]);
 			ptype_copy(evt_data[analyzer_arp_sta_changed_new_mac_addr].value, s->pkt_info->fields_value[proto_arp_field_sender_hw_addr]);

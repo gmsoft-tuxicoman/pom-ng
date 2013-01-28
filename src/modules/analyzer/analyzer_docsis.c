@@ -217,7 +217,7 @@ static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, 
 			return POM_ERR;
 		}
 
-		struct data *evt_data = evt->data;
+		struct data *evt_data = event_get_data(evt);
 		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_old].value, cm->ranging_status);
 		data_set(evt_data[analyzer_docsis_cm_reg_status_old]);
 		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_new].value, new_status);
@@ -358,7 +358,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 				return POM_ERR;
 			}
 
-			struct data *evt_data = evt->data;
+			struct data *evt_data = event_get_data(evt);
 			PTYPE_MAC_SETADDR(evt_data[analyzer_docsis_cm_new_mac].value, cm->mac);
 			data_set(evt_data[analyzer_docsis_cm_new_mac]);
 			PTYPE_STRING_SETVAL(evt_data[analyzer_docsis_cm_new_input].value, p->input->name);

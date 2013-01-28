@@ -379,9 +379,37 @@ struct event_reg_info *event_get_info(struct event *evt) {
 	return evt->reg->info;
 }
 
+struct data *event_get_data(struct event *evt) {
+	return evt->data;
+}
+
+struct event_reg *event_get_reg(struct event *evt) {
+	return evt->reg;
+}
+
 struct event_reg_info *event_reg_get_info(struct event_reg *evt_reg) {
 	return evt_reg->info;
 }
 struct ptype *event_data_item_add(struct event *evt, unsigned int id, const char *key) {
 	return data_item_add(evt->data, evt->reg->info->data_reg, id, key);
+}
+
+void *event_get_priv(struct event *evt) {
+	return evt->priv;
+}
+
+void event_set_priv(struct event *evt, void *priv) {
+	evt->priv = priv;
+}
+
+struct conntrack_entry *event_get_conntrack(struct event *evt) {
+	return evt->ce;
+}
+
+unsigned int event_is_started(struct event *evt) {
+	return (evt->flags & EVENT_FLAG_PROCESS_BEGAN ? 1 : 0);
+}
+
+unsigned int event_is_done(struct event *evt) {
+	return (evt->flags & EVENT_FLAG_PROCESS_DONE ? 1 : 0);
 }

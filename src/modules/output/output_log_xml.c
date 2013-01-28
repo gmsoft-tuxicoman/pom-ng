@@ -236,12 +236,14 @@ int output_log_xml_process(struct event *evt, void *obj) {
 		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->name) < 0)
 		goto err;
 
+	struct data *evt_data = event_get_data(evt);
+
 	int i;
 	for (i = 0; i < evt_info->data_reg->data_count; i++) {
 		if (evt_info->data_reg->items[i].flags & ANALYZER_DATA_FLAG_LIST) {
 			// Got a data_list
 		
-			if (!evt->data[i].items)
+			if (!evt_data[i].items)
 				continue;
 
 			// <data_list name="data_name">
@@ -251,7 +253,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 				goto err;
 
 			// <value key="key1">
-			struct data_item *itm = evt->data[i].items;
+			struct data_item *itm = evt_data[i].items;
 			for (; itm; itm = itm->next) {
 				if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t\t") < 0 ||
 					xmlTextWriterStartElement(writer, BAD_CAST "value") < 0 ||
@@ -285,7 +287,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 
 			// Got a single data
 			
-			if (!data_is_set(evt->data[i]))
+			if (!data_is_set(evt_data[i]))
 				continue;
 
 			
@@ -296,8 +298,8 @@ int output_log_xml_process(struct event *evt, void *obj) {
 				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->data_reg->items[i].name) < 0)
 				goto err;
 
-			if (evt->data[i].value) {
-				char *value = ptype_print_val_alloc(evt->data[i].value);
+			if (evt_data[i].value) {
+				char *value = ptype_print_val_alloc(evt_data[i].value);
 				if (!value)
 					goto err;
 

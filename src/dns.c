@@ -473,33 +473,35 @@ static int dns_update_expiry(struct dns_entry *a, struct dns_entry *b, uint32_t 
 
 int dns_process_event(struct event *evt, void *obj) {
 
+	struct data *evt_data = event_get_data(evt);
+
 	// We need to save only a few record from the IN class
 
 	// Check for IN class
-	uint16_t cls = *PTYPE_UINT16_GETVAL(evt->data[analyzer_dns_record_class].value);
+	uint16_t cls = *PTYPE_UINT16_GETVAL(evt_data[analyzer_dns_record_class].value);
 	if (cls != ns_c_in)
 		return POM_OK;
 
 	// Check for A, CNAME, AAAA, PTR
-	uint16_t type = *PTYPE_UINT16_GETVAL(evt->data[analyzer_dns_record_type].value);
+	uint16_t type = *PTYPE_UINT16_GETVAL(evt_data[analyzer_dns_record_type].value);
 	if (type != ns_t_a && type != ns_t_cname && type != ns_t_aaaa && type != ns_t_ptr)
 		return POM_OK;
 
-	struct ptype *record = evt->data[analyzer_dns_record_values].items->value;
+	struct ptype *record = evt_data[analyzer_dns_record_values].items->value;
 
 	if (!record) {
 		pomlog(POMLOG_WARN "Record not found in DNS record event");
 		return POM_OK;
 	}
 
-	uint32_t ttl = *PTYPE_UINT32_GETVAL(evt->data[analyzer_dns_record_ttl].value);
+	uint32_t ttl = *PTYPE_UINT32_GETVAL(evt_data[analyzer_dns_record_ttl].value);
 
 	if (ttl > DNS_TTL_MAX) // Restrict TTL to a maximum value
 		ttl = DNS_TTL_MAX;
 
 	pom_mutex_lock(&dns_table_lock);
 
-	struct dns_entry *query = dns_find_or_add_entry(evt->data[analyzer_dns_record_name].value);
+	struct dns_entry *query = dns_find_or_add_entry(evt_data[analyzer_dns_record_name].value);
 	if (!query) {
 		pom_mutex_unlock(&dns_table_lock);
 		return POM_ERR;

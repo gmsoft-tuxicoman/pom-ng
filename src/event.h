@@ -21,6 +21,17 @@
 #ifndef __EVENT_H__
 #define __EVENT_H__
 
+struct event {
+	struct event_reg *reg;
+	unsigned int flags;
+	struct conntrack_entry *ce;
+	void *priv;
+	unsigned int refcount;
+	struct data *data;
+
+	struct event_listener* tmp_listeners;
+};
+
 struct event_reg {
 	struct event_reg_info *info;
 	struct event_listener *listeners;
