@@ -396,7 +396,7 @@ static int input_dvb_open(struct input *i) {
 	
 	priv->frontend_fd = open(frontend, O_RDWR);
 	if (priv->frontend_fd == -1) {
-		pomlog(POMLOG_ERR "Unable to open adapter %s : %s", adapter, pom_strerror(errno));
+		pomlog(POMLOG_ERR "Unable to open frontend %s : %s", frontend, pom_strerror(errno));
 		return POM_ERR;
 	}
 
