@@ -1596,3 +1596,33 @@ uint64_t registry_perf_getval(struct registry_perf *p) {
 	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
 	return now - (value - REGISTRY_PERF_TIMETICKS_STARTED);
 }
+
+void registry_perf_reset_all() {
+	registry_lock();
+
+	struct registry_class *ctmp;
+	for (ctmp = registry_head; ctmp; ctmp = ctmp->next) {
+		
+		struct registry_perf *p;
+		for (p = ctmp->perfs; p; p = p->next) {
+			if (p->update_hook)
+				pom_mutex_lock(&p->hook_lock);
+			p->value = 0;
+			if (p->update_hook)
+				pom_mutex_unlock(&p->hook_lock);
+		}
+
+		struct registry_instance *inst;
+		for (inst = ctmp->instances; inst; inst = inst->next) {
+			for (p = inst->perfs; p; p = p->next) {
+				if (p->update_hook)
+					pom_mutex_lock(&p->hook_lock);
+				p->value = 0;
+				if (p->update_hook)
+					pom_mutex_unlock(&p->hook_lock);
+			}
+		}
+	}
+	__sync_synchronize();
+	registry_unlock();
+}

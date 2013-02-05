@@ -47,7 +47,7 @@ static struct timeval core_clock[CORE_PROCESS_THREAD_MAX];
 static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct registry_class *core_registry_class = NULL;
-static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL;
+static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL, *core_param_reset_perf_on_restart = NULL;
 
 // Packet queue
 static struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
@@ -84,11 +84,24 @@ int core_init(int num_threads) {
 		return POM_ERR;
 	}
 
+	core_param_reset_perf_on_restart = ptype_alloc("bool");
+	if (!core_param_reset_perf_on_restart) {
+		ptype_cleanup(core_param_dump_pkt);
+		core_param_dump_pkt = NULL;
+		ptype_cleanup(core_param_offline_dns);
+		core_param_offline_dns = NULL;
+		return POM_ERR;
+	}
+
 	struct registry_param *param = registry_new_param("dump_pkt", "no", core_param_dump_pkt, "Dump packets to logs", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
 	if (registry_class_add_param(core_registry_class, param) != POM_OK)
 		goto err;
 
 	param = registry_new_param("offline_dns", "yes", core_param_offline_dns, "Enable offline DNS resolver", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(core_registry_class, param) != POM_OK)
+		goto err;
+
+	param = registry_new_param("reset_perf_on_restart", "no", core_param_reset_perf_on_restart, "Reset performances when core restarts", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
 	if (registry_class_add_param(core_registry_class, param) != POM_OK)
 		goto err;
 	
@@ -650,6 +663,9 @@ static int core_processing_start() {
 
 	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns) && dns_init() != POM_OK)
 		return POM_ERR;
+
+	if (*PTYPE_BOOL_GETVAL(core_param_reset_perf_on_restart))
+		registry_perf_reset_all();
 
 	return POM_OK;
 }
