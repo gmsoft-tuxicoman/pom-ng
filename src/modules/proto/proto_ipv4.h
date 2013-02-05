@@ -40,11 +40,12 @@ enum proto_ipv4_fields {
 
 struct proto_ipv4_fragment {
 
-	uint16_t id;
+	unsigned int count;
 	struct packet_multipart *multipart;
 	unsigned int flags;
 	struct conntrack_timer *t;
 	struct proto_ipv4_fragment *prev, *next;
+	uint16_t id;
 };
 
 
