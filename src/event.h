@@ -21,6 +21,8 @@
 #ifndef __EVENT_H__
 #define __EVENT_H__
 
+#define EVENT_REGISTRY "event"
+
 struct event {
 	struct event_reg *reg;
 	unsigned int flags;
@@ -36,6 +38,10 @@ struct event_reg {
 	struct event_reg_info *info;
 	struct event_listener *listeners;
 	struct event_reg *prev, *next;
+	struct registry_instance *reg_instance;
+	struct registry_perf *perf_listeners;
+	struct registry_perf *perf_ongoing;
+	struct registry_perf *perf_processed;
 };
 
 struct event_listener {
@@ -46,5 +52,7 @@ struct event_listener {
 	struct event_listener *prev, *next;
 };
 
+int event_init();
+int event_finish();
 
 #endif

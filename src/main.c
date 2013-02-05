@@ -42,6 +42,7 @@
 #include "output.h"
 #include "datastore.h"
 #include "addon.h"
+#include "event.h"
 
 #include <pom-ng/ptype.h>
 
@@ -267,6 +268,11 @@ int main(int argc, char *argv[]) {
 		goto err_registry;
 	}
 
+	if (event_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the events");
+		goto err_event;
+	}
+
 	if (proto_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the protocols");
 		goto err_proto;
@@ -355,6 +361,7 @@ int main(int argc, char *argv[]) {
 	addon_cleanup();
 	datastore_close(system_store);
 	datastore_cleanup();
+	event_finish();
 	registry_cleanup();
 	timers_cleanup();
 
@@ -390,6 +397,8 @@ err_input:
 err_analyzer:
 	proto_cleanup();
 err_proto:
+	event_finish();
+err_event:
 	registry_cleanup();
 err_registry:
 	timers_cleanup();

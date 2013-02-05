@@ -22,6 +22,7 @@
 #include "common.h"
 #include <pom-ng/event.h>
 #include "event.h"
+#include "registry.h"
 
 #if 0
 #define debug_event(x ...) pomlog(POMLOG_DEBUG x)
@@ -32,6 +33,32 @@
 static struct event_reg *event_reg_head = NULL;
 
 static unsigned int event_pload_listener_ref = 0;
+
+static struct registry_class *event_registry_class = NULL;
+
+int event_init() {
+
+	event_registry_class = registry_add_class(EVENT_REGISTRY);
+	if (!event_registry_class)
+		return POM_ERR;
+
+	return POM_OK;
+
+}
+
+int event_finish() {
+
+	if (event_registry_class)
+		registry_remove_class(event_registry_class);
+	event_registry_class = NULL;
+
+	while (event_reg_head) {
+		pomlog(POMLOG_ERR "Event %s is still registered", event_reg_head->info->name);
+		event_unregister(event_reg_head);
+	}
+
+	return POM_OK;
+}
 
 
 struct event_reg *event_register(struct event_reg_info *reg_info) {
@@ -52,6 +79,21 @@ struct event_reg *event_register(struct event_reg_info *reg_info) {
 		return NULL;
 	}
 	memset(evt, 0, sizeof(struct event_reg));
+
+	evt->reg_instance = registry_add_instance(event_registry_class, reg_info->name);
+	if (!evt->reg_instance) {
+		free(evt);
+		return NULL;
+	}
+
+	evt->perf_listeners = registry_instance_add_perf(evt->reg_instance, "listeners", registry_perf_type_gauge, "Number of event listeners", "listeners");
+	evt->perf_ongoing = registry_instance_add_perf(evt->reg_instance, "ongoing", registry_perf_type_gauge, "Number of ongoing events", "events");
+	evt->perf_processed = registry_instance_add_perf(evt->reg_instance, "processed", registry_perf_type_counter, "Number of events fully processed", "events");
+	if (!evt->perf_listeners || !evt->perf_ongoing || !evt->perf_processed) {
+		registry_remove_instance(evt->reg_instance);
+		free(evt);
+		return NULL;
+	}
 
 	evt->info = reg_info;
 
@@ -74,6 +116,8 @@ int event_unregister(struct event_reg *evt) {
 		evt->prev->next = evt->next;
 	else
 		event_reg_head = evt->next;
+
+	registry_remove_instance(evt->reg_instance);
 
 	free(evt);
 
@@ -224,6 +268,8 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 			return POM_ERR;
 		}
 	}
+
+	registry_perf_inc(evt_reg->perf_listeners, 1);
 	
 
 	return POM_OK;
@@ -255,6 +301,8 @@ int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 		}
 	}
 
+	registry_perf_dec(evt_reg->perf_listeners, 1);
+
 	return POM_OK;
 }
 
@@ -277,6 +325,8 @@ int event_add_listener(struct event *evt, void *obj, int (*process_begin) (struc
 	if (tmp->next)
 		tmp->next->prev = tmp;
 	evt->tmp_listeners = tmp;
+
+	registry_perf_inc(evt->reg->perf_listeners, 1);
 
 	return POM_OK;
 
@@ -318,6 +368,8 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 
 	evt->flags |= EVENT_FLAG_PROCESS_BEGAN;
 
+	registry_perf_inc(evt->reg->perf_ongoing, 1);
+
 	return POM_OK;
 }
 
@@ -350,11 +402,15 @@ int event_process_end(struct event *evt) {
 		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}
+		registry_perf_dec(evt->reg->perf_listeners, 1);
 	}
 	
 	evt->ce = NULL;
 
 	evt->flags |= EVENT_FLAG_PROCESS_DONE;
+
+	registry_perf_dec(evt->reg->perf_ongoing, 1);
+	registry_perf_inc(evt->reg->perf_processed, 1);
 
 	return event_refcount_dec(evt);
 }
