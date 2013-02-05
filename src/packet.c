@@ -600,6 +600,10 @@ int packet_multipart_add_packet(struct packet_multipart *multipart, struct packe
 				multipart->gaps++;
 
 		} else {
+
+			if (tmp->offset + tmp->len < res->offset)
+				multipart->gaps++;
+
 			multipart->tail = res;
 		}
 
