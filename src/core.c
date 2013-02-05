@@ -88,7 +88,7 @@ int core_init(int num_threads) {
 	if (registry_class_add_param(core_registry_class, param) != POM_OK)
 		goto err;
 
-	param = registry_new_param("offline_dns", "yes", core_param_offline_dns, "Enable offline DNS resolved", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	param = registry_new_param("offline_dns", "yes", core_param_offline_dns, "Enable offline DNS resolver", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
 	if (registry_class_add_param(core_registry_class, param) != POM_OK)
 		goto err;
 	
