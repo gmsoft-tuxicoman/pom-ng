@@ -37,6 +37,8 @@ static struct proto *proto_icmp6 = NULL, *proto_tcp = NULL, *proto_udp = NULL;
 
 static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
+static struct registry_perf *perf_frags = NULL, *perf_frags_dropped = NULL, *perf_reassembled_pkts = NULL;
+
 struct mod_reg_info* proto_ipv6_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -87,6 +89,17 @@ static int proto_ipv6_mod_register(struct mod_reg *mod) {
 
 
 static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
+
+	perf_frags = registry_instance_add_perf(i, "fragments", registry_perf_type_counter, "Number of fragments received", "pkts");
+	perf_frags_dropped = registry_instance_add_perf(i, "dropped_fragments", registry_perf_type_counter, "Number of fragments dropped", "pkts");
+	perf_reassembled_pkts = registry_instance_add_perf(i, "reassembled_pkts", registry_perf_type_counter, "Number of reassembled packets", "pkts");
+
+	if (!perf_frags || !perf_frags_dropped || !perf_reassembled_pkts)
+		return POM_ERR;
+
+	param_frag_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!param_frag_timeout)
+		return POM_ERR;
 
 	param_frag_timeout = ptype_alloc_unit("uint32", "seconds");
 	if (!param_frag_timeout)
@@ -160,6 +173,8 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 
 	}
 
+	registry_perf_inc(perf_frags, 1);
+
 	// Don't bother processing unsupported protocols
 	if (!next_proto)
 		return PROTO_STOP;
@@ -202,6 +217,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 
 	// Fragment was already handled
 	if (tmp->flags & PROTO_IPV6_FLAG_PROCESSED) {
+		registry_perf_inc(perf_frags_dropped, 1);
 		return PROTO_STOP;
 	}
 	
@@ -212,6 +228,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		free(tmp);
 		return PROTO_ERR;
 	}
+	tmp->count++;
 
 	// Schedule the timeout for the fragment
 	uint32_t *frag_timeout = PTYPE_UINT32_GETVAL(param_frag_timeout);
@@ -232,6 +249,10 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		tmp->multipart = NULL; // Multipart will be cleared automatically
 		if (res == PROTO_ERR) {
 			return PROTO_ERR;
+		} else if (res == PROTO_INVALID) {
+			registry_perf_inc(perf_frags_dropped, tmp->count);
+		} else {
+			registry_perf_inc(perf_reassembled_pkts, 1);
 		}
 	}
 	return PROTO_STOP; // Stop processing the packet
@@ -346,8 +367,10 @@ static int proto_ipv6_fragment_cleanup(struct conntrack_entry *ce, void *priv) {
 		f->next->prev = f->prev;
 
 
-	if (!(f->flags & PROTO_IPV6_FLAG_PROCESSED))
+	if (!(f->flags & PROTO_IPV6_FLAG_PROCESSED)) {
 		pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
+		registry_perf_inc(perf_frags_dropped, f->count);
+	}
 
 	if (f->multipart)
 		packet_multipart_cleanup(f->multipart);
@@ -369,8 +392,10 @@ static int proto_ipv6_conntrack_cleanup(void *ce_priv) {
 		struct proto_ipv6_fragment *f = frag_list;
 		frag_list = f->next;
 
-		if (!(f->flags & PROTO_IPV6_FLAG_PROCESSED))
+		if (!(f->flags & PROTO_IPV6_FLAG_PROCESSED)) {
 			pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
+			registry_perf_inc(perf_frags_dropped, f->count);
+		}
 
 		if (f->multipart)
 			packet_multipart_cleanup(f->multipart);

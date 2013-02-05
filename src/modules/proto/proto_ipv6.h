@@ -40,6 +40,7 @@ enum proto_ipv6_fields {
 struct proto_ipv6_fragment {
 
 	uint32_t id;
+	unsigned int count;
 	struct packet_multipart *multipart;
 	unsigned int flags;
 	struct conntrack_timer *t;
