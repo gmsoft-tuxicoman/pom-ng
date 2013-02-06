@@ -149,6 +149,7 @@ int registry_config_reset();
 int registry_config_load(char *config_name);
 int registry_config_delete(char *config_name);
 
+void registry_perf_reset(struct registry_perf *p);
 void registry_perf_reset_all();
 
 #endif

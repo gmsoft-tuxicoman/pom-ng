@@ -37,6 +37,9 @@ xmlrpc_value *xmlrpccmd_registry_load(xmlrpc_env * const envP, xmlrpc_value * co
 xmlrpc_value *xmlrpccmd_registry_delete(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
 xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_registry_reset_all_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_registry_reset_class_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_registry_reset_instance_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
 #endif
 

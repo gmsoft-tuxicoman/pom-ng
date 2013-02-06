@@ -25,7 +25,7 @@
 
 #include "registry.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 12
+#define XMLRPCCMD_REGISTRY_NUM 15
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -111,7 +111,28 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.callback_func = xmlrpccmd_registry_get_perfs,
 		.signature = "A:A",
 		.help = "Fetch a set of performance objects"
-	}
+	},
+
+	{
+		.name = "registry.resetAllPerfs",
+		.callback_func = xmlrpccmd_registry_reset_all_perfs,
+		.signature = "i:",
+		.help = "Reset all performance objects"
+	},
+
+	{
+		.name = "registry.resetClassPerfs",
+		.callback_func = xmlrpccmd_registry_reset_class_perfs,
+		.signature = "i:s",
+		.help = "Reset the performances objects of a class"
+	},
+
+	{
+		.name = "registry.resetInstancePerfs",
+		.callback_func = xmlrpccmd_registry_reset_instance_perfs,
+		.signature = "i:ss",
+		.help = "Reset the performances objects of an instance"
+	},
 };
 
 int xmlrpccmd_registry_register_all() {
@@ -858,4 +879,74 @@ err:
 	xmlrpc_DECREF(res);
 
 	return NULL;
+}
+
+
+xmlrpc_value *xmlrpccmd_registry_reset_all_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	registry_perf_reset_all();
+	return xmlrpc_int_new(envP, 0);
+}
+
+xmlrpc_value *xmlrpccmd_registry_reset_class_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *cls = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(s)", &cls);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	registry_lock();
+	
+	struct registry_class *c = registry_find_class(cls);
+	if (!c) {
+		registry_unlock();
+		xmlrpc_faultf(envP, "Class %s does not exists", cls);
+		return NULL;
+	}
+
+	struct registry_perf *p;
+	for (p = c->perfs; p; p = p->next) {
+		if (p->type == registry_perf_type_counter)
+			registry_perf_reset(p);
+	}
+
+	struct registry_instance *inst;
+	for (inst = c->instances; inst; inst = inst->next) {
+		for (p = inst->perfs; p; p = p->next) {
+			if (p->type == registry_perf_type_counter)
+				registry_perf_reset(p);
+		}
+	}
+
+	registry_unlock();
+	return xmlrpc_int_new(envP, 0);
+}
+
+xmlrpc_value *xmlrpccmd_registry_reset_instance_perfs(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	char *cls = NULL, *instance = NULL;
+	xmlrpc_decompose_value(envP, paramArrayP, "(ss)", &cls, &instance);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	registry_lock();
+	
+	struct registry_instance *i = registry_find_instance(cls, instance);
+	if (!i) {
+		registry_unlock();
+		xmlrpc_faultf(envP, "Instance %s of class %s does not exists", instance, cls);
+		return NULL;
+	}
+
+	struct registry_perf *p;
+	for (p = i->perfs; p; p = p->next) {
+		if (p->type == registry_perf_type_counter)
+			registry_perf_reset(p);
+	}
+
+	registry_unlock();
+
+	return xmlrpc_int_new(envP, 0);
 }

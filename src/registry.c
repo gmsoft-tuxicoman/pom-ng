@@ -1597,6 +1597,21 @@ uint64_t registry_perf_getval(struct registry_perf *p) {
 	return now - (value - REGISTRY_PERF_TIMETICKS_STARTED);
 }
 
+void registry_perf_reset(struct registry_perf *p) {
+
+	if (p->type != registry_perf_type_counter)
+		return;
+
+	if (p->update_hook) {
+		pom_mutex_lock(&p->hook_lock);
+		p->value = 0;
+		pom_mutex_unlock(&p->hook_lock);
+	} else {
+		p->value = 0;
+		__sync_synchronize();
+	}
+}
+
 void registry_perf_reset_all() {
 	registry_lock();
 
@@ -1605,24 +1620,17 @@ void registry_perf_reset_all() {
 		
 		struct registry_perf *p;
 		for (p = ctmp->perfs; p; p = p->next) {
-			if (p->update_hook)
-				pom_mutex_lock(&p->hook_lock);
-			p->value = 0;
-			if (p->update_hook)
-				pom_mutex_unlock(&p->hook_lock);
+			if (p->type == registry_perf_type_counter)
+				registry_perf_reset(p);
 		}
 
 		struct registry_instance *inst;
 		for (inst = ctmp->instances; inst; inst = inst->next) {
 			for (p = inst->perfs; p; p = p->next) {
-				if (p->update_hook)
-					pom_mutex_lock(&p->hook_lock);
-				p->value = 0;
-				if (p->update_hook)
-					pom_mutex_unlock(&p->hook_lock);
+				if (p->type == registry_perf_type_counter)
+					registry_perf_reset(p);
 			}
 		}
 	}
-	__sync_synchronize();
 	registry_unlock();
 }
