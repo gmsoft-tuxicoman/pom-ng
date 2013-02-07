@@ -24,6 +24,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/timer.h>
 #include <pom-ng/input.h>
+#include <pom-ng/registry.h>
 
 #define MPEG_TS_LEN 188
 
@@ -47,6 +48,8 @@ struct proto_mpeg_ts_priv {
 	struct proto *proto_mpeg_sect;
 
 	struct ptype *param_mpeg_ts_stream_timeout;
+
+	struct registry_perf *perf_missed_pkts;
 };
 
 struct proto_mpeg_ts_stream {

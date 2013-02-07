@@ -43,6 +43,8 @@ int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i) {
 
 	proto_set_priv(proto, priv);
 
+	priv->perf_missed_pkts = registry_instance_add_perf(i, "missed_pkts", registry_perf_type_counter, "Total number of missed MPEG-TS packets.", "pkts");
+
 	struct registry_param *p = NULL;
 
 	priv->param_mpeg_ts_stream_timeout = ptype_alloc_unit("uint16", "seconds");
@@ -209,8 +211,10 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		// TODO fill the gap 
 
 	}
-	if (missed)
+	if (missed) {
+		registry_perf_inc(ppriv->perf_missed_pkts, missed);
 		pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %s", missed, stream->input->name);
+	}
 
 
 	// Add the payload to the multipart if any
