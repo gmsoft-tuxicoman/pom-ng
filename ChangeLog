@@ -1,3 +1,13 @@
+v0.0.8
+	Fix possible deadlock in packet_stream.
+	Improve input pcap_dir start/stop.
+	Fix gap count in packet_multipart.
+	Fix possible deadlock on fragment reassembly in proto ipv4 and ipv6.
+	Fix PID calculation and filtering in input_dvb.
+	Fix conntrack for uni-directional streams.
+	Fix infinite loop while using deflate() in analyzer.
+	Various cleanups.
+
 v0.0.7
 	Add output_tap.
 	Add ether type to proto_ethernet fields.
