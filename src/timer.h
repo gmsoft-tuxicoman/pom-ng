@@ -45,7 +45,7 @@ struct timer_queue {
 
 };
 
-
+int timers_init();
 int timers_process();
 int timers_cleanup();
 

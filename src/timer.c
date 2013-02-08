@@ -21,6 +21,7 @@
 #include "timer.h"
 #include "common.h"
 #include "core.h"
+#include <pom-ng/registry.h>
 
 
 #if 0
@@ -32,6 +33,21 @@
 static pthread_mutex_t timer_main_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct timer_queue *timer_queues = NULL;
 
+static struct registry_perf *perf_timer_processed = NULL;
+static struct registry_perf *perf_timer_queued = NULL;
+static struct registry_perf *perf_timer_allocated = NULL;
+
+int timers_init() {
+
+	perf_timer_processed = core_add_perf("timer_processed", registry_perf_type_counter, "Number of timers processeds", "timers");
+	perf_timer_queued = core_add_perf("timer_queued", registry_perf_type_gauge, "Number of timers queued", "timers");
+	perf_timer_allocated = core_add_perf("timer_allocated", registry_perf_type_gauge, "Number of timers allocated", "timers");
+
+	if (!perf_timer_processed || !perf_timer_queued || !perf_timer_allocated)
+		return POM_OK;
+
+	return POM_OK;
+}
 
 int timers_process() {
 
@@ -57,12 +73,15 @@ int timers_process() {
 			tmp->prev = NULL;
 			tmp->queue = NULL;
 			pom_mutex_unlock(&timer_main_lock);
+			registry_perf_dec(perf_timer_queued, 1);
 
 			// Process it
 			debug_timer( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
 			if ((*tmp->handler) (tmp->priv, now) != POM_OK) {
 				return POM_ERR;
 			}
+
+			registry_perf_inc(perf_timer_processed, 1);
 
 			pom_mutex_lock(&timer_main_lock);
 
@@ -95,6 +114,8 @@ int timers_cleanup() {
 
 			free(tmp);
 
+			pomlog(POMLOG_WARN "Timer not dequeued");
+
 		}
 		timer_queues = timer_queues->next;
 
@@ -118,6 +139,8 @@ struct timer *timer_alloc(void* priv, int (*handler) (void*, ptime)) {
 	t->priv = priv;
 	t->handler = handler;
 
+	registry_perf_inc(perf_timer_allocated, 1);
+
 	return t;
 }
 
@@ -128,6 +151,8 @@ int timer_cleanup(struct timer *t) {
 
 	free(t);
 	
+	registry_perf_dec(perf_timer_allocated, 1);
+
 	return POM_OK;
 }
 
@@ -156,6 +181,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 		t->queue = NULL;
 		t->prev = NULL;
 		t->next = NULL;
+	} else {
+		registry_perf_inc(perf_timer_queued, 1);
 	}
 
 	struct timer_queue *tq = timer_queues;
@@ -255,6 +282,7 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 	t->queue = tq;
 	pom_mutex_unlock(&timer_main_lock);
 
+
 	return POM_OK;
 }
 
@@ -296,6 +324,7 @@ int timer_dequeue(struct timer *t) {
 	t->queue = NULL;
 	pom_mutex_unlock(&timer_main_lock);
 
+	registry_perf_dec(perf_timer_queued, 1);
 
 	return POM_OK;
 }
