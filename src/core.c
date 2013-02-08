@@ -43,8 +43,7 @@ static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREA
 static int core_num_threads = 0;
 static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-static ptime core_clock[CORE_PROCESS_THREAD_MAX];
-static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
+static volatile ptime core_clock[CORE_PROCESS_THREAD_MAX] = { 0 };
 
 static struct registry_class *core_registry_class = NULL;
 static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL, *core_param_reset_perf_on_restart = NULL;
@@ -112,9 +111,6 @@ int core_init(int num_threads) {
 		pomlog(POMLOG_ERR "Error while initializing the restart condition : %s", pom_strerror(errno));
 		goto err;
 	}
-
-	// Initialize the clock table
-	memset(core_clock, 0, sizeof(core_clock));
 
 	// Start the processing threads
 	int num_cpu = sysconf(_SC_NPROCESSORS_ONLN) - 1;
@@ -385,9 +381,8 @@ void *core_processing_thread_func(void *priv) {
 		}
 
 		// Update the current clock
-		pom_mutex_lock(&core_clock_lock);
-		core_clock[tpriv->thread_id] = pkt->ts;
-		pom_mutex_unlock(&core_clock_lock);
+		if (core_clock[tpriv->thread_id] < pkt->ts) // Make sure we keep it monotonous
+			core_clock[tpriv->thread_id] = pkt->ts;
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
@@ -621,20 +616,17 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 
 ptime core_get_clock() {
 
-	pom_mutex_lock(&core_clock_lock);
-
-	ptime *now = &core_clock[0];
+	ptime now = core_clock[0];
 
 	// Take only the least recent time
 	int i;
 	for (i = 1; i < core_num_threads; i++) {
-		if (*now > core_clock[i])
-			now = &core_clock[i];
+		ptime clock_i = core_clock[i]; // Make the compare and set operation atomic
+		if (now > clock_i)
+			now = clock_i;
 	}
 
-	pom_mutex_unlock(&core_clock_lock);
-
-	return *now;
+	return now;
 }
 
 void core_wait_state(enum core_state state) {
@@ -700,9 +692,9 @@ int core_set_state(enum core_state state) {
 
 		ptime now = pom_gettimeofday();
 
-		pom_mutex_lock(&core_clock_lock);
-		memset(&core_clock, 0, sizeof(core_clock));
-		pom_mutex_unlock(&core_clock_lock);
+		int i;
+		for (i = 0; i < CORE_PROCESS_THREAD_MAX; i++)
+			core_clock[i] = 0;
 
 		ptime runtime = now - core_start_time;
 
