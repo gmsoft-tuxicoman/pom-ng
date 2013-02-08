@@ -740,3 +740,7 @@ void core_resume_processing() {
 		abort();
 	}
 }
+
+struct registry_perf *core_add_perf(const char *name, enum registry_perf_type type, const char *description, const char *unit) {
+	return registry_class_add_perf(core_registry_class, name, type, description, unit);
+}
