@@ -116,3 +116,11 @@ int pom_mutex_init_type(pthread_mutex_t *lock, int type) {
 
 	return POM_OK;
 }
+
+ptime pom_gettimeofday() {
+
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	return pom_timeval_to_ptime(now);
+}
+

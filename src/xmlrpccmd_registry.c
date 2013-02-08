@@ -283,7 +283,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 		for (i = 0; *config_list[i].name; i++) {
 			xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:s,s:t}",
 								"name", config_list[i].name,
-								"timestamp", (time_t)config_list[i].ts.tv_sec);
+								"timestamp", (time_t)pom_ptime_sec(config_list[i].ts));
 			xmlrpc_array_append_item(envP, configs, entry);
 			xmlrpc_DECREF(entry);
 		}

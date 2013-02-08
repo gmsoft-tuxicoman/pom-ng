@@ -364,7 +364,7 @@ static int analyzer_dns_parse_rr(void *msg, void **data, size_t *data_len, struc
 }
 
 
-static int analyzer_dns_query_timeout(void *obj, struct timeval *tv) {
+static int analyzer_dns_query_timeout(void *obj, ptime now) {
 
 	struct analyzer_dns_priv *priv = obj;
 

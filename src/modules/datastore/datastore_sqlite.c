@@ -651,8 +651,8 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 					res = sqlite3_bind_text(qpriv->write_stmt, i + 1, PTYPE_STRING_GETVAL(dv[i].value), -1, SQLITE_STATIC);
 					break;
 				case DATASTORE_SQLITE_PTYPE_TIMESTAMP: {
-					struct timeval *tv = PTYPE_TIMESTAMP_GETVAL(dv[i].value);
-					res = sqlite3_bind_int64(qpriv->write_stmt, i + 1, tv->tv_sec);
+					ptime *v = PTYPE_TIMESTAMP_GETVAL(dv[i].value);
+					res = sqlite3_bind_int64(qpriv->write_stmt, i + 1, pom_ptime_sec(*v));
 					break;
 				}
 				default: {

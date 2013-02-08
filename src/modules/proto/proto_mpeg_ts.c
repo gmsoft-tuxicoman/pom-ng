@@ -403,7 +403,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 }
 
 
-int proto_mpeg_ts_stream_cleanup(void *priv, struct timeval *now) {
+int proto_mpeg_ts_stream_cleanup(void *priv, ptime now) {
 
 
 	struct proto_mpeg_ts_stream *stream = priv;

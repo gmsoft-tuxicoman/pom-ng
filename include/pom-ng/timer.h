@@ -27,7 +27,7 @@
 #include <time.h>
 #include <sys/time.h>
 
-struct timer *timer_alloc(void* priv, int (*handler) (void*, struct timeval*));
+struct timer *timer_alloc(void* priv, int (*handler) (void*, ptime));
 int timer_cleanup(struct timer *t);
 int timer_queue(struct timer *t, unsigned int expiry);
 int timer_dequeue(struct timer *t);

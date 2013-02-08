@@ -76,6 +76,6 @@ static int analyzer_docsis_init(struct analyzer *analyzer);
 static int analyzer_docsis_cleanup(struct analyzer *analyzer);
 static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int analyzer_docsis_cm_timeout(void *cable_modem, struct timeval *now);
+static int analyzer_docsis_cm_timeout(void *cable_modem, ptime now);
 
 #endif

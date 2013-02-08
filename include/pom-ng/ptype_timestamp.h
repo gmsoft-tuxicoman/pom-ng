@@ -28,12 +28,12 @@
 
 /// x is the struct ptype,
 #define PTYPE_TIMESTAMP_GETVAL(x) \
-	(struct timeval*) (x)->value
+	(ptime*) (x)->value
 
 /// x is the struct ptype, y the value
 #define PTYPE_TIMESTAMP_SETVAL(x, y) {		\
-	struct timeval *v = (x)->value;		\
-	memcpy(v, &y, sizeof(struct timeval));	\
+	ptime *v = (x)->value;	\
+	*v = (y);			\
 }
 
 #endif

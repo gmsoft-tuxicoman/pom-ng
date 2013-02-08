@@ -373,7 +373,7 @@ static int input_pcap_dir_open(struct input *i) {
 	dp->cur_file = dp->files;
 
 	// Skip files which were not read
-	while (dp->cur_file && !dp->cur_file->first_pkt.tv_sec)
+	while (dp->cur_file && !dp->cur_file->first_pkt)
 		dp->cur_file = dp->cur_file->next;
 
 	if (!dp->cur_file) {
@@ -506,20 +506,20 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 			continue;
 		}
 
-		memcpy(&cur->first_pkt, &phdr->ts, sizeof(struct timeval));
+		cur->first_pkt = pom_timeval_to_ptime(phdr->ts);
 		pcap_close(p);
 
 		// Add the packet at the right position
 		tmp = priv->tpriv.dir.files;
 
-		if (!tmp || (tmp && timercmp(&cur->first_pkt, &tmp->first_pkt, <))) {
+		if (!tmp || (tmp && (cur->first_pkt < tmp->first_pkt))) {
 			// Add at the begining
 			cur->next = priv->tpriv.dir.files;
 			priv->tpriv.dir.files = cur;
 
 		} else {
 			while (tmp->next) {
-				if (timercmp(&cur->first_pkt, &tmp->next->first_pkt, <)) {
+				if (cur->first_pkt < tmp->next->first_pkt) {
 					// Add in the middle
 					cur->next = tmp->next;
 					tmp->next = cur;
@@ -670,7 +670,7 @@ static int input_pcap_read(struct input *i) {
 
 	pkt->input = i;
 	pkt->datalink = p->datalink_proto;
-	memcpy(&pkt->ts, &phdr->ts, sizeof(struct timeval));
+	pkt->ts = pom_timeval_to_ptime(phdr->ts);
 	memcpy(pkt->buff, data, phdr->caplen);
 
 	unsigned int flags = 0, affinity = 0;

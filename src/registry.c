@@ -832,10 +832,8 @@ struct registry_config_entry* registry_config_list() {
 		memset(&list[list_size], 0, sizeof(struct registry_config_entry) * 2);
 
 		char *name = PTYPE_STRING_GETVAL(dsq_config_list->values[0].value);
-		struct timeval *tv = PTYPE_TIMESTAMP_GETVAL(dsq_config_list->values[1].value);
-
 		strncpy(list[list_size].name, name, REGISTRY_CONFIG_NAME_MAX - 1);
-		memcpy(&list[list_size].ts, tv, sizeof(struct timeval));
+		list[list_size].ts = PTYPE_TIMESTAMP_GETVAL(dsq_config_list->values[1].value);
 
 		list_size++;
 	}
@@ -909,9 +907,7 @@ int registry_config_save(char *config_name) {
 
 	// Add the config to the config list
 	PTYPE_STRING_SETVAL(dsq_config_list->values[0].value, config_name);
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	PTYPE_TIMESTAMP_SETVAL(dsq_config_list->values[1].value, now);
+	PTYPE_TIMESTAMP_SETVAL(dsq_config_list->values[1].value, pom_gettimeofday());
 
 	if (datastore_dataset_write(dsq_config_list) != DATASET_QUERY_OK)
 		goto err;
@@ -1534,9 +1530,7 @@ void registry_perf_timeticks_stop(struct registry_perf *p) {
 		return;
 	}
 
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
+	ptime now = pom_gettimeofday();
 
 	// value currently holds the absolute start time expressed in usec
 	// Not sure if the below is correct ...
@@ -1557,9 +1551,7 @@ void registry_perf_timeticks_restart(struct registry_perf *p) {
 		return;
 	}
 
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
+	ptime now = pom_gettimeofday();
 
 	// value currently holds the runtime in usec
 	// Not sure if the below is correct ...
@@ -1591,10 +1583,7 @@ uint64_t registry_perf_getval(struct registry_perf *p) {
 		return value;
 
 	// Handle the case when it's started
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	uint64_t now = ((uint64_t) tv.tv_sec * 1000000LLU) + (uint64_t)tv.tv_usec;
-	return now - (value - REGISTRY_PERF_TIMETICKS_STARTED);
+	return pom_gettimeofday() - (value - REGISTRY_PERF_TIMETICKS_STARTED);
 }
 
 void registry_perf_reset(struct registry_perf *p) {

@@ -66,11 +66,11 @@ int conntrack_tables_empty(struct conntrack_tables *ct);
 int conntrack_tables_cleanup(struct conntrack_tables *ct);
 int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
-int conntrack_timed_cleanup(void *timer, struct timeval *now);
+int conntrack_timed_cleanup(void *timer, ptime now);
 int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct conntrack_entry *ce);
 
 
-int conntrack_timer_process(void *priv, struct timeval *now);
+int conntrack_timer_process(void *priv, ptime now);
 
 int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session);
 int conntrack_session_refcount_dec(struct conntrack_session *session);

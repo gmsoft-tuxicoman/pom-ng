@@ -660,7 +660,7 @@ int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
 }
 
 
-int conntrack_timed_cleanup(void *timer, struct timeval *now) {
+int conntrack_timed_cleanup(void *timer, ptime now) {
 
 	struct conntrack_timer *t = timer;
 	return conntrack_cleanup(t->proto->ct, t->fwd_hash, t->ce);
@@ -897,7 +897,7 @@ int conntrack_timer_cleanup(struct conntrack_timer *t) {
 
 }
 
-int conntrack_timer_process(void *priv, struct timeval *now) {
+int conntrack_timer_process(void *priv, ptime now) {
 
 	struct conntrack_timer *t = priv;
 

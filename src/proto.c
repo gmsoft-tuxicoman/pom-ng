@@ -675,7 +675,7 @@ int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, stru
 	return POM_OK;
 }
 
-int proto_expectation_expiry(void *priv, struct timeval *tv) {
+int proto_expectation_expiry(void *priv, ptime now) {
 
 	struct proto_expectation *e = priv;
 	struct proto *proto = e->tail->proto;

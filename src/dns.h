@@ -65,7 +65,7 @@ struct dns_entry {
 int dns_init();
 int dns_cleanup();
 
-int dns_gc(void *priv, struct timeval *now);
+int dns_gc(void *priv, ptime now);
 int dns_process_event(struct event *evt, void *obj);
 
 

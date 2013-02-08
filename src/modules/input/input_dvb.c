@@ -725,10 +725,7 @@ static int input_dvb_read(struct input *i) {
 		return POM_ERR;
 	}
 
-	if (gettimeofday(&pkt->ts, NULL)) {
-		pomlog(POMLOG_ERR "Error while getting time of the day : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
+	pkt->ts = pom_gettimeofday();
 
 	uint16_t pid = ((pload[1] & 0x1F) << 8) | pload[2];
 

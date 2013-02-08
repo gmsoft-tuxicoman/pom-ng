@@ -108,7 +108,7 @@ struct registry_class {
 
 struct registry_config_entry {
 	char name[REGISTRY_CONFIG_NAME_MAX];
-	struct timeval ts;
+	ptime ts;
 };
 
 int registry_init();

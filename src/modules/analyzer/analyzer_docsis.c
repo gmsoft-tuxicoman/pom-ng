@@ -205,7 +205,7 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 	return POM_OK;
 }
 
-static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, struct analyzer_docsis_cm *cm, enum docsis_mmt_rng_status new_status, struct timeval *ts, struct proto_process_stack *stack, unsigned int stack_index) {
+static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, struct analyzer_docsis_cm *cm, enum docsis_mmt_rng_status new_status, ptime ts, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	if (cm->ranging_status == new_status)
 		return POM_OK;
@@ -226,7 +226,7 @@ static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, 
 		data_set(evt_data[analyzer_docsis_cm_reg_status_mac]);
 		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_timeout].value, T4_TIMEOUT * cm->t4_multiplier);
 		data_set(evt_data[analyzer_docsis_cm_reg_status_timeout]);
-		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_reg_status_time].value, *ts);
+		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_reg_status_time].value, ts);
 		data_set(evt_data[analyzer_docsis_cm_reg_status_time]);
 
 		if (event_process(evt, stack, stack_index) != POM_OK) {
@@ -269,7 +269,7 @@ static int analyzer_docsis_pkt_parse_rng_rsp(struct analyzer_docsis_priv *priv, 
 					return POM_ERR;
 				}
 
-				res = analyzer_docsis_reg_status_update(priv, cm, new_status, &p->ts, stack, stack_index);
+				res = analyzer_docsis_reg_status_update(priv, cm, new_status, p->ts, stack, stack_index);
 
 				break;
 
@@ -392,7 +392,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 	return POM_OK;
 }
 
-static int analyzer_docsis_cm_timeout(void *cable_modem, struct timeval *now) {
+static int analyzer_docsis_cm_timeout(void *cable_modem, ptime now) {
 
 	struct analyzer_docsis_cm *cm = cable_modem;
 	struct analyzer_docsis_priv *priv = cm->analyzer->priv;

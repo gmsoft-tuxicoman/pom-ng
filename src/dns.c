@@ -213,14 +213,14 @@ uint32_t dns_record_hash(const char *record) {
 	return jhash(record, strlen(record), INITVAL) % DNS_TABLE_DEFAULT_SIZE;
 }
 
-int dns_gc(void *priv, struct timeval *now) {
+int dns_gc(void *priv, ptime now) {
 
 	pom_mutex_lock(&dns_table_lock);
 
 	int i;
 	for (i = 0; i < DNS_CACHE_QUEUE_COUNT; i++) {
 
-		while (dns_cache_queues_head[i] && dns_cache_queues_head[i]->expiry < now->tv_sec) {
+		while (dns_cache_queues_head[i] && dns_cache_queues_head[i]->expiry < now) {
 
 			// Remove the entry from the cache
 			struct dns_entry *entry = dns_cache_queues_head[i];
@@ -369,10 +369,9 @@ struct dns_entry *dns_find_or_add_entry(struct ptype *record_pt) {
 
 static int dns_update_expiry(struct dns_entry *a, struct dns_entry *b, uint32_t ttl) {
 
-	struct timeval now;
-	core_get_clock(&now);
+	ptime now = core_get_clock(&now);
 
-	uint32_t expiry = now.tv_sec + ttl;
+	uint32_t expiry = now + (ttl * 1000000UL);
 
 	if (a->expiry >= expiry) {
 		a = NULL;

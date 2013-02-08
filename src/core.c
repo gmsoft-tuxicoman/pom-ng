@@ -37,13 +37,13 @@ static enum core_state core_cur_state = core_state_idle;
 static pthread_mutex_t core_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t core_state_cond = PTHREAD_COND_INITIALIZER;
 static unsigned int core_thread_active = 0;
-static struct timeval core_start_time;
+static ptime core_start_time;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
 static int core_num_threads = 0;
 static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-static struct timeval core_clock[CORE_PROCESS_THREAD_MAX];
+static ptime core_clock[CORE_PROCESS_THREAD_MAX];
 static pthread_mutex_t core_clock_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct registry_class *core_registry_class = NULL;
@@ -386,7 +386,7 @@ void *core_processing_thread_func(void *priv) {
 
 		// Update the current clock
 		pom_mutex_lock(&core_clock_lock);
-		memcpy(&core_clock, &pkt->ts, sizeof(struct timeval));
+		core_clock[tpriv->thread_id] = pkt->ts;
 		pom_mutex_unlock(&core_clock_lock);
 
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
@@ -452,7 +452,7 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 	static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
 
 	pthread_mutex_lock(&debug_lock);
-	printf("thread %u | %u.%u | ", (unsigned int)pthread_self(), (int)p->ts.tv_sec, (int)p->ts.tv_usec);
+	printf("thread %u | %u.%u | ", (unsigned int)pthread_self(), (int)pom_ptime_sec(p->ts), (int)pom_ptime_usec(p->ts));
 
 	// Dump packet info
 	int i;	
@@ -619,23 +619,22 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 	return new_stack;
 }
 
-void core_get_clock(struct timeval *now) {
+ptime core_get_clock() {
 
 	pom_mutex_lock(&core_clock_lock);
 
-	memcpy(now, &core_clock[0], sizeof(struct timeval));
+	ptime *now = &core_clock[0];
 
 	// Take only the least recent time
 	int i;
 	for (i = 1; i < core_num_threads; i++) {
-		if ((now->tv_sec > core_clock[i].tv_sec) ||
-			((now->tv_sec == core_clock[i].tv_sec) && (now->tv_usec > core_clock[i].tv_sec))) {
-			memcpy(now, &core_clock, sizeof(struct timeval));
-		}
+		if (*now > core_clock[i])
+			now = &core_clock[i];
 	}
 
 	pom_mutex_unlock(&core_clock_lock);
 
+	return *now;
 }
 
 void core_wait_state(enum core_state state) {
@@ -699,23 +698,18 @@ int core_set_state(enum core_state state) {
 
 		res = core_processing_stop();
 
-		struct timeval now;
-		gettimeofday(&now, NULL);
-		if (now.tv_usec < core_start_time.tv_usec) {
-			now.tv_sec--;
-			now.tv_usec += 1000000;
-		}
+		ptime now = pom_gettimeofday();
+
 		pom_mutex_lock(&core_clock_lock);
-		memset(&core_clock, 0, sizeof(struct timeval));
+		memset(&core_clock, 0, sizeof(core_clock));
 		pom_mutex_unlock(&core_clock_lock);
 
+		ptime runtime = now - core_start_time;
 
-		now.tv_usec -= core_start_time.tv_usec;
-		now.tv_sec -= core_start_time.tv_sec;
-		pomlog(POMLOG_INFO "Core was running for %u.%06u secs", now.tv_sec, now.tv_usec);
+		pomlog(POMLOG_INFO "Core was running for %u.%06u secs", pom_ptime_sec(runtime), pom_ptime_usec(runtime));
 
 	} else if (state == core_state_running) {
-		gettimeofday(&core_start_time, NULL);
+		core_start_time = pom_gettimeofday();
 		res = core_processing_start();
 	} else if (state == core_state_finishing) {
 		//pom_mutex_lock(&core_pkt_queue_mutex);

@@ -23,7 +23,7 @@
 #include "core.h"
 
 
-#if 0
+#if 1
 #define debug_timer(x...) pomlog(POMLOG_DEBUG x)
 #else
 #define debug_timer(x...)
@@ -35,8 +35,7 @@ static struct timer_queue *timer_queues = NULL;
 
 int timers_process() {
 
-	struct timeval now;
-	core_get_clock(&now);
+	ptime now = core_get_clock();
 
 	pom_mutex_lock(&timer_main_lock);
 
@@ -44,28 +43,28 @@ int timers_process() {
 	tq = timer_queues;
 
 	while (tq) {
-		while (tq->head && timercmp(&tq->head->expires, &now, <)) {
+		while (tq->head && (tq->head->expires < now)) {
 				
-				// Dequeue the timer
-				struct timer *tmp = tq->head;
-				tq->head = tq->head->next;
-				if (tq->head)
-					tq->head->prev = NULL;
-				else
-					tq->tail = NULL;
+			// Dequeue the timer
+			struct timer *tmp = tq->head;
+			tq->head = tq->head->next;
+			if (tq->head)
+				tq->head->prev = NULL;
+			else
+				tq->tail = NULL;
 
-				tmp->next = NULL;
-				tmp->prev = NULL;
-				tmp->queue = NULL;
-				pom_mutex_unlock(&timer_main_lock);
+			tmp->next = NULL;
+			tmp->prev = NULL;
+			tmp->queue = NULL;
+			pom_mutex_unlock(&timer_main_lock);
 
-				// Process it
-				debug_timer( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
-				if ((*tmp->handler) (tmp->priv, &now) != POM_OK) {
-					return POM_ERR;
-				}
+			// Process it
+			debug_timer( "Timer 0x%lx reached. Starting handler ...", (unsigned long) tmp);
+			if ((*tmp->handler) (tmp->priv, now) != POM_OK) {
+				return POM_ERR;
+			}
 
-				pom_mutex_lock(&timer_main_lock);
+			pom_mutex_lock(&timer_main_lock);
 
 		}
 		tq = tq->next;
@@ -106,7 +105,7 @@ int timers_cleanup() {
 
 }
 
-struct timer *timer_alloc(void* priv, int (*handler) (void*, struct timeval*)) {
+struct timer *timer_alloc(void* priv, int (*handler) (void*, ptime)) {
 
 	struct timer *t;
 	t = malloc(sizeof(struct timer));
@@ -251,8 +250,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 
 	// Update the expiry time
 
-	core_get_clock(&t->expires);
-	t->expires.tv_sec += expiry;
+	t->expires = core_get_clock();
+	t->expires += expiry * 1000000UL;
 	t->queue = tq;
 	pom_mutex_unlock(&timer_main_lock);
 

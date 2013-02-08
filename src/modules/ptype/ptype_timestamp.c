@@ -72,13 +72,13 @@ int ptype_timestamp_mod_unregister() {
 
 int ptype_timestamp_alloc(struct ptype *p) {
 
-	p->value = malloc(sizeof(struct timeval));
+	p->value = malloc(sizeof(ptime));
 	if (!p->value) {
-		pom_oom(sizeof(struct timeval));
+		pom_oom(sizeof(ptime));
 		return POM_ERR;
 	}
-	struct timeval *v = p->value;
-	memset(v, 0, sizeof(struct timeval));
+	ptime *v = p->value;
+	*v = 0;
 
 	return POM_OK;
 
@@ -93,14 +93,13 @@ int ptype_timestamp_cleanup(struct ptype *p) {
 
 int ptype_timestamp_print(struct ptype *p, char *val, size_t size) {
 
-	struct timeval *v = p->value;
-
+	ptime *v = p->value;
 
 	// TODO handle multiple format
 
 	char *format = "%Y-%m-%d %H:%M:%S";
 	struct tm tmp;
-	time_t sec = v->tv_sec;
+	time_t sec = pom_ptime_sec(*v);
 	localtime_r(&sec, &tmp);
 	char buff[4 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1];
 	memset(buff, 0, sizeof(buff));
@@ -120,34 +119,20 @@ int ptype_timestamp_print(struct ptype *p, char *val, size_t size) {
 
 int ptype_timestamp_compare(int op, void *val_a, void *val_b) {
 
-	struct timeval *a = val_a;
-	struct timeval *b = val_b;
-
-	// -1 if a is smaller, 0 if equal, 1 if a is greater
-	int comp = 0;
-
-	if (a->tv_sec < b->tv_sec)
-		comp = -1;
-	else if (a->tv_sec > b->tv_sec)
-		comp = 1;
-	else {
-		if (a->tv_usec < b->tv_usec)
-			comp = -1;
-		else if (a->tv_usec > b->tv_usec)
-			comp = 1;
-	}
+	ptime *a = val_a;
+	ptime *b = val_b;
 
 	switch (op) {
 		case PTYPE_OP_EQ:
-			return comp == 0;
+			return *a == *b;
 		case PTYPE_OP_GT:
-			return comp > 0;
+			return *a > *b;
 		case PTYPE_OP_GE:
-			return comp >= 0;
+			return *a >= *b;
 		case PTYPE_OP_LT:
-			return comp < 0;
+			return *a < *b;
 		case PTYPE_OP_LE:
-			return comp <= 0;
+			return *a <= *b;
 	}
 
 	return 0;
@@ -155,20 +140,19 @@ int ptype_timestamp_compare(int op, void *val_a, void *val_b) {
 
 int ptype_timestamp_serialize(struct ptype *p, char *val, size_t size) {
 
-	struct timeval *v = p->value;
-	return snprintf(val, size, "%lli.%lli", (long long)v->tv_sec, (long long)v->tv_usec);
+	ptime *v = p->value;
+	return snprintf(val, size, "%lu.%lu", pom_ptime_sec(*v), pom_ptime_usec(*v));
 
 }
 
 int ptype_timestamp_unserialize(struct ptype *p, char *val) {
 
-	struct timeval *v = p->value;
+	ptime *v = p->value;
 	unsigned long long sec, usec;
 	if (sscanf(val, "%llu.%llu", &sec, &usec) != 2)
 		return POM_ERR;
 
-	v->tv_sec = sec;
-	v->tv_usec = usec;
+	*v = (sec * 1000000ULL) + usec;
 	
 	return POM_OK;
 
@@ -176,9 +160,9 @@ int ptype_timestamp_unserialize(struct ptype *p, char *val) {
 
 int ptype_timestamp_copy(struct ptype *dst, struct ptype *src) {
 
-	struct ptype_timestamp_val *d = dst->value;
-	struct ptype_timestamp_val *s = src->value;
-	memcpy(d, s, sizeof(struct timeval));
+	ptime *d = dst->value;
+	ptime *s = src->value;
+	*d = *s;
 
 	return POM_OK;
 }

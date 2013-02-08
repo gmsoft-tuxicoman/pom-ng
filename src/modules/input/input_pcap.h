@@ -44,7 +44,7 @@ struct input_pcap_file_priv {
 
 struct input_pcap_dir_file {
 	char *filename, *full_path;
-	struct timeval first_pkt;
+	ptime first_pkt;
 	struct input_pcap_dir_file *prev, *next;
 };
 

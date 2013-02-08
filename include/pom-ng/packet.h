@@ -46,7 +46,7 @@ struct packet {
 
 	// Packet description
 	size_t len;  // Packet length
-	struct timeval ts;
+	ptime ts;
 	struct proto *datalink;
 	void *buff;
 	struct input *input; // Input the packet came from initially

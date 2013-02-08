@@ -89,6 +89,6 @@ int proto_process_listeners(struct packet *p, struct proto_process_stack *s, uns
 int proto_empty_conntracks();
 int proto_cleanup();
 
-int proto_expectation_expiry(void *priv, struct timeval *tv);
+int proto_expectation_expiry(void *priv, ptime now);
 
 #endif

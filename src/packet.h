@@ -52,7 +52,7 @@ struct packet_stream_pkt {
 };
 
 struct packet_stream_thread_wait {
-	struct timeval ts;
+	ptime ts;
 	pthread_t thread;
 	pthread_cond_t cond;
 	struct packet_stream_thread_wait *prev, *next;
