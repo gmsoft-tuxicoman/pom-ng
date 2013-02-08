@@ -23,7 +23,7 @@
 #include "core.h"
 
 
-#if 1
+#if 0
 #define debug_timer(x...) pomlog(POMLOG_DEBUG x)
 #else
 #define debug_timer(x...)
