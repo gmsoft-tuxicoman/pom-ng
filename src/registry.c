@@ -184,6 +184,23 @@ int registry_remove_class(struct registry_class *c) {
 		free(p);
 	}
 
+	while (c->perfs) {
+		struct registry_perf *p = c->perfs;
+		c->perfs = p->next;
+
+		if (p->update_hook) {
+			int res = pthread_mutex_destroy(&p->hook_lock);
+			if (res) {
+				pomlog(POMLOG_ERR "Error while destroying perf hook lock : %s", pom_strerror(errno));
+				abort();
+			}
+		}
+
+		free(p->name);
+		free(p->description);
+		free(p->unit);
+		free(p);
+	}
 
 	free(c->name);
 
