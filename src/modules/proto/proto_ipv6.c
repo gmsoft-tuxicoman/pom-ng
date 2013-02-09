@@ -101,10 +101,6 @@ static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
 	if (!param_frag_timeout)
 		return POM_ERR;
 
-	param_frag_timeout = ptype_alloc_unit("uint32", "seconds");
-	if (!param_frag_timeout)
-		return POM_ERR;
-
 	param_conntrack_timeout = ptype_alloc_unit("uint32", "seconds");
 	if (!param_conntrack_timeout)
 		return POM_ERR;
