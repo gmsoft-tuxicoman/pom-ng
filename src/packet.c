@@ -46,11 +46,19 @@
 #define debug_info_pool(x ...)
 #endif
 
+#if 0
+#define debug_packet_pool(x ...) pomlog(POMLOG_DEBUG "packet_pool: " x)
+#else
+#define debug_packet_pool(x ...)
+#endif
+
 // Define to debug packet_info_pool allocation
 #undef PACKET_INFO_POOL_ALLOC_DEBUG
 
-static struct packet *packet_head, *packet_unused_head;
-static pthread_mutex_t packet_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+static __thread struct packet *packet_pool_head = NULL;
+static __thread struct packet *packet_pool_tail = NULL;
+static struct packet *packet_pool_global_head = NULL;
+static pthread_mutex_t packet_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
 #define PACKET_BUFFER_POOL_COUNT 9
@@ -189,37 +197,58 @@ int packet_buffer_pool_cleanup() {
 
 struct packet *packet_pool_get() {
 
-	pom_mutex_lock(&packet_list_mutex);
+	struct packet *tmp = packet_pool_head;
 
-	struct packet *tmp = packet_unused_head;
+	unsigned int i, num_threads = core_get_num_threads();
 
-	if (!tmp) {
+	// Try to find a free packet in the pool for at least the number of threads
+	for (i = 0; tmp && i < num_threads; i++) {
+		if (tmp->refcount)
+			tmp = tmp->next;
+		else
+			break;
+	}
+
+	if (!tmp || i >= num_threads) {
+		// No free packet found
 		// Alloc a new packet
 		tmp = malloc(sizeof(struct packet));
 		if (!tmp) {
-			pom_mutex_unlock(&packet_list_mutex);
 			pom_oom(sizeof(struct packet));
 			return NULL;
 		}
 	} else {
-		// Fetch it from the unused pool
-		packet_unused_head = tmp->next;
-		if (packet_unused_head)
-			packet_unused_head->prev = NULL;
+		// Remove the packet from the queue
+		if (tmp->next)
+			tmp->next->prev = tmp->prev;
+		else
+			packet_pool_tail = tmp->prev;
+
+		if (tmp->prev)
+			tmp->prev->next = tmp->next;
+		else
+			packet_pool_head = tmp->next;
+
+		if (tmp->pkt_buff) {
+			packet_buffer_pool_release(tmp->pkt_buff);
+
+		}
 	}
+
 
 	memset(tmp, 0, sizeof(struct packet));
 
-	// Add the packet to the used pool
-	tmp->next = packet_head;
-	if (tmp->next)
-		tmp->next->prev = tmp;
+	// Add the packet at the end of the pool
 	
-	packet_head = tmp;
+	tmp->prev = packet_pool_tail;
+	if (tmp->prev)
+		tmp->prev->next = tmp;
+	else
+		packet_pool_head = tmp;
+	packet_pool_tail = tmp;
 
+	// Init the refcount
 	tmp->refcount = 1;
-	
-	pom_mutex_unlock(&packet_list_mutex);
 
 	return tmp;
 }
@@ -250,90 +279,59 @@ struct packet *packet_clone(struct packet *src, unsigned int flags) {
 		
 		return dst;
 	}
-	pom_mutex_lock(&packet_list_mutex); // Use this lock to prevent refcount race
-	src->refcount++;
-	pom_mutex_unlock(&packet_list_mutex);
+
+	__sync_fetch_and_add(&src->refcount, 1);
 	return src;
 }
 
 int packet_pool_release(struct packet *p) {
 
-	struct packet_multipart *multipart = NULL;
-	pom_mutex_lock(&packet_list_mutex);
-	if (p->multipart) {
-		multipart = p->multipart;
-		p->multipart = NULL;
-	}
+	// Release the multipart
+	struct packet_multipart *multipart = __sync_fetch_and_and(&p->multipart, 0);
+	if (multipart && packet_multipart_cleanup(multipart) != POM_OK)
+		return POM_ERR;
 
-	p->refcount--;
-	if (p->refcount) {
-		pom_mutex_unlock(&packet_list_mutex);
-		if (multipart) // Always release the multipart
-			return packet_multipart_cleanup(multipart);
-		return POM_OK;
-	}
-
-	// Remove the packet from the used list
-	if (p->next)
-		p->next->prev = p->prev;
-
-	if (p->prev)
-		p->prev->next = p->next;
-	else
-		packet_head = p->next;
-
-	if (p->pkt_buff) {
+	// The packet refcount will be 0 afterwards
+	// We can clean up the buffer if any
+	if (p->refcount == 1 && p->pkt_buff) {
 		packet_buffer_pool_release(p->pkt_buff);
 		p->pkt_buff = NULL;
-		p->buff = NULL;
 	}
 
-	memset(p, 0, sizeof(struct packet));
+	__sync_fetch_and_sub(&p->refcount, 1);
+
+	return POM_OK;
+}
+
+void packet_pool_thread_cleanup() {
 	
-	// Add it back to the unused list
+	if (!packet_pool_head)
+		return;
 
-#ifdef PACKET_INFO_POOL_ALLOC_DEBUG
-	free(p);
-#else
-	p->next = packet_unused_head;
-	if (p->next)
-		p->next->prev = p;
-	packet_unused_head = p;
-#endif
-	pom_mutex_unlock(&packet_list_mutex);
+	pom_mutex_lock(&packet_pool_lock);
+	packet_pool_tail->next = packet_pool_global_head;
+	packet_pool_global_head = packet_pool_head;
+	pom_mutex_unlock(&packet_pool_lock);
 
-	int res = POM_OK;
-
-	if (multipart)
-		res = packet_multipart_cleanup(multipart);
-
-
-
-	return res;
+	packet_pool_head = NULL;
+	packet_pool_tail = NULL;
 }
 
 int packet_pool_cleanup() {
 
-	pom_mutex_lock(&packet_list_mutex);
 
-	struct packet *tmp = packet_head;
+	struct packet *tmp = packet_pool_global_head;
 	while (tmp) {
-		pomlog(POMLOG_WARN "A packet was not released, refcount : %u", tmp->refcount);
-		packet_head = tmp->next;
+		if (tmp->refcount)
+			pomlog(POMLOG_WARN "A packet was not released, refcount : %u", tmp->refcount);
 
+		if (tmp->pkt_buff)
+			packet_buffer_pool_release(tmp->pkt_buff);
+	
+		packet_pool_global_head = tmp->next;
 		free(tmp);
-		tmp = packet_head;
+		tmp = packet_pool_global_head;
 	}
-
-	tmp = packet_unused_head;
-
-	while (tmp) {
-		packet_unused_head = tmp->next;
-		free(tmp);
-		tmp = packet_unused_head;
-	}
-
-	pom_mutex_unlock(&packet_list_mutex);
 
 	return POM_OK;
 }

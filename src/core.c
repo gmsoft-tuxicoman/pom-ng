@@ -32,7 +32,7 @@
 
 #include <pom-ng/ptype_bool.h>
 
-static int core_run = 0; // Set to 1 while the processing thread should run
+static volatile int core_run = 0; // Set to 1 while the processing thread should run
 static enum core_state core_cur_state = core_state_idle;
 static pthread_mutex_t core_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t core_state_cond = PTHREAD_COND_INITIALIZER;
@@ -322,12 +322,12 @@ void *core_processing_thread_func(void *priv) {
 
 			if (!core_run) {
 				pom_mutex_unlock(&core_pkt_queue_mutex);
-				return NULL;
+				goto end;
 			}
 
 			if (pthread_cond_wait(&core_pkt_queue_restart_cond, &core_pkt_queue_mutex)) {
 				pomlog(POMLOG_ERR "Error while waiting for restart condition : %s", pom_strerror(errno));
-				// Should probably abort here
+				abort();
 				return NULL;
 			}
 
@@ -387,16 +387,15 @@ void *core_processing_thread_func(void *priv) {
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
 			core_run = 0;
-			halt("Packet processing encountered an error", 1);
 			pthread_cond_broadcast(&core_pkt_queue_restart_cond);
 			pthread_rwlock_unlock(&core_processing_lock);
-			return NULL;
+			break;
 		}
 
 		// Process timers
 		if (timers_process() != POM_OK) {
 			pthread_rwlock_unlock(&core_processing_lock);
-			return NULL;
+			break;
 		}
 
 		if (pthread_rwlock_unlock(&core_processing_lock)) {
@@ -420,9 +419,11 @@ void *core_processing_thread_func(void *priv) {
 		registry_perf_dec(perf_thread_active, 1);
 
 	}
-	pom_mutex_unlock(&core_pkt_queue_mutex);
 
 	halt("Processing thread encountered an error", 1);
+end:
+	packet_pool_thread_cleanup();
+
 	return NULL;
 }
 
@@ -669,6 +670,9 @@ static int core_processing_stop() {
 
 	// Free all the conntracks
 	proto_empty_conntracks();
+
+	// Cleanup the packet pool
+	packet_pool_cleanup();
 
 	return POM_OK;
 }
