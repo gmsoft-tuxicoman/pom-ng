@@ -40,7 +40,7 @@ static unsigned int core_thread_active = 0;
 static ptime core_start_time;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
-static int core_num_threads = 0;
+static unsigned int core_num_threads = 0;
 static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static volatile ptime core_clock[CORE_PROCESS_THREAD_MAX] = { 0 };
@@ -60,7 +60,7 @@ struct registry_perf *perf_pkt_queue = NULL;
 struct registry_perf *perf_thread_active = NULL;
 
 
-int core_init(int num_threads) {
+int core_init(unsigned int num_threads) {
 
 	core_registry_class = registry_add_class(CORE_REGISTRY);
 	if (!core_registry_class)
@@ -113,7 +113,7 @@ int core_init(int num_threads) {
 	}
 
 	// Start the processing threads
-	int num_cpu = sysconf(_SC_NPROCESSORS_ONLN) - 1;
+	unsigned int num_cpu = sysconf(_SC_NPROCESSORS_ONLN) - 1;
 	if (num_cpu < 1) {
 		pomlog(POMLOG_WARN "Could not find the number of CPU, assuming %u", CORE_PROCESS_THREAD_DEFAULT);
 		num_cpu = CORE_PROCESS_THREAD_DEFAULT;
@@ -135,7 +135,7 @@ int core_init(int num_threads) {
 
 	memset(core_processing_threads, 0, sizeof(struct core_processing_thread*) * CORE_PROCESS_THREAD_MAX);
 
-	int i;
+	unsigned int i;
 
 	for (i = 0; i < core_num_threads; i++) {
 		struct core_processing_thread *tmp = malloc(sizeof(struct core_processing_thread));
@@ -619,7 +619,7 @@ ptime core_get_clock() {
 	ptime now = core_clock[0];
 
 	// Take only the least recent time
-	int i;
+	unsigned int i;
 	for (i = 1; i < core_num_threads; i++) {
 		ptime clock_i = core_clock[i]; // Make the compare and set operation atomic
 		if (now > clock_i)
@@ -735,4 +735,8 @@ void core_resume_processing() {
 
 struct registry_perf *core_add_perf(const char *name, enum registry_perf_type type, const char *description, const char *unit) {
 	return registry_class_add_perf(core_registry_class, name, type, description, unit);
+}
+
+unsigned int core_get_num_threads() {
+	return core_num_threads;
 }

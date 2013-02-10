@@ -55,7 +55,7 @@ struct core_processing_thread {
 
 };
 
-int core_init(int num_threads);
+int core_init(unsigned int num_threads);
 int core_cleanup(int emergency_cleanup);
 
 int core_spawn_reader_thread(struct input *i);
@@ -74,5 +74,7 @@ void core_pause_processing();
 void core_resume_processing();
 
 struct registry_perf *core_add_perf(const char *name, enum registry_perf_type type, const char *description, const char *unit);
+
+unsigned int core_get_num_threads();
 
 #endif
