@@ -28,10 +28,9 @@
 #define CONNTRACK_CHILDLESS_TIMEOUT	10
 
 struct conntrack_tables {
-	struct conntrack_list **fwd_table;
-	struct conntrack_list **rev_table;
+	struct conntrack_list **table;
 	pthread_mutex_t lock;
-	size_t tables_size;
+	size_t table_size;
 };
 
 struct conntrack_session {
@@ -54,20 +53,20 @@ struct conntrack_timer {
 	struct timer *timer;
 	struct conntrack_entry *ce;
 	struct proto *proto;
-	uint32_t fwd_hash;
+	uint32_t hash;
 	int (*handler) (struct conntrack_entry *ce, void *priv);
 	void *priv;
 
 	struct conntrack_timer *prev, *next;
 };
 
-struct conntrack_tables* conntrack_tables_alloc(size_t tables_size, int has_rev);
+struct conntrack_tables* conntrack_tables_alloc(size_t table_size, int has_rev);
 int conntrack_tables_empty(struct conntrack_tables *ct);
 int conntrack_tables_cleanup(struct conntrack_tables *ct);
-int conntrack_hash(uint32_t *hash, struct ptype *fwd, struct ptype *rev);
+uint32_t conntrack_hash(struct ptype *a, struct ptype *b);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
 int conntrack_timed_cleanup(void *timer, ptime now);
-int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct conntrack_entry *ce);
+int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntrack_entry *ce);
 
 
 int conntrack_timer_process(void *priv, ptime now);

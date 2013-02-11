@@ -30,36 +30,35 @@ struct proto_process_stack;
 
 struct conntrack_entry {
 
-	uint32_t fwd_hash, rev_hash; ///< Full hash prior to modulo
 	struct ptype *fwd_value, *rev_value; ///< Forward and reverse value for hashing
 	struct conntrack_node_list *parent; ///< Parent conntrack
 	struct conntrack_node_list *children; ///< Children of this conntrack
 	void *priv; ///< Private data of the protocol
 	struct conntrack_priv_list *priv_list; ///< Private data coming from other objects
-	pthread_mutex_t lock;
 	struct conntrack_timer *cleanup_timer; ///< Cleanup the conntrack when this timer is reached
 	struct proto *proto; ///< Proto of this conntrack
 	struct conntrack_session *session; ///< Session to which this conntrack belongs
+	pthread_mutex_t lock; ///< Lock of the conntrack entry
+	uint32_t hash; ///< Full hash prior to modulo
 	unsigned int refcount; ///< Reference count (mostly in how many proto_stack it's referenced)
 };
 
 struct conntrack_node_list {
 	struct conntrack_entry *ce; ///< Corresponding conntrack
 	struct conntrack_tables *ct; ///< Tables in which this conntrack is stored
-	uint32_t fwd_hash; ///< Hash of the conntrack
 	struct conntrack_node_list *prev, *next;
+	uint32_t hash; ///< Hash of the conntrack
 };
 
 struct conntrack_list {
 	struct conntrack_entry *ce; ///< Corresponding conntrack
 	struct conntrack_list *prev, *next; ///< Next and previous connection in the list
-	struct conntrack_list *rev; ///< Reverse connection
 };
 
 struct conntrack_info {
+	int (*cleanup_handler) (void *ce_priv);
 	unsigned int default_table_size;
 	int fwd_pkt_field_id, rev_pkt_field_id;
-	int (*cleanup_handler) (void *ce_priv);
 };
 
 int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index);
