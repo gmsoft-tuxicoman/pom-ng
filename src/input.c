@@ -26,10 +26,10 @@
 #include "input.h"
 #include "mod.h"
 #include "core.h"
+#include "packet.h"
 #include <pom-ng/ptype.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/proto.h>
-#include <pom-ng/packet.h>
 
 static struct registry_class *input_registry_class = NULL;
 
