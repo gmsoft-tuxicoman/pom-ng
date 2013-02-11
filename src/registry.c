@@ -850,7 +850,7 @@ struct registry_config_entry* registry_config_list() {
 
 		char *name = PTYPE_STRING_GETVAL(dsq_config_list->values[0].value);
 		strncpy(list[list_size].name, name, REGISTRY_CONFIG_NAME_MAX - 1);
-		list[list_size].ts = PTYPE_TIMESTAMP_GETVAL(dsq_config_list->values[1].value);
+		list[list_size].ts = *PTYPE_TIMESTAMP_GETVAL(dsq_config_list->values[1].value);
 
 		list_size++;
 	}
