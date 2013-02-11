@@ -31,17 +31,6 @@
 
 struct proto_process_stack;
 
-struct packet_buffer {
-
-	void *base_buff;
-	void *aligned_buff;
-	int pool_id;
-	struct packet_buffer *next, *prev;
-
-	// The actual data will be after this
-	
-};
-
 struct packet {
 
 	// Packet description

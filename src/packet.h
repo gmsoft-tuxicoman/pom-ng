@@ -29,15 +29,21 @@
 #define PACKET_HALF_SEQ (uint32_t)(0x1 << 31)
 
 #define PACKET_BUFFER_ALIGNMENT 4
+#define PACKET_BUFFER_POOL_ID_UNUSED -1
 
 #define PACKET_FLAG_STREAM_GOT_FWD_DIR	0x4
 #define PACKET_FLAG_STREAM_GOT_REV_DIR	0x8
 #define PACKET_FLAG_STREAM_GOT_BOTH_DIR	(PACKET_FLAG_STREAM_GOT_FWD_DIR | PACKET_FLAG_STREAM_GOT_REV_DIR)
 
-struct packet_buffer_pool {
-	struct packet_buffer *used;
-	struct packet_buffer *unused;
+struct packet_buffer {
 
+	void *base_buff;
+	void *aligned_buff;
+	volatile int pool_id;
+	struct packet_buffer *next, *prev;
+
+	// The actual data will be after this
+	
 };
 
 struct packet_stream_pkt {
@@ -87,6 +93,7 @@ struct packet_stream_parser {
 
 void packet_buffer_pool_release(struct packet_buffer *pb);
 void packet_pool_thread_cleanup();
+void packet_buffer_pool_thread_cleanup();
 int packet_buffer_pool_cleanup();
 
 

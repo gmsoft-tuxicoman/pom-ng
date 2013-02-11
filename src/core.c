@@ -423,6 +423,7 @@ void *core_processing_thread_func(void *priv) {
 	halt("Processing thread encountered an error", 1);
 end:
 	packet_pool_thread_cleanup();
+	packet_buffer_pool_thread_cleanup();
 
 	return NULL;
 }
@@ -673,6 +674,7 @@ static int core_processing_stop() {
 
 	// Cleanup the packet pool
 	packet_pool_cleanup();
+	packet_buffer_pool_cleanup();
 
 	return POM_OK;
 }

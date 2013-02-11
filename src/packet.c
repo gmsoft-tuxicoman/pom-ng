@@ -55,12 +55,15 @@
 // Define to debug packet_info_pool allocation
 #undef PACKET_INFO_POOL_ALLOC_DEBUG
 
+
+// Packet pool stuff
 static __thread struct packet *packet_pool_head = NULL;
 static __thread struct packet *packet_pool_tail = NULL;
 static struct packet *packet_pool_global_head = NULL;
 static pthread_mutex_t packet_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
+// Packet buffer pool stuff
 #define PACKET_BUFFER_POOL_COUNT 9
 static size_t packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT] = {
 	80, // For small packets
@@ -73,8 +76,11 @@ static size_t packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT] = {
 	9100, // Jumbo frames
 	65535, // Very rare situations where captured packets are not downsized to MTU yet
 };
-static struct packet_buffer_pool packet_buffer_pool[PACKET_BUFFER_POOL_COUNT] = {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}};
-static pthread_mutex_t packet_buffer_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static __thread struct packet_buffer *packet_buffer_pool_head[PACKET_BUFFER_POOL_COUNT] = { 0 };
+static __thread struct packet_buffer *packet_buffer_pool_tail[PACKET_BUFFER_POOL_COUNT] = { 0 };
+static struct packet_buffer *packet_buffer_global_pool = NULL;
+static pthread_mutex_t packet_buffer_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset) {
 
@@ -90,21 +96,28 @@ int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset)
 		return POM_ERR;
 	}
 
-	int i;
-	for (i = 0; i < PACKET_BUFFER_POOL_COUNT && packet_buffer_pool_size[i] < tot_size; i++);
+	unsigned int pool_id;
+	for (pool_id = 0; pool_id < PACKET_BUFFER_POOL_COUNT && packet_buffer_pool_size[pool_id] < tot_size; pool_id++);
 
-	struct packet_buffer *pb = NULL;
+	struct packet_buffer *pb = packet_buffer_pool_head[pool_id];
+	unsigned int i, num_threads = core_get_num_threads();
 
-	pom_mutex_lock(&packet_buffer_pool_mutex);
 
-	if (!packet_buffer_pool[i].unused) {
+	for (i = 0; pb && i < num_threads; i++) {
+		if (pb->pool_id != PACKET_BUFFER_POOL_ID_UNUSED) {
+			pb = pb->next;
+		} else {
+			break;
+		}
+	}
+
+	if (!pb || i >= num_threads) {
 
 		// Allocate a new one
-		size_t alloc_size = packet_buffer_pool_size[i] + sizeof(struct packet_buffer);
+		size_t alloc_size = packet_buffer_pool_size[pool_id] + sizeof(struct packet_buffer);
 
 		pb = malloc(alloc_size);
 		if (!pb) {
-			pom_mutex_unlock(&packet_buffer_pool_mutex);
 			pom_oom(alloc_size);
 			return POM_ERR;
 		}
@@ -112,86 +125,74 @@ int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset)
 
 		pb->base_buff = (void*)pb + sizeof(struct packet_buffer);
 		pb->aligned_buff = (void*) (((long)pb->base_buff & ~(PACKET_BUFFER_ALIGNMENT - 1)) + PACKET_BUFFER_ALIGNMENT + align_offset);
-		pb->pool_id = i;
 
 	} else {
-		// Reuse an unused one
-		pb = packet_buffer_pool[i].unused;
+		// Remove the packet from the queue
+
 		if (pb->next)
-			pb->next->prev = NULL;
+			pb->next->prev = pb->prev;
+		else
+			packet_buffer_pool_tail[pool_id] = pb->prev;
 
-		packet_buffer_pool[i].unused = pb->next;
-
+		if (pb->prev)
+			pb->prev->next = pb->next;
+		else
+			packet_buffer_pool_head[pool_id] = pb->next;
 
 	}
 
-	// Put this one in the used list
-
-	pb->next = packet_buffer_pool[i].used;
-	if (pb->next)
-		pb->next->prev = pb;
-	packet_buffer_pool[i].used = pb;
-
-	pom_mutex_unlock(&packet_buffer_pool_mutex);
-
+	pb->pool_id = pool_id;
 	pkt->pkt_buff = pb;
 	pkt->len = size;
 	pkt->buff = pb->aligned_buff;
+
+	// Add it back to the end of the pool
+	pb->prev = packet_buffer_pool_tail[pool_id];
+	if (pb->prev)
+		pb->prev->next = pb;
+	else
+		packet_buffer_pool_head[pool_id] = pb;
+	packet_buffer_pool_tail[pool_id] = pb;
 
 	return POM_OK;
 }
 
 void packet_buffer_pool_release(struct packet_buffer *pb) {
 
-	pom_mutex_lock(&packet_buffer_pool_mutex);
-	if (pb->pool_id >= PACKET_BUFFER_POOL_COUNT) {
-		pom_mutex_unlock(&packet_buffer_pool_mutex);
-		pomlog(POMLOG_ERR "Internal error, packet pool id too big");
-		halt("Internal error", 1);
-		return;
+	pb->pool_id = PACKET_BUFFER_POOL_ID_UNUSED;
+}
+
+void packet_buffer_pool_thread_cleanup() {
+
+	pom_mutex_lock(&packet_buffer_pool_lock);
+
+	unsigned int i;
+	for (i = 0; i < PACKET_BUFFER_POOL_COUNT; i++) {
+		if (!packet_buffer_pool_head[i])
+			continue;
+
+		packet_buffer_pool_tail[i]->next = packet_buffer_global_pool;
+		packet_buffer_global_pool = packet_buffer_pool_head[i];
+
+		packet_buffer_pool_tail[i] = NULL;
+		packet_buffer_pool_head[i] = NULL;
 	}
-
-	if (pb->next)
-		pb->next->prev = pb->prev;
-	
-	if (pb->prev)
-		pb->prev->next = pb->next;
-	else
-		packet_buffer_pool[pb->pool_id].used = pb->next;
-
-	pb->next = packet_buffer_pool[pb->pool_id].unused;
-	if (pb->next)
-		pb->next->prev = pb;
-	pb->prev = NULL;
-	packet_buffer_pool[pb->pool_id].unused = pb;
-
-	pom_mutex_unlock(&packet_buffer_pool_mutex);
-	
+	pom_mutex_unlock(&packet_buffer_pool_lock);
 }
 
 int packet_buffer_pool_cleanup() {
 
-	pom_mutex_lock(&packet_buffer_pool_mutex);
+	struct packet_buffer *tmp = packet_buffer_global_pool;
 
-	int i;
-	for (i = 0; i < PACKET_BUFFER_POOL_COUNT; i++) {
-		while (packet_buffer_pool[i].used) {
-			struct packet_buffer *tmp = packet_buffer_pool[i].used;
+	while (tmp) {
+		if (tmp->pool_id != PACKET_BUFFER_POOL_ID_UNUSED)
 			pomlog(POMLOG_WARN "A buffer was still in use on packet_buffer_pool_cleanup().");
-			packet_buffer_pool[i].used = tmp->next;
-			free(tmp);
-		}
 
-		while (packet_buffer_pool[i].unused) {
-			struct packet_buffer *tmp = packet_buffer_pool[i].unused;
-			packet_buffer_pool[i].unused = tmp->next;
-			free(tmp);
-		}
-
+		packet_buffer_global_pool = tmp->next;
+		free(tmp);
+		tmp = packet_buffer_global_pool;
 	}
 
-	
-	pom_mutex_unlock(&packet_buffer_pool_mutex);
 	return POM_OK;
 }
 
