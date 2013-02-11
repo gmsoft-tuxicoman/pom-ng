@@ -397,10 +397,8 @@ static int analyzer_docsis_cm_timeout(void *cable_modem, ptime now) {
 	struct analyzer_docsis_cm *cm = cable_modem;
 	struct analyzer_docsis_priv *priv = cm->analyzer->priv;
 
-	int res = POM_OK;
-
 	pom_mutex_lock(&priv->lock);
-	res = analyzer_docsis_reg_status_update(priv, cm, docsis_mmt_rng_status_unknown, now, NULL, 0);
+	analyzer_docsis_reg_status_update(priv, cm, docsis_mmt_rng_status_unknown, now, NULL, 0);
 	pom_mutex_unlock(&priv->lock);
 
 	return POM_OK;
