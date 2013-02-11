@@ -163,7 +163,7 @@ static int proto_udp_process(void *proto_priv, struct packet *p, struct proto_pr
 			s_next->proto = proto_tftp;
 	}
 
-	return PROTO_OK;
+	return res;
 
 }
 
