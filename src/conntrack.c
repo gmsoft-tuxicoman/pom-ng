@@ -715,6 +715,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t fwd_hash, struct con
 		else {
 			if (lst_rev != ct->rev_table[hash]) {
 				conntrack_unlock(ce);
+				pom_mutex_unlock(&ct->lock);
 				pomlog(POMLOG_ERR "Conntrack list was supposed to be the head of reverse but wasn't !");
 				return POM_ERR;
 			}
