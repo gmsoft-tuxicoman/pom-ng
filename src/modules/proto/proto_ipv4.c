@@ -147,10 +147,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	struct in_addr saddr, daddr;
 	struct ip* hdr = s->pload;
-	saddr.s_addr = hdr->ip_src.s_addr;
-	daddr.s_addr = hdr->ip_dst.s_addr;
 
 	unsigned int hdr_len = hdr->ip_hl * 4;
 
