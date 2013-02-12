@@ -889,7 +889,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		// Already locked, let's wait a bit
 		must_wait = 1;
 	} else if (res) {
-		pomlog(POMLOG_ERR "Error while locking packet stream lock : %s", pom_strerror(errno));
+		pomlog(POMLOG_ERR "Error while locking packet stream lock : %s", pom_strerror(res));
 		abort();
 		return POM_ERR;
 	} else {
