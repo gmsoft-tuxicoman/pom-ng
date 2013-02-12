@@ -97,6 +97,11 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 		proto->perf_conn_cur = registry_instance_add_perf(proto->reg_instance, "conn_cur", registry_perf_type_gauge, "Current number of monitored connection", "connections");
 		proto->perf_conn_tot = registry_instance_add_perf(proto->reg_instance, "conn_tot", registry_perf_type_counter, "Total number of connections", "connections");
+		proto->perf_conn_hash_col = registry_instance_add_perf(proto->reg_instance, "conn_hash_col", registry_perf_type_counter, "Total number of conntrack hash collisions", "collisions");
+
+		if (!proto->perf_conn_cur || !proto->perf_conn_tot || !proto->perf_conn_hash_col)
+			goto err_conntrack;
+
 	}
 
 	proto->perf_pkts = registry_instance_add_perf(proto->reg_instance, "pkts", registry_perf_type_counter, "Number of packets processed", "pkts");
@@ -113,8 +118,6 @@ int proto_register(struct proto_reg_info *reg_info) {
 			goto err_conntrack;
 		}
 	}
-
-
 
 	mod_refcount_inc(reg_info->mod);
 

@@ -53,6 +53,7 @@ struct proto {
 	struct registry_perf *perf_bytes;
 	struct registry_perf *perf_conn_cur;
 	struct registry_perf *perf_conn_tot;
+	struct registry_perf *perf_conn_hash_col;
 	struct registry_perf *perf_expt_pending;
 	struct registry_perf *perf_expt_matched;
 

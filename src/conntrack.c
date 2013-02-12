@@ -455,8 +455,10 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 
 	// Insert in the conntrack table
 	lst->next = ct->table[hash];
-	if (lst->next)
+	if (lst->next) {
 		lst->next->prev = lst;
+		registry_perf_inc(s->proto->perf_conn_hash_col, 1);
+	}
 	ct->table[hash] = lst;
 
 	// Add the child to the parent if any
