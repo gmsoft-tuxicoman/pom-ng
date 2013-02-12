@@ -29,7 +29,7 @@
 
 struct conntrack_tables {
 	struct conntrack_list **table;
-	pthread_mutex_t lock;
+	pthread_mutex_t *locks;
 	size_t table_size;
 };
 
@@ -60,9 +60,9 @@ struct conntrack_timer {
 	struct conntrack_timer *prev, *next;
 };
 
-struct conntrack_tables* conntrack_tables_alloc(size_t table_size, int has_rev);
-int conntrack_tables_empty(struct conntrack_tables *ct);
-int conntrack_tables_cleanup(struct conntrack_tables *ct);
+struct conntrack_tables* conntrack_table_alloc(size_t table_size, int has_rev);
+int conntrack_table_empty(struct conntrack_tables *ct);
+int conntrack_table_cleanup(struct conntrack_tables *ct);
 uint32_t conntrack_hash(struct ptype *a, struct ptype *b);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
 int conntrack_timed_cleanup(void *timer, ptime now);

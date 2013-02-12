@@ -89,7 +89,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 	// Allocate the conntrack table
 	if (reg_info->ct_info) {
-		proto->ct = conntrack_tables_alloc(reg_info->ct_info->default_table_size, (reg_info->ct_info->rev_pkt_field_id == -1 ? 0 : 1));
+		proto->ct = conntrack_table_alloc(reg_info->ct_info->default_table_size, (reg_info->ct_info->rev_pkt_field_id == -1 ? 0 : 1));
 		if (!proto->ct) {
 			pomlog(POMLOG_ERR "Error while allocating conntrack tables");
 			goto err_registry;
@@ -130,7 +130,7 @@ int proto_register(struct proto_reg_info *reg_info) {
 	return POM_OK;
 
 err_conntrack:
-	conntrack_tables_cleanup(proto->ct);
+	conntrack_table_cleanup(proto->ct);
 err_registry:
 	registry_remove_instance(proto->reg_instance);
 err_packet_info:
@@ -340,7 +340,7 @@ int proto_unregister(char *name) {
 	if (proto->reg_instance)
 		registry_remove_instance(proto->reg_instance);
 
-		conntrack_tables_cleanup(proto->ct);
+		conntrack_table_cleanup(proto->ct);
 
 	packet_info_pool_cleanup(&proto->pkt_info_pool);
 	
@@ -376,7 +376,7 @@ int proto_empty_conntracks() {
 	pom_mutex_lock(&proto_list_lock);
 	struct proto *proto;
 	for (proto = proto_head; proto; proto = proto->next) {
-		conntrack_tables_empty(proto->ct);
+		conntrack_table_empty(proto->ct);
 	}
 	pom_mutex_unlock(&proto_list_lock);
 
@@ -393,7 +393,7 @@ int proto_cleanup() {
 
 		if (proto->info->cleanup && proto->info->cleanup(proto->priv) == POM_ERR)
 			pomlog(POMLOG_WARN "Error while cleaning up protocol %s", proto->info->name);
-		conntrack_tables_cleanup(proto->ct);
+		conntrack_table_cleanup(proto->ct);
 
 		mod_refcount_dec(proto->info->mod);
 		packet_info_pool_cleanup(&proto->pkt_info_pool);

@@ -37,7 +37,7 @@
 #define debug_conntrack(x ...)
 #endif
 
-struct conntrack_tables* conntrack_tables_alloc(size_t table_size, int has_rev) {
+struct conntrack_tables* conntrack_table_alloc(size_t table_size, int has_rev) {
 
 	struct conntrack_tables *ct = malloc(sizeof(struct conntrack_tables));
 	if (!ct) {
@@ -46,56 +46,82 @@ struct conntrack_tables* conntrack_tables_alloc(size_t table_size, int has_rev) 
 	}
 	memset(ct, 0, sizeof(struct conntrack_tables));
 
-	if (pthread_mutex_init(&ct->lock, NULL)) {
-		pomlog(POMLOG_ERR "Could not initialize conntrack tables mutex : %s", pom_strerror(errno));
-		free(ct);
-		return NULL;
-	}
 
 	size_t size = sizeof(struct conntrack_list) * table_size;
 	ct->table = malloc(size);
 	if (!ct->table) {
 		pom_oom(size);
-		free(ct);
-		return NULL;
+		goto err;
 	}
 	memset(ct->table, 0, size);
 
+	size = sizeof(pthread_mutex_t) *table_size;
+	ct->locks = malloc(size);
+	if (!ct->locks) {
+		pom_oom(size);
+		goto err;
+
+	}
+
+	unsigned int i;
+
+	for (i = 0; i < table_size; i++) {
+		int res = pthread_mutex_init(&ct->locks[i], NULL);
+		if (res) {
+			pomlog(POMLOG_ERR "Could not initialize conntrack hash lock : %s", pom_strerror(res));
+			goto err;
+		}
+	}
 	ct->table_size = table_size;
 
 	return ct;
+
+err:
+	conntrack_table_cleanup(ct);
+	return NULL;
 }
 
 
-int conntrack_tables_empty(struct conntrack_tables *ct) {
+int conntrack_table_empty(struct conntrack_tables *ct) {
 
-	if (!ct)
-		return POM_OK;
-	if (ct->table) {
-		unsigned int i;
-		for (i = 0; i < ct->table_size; i++) {
-			while (ct->table[i]) {
-				struct conntrack_list *tmp = ct->table[i];
-				conntrack_cleanup(ct, tmp->ce->hash, tmp->ce);
-			}
+	if (!ct || !ct->table)
+		return POM_ERR;
 
+	unsigned int i;
+	for (i = 0; i < ct->table_size; i++) {
+		while (ct->table[i]) {
+			struct conntrack_list *tmp = ct->table[i];
+			conntrack_cleanup(ct, tmp->ce->hash, tmp->ce);
 		}
+
+
 	}
 
 	return POM_OK;
 }
 
-int conntrack_tables_cleanup(struct conntrack_tables *ct) {
+int conntrack_table_cleanup(struct conntrack_tables *ct) {
 
 	if (!ct)
 		return POM_OK;
 
-	conntrack_tables_empty(ct);
 
-	if (ct->table) 
+	if (ct->table) {
+		conntrack_table_empty(ct);
 		free(ct->table);
+	}
 
-	pthread_mutex_destroy(&ct->lock);
+	if (ct->locks) {
+		unsigned int i;
+		for (i = 0; i < ct->table_size; i++) {
+			int res = pthread_mutex_destroy(&ct->locks[i]);
+			if (res) {
+				pomlog(POMLOG_WARN "Error while destroying a hash lock : %s", pom_strerror(errno));
+			}
+		}
+		free(ct->locks);
+	}
+
 
 	free(ct);
 
@@ -181,7 +207,7 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 
 	struct conntrack_entry *res = NULL;
 	struct conntrack_node_list *child = NULL;
-	struct conntrack_list *lst_fwd = NULL;
+	struct conntrack_list *lst = NULL;
 
 #ifdef DEBUG_CONNTRACK
 	if (!parent->refcount) {
@@ -189,6 +215,8 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		return NULL;
 	}
 #endif
+
+	struct conntrack_tables *ct = proto->ct;
 
 	if (!parent->children) {
 
@@ -225,14 +253,14 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		res->parent->ct = parent->proto->ct;
 		res->parent->hash = parent->hash;
 
-		// Alloc the forward list
-		lst_fwd = malloc(sizeof(struct conntrack_list));
-		if (!lst_fwd) {
+		// Alloc the list node
+		lst = malloc(sizeof(struct conntrack_list));
+		if (!lst) {
 			pom_oom(sizeof(struct conntrack_list));
 			goto err;
 		}
-		memset(lst_fwd, 0, sizeof(struct conntrack_list));
-		lst_fwd->ce = res;
+		memset(lst, 0, sizeof(struct conntrack_list));
+		lst->ce = res;
 
 		// Add the child to the parent
 		child->next = parent->children;
@@ -241,13 +269,12 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		parent->children = child;
 
 		// Add the conntrack to the table
-		struct conntrack_tables *ct = proto->ct;
-		pom_mutex_lock(&ct->lock);
-		lst_fwd->next = ct->table[0];
-		if (lst_fwd->next)
-			lst_fwd->next->prev = lst_fwd;
-		ct->table[0] = lst_fwd;
-		pom_mutex_unlock(&ct->lock);
+		pom_mutex_lock(&ct->locks[0]);
+		lst->next = ct->table[0];
+		if (lst->next)
+			lst->next->prev = lst;
+		ct->table[0] = lst;
+		pom_mutex_unlock(&ct->locks[0]);
 		debug_conntrack("Allocated conntrack %p with parent %p (uniq child)", res, parent);
 
 		registry_perf_inc(proto->perf_conn_cur, 1);
@@ -264,6 +291,7 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 	return res;
 
 err:
+	pom_mutex_unlock(&ct->locks[0]);
 	if (res) {
 		pthread_mutex_destroy(&res->lock);
 		free(res);
@@ -303,14 +331,8 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 
 	uint32_t hash = conntrack_hash(fwd_value, rev_value) % ct->table_size;
 
-	// Lock the tables while browsing for a conntrack
-	pom_mutex_lock(&ct->lock);
-
-	if (!ct->table) {
-		pom_mutex_unlock(&ct->lock);
-		pomlog(POMLOG_ERR "Cannot get conntrack as the forward table is not allocated");
-		return POM_ERR;
-	}
+	// Lock the specific hash while browsing for a conntrack
+	pom_mutex_lock(&ct->locks[hash]);
 
 	// Try to find the conntrack in the forward table
 
@@ -322,7 +344,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 			s_next->direction = POM_DIR_FWD;
 			pom_mutex_lock(&s->ce->lock);
 			s->ce->refcount++;
-			pom_mutex_unlock(&ct->lock);
+			pom_mutex_unlock(&ct->locks[hash]);
 			return POM_OK;;
 		}
 	}
@@ -336,7 +358,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 			s_next->direction = POM_DIR_REV;
 			pom_mutex_lock(&s->ce->lock);
 			s->ce->refcount++;
-			pom_mutex_unlock(&ct->lock);
+			pom_mutex_unlock(&ct->locks[hash]);
 			return POM_OK;
 		}
 
@@ -356,14 +378,14 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	// Alloc the conntrack entry
 	struct conntrack_entry *ce = malloc(sizeof(struct conntrack_entry));
 	if (!ce) {
-		pom_mutex_unlock(&ct->lock);
+		pom_mutex_unlock(&ct->locks[hash]);
 		pom_oom(sizeof(struct conntrack_entry));
 		return POM_ERR;
 	}
 	memset(ce, 0, sizeof(struct conntrack_entry));
 
 	if (pom_mutex_init_type(&ce->lock, PTHREAD_MUTEX_ERRORCHECK) != POM_OK) {
-		pom_mutex_unlock(&ct->lock);
+		pom_mutex_unlock(&ct->locks[hash]);
 		free(ce);
 		return POM_ERR;
 	}
@@ -379,7 +401,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 		child = malloc(sizeof(struct conntrack_node_list));
 		if (!child) {
 			pthread_mutex_destroy(&ce->lock);
-			pom_mutex_unlock(&ct->lock);
+			pom_mutex_unlock(&ct->locks[hash]);
 			free(ce);
 			pom_oom(sizeof(struct conntrack_node_list));
 			return POM_ERR;
@@ -393,7 +415,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 		ce->parent = malloc(sizeof(struct conntrack_node_list));
 		if (!ce->parent) {
 			pthread_mutex_destroy(&ce->lock);
-			pom_mutex_unlock(&ct->lock);
+			pom_mutex_unlock(&ct->locks[hash]);
 			free(child);
 			free(ce);
 			pom_oom(sizeof(struct conntrack_node_list));
@@ -409,7 +431,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 
 	ce->hash = hash;
 
-	struct conntrack_list *lst_fwd = NULL;
+	struct conntrack_list *lst = NULL;
 
 	ce->fwd_value = ptype_alloc_from(fwd_value);
 	if (!ce->fwd_value)
@@ -420,21 +442,21 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 		if (!ce->rev_value)
 			goto err;
 	}
-	// Alloc the list
-	lst_fwd = malloc(sizeof(struct conntrack_list));
-	if (!lst_fwd) {
+	// Alloc the list node
+	lst = malloc(sizeof(struct conntrack_list));
+	if (!lst) {
 		ptype_cleanup(ce->fwd_value);
 		pom_oom(sizeof(struct conntrack_list));
 		goto err;
 	}
-	memset(lst_fwd, 0, sizeof(struct conntrack_list));
-	lst_fwd->ce = ce;
+	memset(lst, 0, sizeof(struct conntrack_list));
+	lst->ce = ce;
 
 	// Insert in the conntrack table
-	lst_fwd->next = ct->table[hash];
-	if (lst_fwd->next)
-		lst_fwd->next->prev = lst_fwd;
-	ct->table[hash] = lst_fwd;
+	lst->next = ct->table[hash];
+	if (lst->next)
+		lst->next->prev = lst;
+	ct->table[hash] = lst;
 
 	// Add the child to the parent if any
 	if (child) {
@@ -456,7 +478,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	}
 	pom_mutex_lock(&ce->lock);
 	ce->refcount++;
-	pom_mutex_unlock(&ct->lock);
+	pom_mutex_unlock(&ct->locks[hash]);
 
 	s->ce = ce;
 	s->direction = s_prev->direction;
@@ -470,14 +492,14 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	return POM_OK;
 
 err:
-	pom_mutex_unlock(&ct->lock);
+	pom_mutex_unlock(&ct->locks[hash]);
 
 	pthread_mutex_destroy(&ce->lock);
 	if (child)
 		free(child);
 
-	if (lst_fwd)
-		free(lst_fwd);
+	if (lst)
+		free(lst);
 
 	if (ce->parent)
 		free(ce->parent);
@@ -590,7 +612,7 @@ int conntrack_timed_cleanup(void *timer, ptime now) {
 int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntrack_entry *ce) {
 
 	// Remove the conntrack from the conntrack table
-	pom_mutex_lock(&ct->lock);
+	pom_mutex_lock(&ct->locks[hash]);
 
 	// Try to find the conntrack in the list
 	struct conntrack_list *lst = NULL;
@@ -598,7 +620,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 	for (lst = ct->table[hash]; lst && lst->ce != ce; lst = lst->next);
 
 	if (!lst) {
-		pom_mutex_unlock(&ct->lock);
+		pom_mutex_unlock(&ct->locks[hash]);
 		pomlog(POMLOG_ERR "Trying to cleanup a non existing conntrack : %p", ce);
 		return POM_OK;
 	}
@@ -608,7 +630,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 		pomlog(POMLOG_ERR "Conntrack %p is still being referenced : %u !", ce, ce->refcount);
 		conntrack_delayed_cleanup(ce, 1);
 		conntrack_unlock(ce);
-		pom_mutex_unlock(&ct->lock);
+		pom_mutex_unlock(&ct->locks[hash]);
 		return POM_OK;
 	}
 
@@ -623,7 +645,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 
 	free(lst);
 
-	pom_mutex_unlock(&ct->lock);
+	pom_mutex_unlock(&ct->locks[hash]);
 
 	// At this point, the conntrack should not be used at all !
 
@@ -667,9 +689,9 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 		// Remove the child from the parent
 		
 		// Make sure the parent still exists
-		pom_mutex_lock(&ce->parent->ct->lock);
-		
 		uint32_t hash = ce->parent->hash;
+		pom_mutex_lock(&ce->parent->ct->locks[hash]);
+		
 		for (lst = ce->parent->ct->table[hash]; lst && lst->ce != ce->parent->ce; lst = lst->next);
 
 		if (lst) {
@@ -701,7 +723,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 			debug_conntrack("Parent conntrack %p not found while cleaning child %p !", ce->parent->ce, ce);
 		}
 
-		pom_mutex_unlock(&ce->parent->ct->lock);
+		pom_mutex_unlock(&ce->parent->ct->locks[hash]);
 
 		free(ce->parent);
 	}
@@ -800,7 +822,7 @@ int conntrack_timer_process(void *priv, ptime now) {
 	struct conntrack_tables *ct = t->proto->ct;
 
 	// Lock the main table
-	pom_mutex_lock(&ct->lock);
+	pom_mutex_lock(&ct->locks[t->hash]);
 
 	// Check if the conntrack still exists
 
@@ -809,7 +831,7 @@ int conntrack_timer_process(void *priv, ptime now) {
 
 	if (!lst) {
 		pomlog(POMLOG_DEBUG "Timer fired but conntrack doesn't exists anymore");
-		pom_mutex_unlock(&ct->lock);
+		pom_mutex_unlock(&ct->locks[t->hash]);
 		return POM_OK;
 	}
 
@@ -818,7 +840,7 @@ int conntrack_timer_process(void *priv, ptime now) {
 	struct conntrack_entry *ce = t->ce;
 
 	conntrack_lock(ce);
-	pom_mutex_unlock(&ct->lock);
+	pom_mutex_unlock(&ct->locks[t->hash]);
 	
 	int res = t->handler(ce, t->priv);
 	
