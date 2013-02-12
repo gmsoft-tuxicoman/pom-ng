@@ -80,7 +80,7 @@ static int proto_tcp_mod_register(struct mod_reg *mod) {
 	proto_tcp.pkt_fields = fields;
 
 	static struct conntrack_info ct_info = { 0 };
-	ct_info.default_table_size = 20000;
+	ct_info.default_table_size = 32768;
 	ct_info.fwd_pkt_field_id = proto_tcp_field_sport;
 	ct_info.rev_pkt_field_id = proto_tcp_field_dport;
 	ct_info.cleanup_handler = proto_tcp_conntrack_cleanup;

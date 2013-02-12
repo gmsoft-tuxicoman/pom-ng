@@ -75,7 +75,7 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	proto_ipv4.pkt_fields = fields;
 
 	static struct conntrack_info ct_info = { 0 };
-	ct_info.default_table_size = 20000;
+	ct_info.default_table_size = 65535;
 	ct_info.fwd_pkt_field_id = proto_ipv4_field_src;
 	ct_info.rev_pkt_field_id = proto_ipv4_field_dst;
 	ct_info.cleanup_handler = proto_ipv4_conntrack_cleanup;
