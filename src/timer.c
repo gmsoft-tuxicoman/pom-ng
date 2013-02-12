@@ -51,9 +51,29 @@ int timers_init() {
 
 int timers_process() {
 
-	ptime now = core_get_clock();
 
-	pom_mutex_lock(&timer_main_lock);
+	static int processing = 0;
+
+	int res = pthread_mutex_trylock(&timer_main_lock);
+	if (res == EBUSY) {
+		// Already locked, give up
+		return POM_OK;
+	} else if (res) {
+		// Something went wrong
+		pomlog(POMLOG_ERR "Error while trying to lock the main timer lock : %s", pom_strerror(res));
+		abort();
+		return POM_ERR;
+	}
+
+	// Another thread is already processing the timers, drop out
+	if (processing) {
+		pom_mutex_unlock(&timer_main_lock);
+		return POM_OK;
+	}
+
+	processing = 1;
+
+	ptime now = core_get_clock();
 
 	struct timer_queue *tq;
 	tq = timer_queues;
@@ -89,6 +109,8 @@ int timers_process() {
 		tq = tq->next;
 
 	}
+
+	processing = 0;
 
 	pom_mutex_unlock(&timer_main_lock);
 
