@@ -63,7 +63,7 @@ struct conntrack_timer {
 struct conntrack_tables* conntrack_table_alloc(size_t table_size, int has_rev);
 int conntrack_table_empty(struct conntrack_tables *ct);
 int conntrack_table_cleanup(struct conntrack_tables *ct);
-uint32_t conntrack_hash(struct ptype *a, struct ptype *b);
+uint32_t conntrack_hash(struct ptype *a, struct ptype *b, void *parent);
 struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype *fwd_value, struct ptype *rev_value, struct conntrack_entry *parent);
 int conntrack_timed_cleanup(void *timer, ptime now);
 int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntrack_entry *ce);

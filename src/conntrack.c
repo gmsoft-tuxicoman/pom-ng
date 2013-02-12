@@ -27,8 +27,6 @@
 #include <pthread.h>
 #include <pom-ng/timer.h>
 
-#define INITVAL 0x5de97c2d // random value
-
 //#define DEBUG_CONNTRACK
 
 #if 0
@@ -129,33 +127,45 @@ int conntrack_table_cleanup(struct conntrack_tables *ct) {
 }
 
 
-uint32_t conntrack_hash(struct ptype *a, struct ptype *b) {
+uint32_t conntrack_hash(struct ptype *a, struct ptype *b, void *parent) {
 
 	// Create a reversible hash for a and b
 	if (!a)
 		return POM_ERR;
 
+	// Use the parent pointer as an init value
+	uint32_t parent_initval = (uint32_t) ((uint64_t)parent & 0xFFFFFFFF);
+	size_t size_a = ptype_get_value_size(a);
 
 	if (!b) {
 		// Only fwd direction
+		// Try to use the best hash function
+		if (size_a == sizeof(uint32_t)) { // exactly one word
+			return jhash_1word(*((uint32_t*)a->value), parent_initval);
+		} else if (size_a == 2 * sizeof(uint32_t))  { // exactly two words
+			return jhash_2words(*((uint32_t*)a->value), *((uint32_t*)(a->value + sizeof(uint32_t))), parent_initval);
+		} else if (size_a == 3 * sizeof(uint32_t)) { // exactly 3 words
+			return jhash_3words(*((uint32_t*)a->value), *((uint32_t*)(a->value + sizeof(uint32_t))), *((uint32_t*)(a->value + (2 * sizeof(uint32_t)))), parent_initval);
+		}
 
-		return ptype_get_hash(a);
+		// Fallback on all size function
+		return jhash((char*)a->value, size_a, parent_initval);
+
 	 }
 	 
-	size_t size_a = ptype_get_value_size(a);
 	size_t size_b = ptype_get_value_size(b);
 
 	// Try to use the best hash function
 	if (size_a == sizeof(uint16_t) && size_b == sizeof(uint16_t)) { // Multiply the two 16bit values
 		uint32_t value_a = *((uint16_t*)a->value);
 		uint32_t value_b = *((uint16_t*)b->value);
-		return jhash_1word(value_a * value_b, INITVAL);
+		return jhash_1word(value_a * value_b, parent_initval);
 	} else if (size_a == sizeof(uint32_t) && size_b == sizeof(uint32_t)) { // XOR the two 32bit values before hashing
-		return jhash_1word(*((uint32_t*)a->value) ^ *((uint32_t*)b->value), INITVAL);
+		return jhash_1word(*((uint32_t*)a->value) ^ *((uint32_t*)b->value), parent_initval);
 	}
 
-	uint32_t hash_a = jhash((char*)a->value, size_a, INITVAL);
-	uint32_t hash_b = jhash((char*)b->value, size_b, INITVAL);
+	uint32_t hash_a = jhash((char*)a->value, size_a, parent_initval);
+	uint32_t hash_b = jhash((char*)b->value, size_b, parent_initval);
 	return hash_a ^ hash_b;
 }
 
@@ -330,7 +340,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct conntrack_tables *ct = s->proto->ct;
 
-	uint32_t hash = conntrack_hash(fwd_value, rev_value) % ct->table_size;
+	uint32_t hash = conntrack_hash(fwd_value, rev_value, s_prev->ce) % ct->table_size;
 
 	// Lock the specific hash while browsing for a conntrack
 	pom_mutex_lock(&ct->locks[hash]);
