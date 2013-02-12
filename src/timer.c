@@ -36,14 +36,16 @@ static struct timer_queue *timer_queues = NULL;
 static struct registry_perf *perf_timer_processed = NULL;
 static struct registry_perf *perf_timer_queued = NULL;
 static struct registry_perf *perf_timer_allocated = NULL;
+static struct registry_perf *perf_timer_queues = NULL;
 
 int timers_init() {
 
 	perf_timer_processed = core_add_perf("timer_processed", registry_perf_type_counter, "Number of timers processeds", "timers");
 	perf_timer_queued = core_add_perf("timer_queued", registry_perf_type_gauge, "Number of timers queued", "timers");
 	perf_timer_allocated = core_add_perf("timer_allocated", registry_perf_type_gauge, "Number of timers allocated", "timers");
+	perf_timer_queues = core_add_perf("timer_queues", registry_perf_type_gauge, "Number of timer queues", "queues");
 
-	if (!perf_timer_processed || !perf_timer_queued || !perf_timer_allocated)
+	if (!perf_timer_processed || !perf_timer_queued || !perf_timer_allocated || !perf_timer_queues)
 		return POM_OK;
 
 	return POM_OK;
@@ -225,6 +227,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 
 		tq->expiry = expiry;
 
+		registry_perf_inc(perf_timer_queues, 1);
+
 	} else {
 
 		while (tq) {
@@ -257,6 +261,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 				tq = tmp;
 				tq->expiry = expiry;
 
+				registry_perf_inc(perf_timer_queues, 1);
+
 				break;
 			
 			} else if (!tq->next) { // Looks like we are at the end of our list
@@ -277,6 +283,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 				tq = tmp;
 
 				tq->expiry = expiry;
+
+				registry_perf_inc(perf_timer_queues, 1);
 				
 				break;
 			}
