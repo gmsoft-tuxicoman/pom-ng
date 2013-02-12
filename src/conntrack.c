@@ -146,9 +146,10 @@ uint32_t conntrack_hash(struct ptype *a, struct ptype *b) {
 	size_t size_b = ptype_get_value_size(b);
 
 	// Try to use the best hash function
-	if (size_a == sizeof(uint16_t) && size_b == sizeof(uint16_t)) { // Add up the two 16bit values
-		uint32_t value = *((uint16_t*)a->value) + *((uint16_t*)b->value);
-		return jhash_1word(value, INITVAL);
+	if (size_a == sizeof(uint16_t) && size_b == sizeof(uint16_t)) { // Multiply the two 16bit values
+		uint32_t value_a = *((uint16_t*)a->value);
+		uint32_t value_b = *((uint16_t*)b->value);
+		return jhash_1word(value_a * value_b, INITVAL);
 	} else if (size_a == sizeof(uint32_t) && size_b == sizeof(uint32_t)) { // XOR the two 32bit values before hashing
 		return jhash_1word(*((uint32_t*)a->value) ^ *((uint32_t*)b->value), INITVAL);
 	}
