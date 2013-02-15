@@ -256,11 +256,11 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 			}
 			e->session = NULL;
 
+			registry_perf_dec(e->proto->perf_expt_pending, 1);
+			registry_perf_inc(e->proto->perf_expt_matched, 1);
+
 			proto_expectation_cleanup(e);
 			conntrack_unlock(s_next->ce);
-
-			registry_perf_dec(proto->perf_expt_pending, 1);
-			registry_perf_inc(proto->perf_expt_matched, 1);
 
 			break;
 
@@ -673,7 +673,7 @@ int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, stru
 
 	pom_rwlock_unlock(&proto->expectation_lock);
 
-	registry_perf_inc(proto->perf_expt_pending, 1);
+	registry_perf_inc(e->proto->perf_expt_pending, 1);
 
 	return POM_OK;
 }
@@ -701,9 +701,9 @@ int proto_expectation_expiry(void *priv, ptime now) {
 			pomlog(POMLOG_WARN "Unable to free the conntrack priv of the proto_expectation");
 	}
 
-	proto_expectation_cleanup(e);
+	registry_perf_dec(e->proto->perf_expt_pending, 1);
 
-	registry_perf_dec(proto->perf_expt_pending, 1);
+	proto_expectation_cleanup(e);
 
 	return POM_OK;
 }
