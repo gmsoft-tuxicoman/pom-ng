@@ -216,6 +216,8 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		return NULL;
 
 
+	conntrack_lock(parent);
+
 	struct conntrack_entry *res = NULL;
 	struct conntrack_node_list *child = NULL;
 	struct conntrack_list *lst = NULL;
@@ -223,6 +225,7 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 #ifdef DEBUG_CONNTRACK
 	if (!parent->refcount) {
 		pomlog(POMLOG_ERR "Parent conntrack has a refcount of 0 !");
+		conntrack_unlock(parent);
 		return NULL;
 	}
 #endif
@@ -298,6 +301,7 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 	}
 
 	res->refcount++;
+	conntrack_unlock(parent);
 
 	return res;
 
@@ -310,7 +314,7 @@ err:
 
 	if (child)
 		free(child);
-
+	conntrack_unlock(parent);
 	return NULL;
 
 }
@@ -660,43 +664,12 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 
 	pom_mutex_unlock(&ct->locks[hash]);
 
-	// At this point, the conntrack should not be used at all !
-
 	if (ce->parent) {
 		debug_conntrack("Cleaning up conntrack %p, with parent %p", ce, ce->parent->ce);
 	} else {
 		debug_conntrack("Cleaning up conntrack %p, with no parent", ce);
 	}
 
-	// Cleanup private stuff from the conntrack
-	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
-		if (ce->proto->info->ct_info->cleanup_handler(ce->priv) != POM_OK)
-			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
-	}
-
-	// Cleanup the priv_list
-	struct conntrack_priv_list *priv_lst = ce->priv_list;
-	while (priv_lst) {
-		if (priv_lst->cleanup) {
-			if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
-				pomlog(POMLOG_WARN "Error while cleaning up private objects in conntrack_entry");
-		}
-		ce->priv_list = priv_lst->next;
-		free(priv_lst);
-		priv_lst = ce->priv_list;
-
-	}
-
-
-	if (ce->cleanup_timer) {
-		conntrack_timer_cleanup(ce->cleanup_timer);
-		ce->cleanup_timer = NULL;
-	}
-
-	if (ce->session)
-		conntrack_session_refcount_dec(ce->session);
-
-	conntrack_unlock(ce);
 	
 	if (ce->parent) {
 		// Remove the child from the parent
@@ -741,8 +714,36 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 		free(ce->parent);
 	}
 
+	if (ce->cleanup_timer) {
+		conntrack_timer_cleanup(ce->cleanup_timer);
+		ce->cleanup_timer = NULL;
+	}
+
+	if (ce->session)
+		conntrack_session_refcount_dec(ce->session);
+
 	// No need to lock ourselves at this point this there shouldn't be any reference
 	// in the conntrack tables
+	conntrack_unlock(ce);
+
+	// Cleanup private stuff from the conntrack
+	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
+		if (ce->proto->info->ct_info->cleanup_handler(ce->priv) != POM_OK)
+			pomlog(POMLOG_WARN "Unable to free the private memory of a conntrack");
+	}
+
+	// Cleanup the priv_list
+	struct conntrack_priv_list *priv_lst = ce->priv_list;
+	while (priv_lst) {
+		if (priv_lst->cleanup) {
+			if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
+				pomlog(POMLOG_WARN "Error while cleaning up private objects in conntrack_entry");
+		}
+		ce->priv_list = priv_lst->next;
+		free(priv_lst);
+		priv_lst = ce->priv_list;
+
+	}
 
 
 	// Cleanup the children
@@ -852,13 +853,12 @@ int conntrack_timer_process(void *priv, ptime now) {
 	// Save the reference to the conntrack as the timer might get cleaned up
 	struct conntrack_entry *ce = t->ce;
 
+	// The handler will unlock the conntrack
 	conntrack_lock(ce);
 	pom_mutex_unlock(&ct->locks[t->hash]);
 	
 	int res = t->handler(ce, t->priv);
 	
-	conntrack_unlock(ce);
-
 	return res;
 }
 

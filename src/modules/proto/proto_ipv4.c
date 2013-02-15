@@ -350,6 +350,8 @@ static int proto_ipv4_fragment_cleanup(struct conntrack_entry *ce, void *priv) {
 	if (f->next)
 		f->next->prev = f->prev;
 
+	conntrack_unlock(ce);
+
 
 	if (!(f->flags & PROTO_IPV4_FLAG_PROCESSED)) {
 		pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
