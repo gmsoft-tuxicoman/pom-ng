@@ -89,12 +89,9 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	if (!s->ce) {
-		s->ce = conntrack_get_unique_from_parent(s->proto, s_prev->ce);
-		if (!s->ce) {
-			pomlog(POMLOG_ERR "Could not get a conntrack entry");
-			return PROTO_ERR;
-		}
+	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
+		pomlog(POMLOG_ERR "Could not get a conntrack entry");
+		return PROTO_ERR;
 	}
 
 	struct proto_tftp_conntrack_priv *priv = s->ce->priv;
@@ -102,6 +99,7 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 		priv = malloc(sizeof(struct proto_tftp_conntrack_priv));
 		if (!priv) {
 			pom_oom(sizeof(struct proto_tftp_conntrack_priv));
+			conntrack_unlock(s->ce);
 			return POM_ERR;
 		}
 		memset(priv, 0, sizeof(struct proto_tftp_conntrack_priv));
@@ -109,8 +107,10 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 		s->ce->priv = priv;
 	}
 
-	if (priv->flags & PROTO_TFTP_CONN_INVALID)
+	if (priv->flags & PROTO_TFTP_CONN_INVALID) {
+		conntrack_unlock(s->ce);
 		return PROTO_INVALID;
+	}
 
 	void *pload = s->pload;
 	uint32_t plen = s->plen;
@@ -128,8 +128,9 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 			char *filename = pload;
 			char *mode = memchr(filename, 0, plen - 1);
 			if (!mode) {
-				debug_tftp("End of filename not found in read/write request");
 				priv->flags |= PROTO_TFTP_CONN_INVALID;
+				conntrack_unlock(s->ce);
+				debug_tftp("End of filename not found in read/write request");
 				return PROTO_INVALID;
 			}
 			mode++;
@@ -137,27 +138,33 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 
 			char *end = memchr(mode, 0, plen - filename_len);
 			if (!end) {
-				debug_tftp("End of mode not found in read/write request");
 				priv->flags |= PROTO_TFTP_CONN_INVALID;
+				conntrack_unlock(s->ce);
+				debug_tftp("End of mode not found in read/write request");
 				return PROTO_INVALID;
 			}
 			debug_tftp("Got read/write request for filename \"%s\" with mode \"%s\"", filename, mode);
 
 			struct conntrack_session *session = conntrack_session_get(s->ce);
-			if (!session)
+			if (!session) {
+				conntrack_unlock(s->ce);
 				return POM_ERR;
+			}
 
 			// We don't need to do anything with the session
 			conntrack_session_unlock(session);
 
 			struct proto_expectation *expt = proto_expectation_alloc_from_conntrack(s_prev->ce, proto_tftp, NULL);
 
-			if (!expt)
+			if (!expt) {
+				conntrack_unlock(s->ce);
 				return PROTO_ERR;
+			}
 
 			proto_expectation_set_field(expt, -1, NULL, POM_DIR_REV);
 
 			if (proto_expectation_add(expt, PROTO_TFTP_EXPT_TIMER, session) != POM_OK) {
+				conntrack_unlock(s->ce);
 				proto_expectation_cleanup(expt);
 				return PROTO_ERR;
 			}
@@ -167,6 +174,7 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 		case tftp_data: {
 			if (plen < 2) {
 				priv->flags |= PROTO_TFTP_CONN_INVALID;
+				conntrack_unlock(s->ce);
 				return PROTO_INVALID;
 			}
 			uint16_t block_id = ntohs(*((uint16_t*)(pload)));
@@ -178,15 +186,20 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 
 			if (!priv->stream) {
 				priv->stream = packet_stream_alloc(PROTO_TFTP_BLK_SIZE, 0, POM_DIR_FWD, PROTO_TFTP_STREAM_BUFF, s->ce, 0);
-				if (!priv->stream)
+				if (!priv->stream) {
+					conntrack_unlock(s->ce);
 					return PROTO_ERR;
+				}
 				packet_stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER, 0, proto_tftp_process_payload);
 			}
 
 			int res = packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
-			if (res == PROTO_OK)
+			if (res == PROTO_OK) {
+				conntrack_unlock(s->ce);
 				return PROTO_STOP;
+			}
 
+			conntrack_unlock(s->ce);
 			return res;
 		}
 
@@ -201,10 +214,12 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 
 		default:
 			priv->flags |= PROTO_TFTP_CONN_INVALID;
+			conntrack_unlock(s->ce);
 			return PROTO_INVALID;
 	}
 
 	conntrack_delayed_cleanup(s->ce, PROTO_TFTP_PKT_TIMER);
+	conntrack_unlock(s->ce);
 	return PROTO_OK;
 }
 

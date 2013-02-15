@@ -210,27 +210,41 @@ struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype 
 	return NULL;
 }
 
-struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, struct conntrack_entry *parent) {
+int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned int stack_index) {
 
-	if (!proto || !parent)
-		return NULL;
-
-
-	conntrack_lock(parent);
-
-	struct conntrack_entry *res = NULL;
 	struct conntrack_node_list *child = NULL;
 	struct conntrack_list *lst = NULL;
 
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+
+	struct conntrack_entry *parent = s_prev->ce;
+
+	if (!s->proto || !parent)
+		return POM_ERR;
+
+
+	if (s->ce) { // This should only occur in the case that an expectation matched
+		// Make sure the conntrack is locked
+		int res = pthread_mutex_trylock(&s->ce->lock);
+		if (res && res != EBUSY && res == EDEADLK) {
+			pomlog(POMLOG_ERR "Error while locking the conntrack : %s", pom_strerror(res));
+			return POM_ERR;
+		}
+		return POM_OK;
+	}
+
+	conntrack_lock(parent);
 #ifdef DEBUG_CONNTRACK
 	if (!parent->refcount) {
 		pomlog(POMLOG_ERR "Parent conntrack has a refcount of 0 !");
 		conntrack_unlock(parent);
-		return NULL;
+		return POM_ERR;
 	}
 #endif
 
-	struct conntrack_tables *ct = proto->ct;
+	struct conntrack_tables *ct = s->proto->ct;
+	struct conntrack_entry *res = NULL;
 
 	if (!parent->children) {
 
@@ -242,7 +256,7 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		}
 
 		memset(res, 0, sizeof(struct conntrack_entry));
-		res->proto = proto;
+		res->proto = s->proto;
 
 		if (pom_mutex_init_type(&res->lock, PTHREAD_MUTEX_ERRORCHECK) != POM_OK)
 			goto err;
@@ -254,7 +268,7 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		
 		memset(child, 0, sizeof(struct conntrack_node_list));
 		child->ce = res;
-		child->ct = proto->ct;
+		child->ct = ct;
 
 		// Alloc the parent node
 		res->parent = malloc(sizeof(struct conntrack_node_list));
@@ -291,22 +305,24 @@ struct conntrack_entry* conntrack_get_unique_from_parent(struct proto *proto, st
 		pom_mutex_unlock(&ct->locks[0]);
 		debug_conntrack("Allocated conntrack %p with parent %p (uniq child)", res, parent);
 
-		registry_perf_inc(proto->perf_conn_cur, 1);
-		registry_perf_inc(proto->perf_conn_tot, 1);
+		registry_perf_inc(s->proto->perf_conn_cur, 1);
+		registry_perf_inc(s->proto->perf_conn_tot, 1);
 
 	} else if (parent->children->next) {
 		pomlog(POMLOG_ERR "Error, parent has more than one child while it was supposed to have only one");
 	} else {
 		res = parent->children->ce;
 	}
-
-	res->refcount++;
 	conntrack_unlock(parent);
 
-	return res;
+	conntrack_lock(res);
+	res->refcount++;
+	s->ce = res;
+
+
+	return POM_OK;
 
 err:
-	pom_mutex_unlock(&ct->locks[0]);
 	if (res) {
 		pthread_mutex_destroy(&res->lock);
 		free(res);
@@ -315,8 +331,8 @@ err:
 	if (child)
 		free(child);
 	conntrack_unlock(parent);
-	return NULL;
 
+	return POM_ERR;
 }
 
 int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {

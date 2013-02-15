@@ -181,14 +181,13 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	s->ce = conntrack_get_unique_from_parent(s->proto, s_prev->ce);
-	if (!s->ce) {
+	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
 		pomlog(POMLOG_ERR "Could not get conntrack entry");
 		return PROTO_ERR;
 	}
 
-	// There should be no need to lock here since we are in the packet_stream lock from proto_tcp
-
+	// There should be no need to keep the lock here since we are in the packet_stream lock from proto_tcp
+	conntrack_unlock(s->ce);
 	
 	struct proto_http_conntrack_priv *priv = s->ce->priv;
 	if (!priv) {

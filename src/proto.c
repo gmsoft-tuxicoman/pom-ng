@@ -243,8 +243,7 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 			s_next->proto = e->proto;
 
 			
-			s_next->ce = conntrack_get_unique_from_parent(s_next->proto, s->ce);
-			if (!s_next->ce) {
+			if (conntrack_get_unique_from_parent(stack, stack_index + 1) != POM_OK) {
 				proto_expectation_cleanup(e);
 				return PROTO_ERR;
 			}
@@ -258,6 +257,7 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 			e->session = NULL;
 
 			proto_expectation_cleanup(e);
+			conntrack_unlock(s_next->ce);
 
 			registry_perf_dec(proto->perf_expt_pending, 1);
 			registry_perf_inc(proto->perf_expt_matched, 1);
