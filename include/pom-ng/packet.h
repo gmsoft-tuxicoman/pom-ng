@@ -45,17 +45,6 @@ struct packet {
 	struct packet *prev, *next; // Used internally
 };
 
-struct packet_info {
-	struct ptype **fields_value;
-	struct packet_info *pool_next, *pool_prev;
-};
-
-struct packet_info_pool {
-	pthread_mutex_t lock;
-	struct packet_info *used, *unused;
-	unsigned int pool_size, usage;
-};
-
 struct packet_multipart_pkt {
 
 	size_t offset, len, pkt_buff_offset;
@@ -71,6 +60,11 @@ struct packet_multipart {
 	unsigned int flags;
 	struct packet_multipart_pkt *head, *tail;
 	struct proto *proto;
+};
+
+struct packet_info {
+	struct ptype **fields_value;
+	struct packet_info *next;
 };
 
 int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset);

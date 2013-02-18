@@ -32,6 +32,8 @@ static pthread_mutex_t proto_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct registry_class *proto_registry_class = NULL;
 
+unsigned int proto_count = 0;
+
 int proto_init() {
 	
 	proto_registry_class = registry_add_class(PROTO_REGISTRY);
@@ -69,21 +71,18 @@ int proto_register(struct proto_reg_info *reg_info) {
 
 	memset(proto, 0, sizeof(struct proto));
 	proto->info = reg_info;
+	proto->id = proto_count;
+	proto_count++;
 
 	if (pthread_rwlock_init(&proto->expectation_lock, NULL)) {
 		pomlog(POMLOG_ERR "Error while initializing the proto_expectation rwlock : %s", pom_strerror(errno));	
 		goto err_proto;
 	}
 
-	if (packet_info_pool_init(&proto->pkt_info_pool)) {
-		pomlog(POMLOG_ERR "Error while initializing the pkt_info_pool");
-		goto err_lock;
-	}
-
 	proto->reg_instance = registry_add_instance(proto_registry_class, reg_info->name);
 	if (!proto->reg_instance) {
 		pomlog(POMLOG_ERR "Error while adding the registry instanc for protocol %s", reg_info->name);
-		goto err_packet_info;
+		goto err_lock;
 	}
 
 
@@ -136,8 +135,6 @@ err_conntrack:
 	conntrack_table_cleanup(proto->ct);
 err_registry:
 	registry_remove_instance(proto->reg_instance);
-err_packet_info:
-	packet_info_pool_cleanup(&proto->pkt_info_pool);
 err_lock:
 	pthread_rwlock_destroy(&proto->expectation_lock);
 err_proto:
@@ -345,8 +342,6 @@ int proto_unregister(char *name) {
 
 		conntrack_table_cleanup(proto->ct);
 
-	packet_info_pool_cleanup(&proto->pkt_info_pool);
-	
 	if (proto->next)
 		proto->next->prev = proto->prev;
 	if (proto->prev)
@@ -399,7 +394,6 @@ int proto_cleanup() {
 		conntrack_table_cleanup(proto->ct);
 
 		mod_refcount_dec(proto->info->mod);
-		packet_info_pool_cleanup(&proto->pkt_info_pool);
 	}
 
 	while (proto_head) {
@@ -718,4 +712,8 @@ void *proto_get_priv(struct proto *p) {
 
 struct proto_reg_info *proto_get_info(struct proto *p) {
 	return p->info;
+}
+
+unsigned int proto_get_count() {
+	return proto_count;
 }

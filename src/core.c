@@ -310,6 +310,11 @@ void *core_processing_thread_func(void *priv) {
 
 	struct core_processing_thread *tpriv = priv;
 
+	if (packet_info_pool_init()) {
+		halt("Error while initializing the packet_info_pool", 1);
+		return NULL;
+	}
+
 	pom_mutex_lock(&core_pkt_queue_mutex);
 
 	while (core_run) {
@@ -424,6 +429,7 @@ void *core_processing_thread_func(void *priv) {
 end:
 	packet_pool_thread_cleanup();
 	packet_buffer_pool_thread_cleanup();
+	packet_info_pool_cleanup();
 
 	return NULL;
 }
@@ -555,7 +561,7 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (stack[i].ce)
 			conntrack_refcount_dec(stack[i].ce);
 
-		packet_info_pool_release(&stack[i].proto->pkt_info_pool, stack[i].pkt_info);
+		packet_info_pool_release(stack[i].pkt_info, stack[i].proto->id);
 	}
 	
 	return res;
@@ -601,7 +607,7 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 			if (!new_stack[i].pkt_info) {
 				for (; i; i--) {
 					if (new_stack[i].pkt_info)
-						packet_info_pool_release(&stack[i].proto->pkt_info_pool, new_stack[i].pkt_info);
+						packet_info_pool_release(new_stack[i].pkt_info, stack[i].proto->id);
 				}
 				free(new_stack);
 				return NULL;

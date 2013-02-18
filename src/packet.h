@@ -90,19 +90,18 @@ struct packet_stream_parser {
 	unsigned int plen;
 };
 
-
 void packet_buffer_pool_release(struct packet_buffer *pb);
 void packet_pool_thread_cleanup();
 void packet_buffer_pool_thread_cleanup();
 int packet_buffer_pool_cleanup();
 
 
-int packet_info_pool_init(struct packet_info_pool *pool);
 struct packet_info *packet_info_pool_get(struct proto *p);
 struct packet_info *packet_info_pool_clone(struct proto *p, struct packet_info *info);
 int packet_pool_cleanup();
-int packet_info_pool_release(struct packet_info_pool *pool, struct packet_info *info);
-int packet_info_pool_cleanup(struct packet_info_pool *pool);
+int packet_info_pool_init();
+int packet_info_pool_release(struct packet_info *info, unsigned int protocol_id);
+int packet_info_pool_cleanup();
 
 int packet_stream_timeout(struct conntrack_entry *ce, void *priv);
 int packet_stream_force_dequeue(struct packet_stream *stream);

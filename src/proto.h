@@ -32,12 +32,11 @@
 struct proto {
 
 	struct proto_reg_info *info;
+
+	unsigned int id;
 	
 	/// Conntrack tables
 	struct conntrack_tables *ct;
-
-	// Packet info pool
-	struct packet_info_pool pkt_info_pool;
 
 	struct registry_instance *reg_instance;
 
@@ -91,5 +90,7 @@ int proto_empty_conntracks();
 int proto_cleanup();
 
 int proto_expectation_expiry(void *priv, ptime now);
+
+unsigned int proto_get_count();
 
 #endif
