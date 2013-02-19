@@ -742,9 +742,11 @@ int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
 
 	struct packet_stream *stream = priv;
 	int res = POM_OK;
-	
-	pom_mutex_lock(&stream->lock);
+
+	// We need to unlock the conntrack first to avoid lock order problem
 	conntrack_unlock(ce);
+
+	pom_mutex_lock(&stream->lock);
 	res = packet_stream_force_dequeue(stream);
 	pom_mutex_unlock(&stream->lock);
 

@@ -91,8 +91,6 @@ int conntrack_table_empty(struct conntrack_tables *ct) {
 			struct conntrack_list *tmp = ct->table[i];
 			conntrack_cleanup(ct, tmp->ce->hash, tmp->ce);
 		}
-
-
 	}
 
 	return POM_OK;
@@ -151,7 +149,7 @@ uint32_t conntrack_hash(struct ptype *a, struct ptype *b, void *parent) {
 		// Fallback on all size function
 		return jhash((char*)a->value, size_a, parent_initval);
 
-	 }
+	}
 	 
 	size_t size_b = ptype_get_value_size(b);
 
@@ -318,7 +316,6 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 	conntrack_lock(res);
 	res->refcount++;
 	s->ce = res;
-
 
 	return POM_OK;
 
@@ -680,6 +677,9 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 
 	pom_mutex_unlock(&ct->locks[hash]);
 
+	// Once the conntrack is removed from the hash table, it will not be referenced ever again
+	conntrack_unlock(ce);
+
 	if (ce->parent) {
 		debug_conntrack("Cleaning up conntrack %p, with parent %p", ce, ce->parent->ce);
 	} else {
@@ -737,10 +737,6 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 
 	if (ce->session)
 		conntrack_session_refcount_dec(ce->session);
-
-	// No need to lock ourselves at this point this there shouldn't be any reference
-	// in the conntrack tables
-	conntrack_unlock(ce);
 
 	// Cleanup private stuff from the conntrack
 	if (ce->priv && ce->proto->info->ct_info->cleanup_handler) {
