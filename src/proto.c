@@ -28,8 +28,6 @@
 
 static struct proto *proto_head = NULL;
 
-static pthread_mutex_t proto_list_lock = PTHREAD_MUTEX_INITIALIZER;
-
 static struct registry_class *proto_registry_class = NULL;
 
 unsigned int proto_count = 0;
@@ -51,20 +49,15 @@ int proto_register(struct proto_reg_info *reg_info) {
 	}
 
 
-	pom_mutex_lock(&proto_list_lock);
-
 	// Check if the protocol already exists
 	struct proto *proto;
 	for (proto = proto_head; proto && strcmp(proto->info->name, reg_info->name); proto = proto->next);
-	if (proto) {
-		pom_mutex_unlock(&proto_list_lock);
+	if (proto)
 		return POM_ERR;
-	}
 
 	// Allocate the protocol
 	proto = malloc(sizeof(struct proto));
 	if (!proto) {
-		pom_mutex_unlock(&proto_list_lock);
 		pom_oom(sizeof(struct proto));
 		return POM_ERR;
 	}
@@ -125,8 +118,6 @@ int proto_register(struct proto_reg_info *reg_info) {
 		proto->next->prev = proto;
 	proto_head = proto;
 
-	pom_mutex_unlock(&proto_list_lock);
-
 	pomlog(POMLOG_DEBUG "Proto %s registered", reg_info->name);
 
 	return POM_OK;
@@ -139,8 +130,6 @@ err_lock:
 	pthread_rwlock_destroy(&proto->expectation_lock);
 err_proto:
 	free(proto);
-
-	pom_mutex_unlock(&proto_list_lock);
 
 	return POM_ERR;
 
@@ -323,16 +312,12 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 
 int proto_unregister(char *name) {
 
-	pom_mutex_lock(&proto_list_lock);
 	struct proto *proto;
 	for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
-	if (!proto) {
-		pom_mutex_unlock(&proto_list_lock);
+	if (!proto)
 		return POM_OK;
-	}
 	
 	if (proto->info->cleanup && proto->info->cleanup(proto->priv)) {
-		pom_mutex_unlock(&proto_list_lock);
 		pomlog(POMLOG_ERR "Error while cleaning up the protocol %s", name);
 		return POM_ERR;
 	}
@@ -353,8 +338,6 @@ int proto_unregister(char *name) {
 
 	free(proto);
 
-	pom_mutex_unlock(&proto_list_lock);
-
 	return POM_OK;
 }
 
@@ -371,21 +354,16 @@ struct proto *proto_get(char *name) {
 
 int proto_empty_conntracks() {
 
-	pom_mutex_lock(&proto_list_lock);
 	struct proto *proto;
 	for (proto = proto_head; proto; proto = proto->next) {
 		conntrack_table_empty(proto->ct);
 	}
-	pom_mutex_unlock(&proto_list_lock);
 
 	return POM_OK;
 }
 
 int proto_cleanup() {
 
-	pom_mutex_lock(&proto_list_lock);
-
-	
 	struct proto *proto;
 	for (proto = proto_head; proto; proto = proto->next) {
 
@@ -401,8 +379,6 @@ int proto_cleanup() {
 		proto_head = proto->next;
 		free(proto);
 	}
-
-	pom_mutex_unlock(&proto_list_lock);
 
 	if (proto_registry_class)
 		registry_remove_class(proto_registry_class);
