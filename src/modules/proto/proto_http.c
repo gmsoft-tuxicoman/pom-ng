@@ -178,7 +178,6 @@ int proto_http_cleanup(void *proto_priv) {
 static int proto_http_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
-	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
