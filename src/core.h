@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,6 +36,9 @@
 #define CORE_PROCESS_THREAD_MAX		64
 #define CORE_PROCESS_THREAD_DEFAULT	2
 
+#define CORE_THREAD_PKT_QUEUE_MIN	5
+#define CORE_THREAD_PKT_QUEUE_MAX	64
+
 #define CORE_REGISTRY "core"
 enum core_state {
 	core_state_idle = 0, // Core is idle
@@ -45,13 +48,17 @@ enum core_state {
 
 struct core_packet_queue {
 	struct packet *pkt;
-	struct core_packet_queue *prev, *next;
+	struct core_packet_queue *next;
 };
 
 struct core_processing_thread {
 	pthread_t thread;
 	unsigned int thread_id;
+	unsigned int pkt_count;
+	pthread_mutex_t pkt_queue_lock;
+	pthread_cond_t pkt_queue_cond;
 	struct core_packet_queue *pkt_queue_head, *pkt_queue_tail; // Thread's own queue
+	struct core_packet_queue *pkt_queue_unused;
 
 };
 

@@ -675,6 +675,9 @@ static int input_pcap_read(struct input *i) {
 
 	unsigned int flags = 0, affinity = 0;
 
+	if (p->type == input_pcap_type_interface)
+		flags = CORE_QUEUE_DROP_IF_FULL;
+
 	if (p->datalink_type == DLT_MPEGTS) {
 		// MPEG2 TS has thread affinity based on the PID
 		flags |= CORE_QUEUE_HAS_THREAD_AFFINITY;

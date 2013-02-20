@@ -32,28 +32,31 @@
 
 #include <pom-ng/ptype_bool.h>
 
+#if 0
+#define debug_thread(x ...) pomlog(POMLOG_DEBUG "thread: " x)
+#else
+#define debug_thread(x ...)
+#endif
+
+
 static volatile int core_run = 0; // Set to 1 while the processing thread should run
 static enum core_state core_cur_state = core_state_idle;
 static pthread_mutex_t core_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t core_state_cond = PTHREAD_COND_INITIALIZER;
-static unsigned int core_thread_active = 0;
 static ptime core_start_time;
 
 static struct core_processing_thread *core_processing_threads[CORE_PROCESS_THREAD_MAX];
 static unsigned int core_num_threads = 0;
 static pthread_rwlock_t core_processing_lock = PTHREAD_RWLOCK_INITIALIZER;
+static volatile unsigned int core_pkt_queue_count = 0;
+
+static pthread_mutex_t core_pkt_queue_wait_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t core_pkt_queue_wait_cond = PTHREAD_COND_INITIALIZER;
 
 static volatile ptime core_clock[CORE_PROCESS_THREAD_MAX] = { 0 };
 
 static struct registry_class *core_registry_class = NULL;
 static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL, *core_param_reset_perf_on_restart = NULL;
-
-// Packet queue
-static struct core_packet_queue *core_pkt_queue_head = NULL, *core_pkt_queue_tail = NULL;
-static struct core_packet_queue *core_pkt_queue_unused = NULL;
-static unsigned int core_pkt_queue_usage = 0;
-static pthread_cond_t core_pkt_queue_restart_cond;
-static pthread_mutex_t core_pkt_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Perf objects
 struct registry_perf *perf_pkt_queue = NULL;
@@ -106,12 +109,6 @@ int core_init(unsigned int num_threads) {
 	
 	param = NULL;
 
-	// Initialize the conditions for the sheduler thread
-	if (pthread_cond_init(&core_pkt_queue_restart_cond, NULL)) {
-		pomlog(POMLOG_ERR "Error while initializing the restart condition : %s", pom_strerror(errno));
-		goto err;
-	}
-
 	// Start the processing threads
 	unsigned int num_cpu = sysconf(_SC_NPROCESSORS_ONLN) - 1;
 	if (num_cpu < 1) {
@@ -147,8 +144,26 @@ int core_init(unsigned int num_threads) {
 
 		tmp->thread_id = i;
 
+		int res = pthread_mutex_init(&tmp->pkt_queue_lock, NULL);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while initializing a thread pkt_queue lock : %s", pom_strerror(res));
+			free(tmp);
+			goto err;
+		}
+
+		res = pthread_cond_init(&tmp->pkt_queue_cond, NULL);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while initializing a thread pkt_queue condition : %s", pom_strerror(res));
+			pthread_mutex_destroy(&tmp->pkt_queue_lock);
+			free(tmp);
+			goto err;
+		}
+
+
 		if (pthread_create(&tmp->thread, NULL, core_processing_thread_func, tmp)) {
 			pomlog(POMLOG_ERR "Error while creating a new processing thread : %s", pom_strerror(errno));
+			pthread_mutex_destroy(&tmp->pkt_queue_lock);
+			pthread_cond_destroy(&tmp->pkt_queue_cond);
 			free(tmp);
 			goto err;
 		}
@@ -174,45 +189,44 @@ int core_cleanup(int emergency_cleanup) {
 
 	core_run = 0;
 
-	if (!emergency_cleanup) {
-		while (core_pkt_queue_head) {
-			pomlog("Waiting for all the packets to be processed");
-			if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
-				pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
-				return POM_ERR;
-			}
-			sleep(1);
-		}
-	}
-
-	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
-		pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(errno));
-		return POM_ERR;
-	}
 
 	int i;
 	for (i = 0; i < CORE_PROCESS_THREAD_MAX && core_processing_threads[i]; i++) {
-		pthread_join(core_processing_threads[i]->thread, NULL);
-		free(core_processing_threads[i]);
+		struct core_processing_thread *t = core_processing_threads[i];
+		int res = pthread_cond_signal(&t->pkt_queue_cond);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while signaling the restart condition : %s", pom_strerror(res));
+			abort();
+		}
+		pthread_join(t->thread, NULL);
+		res = pthread_mutex_destroy(&t->pkt_queue_lock);
+		if (res)
+			pomlog(POMLOG_WARN "Error while destroying a processing thread lock : %s", pom_strerror(res));
+		
+		res = pthread_cond_destroy(&t->pkt_queue_cond);
+		if (res)
+			pomlog(POMLOG_WARN "Error while destroying a processing thread condition : %s", pom_strerror(res));
+
+
+		struct core_packet_queue *tmp = NULL;
+		while (t->pkt_queue_head) {
+			tmp = t->pkt_queue_head;
+			t->pkt_queue_head = tmp->next;
+			packet_pool_release(tmp->pkt);
+			free(tmp);
+			pomlog(POMLOG_WARN "A packet was still in a thread's queue");
+		}
+
+		while (t->pkt_queue_unused) {
+			tmp = t->pkt_queue_unused;
+			t->pkt_queue_unused = tmp->next;
+			packet_pool_release(tmp->pkt);
+			free(tmp);
+		}
+
+		free(t);
 	}
 
-	pthread_cond_destroy(&core_pkt_queue_restart_cond);
-
-	while (core_pkt_queue_head) {
-		struct core_packet_queue *tmp = core_pkt_queue_head;
-		core_pkt_queue_head = tmp->next;
-		packet_pool_release(tmp->pkt);
-		free(tmp);
-		pomlog(POMLOG_WARN "A packet was still in the buffer");
-	}
-
-	while (core_pkt_queue_unused) {
-		struct core_packet_queue *tmp = core_pkt_queue_unused;
-		core_pkt_queue_unused = tmp->next;
-		free(tmp);
-	}
-
-	
 	return POM_OK;
 }
 
@@ -220,87 +234,113 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 
 	
 	// Update the counters
-	struct input *i = p->input;
-	registry_perf_inc(i->perf_pkts_in, 1);
-	registry_perf_inc(i->perf_bytes_in, p->len);
+	registry_perf_inc(p->input->perf_pkts_in, 1);
+	registry_perf_inc(p->input->perf_bytes_in, p->len);
 
-	pom_mutex_lock(&core_pkt_queue_mutex);
+	if (!core_run)
+		return POM_ERR;
 
-	while (core_pkt_queue_usage >= CORE_PKT_QUEUE_MAX) {
-		// Queue full
-		if (pthread_cond_wait(&core_pkt_queue_restart_cond, &core_pkt_queue_mutex)) {
-			pomlog(POMLOG_ERR "Error while waiting for overrun mutex condition : %s", pom_strerror(errno));
-			pom_mutex_unlock(&core_pkt_queue_mutex);
-			return POM_ERR;
+	// Find the right thread to queue to
+
+	struct core_processing_thread *t = NULL;
+	if (flags & CORE_QUEUE_HAS_THREAD_AFFINITY) {
+		t = core_processing_threads[thread_affinity % core_num_threads];
+		pom_mutex_lock(&t->pkt_queue_lock);
+	} else {
+		unsigned int i;
+		while (1) {
+			for (i = 0; i < core_num_threads; i++) {
+				t = core_processing_threads[i];
+				int res = pthread_mutex_trylock(&t->pkt_queue_lock);
+				if (res == EBUSY) {
+					// Thread is busy, go to the next one
+					continue;
+				} else if (res) {
+					pomlog(POMLOG_ERR "Error while locking a processing thread pkt_queue mutex : %s", pom_strerror(res));
+					abort();
+					return POM_ERR;
+				}
+
+				// We've got the lock, check if it's ok to queue here
+				if (t->pkt_count < CORE_THREAD_PKT_QUEUE_MAX) {
+					// Use this thread
+					break;
+				}
+
+				// Too many packets pending in this thread, go to the next one
+				pom_mutex_unlock(&t->pkt_queue_lock);
+			}
+
+			if (i < core_num_threads) {
+				// We locked on a thread
+				break;
+			}
+
+			// No thread found
+			if (core_pkt_queue_count >= ((CORE_THREAD_PKT_QUEUE_MAX - 1) * core_num_threads)) {
+				// Queue full
+				if (flags & CORE_QUEUE_DROP_IF_FULL) {
+					// TODO add dropped stats
+					debug_thread("All queues full. Dropping !");
+					return POM_OK;
+				}
+
+				// We're not going to drop this. Wait then
+				debug_thread("All queues full. Waiting ...");
+				pom_mutex_lock(&core_pkt_queue_wait_lock);
+				int res = pthread_cond_wait(&core_pkt_queue_wait_cond, &core_pkt_queue_wait_lock);
+				if (res) {
+					pomlog(POMLOG_ERR "Error while waiting for the core pkt_queue condition : %s", pom_strerror(res));
+					abort();
+				}
+				pom_mutex_unlock(&core_pkt_queue_wait_lock);
+
+			}
 		}
 
-		if (!core_run) {
-			// We cleaned up early
-			return POM_ERR;
-		}
 	}
 
+	// We've got the thread's lock, add it to the queue
+
 	struct core_packet_queue *tmp = NULL;
-
-	if (core_pkt_queue_unused) {
-		// Get a packet from the already allocated items
-		tmp = core_pkt_queue_unused;
-		core_pkt_queue_unused = tmp->next;
-		if (core_pkt_queue_unused)
-			core_pkt_queue_unused->prev = NULL;
-
+	if (t->pkt_queue_unused) {
+		tmp = t->pkt_queue_unused;
+		t->pkt_queue_unused = tmp->next;
 	} else {
-		// Allocate a new item
 		tmp = malloc(sizeof(struct core_packet_queue));
 		if (!tmp) {
-			pom_mutex_unlock(&core_pkt_queue_mutex);
+			pom_mutex_unlock(&t->pkt_queue_lock);
 			pom_oom(sizeof(struct core_packet_queue));
 			return POM_ERR;
 		}
-
 	}
 
-	memset(tmp, 0, sizeof(struct core_packet_queue));
 	tmp->pkt = p;
-	core_pkt_queue_usage++;
+	tmp->next = NULL;
+	if (t->pkt_queue_tail) {
+		t->pkt_queue_tail->next = tmp;
+	} else {
+		t->pkt_queue_head = tmp;
+
+		// The queue was empty, we need to signal it
+		int res = pthread_cond_signal(&t->pkt_queue_cond);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while signaling the thread pkt_queue restart condition : %s", pom_strerror(res));
+			abort();
+			return POM_ERR;
+		}
+
+	}
+	t->pkt_queue_tail = tmp;
+
+	t->pkt_count++;
+	__sync_fetch_and_add(&core_pkt_queue_count, 1);
+
 	registry_perf_inc(perf_pkt_queue, 1);
 
-	if (flags & CORE_QUEUE_HAS_THREAD_AFFINITY) {
-	
-		int affinity_thread = thread_affinity % core_num_threads;
-		struct core_processing_thread *t = core_processing_threads[affinity_thread];
-	
-		if (t->pkt_queue_tail) {
-			tmp->prev = t->pkt_queue_tail;
-			t->pkt_queue_tail->next = tmp;
-			t->pkt_queue_tail = tmp;
-		} else {
-			t->pkt_queue_head = tmp;
-			t->pkt_queue_tail = tmp;
-		}
+	debug_thread("%u: Queued packet %p", t->thread_id, p);
+	pom_mutex_unlock(&t->pkt_queue_lock);
 
-	} else {
-
-		// Add the packet at the end of the shared queue
-		if (core_pkt_queue_tail) {
-			tmp->prev = core_pkt_queue_tail;
-			core_pkt_queue_tail->next = tmp;
-			core_pkt_queue_tail = tmp;
-		} else {
-			core_pkt_queue_head = tmp;
-			core_pkt_queue_tail = tmp;
-		}
-
-	}
-
-	if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
-		pomlog(POMLOG_ERR "Error while signaling restart condition : %s", pom_strerror(errno));
-		pom_mutex_unlock(&core_pkt_queue_mutex);
-		return POM_ERR;
-
-	}
-
-	pom_mutex_unlock(&core_pkt_queue_mutex);
 
 	return POM_OK;
 }
@@ -315,75 +355,68 @@ void *core_processing_thread_func(void *priv) {
 		return NULL;
 	}
 
-	pom_mutex_lock(&core_pkt_queue_mutex);
+	registry_perf_inc(perf_thread_active, 1);
+
+	pom_mutex_lock(&tpriv->pkt_queue_lock);
 
 	while (core_run) {
 		
-		while (!core_pkt_queue_head && !tpriv->pkt_queue_head) {
-			if (core_thread_active == 0) {
+		while (!tpriv->pkt_queue_head) {
+			// We are not active while waiting for a packet
+			registry_perf_dec(perf_thread_active, 1);
+
+			if (registry_perf_getval(perf_thread_active) == 0) {
 				if (core_get_state() == core_state_finishing)
 					core_set_state(core_state_idle);
 			}
 
 			if (!core_run) {
-				pom_mutex_unlock(&core_pkt_queue_mutex);
+				pom_mutex_unlock(&tpriv->pkt_queue_lock);
 				goto end;
 			}
 
-			if (pthread_cond_wait(&core_pkt_queue_restart_cond, &core_pkt_queue_mutex)) {
-				pomlog(POMLOG_ERR "Error while waiting for restart condition : %s", pom_strerror(errno));
+			int res = pthread_cond_wait(&tpriv->pkt_queue_cond, &tpriv->pkt_queue_lock);
+			if (res) {
+				pomlog(POMLOG_ERR "Error while waiting for restart condition : %s", pom_strerror(res));
 				abort();
 				return NULL;
 			}
-
+			registry_perf_inc(perf_thread_active, 1);
 		}
-		core_thread_active++;
-		registry_perf_inc(perf_thread_active, 1);
 
-		struct core_packet_queue *tmp = NULL;
-		
-		// Dequeue packets from our own queue first
-		struct packet *pkt = NULL;
-		if (tpriv->pkt_queue_head) {
-			tmp = tpriv->pkt_queue_head;
-			pkt = tmp->pkt;
 
-			tpriv->pkt_queue_head = tmp->next;
-			if (tpriv->pkt_queue_head)
-				tpriv->pkt_queue_head->prev = NULL;
-			else
-				tpriv->pkt_queue_tail = NULL;
+		// Dequeue a packet
+		struct core_packet_queue *tmp = tpriv->pkt_queue_head;
+		tpriv->pkt_queue_head = tmp->next;
+		if (!tpriv->pkt_queue_head)
+			tpriv->pkt_queue_tail = NULL;
 
-		} else {
-			tmp = core_pkt_queue_head;
-			pkt = tmp->pkt;
-
-			// Remove the packet from the main queue
-			core_pkt_queue_head = tmp->next;
-			if (core_pkt_queue_head)
-				core_pkt_queue_head->prev = NULL;
-			else
-				core_pkt_queue_tail = NULL;
-		}
 
 		// Add it to the unused list
-		memset(tmp, 0, sizeof(struct core_packet_queue));
-		tmp->next = core_pkt_queue_unused;
-		if (tmp->next)
-			tmp->next->prev = tmp;
-		core_pkt_queue_unused = tmp;
+		tmp->next = tpriv->pkt_queue_unused;
+		tpriv->pkt_queue_unused = tmp;
 
-		core_pkt_queue_usage--;
+		tpriv->pkt_count--;
+
 		registry_perf_dec(perf_pkt_queue, 1);
 
-		pom_mutex_unlock(&core_pkt_queue_mutex);
+		__sync_fetch_and_sub(&core_pkt_queue_count, 1);
 
-		// Lock the processing thread
-		if (pthread_rwlock_rdlock(&core_processing_lock)) {
-			pomlog(POMLOG_ERR "Error while locking the processing lock : %s", pom_strerror(errno));
+		// Tell the input processes that they can continue queuing packets
+		int res = pthread_cond_broadcast(&core_pkt_queue_wait_cond);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while signaling the main pkt_queue condition : %s", pom_strerror(res));
 			abort();
-			return NULL;
 		}
+
+		// Keep track of our packet
+		struct packet *pkt = tmp->pkt;
+
+		pom_mutex_unlock(&tpriv->pkt_queue_lock);
+		debug_thread("%u: Processing packet %p", tpriv->thread_id, pkt);
+
+		// Lock the processing lock
+		pom_rwlock_rlock(&core_processing_lock);
 
 		// Update the current clock
 		if (core_clock[tpriv->thread_id] < pkt->ts) // Make sure we keep it monotonous
@@ -392,36 +425,25 @@ void *core_processing_thread_func(void *priv) {
 		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
 		if (core_process_packet(pkt) == POM_ERR) {
 			core_run = 0;
-			pthread_cond_broadcast(&core_pkt_queue_restart_cond);
-			pthread_rwlock_unlock(&core_processing_lock);
+			pom_rwlock_unlock(&core_processing_lock);
 			break;
 		}
 
 		// Process timers
 		if (timers_process() != POM_OK) {
-			pthread_rwlock_unlock(&core_processing_lock);
+			pom_rwlock_unlock(&core_processing_lock);
 			break;
 		}
 
-		if (pthread_rwlock_unlock(&core_processing_lock)) {
-			pomlog(POMLOG_ERR "Error while releasing the processing lock : %s", pom_strerror(errno));
-			break;
-		}
+		pom_rwlock_unlock(&core_processing_lock);
 
 		if (packet_pool_release(pkt) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while releasing the packet to the pool");
 			break;
 		}
 		
-		pom_mutex_lock(&core_pkt_queue_mutex);
-		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
-			pomlog(POMLOG_ERR "Error while signaling the done condition : %s", pom_strerror(errno));
-			pom_mutex_unlock(&core_pkt_queue_mutex);
-			break;
-
-		}
-		core_thread_active--;
-		registry_perf_dec(perf_thread_active, 1);
+		// Re-lock our queue for the next run
+		pom_mutex_lock(&tpriv->pkt_queue_lock);
 
 	}
 
@@ -690,6 +712,13 @@ int core_set_state(enum core_state state) {
 	int res = POM_OK;
 
 	pom_mutex_lock(&core_state_lock);
+
+	if (core_cur_state == state) {
+		pomlog(POMLOG_DEBUG "Core state unchanged : %u", state);
+		pom_mutex_unlock(&core_state_lock);
+		return POM_OK;
+	}
+
 	core_cur_state = state;
 	pomlog(POMLOG_DEBUG "Core state changed to %u", state);
 	if (pthread_cond_broadcast(&core_state_cond)) {
@@ -716,14 +745,17 @@ int core_set_state(enum core_state state) {
 		core_start_time = pom_gettimeofday();
 		res = core_processing_start();
 	} else if (state == core_state_finishing) {
-		//pom_mutex_lock(&core_pkt_queue_mutex);
-		if (pthread_cond_broadcast(&core_pkt_queue_restart_cond)) {
-			pom_mutex_unlock(&core_pkt_queue_mutex);
-			pom_mutex_unlock(&core_state_lock);
-			pomlog(POMLOG_ERR "Error while broadcasting restart condition after set state");
-			return POM_ERR;
+		// Signal all the threads
+		unsigned int i;
+		for (i = 0; i < core_num_threads; i++) {
+			struct core_processing_thread *t = core_processing_threads[i];
+
+			int res = pthread_cond_broadcast(&t->pkt_queue_cond);
+			if (res) {
+				pomlog(POMLOG_ERR "Error while broadcasting restart condition after set state");
+				abort();
+			}
 		}
-		//pom_mutex_unlock(&core_pkt_queue_mutex);
 	}
 	pom_mutex_unlock(&core_state_lock);
 	return res;

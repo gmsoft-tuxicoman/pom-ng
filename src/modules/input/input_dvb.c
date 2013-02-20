@@ -729,7 +729,7 @@ static int input_dvb_read(struct input *i) {
 
 	uint16_t pid = ((pload[1] & 0x1F) << 8) | pload[2];
 
-	return core_queue_packet(pkt, CORE_QUEUE_HAS_THREAD_AFFINITY, pid);
+	return core_queue_packet(pkt, CORE_QUEUE_HAS_THREAD_AFFINITY | CORE_QUEUE_DROP_IF_FULL, pid);
 
 }
 
