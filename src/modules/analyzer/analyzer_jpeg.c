@@ -80,10 +80,8 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 	pload_jpeg_data_items[analyzer_jpeg_pload_width].value_type = ptype_get_type("uint16");
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].name = "height";
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].value_type = ptype_get_type("uint16");
-#ifdef HAVE_LIBEXIF
 	pload_jpeg_data_items[analyzer_jpeg_pload_exif].name = "exif";
 	pload_jpeg_data_items[analyzer_jpeg_pload_exif].flags = ANALYZER_DATA_FLAG_LIST;
-#endif
 
 	static struct data_reg pload_jpeg_data = {
 		.items = pload_jpeg_data_items,
