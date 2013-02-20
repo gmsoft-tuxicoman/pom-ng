@@ -1,4 +1,5 @@
 v0.0.8
+	Add performance support.
 	Fix possible deadlock in packet_stream.
 	Improve input pcap_dir start/stop.
 	Fix gap count in packet_multipart.
