@@ -718,10 +718,15 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	if (stream->t)
 		conntrack_timer_cleanup(stream->t);
 
-	if (pthread_mutex_destroy(&stream->lock)) 
-		pomlog(POMLOG_ERR "Error while destroying stream lock : %s", pom_strerror(errno));
-	if (pthread_mutex_destroy(&stream->wait_lock)) 
-		pomlog(POMLOG_ERR "Error while destroying stream wait lock : %s", pom_strerror(errno));
+	int res = pthread_mutex_destroy(&stream->lock);
+	if (res){
+		pomlog(POMLOG_ERR "Error while destroying stream lock : %s", pom_strerror(res));
+	}
+
+	res = pthread_mutex_destroy(&stream->wait_lock);
+	if (res){
+		pomlog(POMLOG_ERR "Error while destroying stream wait lock : %s", pom_strerror(res));
+	}
 
 	while (stream->wait_list_unused) {
 		struct packet_stream_thread_wait *tmp = stream->wait_list_unused;
@@ -738,6 +743,17 @@ int packet_stream_cleanup(struct packet_stream *stream) {
 	return POM_OK;
 }
 
+static void packet_stream_end_process_packet(struct packet_stream *stream) {
+
+	pom_mutex_unlock(&stream->lock);
+	pom_mutex_lock(&stream->wait_lock);
+	if (stream->wait_list_head) {
+		debug_stream("thread %p, entry %p : signaling thread %p", pthread_self(), stream, stream->wait_list_head->thread);
+		pthread_cond_broadcast(&stream->wait_list_head->cond);
+	}
+	pom_mutex_unlock(&stream->wait_lock);
+}
+
 int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
 
 	struct packet_stream *stream = priv;
@@ -747,8 +763,9 @@ int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
 	conntrack_unlock(ce);
 
 	pom_mutex_lock(&stream->lock);
+	debug_stream("thread %p, entry %p : timeout", pthread_self(), stream);
 	res = packet_stream_force_dequeue(stream);
-	pom_mutex_unlock(&stream->lock);
+	packet_stream_end_process_packet(stream);
 
 	return res;
 }
@@ -825,17 +842,6 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 
 	return 1;
 
-}
-
-static void packet_stream_end_process_packet(struct packet_stream *stream) {
-
-	pom_mutex_unlock(&stream->lock);
-	pom_mutex_lock(&stream->wait_lock);
-	if (stream->wait_list_head) {
-		debug_stream("thread %p, entry %p : signaling thread %p", pthread_self(), stream, stream->wait_list_head->thread);
-		pthread_cond_broadcast(&stream->wait_list_head->cond);
-	}
-	pom_mutex_unlock(&stream->wait_lock);
 }
 
 static void packet_stream_free_packet(struct packet_stream_pkt *p) {
@@ -940,7 +946,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 
 		while (1) {
-			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : waiting", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : waiting (%u)", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack, must_wait);
 			if (pthread_cond_wait(&lst->cond, &stream->wait_lock)) {
 				pomlog(POMLOG_ERR "Error while waiting for the packet stream wait cond : %s", pom_strerror(errno));
 				abort();
@@ -1158,7 +1164,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
 	packet_stream_end_process_packet(stream);
 
-	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done queued", pthread_self(),  stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done queued", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
 	return PROTO_OK;
 }
 
