@@ -754,7 +754,7 @@ static void packet_stream_end_process_packet(struct packet_stream *stream) {
 	pom_mutex_unlock(&stream->wait_lock);
 }
 
-int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
+int packet_stream_timeout(struct conntrack_entry *ce, void *priv, ptime now) {
 
 	struct packet_stream *stream = priv;
 	int res = POM_OK;
@@ -763,7 +763,7 @@ int packet_stream_timeout(struct conntrack_entry *ce, void *priv) {
 	conntrack_unlock(ce);
 
 	pom_mutex_lock(&stream->lock);
-	debug_stream("thread %p, entry %p : timeout", pthread_self(), stream);
+	debug_stream("thread %p, entry %p : timeout at %u.%06u", pthread_self(), stream, pom_ptime_sec(now), pom_ptime_usec(now));
 	res = packet_stream_force_dequeue(stream);
 	packet_stream_end_process_packet(stream);
 
@@ -829,7 +829,7 @@ static int packet_stream_is_packet_next(struct packet_stream *stream, struct pac
 			|| (rev_seq > pkt->ack && rev_seq - pkt->ack > PACKET_HALF_SEQ)) {
 			// The host processed data in the reverse direction which we haven't processed yet
 			if (stream->t)
-				conntrack_timer_queue(stream->t, stream->rev_dir_timeout);
+				conntrack_timer_queue(stream->t, stream->rev_dir_timeout, stream->last_ts);
 			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", pthread_self(), stream, pom_ptime_sec(pkt->pkt->ts), pom_ptime_usec(pkt->pkt->ts), pkt->seq, pkt->ack, cur_seq, rev_seq);
 			return 0;
 		}
@@ -993,6 +993,10 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	}
 
+	// Update the last timestamp seen on the stream
+	if (stream->last_ts < pkt->ts)
+		stream->last_ts = pkt->ts;
+
 	// Put this packet in our struct packet_stream_pkt
 	struct packet_stream_pkt spkt = {0};
 	spkt.pkt = pkt;
@@ -1061,7 +1065,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
 				conntrack_timer_dequeue(stream->t);
 			else
-				conntrack_timer_queue(stream->t, stream->same_dir_timeout);
+				conntrack_timer_queue(stream->t, stream->same_dir_timeout, stream->last_ts);
 		}
 
 		packet_stream_end_process_packet(stream);
@@ -1161,7 +1165,7 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 	// Add timeout
 	if (stream->t && (stream->head[POM_DIR_FWD] || stream->head[POM_DIR_REV])) 
-		conntrack_timer_queue(stream->t, stream->same_dir_timeout);
+		conntrack_timer_queue(stream->t, stream->same_dir_timeout, stream->last_ts);
 	packet_stream_end_process_packet(stream);
 
 	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done queued", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);

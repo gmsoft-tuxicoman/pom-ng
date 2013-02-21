@@ -616,7 +616,7 @@ int proto_expectation_set_field(struct proto_expectation *e, int stack_index, st
 	return POM_OK;
 }
 
-int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, struct conntrack_session *session) {
+int proto_expectation_add(struct proto_expectation *e, struct conntrack_session *session, unsigned int expiry, ptime now) {
 
 	if (!e || !e->tail || !e->tail->proto) {
 		pomlog(POMLOG_ERR "Cannot add expectation as it's incomplete");
@@ -627,7 +627,7 @@ int proto_expectation_add(struct proto_expectation *e, unsigned int expiry, stru
 	if (!e->expiry)
 		return POM_ERR;
 
-	if (timer_queue(e->expiry, expiry) != POM_OK)
+	if (timer_queue_now(e->expiry, expiry, now) != POM_OK)
 		return POM_ERR;
 
 	e->session = session;

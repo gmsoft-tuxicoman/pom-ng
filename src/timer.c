@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -182,6 +182,12 @@ int timer_cleanup(struct timer *t) {
 
 int timer_queue(struct timer *t, unsigned int expiry) {
 
+	return timer_queue_now(t, expiry, core_get_clock_last());
+}
+
+int timer_queue_now(struct timer *t, unsigned int expiry, ptime now) {
+
+
 	pom_mutex_lock(&timer_main_lock);
 
 	// Timer is still queued, dequeue it
@@ -306,9 +312,8 @@ int timer_queue(struct timer *t, unsigned int expiry) {
 	}
 
 	// Update the expiry time
-
-	t->expires = core_get_clock();
-	t->expires += expiry * 1000000UL;
+	
+	t->expires = now + (expiry * 1000000UL);
 	t->queue = tq;
 	pom_mutex_unlock(&timer_main_lock);
 

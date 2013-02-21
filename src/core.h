@@ -73,6 +73,7 @@ int core_process_packet(struct packet *p);
 struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
 
 ptime core_get_clock();
+ptime core_get_clock_last();
 void core_wait_state(enum core_state state);
 enum core_state core_get_state();
 int core_set_state(enum core_state state);

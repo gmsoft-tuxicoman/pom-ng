@@ -72,10 +72,10 @@ void conntrack_refcount_dec(struct conntrack_entry *ce);
 int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv));
 void *conntrack_get_priv(struct conntrack_entry *ce, void *obj);
 
-int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay);
+int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay, ptime now);
 
-struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*handler) (struct conntrack_entry *ce, void *priv), void *priv);
-int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry);
+struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*handler) (struct conntrack_entry *ce, void *priv, ptime now), void *priv);
+int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry, ptime now);
 int conntrack_timer_dequeue(struct conntrack_timer *t);
 int conntrack_timer_cleanup(struct conntrack_timer *t);
 

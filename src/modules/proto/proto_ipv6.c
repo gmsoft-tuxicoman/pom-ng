@@ -228,7 +228,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 
 	// Schedule the timeout for the fragment
 	uint32_t *frag_timeout = PTYPE_UINT32_GETVAL(param_frag_timeout);
-	conntrack_timer_queue(tmp->t, *frag_timeout);
+	conntrack_timer_queue(tmp->t, *frag_timeout, p->ts);
 
 
 	if (!frag_more)
@@ -281,13 +281,13 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 	s_next->plen = ntohs(hdr->ip6_plen);
 
 	if (s->ce->children) {
-		if (conntrack_delayed_cleanup(s->ce, 0) != POM_OK) {
+		if (conntrack_delayed_cleanup(s->ce, 0, p->ts) != POM_OK) {
 			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
 	} else {
 		uint32_t *conntrack_timeout = PTYPE_UINT32_GETVAL(param_conntrack_timeout);
-		if (conntrack_delayed_cleanup(s->ce, *conntrack_timeout) != POM_OK) {
+		if (conntrack_delayed_cleanup(s->ce, *conntrack_timeout, p->ts) != POM_OK) {
 			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
@@ -349,7 +349,7 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 	return res;
 }
 
-static int proto_ipv6_fragment_cleanup(struct conntrack_entry *ce, void *priv) {
+static int proto_ipv6_fragment_cleanup(struct conntrack_entry *ce, void *priv, ptime now) {
 
 	struct proto_ipv6_fragment *f = priv;
 

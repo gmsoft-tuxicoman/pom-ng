@@ -164,7 +164,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		stream->last_seq = (buff[3] - 1) & 0xF;
 
 		// Remove the conntrack timer if any
-		conntrack_delayed_cleanup(s->ce, 0);
+		conntrack_delayed_cleanup(s->ce, 0, p->ts);
 		
 		// Identify the stream,
 		if (pid == MPEG_TS_DOCSIS_PID) {
@@ -394,7 +394,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 
 	if (stream->multipart) {
 		uint16_t *stream_timeout = PTYPE_UINT16_GETVAL(stream->ppriv->param_mpeg_ts_stream_timeout);
-		timer_queue(stream->t, *stream_timeout);
+		timer_queue_now(stream->t, *stream_timeout, p->ts);
 	}
 
 	// No need to process further, we take care of that
@@ -433,7 +433,7 @@ int proto_mpeg_ts_stream_cleanup(void *priv, ptime now) {
 
 	if (cpriv->streams_array_size == 1) {
 		// Cleanup the conntrack in 10 seconds if no more packets
-		conntrack_delayed_cleanup(stream->ce, 10);
+		conntrack_delayed_cleanup(stream->ce, 10, now);
 	} else {
 		size_t len = (cpriv->streams_array_size - i - 1) * sizeof(struct proto_mpeg_ts_stream);
 		if (len)

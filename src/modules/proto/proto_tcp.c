@@ -288,7 +288,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		}
 	}
 
-	if (conntrack_delayed_cleanup(s->ce, *delay) != POM_OK) {
+	if (conntrack_delayed_cleanup(s->ce, *delay, p->ts) != POM_OK) {
 		conntrack_unlock(s->ce);
 		return PROTO_ERR;
 	}

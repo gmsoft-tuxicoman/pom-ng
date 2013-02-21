@@ -23,6 +23,7 @@
 #include "jhash.h"
 #include "common.h"
 #include "ptype.h"
+#include "core.h"
 
 #include <pthread.h>
 #include <pom-ng/timer.h>
@@ -594,7 +595,7 @@ void *conntrack_get_priv(struct conntrack_entry *ce, void *obj) {
 	return priv_lst->priv;
 }
 
-int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
+int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay, ptime now) {
 
 	if (!delay) {
 		if (ce->cleanup_timer) {
@@ -626,7 +627,7 @@ int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay) {
 
 	}
 
-	timer_queue(ce->cleanup_timer->timer, delay);
+	timer_queue_now(ce->cleanup_timer->timer, delay, now);
 
 	return POM_OK;
 }
@@ -658,7 +659,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 	conntrack_lock(ce);
 	if (ce->refcount) {
 		pomlog(POMLOG_ERR "Conntrack %p is still being referenced : %u !", ce, ce->refcount);
-		conntrack_delayed_cleanup(ce, 1);
+		conntrack_delayed_cleanup(ce, 1, core_get_clock_last());
 		conntrack_unlock(ce);
 		pom_mutex_unlock(&ct->locks[hash]);
 		return POM_OK;
@@ -718,7 +719,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 			}
 
 			if (!ce->parent->ce->children) // Parent has no child anymore, clean it up after some time
-				conntrack_delayed_cleanup(ce->parent->ce, CONNTRACK_CHILDLESS_TIMEOUT);
+				conntrack_delayed_cleanup(ce->parent->ce, CONNTRACK_CHILDLESS_TIMEOUT, core_get_clock_last());
 
 			conntrack_unlock(ce->parent->ce);
 		} else {
@@ -784,7 +785,7 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 	return POM_OK;
 }
 
-struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*handler) (struct conntrack_entry *ce, void *priv), void *priv) {
+struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*handler) (struct conntrack_entry *ce, void *priv, ptime now), void *priv) {
 
 
 	if (!ce || !handler)
@@ -813,8 +814,8 @@ struct conntrack_timer *conntrack_timer_alloc(struct conntrack_entry *ce, int (*
 	return t;
 }
 
-int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry) {
-	return timer_queue(t->timer, expiry);
+int conntrack_timer_queue(struct conntrack_timer *t, unsigned int expiry, ptime now) {
+	return timer_queue_now(t->timer, expiry, now);
 }
 
 int conntrack_timer_dequeue(struct conntrack_timer *t) {
@@ -869,7 +870,7 @@ int conntrack_timer_process(void *priv, ptime now) {
 	conntrack_lock(ce);
 	pom_mutex_unlock(&ct->locks[t->hash]);
 	
-	int res = t->handler(ce, t->priv);
+	int res = t->handler(ce, t->priv, now);
 	
 	return res;
 }

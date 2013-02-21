@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -73,6 +73,7 @@ struct packet_stream {
 	unsigned int same_dir_timeout, rev_dir_timeout;
 	struct packet_stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
 	int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+	ptime last_ts;
 	struct conntrack_timer *t;
 	struct conntrack_entry *ce;
 	pthread_mutex_t lock;
@@ -103,7 +104,7 @@ int packet_info_pool_init();
 int packet_info_pool_release(struct packet_info *info, unsigned int protocol_id);
 int packet_info_pool_cleanup();
 
-int packet_stream_timeout(struct conntrack_entry *ce, void *priv);
+int packet_stream_timeout(struct conntrack_entry *ce, void *priv, ptime now);
 int packet_stream_force_dequeue(struct packet_stream *stream);
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction);
 

@@ -142,11 +142,11 @@ static int proto_udp_process(void *proto_priv, struct packet *p, struct proto_pr
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	if (s->ce->children) {
-		res = conntrack_delayed_cleanup(s->ce, 0);
+		res = conntrack_delayed_cleanup(s->ce, 0, p->ts);
 		s_next->proto = s->ce->children->ce->proto;
 	} else {
 		uint32_t *conntrack_timeout = PTYPE_UINT32_GETVAL(param_conntrack_timeout);
-		res = conntrack_delayed_cleanup(s->ce, *conntrack_timeout);
+		res = conntrack_delayed_cleanup(s->ce, *conntrack_timeout, p->ts);
 	}
 
 	conntrack_unlock(s->ce);

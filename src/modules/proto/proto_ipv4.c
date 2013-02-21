@@ -201,10 +201,10 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 
 	int res = POM_ERR;
 	if (s->ce->children) {
-		res = conntrack_delayed_cleanup(s->ce, 0);
+		res = conntrack_delayed_cleanup(s->ce, 0, p->ts);
 	} else {
 		uint32_t *conntrack_timeout = PTYPE_UINT32_GETVAL(param_conntrack_timeout);
-		res = conntrack_delayed_cleanup(s->ce, *conntrack_timeout);
+		res = conntrack_delayed_cleanup(s->ce, *conntrack_timeout, p->ts);
 	}
 	if (res == POM_ERR) {
 		conntrack_unlock(s->ce);
@@ -308,7 +308,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 
 	// Schedule the timeout for the fragment
 	uint32_t *frag_timeout = PTYPE_UINT32_GETVAL(param_frag_timeout);
-	conntrack_timer_queue(tmp->t, *frag_timeout);
+	conntrack_timer_queue(tmp->t, *frag_timeout, p->ts);
 
 
 	if (!(frag_off & IP_MORE_FRAG))
@@ -337,7 +337,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 
 }
 
-static int proto_ipv4_fragment_cleanup(struct conntrack_entry *ce, void *priv) {
+static int proto_ipv4_fragment_cleanup(struct conntrack_entry *ce, void *priv, ptime now) {
 
 	struct proto_ipv4_fragment *f = priv;
 

@@ -652,7 +652,26 @@ ptime core_get_clock() {
 	unsigned int i;
 	for (i = 1; i < core_num_threads; i++) {
 		ptime clock_i = core_clock[i]; // Make the compare and set operation atomic
+
+		if (!clock_i) // This thread hasn't processed a packet yet
+			continue;
+
 		if (now > clock_i)
+			now = clock_i;
+	}
+
+	return now;
+}
+
+ptime core_get_clock_last() {
+
+	ptime now = core_clock[0];
+
+	// Take only the most recent time
+	unsigned int i;
+	for (i = 1; i < core_num_threads; i++) {
+		ptime clock_i = core_clock[i]; // Make the compare and set operation atomic
+		if (now < clock_i)
 			now = clock_i;
 	}
 

@@ -385,7 +385,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 
 	}
 
-	timer_queue(cm->t, T4_TIMEOUT * cm->t4_multiplier);
+	timer_queue_now(cm->t, T4_TIMEOUT * cm->t4_multiplier, p->ts);
 
 	pom_mutex_unlock(&priv->lock);
 

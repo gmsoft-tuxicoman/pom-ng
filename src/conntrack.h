@@ -54,7 +54,7 @@ struct conntrack_timer {
 	struct conntrack_entry *ce;
 	struct proto *proto;
 	uint32_t hash;
-	int (*handler) (struct conntrack_entry *ce, void *priv);
+	int (*handler) (struct conntrack_entry *ce, void *priv, ptime now);
 	void *priv;
 
 	struct conntrack_timer *prev, *next;

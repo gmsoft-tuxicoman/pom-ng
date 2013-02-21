@@ -53,7 +53,7 @@ struct mod_reg_info* proto_ipv4_reg_info();
 static int proto_ipv4_init(struct proto *proto, struct registry_instance *i);
 static int proto_ipv4_mod_register(struct mod_reg *mod);
 static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-static int proto_ipv4_fragment_cleanup(struct conntrack_entry *ce, void *priv);
+static int proto_ipv4_fragment_cleanup(struct conntrack_entry *ce, void *priv, ptime now);
 static int proto_ipv4_conntrack_cleanup(void *ce_priv);
 static int proto_ipv4_cleanup(void *proto_priv);
 static int proto_ipv4_mod_unregister();

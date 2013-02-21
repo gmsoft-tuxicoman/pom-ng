@@ -512,7 +512,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			q->cls = question.qclass;
 			q->name = question.qname;
 
-			timer_queue(q->t, *PTYPE_UINT32_GETVAL(priv->p_qtimeout));
+			timer_queue_now(q->t, *PTYPE_UINT32_GETVAL(priv->p_qtimeout), p->ts);
 			pom_mutex_lock(&priv->lock);
 			q->next = priv->entry_head;
 			if (q->next)
