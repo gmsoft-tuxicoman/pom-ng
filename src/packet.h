@@ -35,6 +35,8 @@
 #define PACKET_FLAG_STREAM_GOT_REV_DIR	0x8
 #define PACKET_FLAG_STREAM_GOT_BOTH_DIR	(PACKET_FLAG_STREAM_GOT_FWD_DIR | PACKET_FLAG_STREAM_GOT_REV_DIR)
 
+#define PACKET_STREAM_GAP_STEP_MAX	2048
+
 struct packet_buffer {
 
 	void *base_buff;
@@ -67,7 +69,6 @@ struct packet_stream_thread_wait {
 struct packet_stream {
 
 	uint32_t cur_seq[POM_DIR_TOT];
-	uint32_t cur_ack[POM_DIR_TOT];
 	uint32_t cur_buff_size, max_buff_size;
 	unsigned int flags;
 	unsigned int same_dir_timeout, rev_dir_timeout;
@@ -106,6 +107,7 @@ int packet_info_pool_cleanup();
 
 int packet_stream_timeout(struct conntrack_entry *ce, void *priv, ptime now);
 int packet_stream_force_dequeue(struct packet_stream *stream);
+int packet_stream_fill_gap(struct packet_stream *stream, struct packet_stream_pkt *p, uint32_t gap, int reverse_dir);
 struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction);
 
 #endif

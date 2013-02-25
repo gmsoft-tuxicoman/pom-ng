@@ -328,6 +328,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 	conntrack_unlock(s->ce);
 
 	if (plen) {
+
 		// Queue the payload
 		struct proto_process_stack *s_next = &stack[stack_index + 1];
 		s_next->pload = s->pload + hdr_len;
@@ -345,11 +346,16 @@ static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *
 
 	struct proto_tcp_conntrack_priv *cp = ce->priv;
 
-	if (cp->proto) {
-		stack[stack_index].proto = cp->proto;
-		return core_process_multi_packet(stack, stack_index, p);
-	}
-	return PROTO_OK;
+	if (!cp->proto)
+		return PROTO_OK;
+
+	struct proto_process_stack *s_tcp = &stack[stack_index - 1];
+	uint8_t flags = *PTYPE_UINT8_GETVAL(s_tcp->pkt_info->fields_value[proto_tcp_field_flags]);
+	if (flags & TH_FIN) // Increase the sequence number by 1 if we got a FIN
+		packet_stream_increase_seq(cp->stream, s_tcp->direction, 1);
+
+	stack[stack_index].proto = cp->proto;
+	return core_process_multi_packet(stack, stack_index, p);
 }
 
 

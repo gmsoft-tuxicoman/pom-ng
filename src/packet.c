@@ -662,9 +662,7 @@ struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack
 	
 	int rev_direction = POM_DIR_REVERSE(direction);
 	res->cur_seq[direction] = start_seq;
-	res->cur_ack[direction] = start_ack;
 	res->cur_seq[rev_direction] = start_ack;
-	res->cur_ack[rev_direction] = start_seq;
 	res->max_buff_size = max_buff_size;
 	res->ce = ce;
 	if (pthread_mutex_init(&res->lock, NULL)) {
@@ -1031,7 +1029,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 
 		// Process it
 		stream->cur_seq[direction] += cur_stack->plen;
-		stream->cur_ack[direction] = ack;
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
 
 		int res = stream->handler(stream->ce, pkt, stack, stack_index);
@@ -1054,7 +1051,6 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 			}
 
 			stream->cur_seq[cur_dir] += p->plen;
-			stream->cur_ack[cur_dir] = p->ack;
 	
 			packet_stream_free_packet(p);
 
@@ -1172,6 +1168,63 @@ int packet_stream_process_packet(struct packet_stream *stream, struct packet *pk
 	return PROTO_OK;
 }
 
+
+int packet_stream_fill_gap(struct packet_stream *stream, struct packet_stream_pkt *p, uint32_t gap, int reverse_dir) {
+
+	if (gap > stream->max_buff_size) {
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : gap of %u too big. not filling", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
+		return POM_OK;
+	}
+	
+	if (reverse_dir) {
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u in forward direction", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
+	} else {
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u in reverse direction", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
+	}
+	
+	uint32_t gap_step = gap;
+	if (gap_step > PACKET_STREAM_GAP_STEP_MAX)
+		gap_step = PACKET_STREAM_GAP_STEP_MAX;
+
+	void *zero = malloc(gap_step);
+	if (!zero) {
+		pom_oom(gap_step);
+		return POM_ERR;
+	}
+	memset(zero, 0, gap_step);
+	
+	struct proto_process_stack *s = &p->stack[p->stack_index];
+	uint32_t plen_old = s->plen;
+	void *pload_old = s->pload;
+	int dir_old = s->direction;
+	int dir_new = s->direction;
+
+	if (reverse_dir)
+		dir_new = POM_DIR_REVERSE(s->direction);
+
+
+	uint32_t pos;
+	for (pos = 0; pos < gap; pos += gap_step) {
+		if (pos + gap_step < gap)
+			s->plen = gap_step;
+		else
+			s->plen = gap - pos;
+		s->pload = zero;
+		s->direction = dir_new;
+		int res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
+		if (res == PROTO_ERR)
+			break;
+	}
+
+	free(zero);
+
+	s->pload = pload_old;
+	s->plen = plen_old;
+	s->direction = dir_old;
+
+	return POM_OK;
+}
+		
 int packet_stream_force_dequeue(struct packet_stream *stream) {
 
 	struct packet_stream_pkt *p = NULL;
@@ -1234,54 +1287,34 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	if (packet_stream_remove_dupe_bytes(stream, p, next_dir) == POM_ERR)
 		return POM_ERR;
 
+	int res = PROTO_OK;
+	
+	// Check if we were waiting on the reverse direction
+	if (stream->flags & PACKET_FLAG_STREAM_BIDIR) {
+		
+		unsigned int next_rev_dir = POM_DIR_REVERSE(next_dir);
+		
+		uint32_t rev_seq = stream->cur_seq[next_rev_dir];
+		if ((rev_seq < p->ack && p->ack - rev_seq < PACKET_HALF_SEQ)
+			|| (rev_seq > p->ack && rev_seq - p->ack > PACKET_HALF_SEQ)) {
+				
+
+			// We were waiting for reverse
+			uint32_t rev_gap = p->ack - stream->cur_seq[next_rev_dir];
+			res = packet_stream_fill_gap(stream, p, rev_gap, 1);
+
+		}
+
+	}
+
 
 	uint32_t gap = p->seq - stream->cur_seq[next_dir];
 
-	int res = PROTO_OK;
 
 	if (gap) {
-		
-		if (gap < stream->max_buff_size) {
-		
-			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
-			uint32_t gap_step = gap;
-			if (gap_step > 2048)
-				gap_step = 2048;
-
-			void *zero = malloc(gap_step);
-			if (!zero) {
-				pom_oom(gap_step);
-				return POM_ERR;
-			}
-			memset(zero, 0, gap_step);
-			
-			struct proto_process_stack *s = &p->stack[p->stack_index];
-			uint32_t plen_old = s->plen;
-			void *pload_old = s->pload;
-
-
-			uint32_t pos;
-			for (pos = 0; pos < gap; pos += gap_step) {
-				if (pos + gap_step < gap)
-					s->plen = gap_step;
-				else
-					s->plen = gap - pos;
-				s->pload = zero;
-				res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
-				s->direction = next_dir;
-				if (res == PROTO_ERR)
-					break;
-			}
-
-			free(zero);
-
-			s->pload = pload_old;
-			s->plen = plen_old;
-
-		} else {
-			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : gap of %u too big. not filling", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
+		if (res != PROTO_ERR) {
+			res = packet_stream_fill_gap(stream, p, gap, 0);
 		}
-		
 	}
 
 	if (res != PROTO_ERR) {
@@ -1290,7 +1323,9 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 	}
 
 	stream->cur_seq[next_dir] = p->seq + p->plen;
-	stream->cur_ack[next_dir] = p->ack;
+
+	if (stream->flags & PACKET_FLAG_STREAM_BIDIR)
+		stream->cur_seq[POM_DIR_REVERSE(next_dir)] = p->ack;
 
 	packet_stream_free_packet(p);
 
@@ -1309,7 +1344,6 @@ int packet_stream_force_dequeue(struct packet_stream *stream) {
 			return POM_ERR;
 
 		stream->cur_seq[next_dir] += p->plen;
-		stream->cur_ack[next_dir] = p->ack;
 
 		packet_stream_free_packet(p);
 	}
@@ -1395,6 +1429,28 @@ struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, u
 	return res;
 }
 
+int packet_stream_increase_seq(struct packet_stream *stream, int direction, uint32_t inc) {
+	// This function must be called locked
+	stream->cur_seq[direction] += inc;	
+
+	debug_stream("thread %p, entry %p, seq %u : increasing sequence by %u for direction %u", pthread_self(), stream, stream->cur_seq[direction], inc, direction);
+	// Check if additional packets can be processed
+	unsigned int next_dir = direction;
+	struct packet_stream_pkt *p = NULL;
+	while ((p = packet_stream_get_next(stream, &next_dir))) {
+
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack);
+
+		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == PROTO_ERR)
+			return POM_ERR;
+
+		stream->cur_seq[next_dir] += p->plen;
+
+		packet_stream_free_packet(p);
+	}
+
+	return POM_OK;
+}
 
 struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size) {
 	
