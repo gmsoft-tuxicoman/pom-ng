@@ -58,7 +58,6 @@ struct proto_mpeg_ts_stream {
 	unsigned int pkt_cur_len;
 	unsigned int pkt_tot_len;
 	struct packet_multipart *multipart;
-	struct packet_stream *stream;
 	struct proto_mpeg_ts_priv *ppriv;
 
 	enum proto_mpeg_stream_type type;

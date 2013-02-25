@@ -413,8 +413,6 @@ int proto_mpeg_ts_stream_cleanup(void *priv, ptime now) {
 	// Cleanup the stream stuff
 	if (stream->multipart)
 		packet_multipart_cleanup(stream->multipart);
-	if (stream->stream)
-		packet_stream_cleanup(stream->stream);
 
 	timer_cleanup(stream->t);
 	
@@ -462,8 +460,6 @@ int proto_mpeg_ts_conntrack_cleanup(void *ce_priv) {
 	for (i = 0; i < priv->streams_array_size; i++){ 
 		if (priv->streams[i].multipart) 
 			packet_multipart_cleanup(priv->streams[i].multipart);
-		if (priv->streams[i].stream)
-			packet_stream_cleanup(priv->streams[i].stream);
 		timer_cleanup(priv->streams[i].t);
 	}
 	if (priv->streams)
