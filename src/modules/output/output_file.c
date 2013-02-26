@@ -201,7 +201,7 @@ static int file_pload_open(struct analyzer_pload_instance *pi, const char *filen
 		return POM_ERR;
 	}
 
-	if (priv->perf_files_open)
+	if (priv && priv->perf_files_open)
 		registry_perf_inc(priv->perf_files_open, 1);
 
 	analyzer_pload_instance_set_priv(pi, ppriv);
@@ -246,7 +246,7 @@ int output_file_pload_write(void *output_priv, void *pload_instance_priv, void *
 	int res = pom_write(ppriv->fd, data, len);
 	if (res == POM_ERR)
 		pomlog(POMLOG_ERR "Error while writing to file %s : %s", ppriv->filename, pom_strerror(errno));
-	else if (priv->perf_bytes_written)
+	else if (priv && priv->perf_bytes_written)
 		registry_perf_inc(priv->perf_bytes_written, len);
 		
 
@@ -263,10 +263,12 @@ int output_file_pload_close(void *output_priv, void *pload_instance_priv) {
 	free(ppriv);
 
 	struct output_file_priv *priv = output_priv;
-	if (priv->perf_files_open)
-		registry_perf_dec(priv->perf_files_open, 1);
-	if (priv->perf_files_closed)
-		registry_perf_inc(priv->perf_files_closed, 1);
+	if (priv) {
+		if (priv->perf_files_open)
+			registry_perf_dec(priv->perf_files_open, 1);
+		if (priv->perf_files_closed)
+			registry_perf_inc(priv->perf_files_closed, 1);
+	}
 
 	return close(fd);
 }
