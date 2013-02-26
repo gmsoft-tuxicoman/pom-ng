@@ -558,7 +558,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 	pom_mutex_unlock(&file->lock);
 
-	if (log_evt->priv->perf_events)
+	if (log_evt->priv && log_evt->priv->perf_events)
 		registry_perf_inc(log_evt->priv->perf_events, 1);
 
 	return POM_OK;
