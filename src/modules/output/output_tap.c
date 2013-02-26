@@ -124,6 +124,8 @@ int addon_tap_init(struct addon_plugin *a) {
 	if (!priv)
 		return POM_ERR;
 
+	addon_plugin_set_priv(a, priv);
+
 	if (addon_plugin_add_param(a, "ifname", "pom0", priv->p_ifname) != POM_OK)
 		goto err;
 
