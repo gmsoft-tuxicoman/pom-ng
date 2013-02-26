@@ -61,7 +61,7 @@ struct proto_tcp_priv {
 struct proto_tcp_conntrack_priv {
 
 	unsigned int state;
-	struct packet_stream *stream;
+	struct stream *stream;
 	struct proto *proto;
 	uint32_t start_seq[POM_DIR_TOT];
 };

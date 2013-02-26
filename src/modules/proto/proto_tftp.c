@@ -22,6 +22,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/core.h>
 #include <pom-ng/event.h>
+#include <pom-ng/stream.h>
 #include <pom-ng/ptype_uint16.h>
 
 #include <pom-ng/proto_tftp.h>
@@ -185,15 +186,15 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 			s_next->plen = plen;
 
 			if (!priv->stream) {
-				priv->stream = packet_stream_alloc(PROTO_TFTP_BLK_SIZE, 0, POM_DIR_FWD, PROTO_TFTP_STREAM_BUFF, s->ce, 0);
+				priv->stream = stream_alloc(PROTO_TFTP_BLK_SIZE, 0, POM_DIR_FWD, PROTO_TFTP_STREAM_BUFF, s->ce, 0);
 				if (!priv->stream) {
 					conntrack_unlock(s->ce);
 					return PROTO_ERR;
 				}
-				packet_stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER, 0, proto_tftp_process_payload);
+				stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER, 0, proto_tftp_process_payload);
 			}
 
-			int res = packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
+			int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
 			if (res == PROTO_OK) {
 				conntrack_unlock(s->ce);
 				return PROTO_STOP;
@@ -233,7 +234,7 @@ static int proto_tftp_conntrack_cleanup(void *ce_priv) {
 	struct proto_tftp_conntrack_priv *priv = ce_priv;
 		
 	if (priv->stream)
-		packet_stream_cleanup(priv->stream);
+		stream_cleanup(priv->stream);
 
 	free(priv);
 

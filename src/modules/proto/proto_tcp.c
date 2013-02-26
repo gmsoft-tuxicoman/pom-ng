@@ -22,6 +22,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/conntrack.h>
 #include <pom-ng/core.h>
+#include <pom-ng/stream.h>
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
@@ -312,14 +313,14 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		}
 
 		if (plen) {
-			priv->stream = packet_stream_alloc(priv->start_seq[s->direction], priv->start_seq[POM_DIR_REVERSE(s->direction)], s->direction, 65535, s->ce, PACKET_FLAG_STREAM_BIDIR);
+			priv->stream = stream_alloc(priv->start_seq[s->direction], priv->start_seq[POM_DIR_REVERSE(s->direction)], s->direction, 65535, s->ce, STREAM_FLAG_BIDIR);
 			if (!priv->stream) {
 				conntrack_unlock(s->ce);
 				return PROTO_ERR;
 			}
-			if (packet_stream_set_timeout(priv->stream, 600, 2, proto_tcp_process_payload) != POM_OK) {
+			if (stream_set_timeout(priv->stream, 600, 2, proto_tcp_process_payload) != POM_OK) {
 				conntrack_unlock(s->ce);
-				packet_stream_cleanup(priv->stream);
+				stream_cleanup(priv->stream);
 				return PROTO_ERR;
 			}
 		}
@@ -333,7 +334,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		struct proto_process_stack *s_next = &stack[stack_index + 1];
 		s_next->pload = s->pload + hdr_len;
 		s_next->plen = s->plen - hdr_len;
-		int res = packet_stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack));
+		int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack));
 		if (res == PROTO_OK)
 			return PROTO_STOP;
 		return res;
@@ -352,7 +353,7 @@ static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *
 	struct proto_process_stack *s_tcp = &stack[stack_index - 1];
 	uint8_t flags = *PTYPE_UINT8_GETVAL(s_tcp->pkt_info->fields_value[proto_tcp_field_flags]);
 	if (flags & TH_FIN) // Increase the sequence number by 1 if we got a FIN
-		packet_stream_increase_seq(cp->stream, s_tcp->direction, 1);
+		stream_increase_seq(cp->stream, s_tcp->direction, 1);
 
 	stack[stack_index].proto = cp->proto;
 	return core_process_multi_packet(stack, stack_index, p);
@@ -366,7 +367,7 @@ static int proto_tcp_conntrack_cleanup(void *ce_priv) {
 		return POM_OK;
 
 	if (priv->stream) {
-		if (packet_stream_cleanup(priv->stream) != POM_OK)
+		if (stream_cleanup(priv->stream) != POM_OK)
 			return POM_ERR;
 	}
 	free(priv);

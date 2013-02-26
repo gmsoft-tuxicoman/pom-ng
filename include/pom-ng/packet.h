@@ -27,9 +27,6 @@
 #include <pom-ng/conntrack.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
-#define PACKET_FLAG_STREAM_BIDIR	0x2
-
-struct proto_process_stack;
 
 struct packet {
 
@@ -77,12 +74,6 @@ struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned in
 int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
-
-struct packet_stream* packet_stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, struct conntrack_entry *ce, unsigned int flags);
-int packet_stream_set_timeout(struct packet_stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout, int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index));
-int packet_stream_increase_seq(struct packet_stream *stream, int direction, uint32_t inc);
-int packet_stream_cleanup(struct packet_stream *stream);
-int packet_stream_process_packet(struct packet_stream *stream, struct packet *pkt, struct proto_process_stack *stack, unsigned int stack_index, uint32_t seq, uint32_t ack);
 
 struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size);
 int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len);

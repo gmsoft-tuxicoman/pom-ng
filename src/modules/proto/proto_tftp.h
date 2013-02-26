@@ -32,7 +32,7 @@
 struct proto_tftp_conntrack_priv {
 
 	int flags;
-	struct packet_stream *stream;
+	struct stream *stream;
 
 };
 

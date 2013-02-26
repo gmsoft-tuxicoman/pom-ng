@@ -26,16 +26,9 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/packet.h>
 
-#define PACKET_HALF_SEQ (uint32_t)(0x1 << 31)
-
 #define PACKET_BUFFER_ALIGNMENT 4
 #define PACKET_BUFFER_POOL_ID_UNUSED -1
 
-#define PACKET_FLAG_STREAM_GOT_FWD_DIR	0x4
-#define PACKET_FLAG_STREAM_GOT_REV_DIR	0x8
-#define PACKET_FLAG_STREAM_GOT_BOTH_DIR	(PACKET_FLAG_STREAM_GOT_FWD_DIR | PACKET_FLAG_STREAM_GOT_REV_DIR)
-
-#define PACKET_STREAM_GAP_STEP_MAX	2048
 
 struct packet_buffer {
 
@@ -46,41 +39,6 @@ struct packet_buffer {
 
 	// The actual data will be after this
 	
-};
-
-struct packet_stream_pkt {
-
-	struct packet *pkt;
-	struct proto_process_stack *stack;
-	uint32_t seq, ack, plen;
-	unsigned int stack_index;
-	unsigned int flags;
-	struct packet_stream_pkt *prev, *next;
-
-};
-
-struct packet_stream_thread_wait {
-	ptime ts;
-	pthread_t thread;
-	pthread_cond_t cond;
-	struct packet_stream_thread_wait *prev, *next;
-};
-
-struct packet_stream {
-
-	uint32_t cur_seq[POM_DIR_TOT];
-	uint32_t cur_buff_size, max_buff_size;
-	unsigned int flags;
-	unsigned int same_dir_timeout, rev_dir_timeout;
-	struct packet_stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
-	int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
-	ptime last_ts;
-	struct conntrack_timer *t;
-	struct conntrack_entry *ce;
-	pthread_mutex_t lock;
-
-	pthread_mutex_t wait_lock;
-	struct packet_stream_thread_wait *wait_list_head, *wait_list_tail, *wait_list_unused;
 };
 
 struct packet_stream_parser {
@@ -104,10 +62,5 @@ int packet_pool_cleanup();
 int packet_info_pool_init();
 int packet_info_pool_release(struct packet_info *info, unsigned int protocol_id);
 int packet_info_pool_cleanup();
-
-int packet_stream_timeout(struct conntrack_entry *ce, void *priv, ptime now);
-int packet_stream_force_dequeue(struct packet_stream *stream);
-int packet_stream_fill_gap(struct packet_stream *stream, struct packet_stream_pkt *p, uint32_t gap, int reverse_dir);
-struct packet_stream_pkt *packet_stream_get_next(struct packet_stream *stream, unsigned int *direction);
 
 #endif
