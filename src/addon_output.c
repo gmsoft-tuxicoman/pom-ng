@@ -163,7 +163,6 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 		return POM_ERR;
 	}
 	memset(ppriv, 0, sizeof(struct addon_output_pload_priv));
-	ppriv->instance_priv = p;
 
 	analyzer_pload_instance_set_priv(pi, ppriv);
 
@@ -229,10 +228,10 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 }
 
 // Called from C to write a pload
-static int addon_output_pload_write(void *addon_priv, void *pload_instance_priv, void *data, size_t len) {
+static int addon_output_pload_write(void *output_priv, void *pload_instance_priv, void *data, size_t len) {
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
-	struct addon_instance_priv *p = ppriv->instance_priv;
+	struct addon_instance_priv *p = output_priv;
 
 	// First process all the plugins attached to this pload
 	struct addon_output_pload_plugin *tmp;
@@ -240,8 +239,8 @@ static int addon_output_pload_write(void *addon_priv, void *pload_instance_priv,
 		if (tmp->is_err)
 			continue;
 
-		if (addon_plugin_pload_write(tmp->addon_reg, addon_priv, tmp->pi.priv, data, len) != POM_OK) {
-			addon_plugin_pload_close(tmp->addon_reg, addon_priv, tmp->pi.priv);
+		if (addon_plugin_pload_write(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv, data, len) != POM_OK) {
+			addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv);
 			tmp->is_err = 1;
 		}
 	}
@@ -304,10 +303,10 @@ static int addon_output_pload_write(void *addon_priv, void *pload_instance_priv,
 }
 
 // Called from C to close a pload
-static int addon_output_pload_close(void *addon_priv, void *pload_instance_priv) {
+static int addon_output_pload_close(void *output_priv, void *pload_instance_priv) {
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
-	struct addon_instance_priv *p = ppriv->instance_priv;
+	struct addon_instance_priv *p = output_priv;
 	int res = POM_OK;
 
 	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
@@ -317,7 +316,7 @@ static int addon_output_pload_close(void *addon_priv, void *pload_instance_priv)
 	for (tmp = ppriv->plugins; tmp; tmp = tmp->next) {
 		if (tmp->is_err)
 			continue;
-		addon_plugin_pload_close(tmp->addon_reg, addon_priv, tmp->pi.priv);
+		addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv);
 	}
 
 	pom_mutex_lock(&p->lock);

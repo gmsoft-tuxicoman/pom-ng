@@ -48,7 +48,7 @@ struct addon_output_pload_plugin {
 
 struct addon_output_pload_priv {
 
-	struct addon_instance_priv *instance_priv;
+	void *plugin_priv;
 
 	// Used by pload plugins for this output
 	struct addon_output_pload_plugin *plugins;

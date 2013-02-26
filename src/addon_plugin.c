@@ -258,6 +258,7 @@ static int addon_plugin_pload_process(lua_State *L) {
 
 	// Add the pload_instance to the output
 	struct addon_output_pload_priv *output_pi_priv = output_pi->priv;
+	output_pi_priv->plugin_priv = a->priv;
 	pload_plugin->next = output_pi_priv->plugins;
 	if (pload_plugin->next)
 		pload_plugin->next->prev = pload_plugin->prev;
