@@ -464,7 +464,10 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 
 	if (cur_stack->plen) {
 		// No need to backup this if there is no payload
-		p->pkt = packet_clone(pkt, stream->flags);
+		int flags = 0;
+		if (stream->flags & STREAM_FLAG_PACKET_NO_COPY)
+			flags = PACKET_FLAG_FORCE_NO_COPY;
+		p->pkt = packet_clone(pkt, flags);
 		if (!p->pkt) {
 			stream_end_process_packet(stream);
 			free(p);
