@@ -25,7 +25,9 @@
 
 #define PROTO_TCP_FIELD_NUM 6
 
-#define PROTO_TCP_SEQ_KNOWN 1
+#define PROTO_TCP_SEQ_KNOWN_DIR_FWD	0x1
+#define PROTO_TCP_SEQ_KNOWN_DIR_REV	0x2
+#define PROTO_TCP_SEQ_ASSURED		0x4
 
 enum
 {
@@ -64,6 +66,7 @@ struct proto_tcp_conntrack_priv {
 	struct stream *stream;
 	struct proto *proto;
 	uint32_t start_seq[POM_DIR_TOT];
+	int flags;
 };
 
 struct mod_reg_info* proto_tcp_reg_info();

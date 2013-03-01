@@ -25,12 +25,12 @@
 #include "proto.h"
 
 #if 0
-#define debug_stream(x ...) pomlog(POMLOG_DEBUG "stream: " x)
+#define debug_stream(x ...) pomlog(POMLOG_DEBUG x)
 #else
 #define debug_stream(x ...)
 #endif
 
-struct stream* stream_alloc(uint32_t start_seq, uint32_t start_ack, int direction, uint32_t max_buff_size, struct conntrack_entry *ce, unsigned int flags) {
+struct stream* stream_alloc(uint32_t max_buff_size, struct conntrack_entry *ce, unsigned int flags, int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index)) {
 	
 	struct stream *res = malloc(sizeof(struct stream));
 	if (!res) {
@@ -40,9 +40,6 @@ struct stream* stream_alloc(uint32_t start_seq, uint32_t start_ack, int directio
 
 	memset(res, 0, sizeof(struct stream));
 	
-	int rev_direction = POM_DIR_REVERSE(direction);
-	res->cur_seq[direction] = start_seq;
-	res->cur_seq[rev_direction] = start_ack;
 	res->max_buff_size = max_buff_size;
 	res->ce = ce;
 	if (pthread_mutex_init(&res->lock, NULL)) {
@@ -57,21 +54,20 @@ struct stream* stream_alloc(uint32_t start_seq, uint32_t start_ack, int directio
 	}
 
 	res->flags = flags;
+	res->handler = handler;
 
-	debug_stream("thread %p, entry %p, allocated, start_seq %u, start_ack %u, direction %u", pthread_self(), res, start_seq, start_ack, direction);
+	debug_stream("thread %p, entry %p, allocated", pthread_self(), res);
 
 	return res;
 }
 
-int stream_set_timeout(struct stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout, int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index)) {
-
+int stream_set_timeout(struct stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout) {
 
 	if (!stream->t) {
 		stream->t = conntrack_timer_alloc(stream->ce, stream_timeout, stream);
 		if (!stream->t)
 			return POM_ERR;
 	}
-	stream->handler = handler;
 	stream->same_dir_timeout = same_dir_timeout;
 	stream->rev_dir_timeout = rev_dir_timeout;
 
@@ -357,7 +353,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 
 	}
 
-	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : start locked", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : start locked : cur_seq %u, rev_seq %u", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack, stream->cur_seq[direction], stream->cur_seq[POM_DIR_REVERSE(direction)]);
 
 	// Update the stream flags
 	if (stream->flags & STREAM_FLAG_BIDIR) {
@@ -385,68 +381,81 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 	spkt.stack_index = stack_index;
 
 
-	// Check if the packet is worth processing
-	uint32_t cur_seq = stream->cur_seq[direction];
-	if (cur_seq != seq) {
-		if (stream_is_packet_old_dupe(stream, &spkt, direction)) {
-			// cur_seq is after the end of the packet, discard it
-			stream_end_process_packet(stream);
-			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : discard", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
-			return PROTO_OK;
+	// Check that we are aware of the start sequence
+	// If not, we queue
+	int dir_flag = (direction == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
+	if ( ((stream->flags & STREAM_FLAG_BIDIR) && ((stream->flags & STREAM_FLAG_GOT_BOTH_STARTSEQ) == STREAM_FLAG_GOT_BOTH_STARTSEQ))
+		|| (!(stream->flags & STREAM_FLAG_BIDIR) && (stream->flags & dir_flag)) ) {
+
+
+		// Check if the packet is worth processing
+		uint32_t cur_seq = stream->cur_seq[direction];
+		if (cur_seq != seq) {
+			if (stream_is_packet_old_dupe(stream, &spkt, direction)) {
+				// cur_seq is after the end of the packet, discard it
+				stream_end_process_packet(stream);
+				debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : discard", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+				return PROTO_OK;
+			}
+
+			if (stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR) {
+				stream_end_process_packet(stream);
+				return PROTO_ERR;
+			}
 		}
 
-		if (stream_remove_dupe_bytes(stream, &spkt, direction) == POM_ERR) {
-			stream_end_process_packet(stream);
-			return PROTO_ERR;
-		}
-	}
 
+		// Ok let's process it then
 
-	// Ok let's process it then
+		// Check if it is the packet we're waiting for
+		if (stream_is_packet_next(stream, &spkt, direction)) {
 
-	// Check if it is the packet we're waiting for
-	if (stream_is_packet_next(stream, &spkt, direction)) {
+			// Process it
+			stream->cur_seq[direction] += cur_stack->plen;
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
 
-		// Process it
-		stream->cur_seq[direction] += cur_stack->plen;
-		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
-
-		int res = stream->handler(stream->ce, pkt, stack, stack_index);
-		if (res == PROTO_ERR) {
-			stream_end_process_packet(stream);
-			return PROTO_ERR;
-		}
-
-		// Check if additional packets can be processed
-		struct stream_pkt *p = NULL;
-		unsigned int cur_dir = direction, additional_processed = 0;
-		while ((p = stream_get_next(stream, &cur_dir))) {
-
-
-			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack);
-
-			if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR) {
+			int res = stream->handler(stream->ce, pkt, stack, stack_index);
+			if (res == PROTO_ERR) {
 				stream_end_process_packet(stream);
 				return PROTO_ERR;
 			}
 
-			stream->cur_seq[cur_dir] += p->plen;
-	
-			stream_free_packet(p);
+			// Flag the stream as running
+			stream->flags |= STREAM_FLAG_RUNNING;
 
-			additional_processed = 1;
+			// Check if additional packets can be processed
+			struct stream_pkt *p = NULL;
+			unsigned int cur_dir = direction, additional_processed = 0;
+			while ((p = stream_get_next(stream, &cur_dir))) {
+
+
+				debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack);
+
+				if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == POM_ERR) {
+					stream_end_process_packet(stream);
+					return PROTO_ERR;
+				}
+
+				stream->cur_seq[cur_dir] += p->plen;
+		
+				stream_free_packet(p);
+
+				additional_processed = 1;
+			}
+
+			if (additional_processed) {
+				if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
+					conntrack_timer_dequeue(stream->t);
+				else
+					conntrack_timer_queue(stream->t, stream->same_dir_timeout, stream->last_ts);
+			}
+
+			stream_end_process_packet(stream);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done processed", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+			return res;
 		}
-
-		if (additional_processed) {
-			if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
-				conntrack_timer_dequeue(stream->t);
-			else
-				conntrack_timer_queue(stream->t, stream->same_dir_timeout, stream->last_ts);
-		}
-
-		stream_end_process_packet(stream);
-		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done processed", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
-		return res;
+	} else {
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : start_seq not known yet", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
 	}
 
 	// Queue the packet then
@@ -558,7 +567,7 @@ int stream_fill_gap(struct stream *stream, struct stream_pkt *p, uint32_t gap, i
 		return POM_OK;
 	}
 	
-	if (reverse_dir) {
+	if (!reverse_dir) {
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u in forward direction", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
 	} else {
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : filling gap of %u in reverse direction", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack, gap);
@@ -669,12 +678,31 @@ int stream_force_dequeue(struct stream *stream) {
 	if (stream_remove_dupe_bytes(stream, p, next_dir) == POM_ERR)
 		return POM_ERR;
 
+	// Flag the stream as running
+	stream->flags |= STREAM_FLAG_RUNNING;
+
+	// If we didn't we now know about the sequence
+	int dir_flag = (next_dir == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
+	if (!(stream->flags & dir_flag)) {
+		stream->flags |= dir_flag;
+		stream->cur_seq[next_dir] = p->seq;
+	}
+
 	int res = PROTO_OK;
 	
 	// Check if we were waiting on the reverse direction
 	if (stream->flags & STREAM_FLAG_BIDIR) {
-		
+	
 		unsigned int next_rev_dir = POM_DIR_REVERSE(next_dir);
+
+		int rev_dir_flag = (next_rev_dir == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
+
+		// We also know about the reverse seq now
+		if (!(stream->flags & rev_dir_flag)) {
+			stream->flags |= rev_dir_flag;
+			stream->cur_seq[POM_DIR_REVERSE(next_dir)] = p->ack;
+		}
+
 		
 		uint32_t rev_seq = stream->cur_seq[next_rev_dir];
 		if ((rev_seq < p->ack && p->ack - rev_seq < STREAM_HALF_SEQ)
@@ -684,30 +712,26 @@ int stream_force_dequeue(struct stream *stream) {
 			// We were waiting for reverse
 			uint32_t rev_gap = p->ack - stream->cur_seq[next_rev_dir];
 			res = stream_fill_gap(stream, p, rev_gap, 1);
+			stream->cur_seq[next_rev_dir] = p->ack;
 
 		}
 
 	}
-
 
 	uint32_t gap = p->seq - stream->cur_seq[next_dir];
-
-
 	if (gap) {
-		if (res != PROTO_ERR) {
+		if (res != PROTO_ERR)
 			res = stream_fill_gap(stream, p, gap, 0);
-		}
 	}
+
+	// Update the cur_seq in our direction
+	stream->cur_seq[next_dir] = p->seq + p->plen;
 
 	if (res != PROTO_ERR) {
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process forced", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack);
 		res = stream->handler(stream->ce, p->pkt, p->stack, p->stack_index);
 	}
 
-	stream->cur_seq[next_dir] = p->seq + p->plen;
-
-	if (stream->flags & STREAM_FLAG_BIDIR)
-		stream->cur_seq[POM_DIR_REVERSE(next_dir)] = p->ack;
 
 	stream_free_packet(p);
 
@@ -738,6 +762,12 @@ struct stream_pkt *stream_get_next(struct stream *stream, unsigned int *directio
 	struct stream_pkt *res = NULL;
 
 	int dirs[2] = { *direction, POM_DIR_REVERSE(*direction) };
+
+	// Make sure we have the sequences before we start looking
+	int dir_flag = (*direction == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
+	if ( ((stream->flags & STREAM_FLAG_BIDIR) && ((stream->flags & STREAM_FLAG_GOT_BOTH_STARTSEQ) != STREAM_FLAG_GOT_BOTH_STARTSEQ))
+		|| (!(stream->flags & STREAM_FLAG_BIDIR) && !(stream->flags & dir_flag)) )
+		return NULL;
 
 	int i, cur_dir;
 	for (i = 0; i < 2 && !res; i++) {
@@ -834,3 +864,18 @@ int stream_increase_seq(struct stream *stream, int direction, uint32_t inc) {
 	return POM_OK;
 }
 
+int stream_set_start_seq(struct stream *stream, int direction, uint32_t seq) {
+
+	if (stream->flags & STREAM_FLAG_RUNNING) {
+		debug_stream("thread %p, entry %p : not accepting additional sequence update as the stream stared", pthread_self(), stream);
+		return POM_OK;
+	}
+
+	int dir_flag = (direction == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
+	stream->flags |= dir_flag;
+	stream->cur_seq[direction] = seq;
+
+	debug_stream("thread %p, entry %p : start_seq for direction %u set to %u", pthread_self(), stream, direction, seq);
+
+	return POM_OK;
+}

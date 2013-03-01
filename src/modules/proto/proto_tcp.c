@@ -35,10 +35,10 @@
 #define __FAVOR_BSD
 #include <netinet/tcp.h>
 
-#if 0 
-#define tcp_tshoot(x...) pomlog(POMLOG_TSHOOT x)
+#if 0
+#define debug_tcp(x...) pomlog(POMLOG_DEBUG x)
 #else
-#define tcp_tshoot(x...)
+#define debug_tcp(x...)
 #endif
 
 struct mod_reg_info* proto_tcp_reg_info() {
@@ -217,11 +217,6 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		plen = 0; // RFC 1122 4.2.2.12 : RST may contain the data that caused the packet to be sent, discard it
 	}
 
-	if ((hdr->th_flags & TH_SYN) && !(hdr->th_flags & TH_ACK)) {
-		// Start monitoring connections on SYN ACK only to avoid TCP SYN flood
-		return PROTO_OK;
-	}
-
 	// Conntrack stuff
 	if (conntrack_get(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
@@ -301,29 +296,80 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 	}
 
 
-	if (!priv->stream) {
-	
+	// Learn the sequence from the SYN and SYN+ACK packets
+	uint32_t seq = ntohl(hdr->th_seq);
+	int dir_flag = (s->direction == POM_DIR_FWD ? PROTO_TCP_SEQ_KNOWN_DIR_FWD : PROTO_TCP_SEQ_KNOWN_DIR_REV);
+	if (hdr->th_flags & TH_SYN) {
+		
+		// Add one to the seq when SYN is set
+		seq++;
 
-		if (hdr->th_flags & TH_SYN || (!priv->start_seq[s->direction] && plen)) {
-			priv->start_seq[s->direction] = ntohl(hdr->th_seq);
-			if ((hdr->th_flags & TH_SYN) || (hdr->th_flags & TH_FIN))
-				priv->start_seq[s->direction]++;
-			
-			priv->start_seq[POM_DIR_REVERSE(s->direction)] = ntohl(hdr->th_ack);
+
+		if ((priv->flags & dir_flag) && priv->start_seq[s->direction] != seq) {
+			pomlog(POMLOG_DEBUG "Possible reused TCP connection %p in direction %u : old seq %u, new seq %u", s->ce, s->direction, priv->start_seq[s->direction], seq);
+		} else {
+			priv->start_seq[s->direction] = seq;
+			priv->flags |= dir_flag;
+
+			debug_tcp("Connection %p in direction %u : start seq %u from SYN", s->ce, s->direction, seq);
+
+			if (priv->stream)
+				stream_set_start_seq(priv->stream, s->direction, seq);
 		}
 
-		if (plen) {
-			priv->stream = stream_alloc(priv->start_seq[s->direction], priv->start_seq[POM_DIR_REVERSE(s->direction)], s->direction, 65535, s->ce, STREAM_FLAG_BIDIR);
-			if (!priv->stream) {
-				conntrack_unlock(s->ce);
-				return PROTO_ERR;
-			}
-			if (stream_set_timeout(priv->stream, 600, 2, proto_tcp_process_payload) != POM_OK) {
-				conntrack_unlock(s->ce);
-				stream_cleanup(priv->stream);
-				return PROTO_ERR;
+		if (hdr->th_flags & TH_ACK) {
+			int rev_dir = POM_DIR_REVERSE(s->direction);
+
+			int rev_dir_flag = (s->direction == POM_DIR_REV ? PROTO_TCP_SEQ_KNOWN_DIR_FWD : PROTO_TCP_SEQ_KNOWN_DIR_REV);
+			uint32_t rev_seq = ntohl(hdr->th_ack);
+			if ((priv->flags & rev_dir_flag) && priv->start_seq[rev_dir] != rev_seq) {
+				pomlog(POMLOG_DEBUG "Most probably reused TCP connection %p in direction %u : old seq %u, new seq %u", s->ce, rev_dir, priv->start_seq[rev_dir], rev_seq);
+			} else {
+
+				priv->start_seq[rev_dir] = ntohl(hdr->th_ack);
+				priv->flags |= rev_dir_flag;
+
+				debug_tcp("Connection %p in direction %u : start seq %u from SYN+ACK", s->ce, rev_dir, rev_seq);
+
+				if (priv->stream)
+					stream_set_start_seq(priv->stream, rev_dir, rev_seq);
 			}
 		}
+
+	} else if (!(priv->flags & PROTO_TCP_SEQ_ASSURED) && (hdr->th_flags & TH_ACK) && priv->start_seq[s->direction] == seq && plen == 0 && (priv->flags & dir_flag)) {
+		// We have an ACK for which we know the SYN !
+		// From this we can be sure we have the right sequences in both dir
+		// Overwrite the reverse in any case
+		int rev_dir = POM_DIR_REVERSE(s->direction);
+		int rev_dir_flag = (s->direction == POM_DIR_REV ? PROTO_TCP_SEQ_KNOWN_DIR_FWD : PROTO_TCP_SEQ_KNOWN_DIR_REV);
+
+		uint32_t rev_seq = ntohl(hdr->th_ack);
+		priv->start_seq[rev_dir] = rev_seq;
+		priv->flags |= rev_dir_flag;
+		priv->flags |= PROTO_TCP_SEQ_ASSURED;
+
+		debug_tcp("Connection %p in direction %u : assured seq %u from ACK", s->ce, s->direction, seq);
+		if (priv->stream)
+			stream_set_start_seq(priv->stream, rev_dir, rev_seq);
+
+	}
+
+	if (!priv->stream && plen) {
+		priv->stream = stream_alloc(65535, s->ce, STREAM_FLAG_BIDIR, proto_tcp_process_payload);
+		if (!priv->stream) {
+			conntrack_unlock(s->ce);
+			return PROTO_ERR;
+		}
+		if (stream_set_timeout(priv->stream, 600, 2) != POM_OK) {
+			conntrack_unlock(s->ce);
+			stream_cleanup(priv->stream);
+			return PROTO_ERR;
+		}
+
+		if (priv->flags & PROTO_TCP_SEQ_KNOWN_DIR_FWD)
+			stream_set_start_seq(priv->stream, POM_DIR_FWD, priv->start_seq[POM_DIR_FWD]);
+		if (priv->flags & PROTO_TCP_SEQ_KNOWN_DIR_REV)
+			stream_set_start_seq(priv->stream, POM_DIR_REV, priv->start_seq[POM_DIR_REV]);
 	}
 
 	conntrack_unlock(s->ce);
