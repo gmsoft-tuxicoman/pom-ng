@@ -47,7 +47,7 @@ struct mod_reg_info *analyzer_dns_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_dns_mod_register;
 	reg_info.unregister_func = analyzer_dns_mod_unregister;
-	reg_info.dependencies = "proto_dns";
+	reg_info.dependencies = "proto_dns, ptype_uint16, ptype_uint32, ptype_string";
 
 	return &reg_info;
 }
