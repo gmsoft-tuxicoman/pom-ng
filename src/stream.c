@@ -152,6 +152,7 @@ static int stream_is_packet_old_dupe(struct stream *stream, struct stream_pkt *p
 	if ((cur_seq >= end_seq && cur_seq - end_seq < STREAM_HALF_SEQ)
 		|| (cur_seq < end_seq && end_seq - cur_seq > STREAM_HALF_SEQ)) {
 		// cur_seq is after the end of the packet, discard it
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : is dupe : cur_seq %u, rev_seq %u", pthread_self(), stream, pom_ptime_sec(pkt->pkt->ts), pom_ptime_usec(pkt->pkt->ts), pkt->seq, pkt->ack, stream->cur_seq[direction], stream->cur_seq[POM_DIR_REVERSE(direction)]);
 		return 1;
 	}
 	
@@ -411,7 +412,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 		if (stream_is_packet_next(stream, &spkt, direction)) {
 
 			// Process it
-			stream->cur_seq[direction] += cur_stack->plen;
+			stream->cur_seq[direction] += spkt.plen;
 			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
 
 			int res = stream->handler(stream->ce, pkt, stack, stack_index);
@@ -451,7 +452,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 			}
 
 			stream_end_process_packet(stream);
-			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done processed", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done processed, cur_seq %u, rev_seq %u", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack, stream->cur_seq[direction], stream->cur_seq[POM_DIR_REVERSE(direction)]);
 			return res;
 		}
 	} else {
@@ -471,7 +472,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 	memset(p, 0 , sizeof(struct stream_pkt));
 
 
-	if (cur_stack->plen) {
+	if (spkt.plen) {
 		// No need to backup this if there is no payload
 		int flags = 0;
 		if (stream->flags & STREAM_FLAG_PACKET_NO_COPY)
@@ -492,7 +493,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 	}
 
 
-	p->plen = cur_stack->plen;
+	p->plen = spkt.plen;
 	p->seq = seq;
 	p->ack = ack;
 	p->stack_index = stack_index;
@@ -536,12 +537,12 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 		}
 	}
 	
-	stream->cur_buff_size += cur_stack->plen;
+	stream->cur_buff_size += p->plen;
 
 	
 	if (stream->cur_buff_size >= stream->max_buff_size) {
 		// Buffer overflow
-		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
+		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : buffer overflow, forced dequeue : cur_buff_size %u, max_buff_size %u", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack, stream->cur_buff_size, stream->max_buff_size);
 		if (stream_force_dequeue(stream) != POM_OK) {
 			stream_end_process_packet(stream);
 			return POM_ERR;
