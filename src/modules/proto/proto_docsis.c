@@ -88,6 +88,9 @@ static int proto_docsis_mod_register(struct mod_reg *mod) {
 	docsis_fields[2].name = "ehdr_on";
 	docsis_fields[2].value_type = ptype_get_type("bool");
 	docsis_fields[2].description = "Extended header present";
+	docsis_fields[3].name = "crypted";
+	docsis_fields[3].value_type = ptype_get_type("bool");
+	docsis_fields[3].description = "Packet encrypted";
 
 	static struct proto_reg_info proto_docsis = { 0 };
 	proto_docsis.name = "docsis";
@@ -176,10 +179,14 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 		if (ehdr->eh_type == EH_TYPE_BP_DOWN || ehdr->eh_type == EH_TYPE_BP_UP) {
 			registry_perf_inc(priv->perf_encrypted_pkts, 1);
 			registry_perf_inc(priv->perf_encrypted_bytes, s->plen);
+			PTYPE_BOOL_SETVAL(s->pkt_info->fields_value[proto_docsis_field_crypted], 1);
 			return PROTO_OK;
 		}
 			
 	}
+
+	// Encryption is not enabled
+	PTYPE_BOOL_SETVAL(s->pkt_info->fields_value[proto_docsis_field_crypted], 0);
 
 	s_next->pload = s->pload + hdr_len;
 	s_next->plen = s->plen - hdr_len;

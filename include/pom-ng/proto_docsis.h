@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@ enum proto_docsis_fields {
 	proto_docsis_field_fc_type = 0,
 	proto_docsis_field_fc_parm,
 	proto_docsis_field_ehdr_on,
+	proto_docsis_field_crypted,
 };
 
 enum proto_docsis_mgmt_fields {

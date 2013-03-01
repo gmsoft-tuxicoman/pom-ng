@@ -25,7 +25,7 @@
 #include <docsis.h>
 #include <pom-ng/proto_docsis.h>
 
-#define PROTO_DOCSIS_FIELD_NUM 3
+#define PROTO_DOCSIS_FIELD_NUM 4
 #define PROTO_DOCSIS_MGMT_FIELD_NUM 7
 
 struct proto_docsis_priv {
