@@ -117,6 +117,7 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 	priv->param_tcp_time_wait_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_established_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_reuse_handling = ptype_alloc("bool");
+	priv->param_tcp_conn_buffer = ptype_alloc_unit("uint32", "bytes");
 
 	// FIXME actually use param_tcp_reuse_handling !
 	
@@ -128,7 +129,8 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 		|| !priv->param_tcp_close_t
 		|| !priv->param_tcp_time_wait_t
 		|| !priv->param_tcp_established_t
-		|| !priv->param_tcp_reuse_handling) {
+		|| !priv->param_tcp_reuse_handling
+		|| !priv->param_tcp_conn_buffer) {
 		
 		goto err;
 	}
@@ -158,6 +160,10 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 		goto err;
 
 	p = registry_new_param("enable_reuse_handling", "no", priv->param_tcp_reuse_handling, "Enable connection reuse handling (SO_REUSEADDR)", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("conn_buffer", "65535", priv->param_tcp_conn_buffer, "Maximum buffer per connection", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
@@ -334,9 +340,15 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 				if (priv->stream)
 					stream_set_start_seq(priv->stream, rev_dir, rev_seq);
 			}
+
+			priv->flags |= (s->direction == POM_DIR_REV ? PROTO_TCP_CLIENT_DIR_IS_FWD : PROTO_TCP_CLIENT_DIR_IS_REV);
+
+		} else {
+			priv->flags |= (s->direction == POM_DIR_FWD ? PROTO_TCP_CLIENT_DIR_IS_FWD : PROTO_TCP_CLIENT_DIR_IS_REV);
 		}
 
-	} else if (!(priv->flags & PROTO_TCP_SEQ_ASSURED) && (hdr->th_flags & TH_ACK) && priv->start_seq[s->direction] == seq && plen == 0 && (priv->flags & dir_flag)) {
+	} else if (!(priv->flags & PROTO_TCP_SEQ_ASSURED) && (hdr->th_flags & TH_ACK) && priv->start_seq[s->direction] == seq && plen == 0 && (priv->flags & dir_flag) &&
+		((s->direction == POM_DIR_FWD && (priv->flags & PROTO_TCP_CLIENT_DIR_IS_FWD)) || (s->direction == POM_DIR_REV && (priv->flags & PROTO_TCP_CLIENT_DIR_IS_REV)))) {
 		// We have an ACK for which we know the SYN !
 		// From this we can be sure we have the right sequences in both dir
 		// Overwrite the reverse in any case
@@ -355,7 +367,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 	}
 
 	if (!priv->stream && plen) {
-		priv->stream = stream_alloc(65535, s->ce, STREAM_FLAG_BIDIR, proto_tcp_process_payload);
+		priv->stream = stream_alloc(*PTYPE_UINT32_GETVAL(ppriv->param_tcp_conn_buffer), s->ce, STREAM_FLAG_BIDIR, proto_tcp_process_payload);
 		if (!priv->stream) {
 			conntrack_unlock(s->ce);
 			return PROTO_ERR;
