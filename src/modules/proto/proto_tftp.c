@@ -185,6 +185,7 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 			s_next->pload = pload;
 			s_next->plen = plen;
 
+			int set_start_seq = 0;
 			if (!priv->stream) {
 				priv->stream = stream_alloc(PROTO_TFTP_STREAM_BUFF, s->ce, 0, proto_tftp_process_payload);
 				if (!priv->stream) {
@@ -192,16 +193,19 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 					return PROTO_ERR;
 				}
 				stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER, 0);
-				stream_set_start_seq(priv->stream, s->direction, PROTO_TFTP_BLK_SIZE);
+				set_start_seq = 1;
 			}
 
+			conntrack_unlock(s->ce);
+			
+			if (set_start_seq)
+				stream_set_start_seq(priv->stream, s->direction, PROTO_TFTP_BLK_SIZE);
 			int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
 			if (res == PROTO_OK) {
 				conntrack_unlock(s->ce);
 				return PROTO_STOP;
 			}
 
-			conntrack_unlock(s->ce);
 			return res;
 		}
 

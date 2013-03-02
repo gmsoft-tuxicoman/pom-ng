@@ -302,6 +302,12 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 	}
 
 
+	// Use to set the sequence later on
+	// It must be done when the conntrack is not locked
+	int action = 0;
+	struct stream *stream = priv->stream;
+	uint32_t fwd_seq = 0, rev_seq = 0;
+
 	// Learn the sequence from the SYN and SYN+ACK packets
 	uint32_t seq = ntohl(hdr->th_seq);
 	int dir_flag = (s->direction == POM_DIR_FWD ? PROTO_TCP_SEQ_KNOWN_DIR_FWD : PROTO_TCP_SEQ_KNOWN_DIR_REV);
@@ -318,9 +324,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 			priv->flags |= dir_flag;
 
 			debug_tcp("Connection %p in direction %u : start seq %u from SYN", s->ce, s->direction, seq);
-
-			if (priv->stream)
-				stream_set_start_seq(priv->stream, s->direction, seq);
+			action |= dir_flag;
 		}
 
 		if (hdr->th_flags & TH_ACK) {
@@ -336,9 +340,8 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 				priv->flags |= rev_dir_flag;
 
 				debug_tcp("Connection %p in direction %u : start seq %u from SYN+ACK", s->ce, rev_dir, rev_seq);
-
-				if (priv->stream)
-					stream_set_start_seq(priv->stream, rev_dir, rev_seq);
+				
+				action |= rev_dir_flag;
 			}
 
 			priv->flags |= (s->direction == POM_DIR_REV ? PROTO_TCP_CLIENT_DIR_IS_FWD : PROTO_TCP_CLIENT_DIR_IS_REV);
@@ -361,8 +364,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		priv->flags |= PROTO_TCP_SEQ_ASSURED;
 
 		debug_tcp("Connection %p in direction %u : assured seq %u from ACK", s->ce, s->direction, seq);
-		if (priv->stream)
-			stream_set_start_seq(priv->stream, rev_dir, rev_seq);
+		action |= rev_dir_flag;
 
 	}
 
@@ -375,24 +377,42 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		if (stream_set_timeout(priv->stream, 600, 2) != POM_OK) {
 			conntrack_unlock(s->ce);
 			stream_cleanup(priv->stream);
+			priv->stream = NULL;
 			return PROTO_ERR;
 		}
 
-		if (priv->flags & PROTO_TCP_SEQ_KNOWN_DIR_FWD)
-			stream_set_start_seq(priv->stream, POM_DIR_FWD, priv->start_seq[POM_DIR_FWD]);
-		if (priv->flags & PROTO_TCP_SEQ_KNOWN_DIR_REV)
-			stream_set_start_seq(priv->stream, POM_DIR_REV, priv->start_seq[POM_DIR_REV]);
+		stream = priv->stream;
+		action = priv->flags & (PROTO_TCP_SEQ_KNOWN_DIR_FWD | PROTO_TCP_SEQ_KNOWN_DIR_REV);
+	}
+
+	if (stream) {
+		if (action & PROTO_TCP_SEQ_KNOWN_DIR_FWD)
+			fwd_seq = priv->start_seq[POM_DIR_FWD];
+		if (action & PROTO_TCP_SEQ_KNOWN_DIR_REV)
+			rev_seq = priv->start_seq[POM_DIR_REV];
 	}
 
 	conntrack_unlock(s->ce);
 
-	if (plen) {
+	if (!stream)
+		return POM_OK;
+
+	if (action & PROTO_TCP_SEQ_KNOWN_DIR_FWD)
+		stream_set_start_seq(stream, POM_DIR_FWD, fwd_seq);
+	if (action & PROTO_TCP_SEQ_KNOWN_DIR_REV)
+		stream_set_start_seq(stream, POM_DIR_REV, rev_seq);
+
+	if (plen || (hdr->th_flags & TH_FIN)) {
+
+		if (hdr->th_flags & TH_FIN) {
+			debug_tcp("Connection %p: queued FIN packet with TS %u.%06u, seq %u and ack %u", s->ce, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts), ntohs(hdr->th_seq), ntohs(hdr->th_ack));
+		}
 
 		// Queue the payload
 		struct proto_process_stack *s_next = &stack[stack_index + 1];
 		s_next->pload = s->pload + hdr_len;
 		s_next->plen = s->plen - hdr_len;
-		int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack));
+		int res = stream_process_packet(stream, p, stack, stack_index + 1, ntohl(hdr->th_seq), ntohl(hdr->th_ack));
 		if (res == PROTO_OK)
 			return PROTO_STOP;
 		return res;
