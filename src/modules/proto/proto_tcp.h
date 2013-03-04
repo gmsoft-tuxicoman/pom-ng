@@ -30,15 +30,18 @@
 #define PROTO_TCP_SEQ_ASSURED		0x04
 #define PROTO_TCP_CLIENT_DIR_IS_FWD	0x08
 #define PROTO_TCP_CLIENT_DIR_IS_REV	0x10
+#define PROTO_TCP_FIN_RECV_FWD		0x20
+#define PROTO_TCP_FIN_RECV_REV		0x40
+#define PROTO_TCP_FIN_RECV_BOTH		(PROTO_TCP_FIN_RECV_FWD | PROTO_TCP_FIN_RECV_REV)
 
 enum
 {
-	STATE_TCP_ESTABLISHED = 1,
-	STATE_TCP_SYN_SENT,
-	STATE_TCP_SYN_RECV,  
-	STATE_TCP_CLOSE,
-	STATE_TCP_LAST_ACK,
-	STATE_TCP_TIME_WAIT,
+	TCP_STATE_NEW = 0, // State not known yet
+	TCP_STATE_SYN_SENT,
+	TCP_STATE_SYN_RECV,  
+	TCP_STATE_ESTABLISHED,
+	TCP_STATE_HALF_CLOSED,
+	TCP_STATE_CLOSED,
 };
 
 enum proto_tcp_fields {
@@ -54,10 +57,9 @@ struct proto_tcp_priv {
 
 	struct ptype *param_tcp_syn_sent_t;
 	struct ptype *param_tcp_syn_recv_t;
-	struct ptype *param_tcp_last_ack_t;
-	struct ptype *param_tcp_close_t;
-	struct ptype *param_tcp_time_wait_t;
 	struct ptype *param_tcp_established_t;
+	struct ptype *param_tcp_half_closed_t;
+	struct ptype *param_tcp_closed_t;
 	struct ptype *param_tcp_reuse_handling;
 	struct ptype *param_tcp_conn_buffer;
 	struct proto *proto_http;

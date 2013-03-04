@@ -112,10 +112,9 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 
 	priv->param_tcp_syn_sent_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_syn_recv_t = ptype_alloc_unit("uint16", "seconds");
-	priv->param_tcp_last_ack_t = ptype_alloc_unit("uint16", "seconds");
-	priv->param_tcp_close_t = ptype_alloc_unit("uint16", "seconds");
-	priv->param_tcp_time_wait_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_established_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_half_closed_t = ptype_alloc_unit("uint16", "seconds");
+	priv->param_tcp_closed_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_reuse_handling = ptype_alloc("bool");
 	priv->param_tcp_conn_buffer = ptype_alloc_unit("uint32", "bytes");
 
@@ -125,33 +124,20 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 
 	if (!priv->param_tcp_syn_sent_t
 		|| !priv->param_tcp_syn_recv_t
-		|| !priv->param_tcp_last_ack_t
-		|| !priv->param_tcp_close_t
-		|| !priv->param_tcp_time_wait_t
+		|| !priv->param_tcp_half_closed_t
 		|| !priv->param_tcp_established_t
+		|| !priv->param_tcp_closed_t
 		|| !priv->param_tcp_reuse_handling
 		|| !priv->param_tcp_conn_buffer) {
 		
 		goto err;
 	}
 
-	p = registry_new_param("syn_sent_timer", "180", priv->param_tcp_syn_sent_t, "SYN sent timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
-		goto err;
-
 	p = registry_new_param("syn_recv_timer", "60", priv->param_tcp_syn_recv_t, "SYN received timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("last_ack_timer", "30", priv->param_tcp_last_ack_t, "Last ACK timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("close_timer", "10", priv->param_tcp_close_t, "Close timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("time_wait_timer", "180", priv->param_tcp_time_wait_t, "Time wait timer", 0);
+	p = registry_new_param("syn_sent_timer", "180", priv->param_tcp_syn_sent_t, "SYN sent timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
@@ -159,10 +145,19 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("enable_reuse_handling", "no", priv->param_tcp_reuse_handling, "Enable connection reuse handling (SO_REUSEADDR)", 0);
+	p = registry_new_param("half_closed_timer", "120", priv->param_tcp_half_closed_t, "Half-closed timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
+	p = registry_new_param("closed_timer", "30", priv->param_tcp_closed_t, "Closed timer", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
+/*	FIXME
+	p = registry_new_param("enable_reuse_handling", "no", priv->param_tcp_reuse_handling, "Enable connection reuse handling (SO_REUSEADDR)", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+*/
 	p = registry_new_param("conn_buffer", "65535", priv->param_tcp_conn_buffer, "Maximum buffer per connection", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
@@ -183,6 +178,70 @@ err:
 	proto_tcp_cleanup(proto);
 
 	return POM_ERR;
+}
+
+
+static int proto_tcp_update_state(struct proto_tcp_priv *ppriv, struct proto_tcp_conntrack_priv *priv, struct conntrack_entry *ce, uint8_t flags, unsigned int direction, ptime ts) {
+
+	// We examine the flags SYN, FIN and RST to see if there is something interesting
+
+	if (flags & TH_SYN) {
+		if (flags & TH_ACK) { // SYN+ACK
+			if (priv->state <= TCP_STATE_SYN_SENT) {
+				priv->state = TCP_STATE_SYN_RECV;
+			}
+		} else {
+			if (priv->state == TCP_STATE_NEW) {
+				priv->state = TCP_STATE_SYN_SENT;
+			}
+		}
+	} else if (flags & TH_FIN) {
+		int dir_flag = (direction == POM_DIR_FWD ? PROTO_TCP_FIN_RECV_FWD : PROTO_TCP_FIN_RECV_REV);
+		priv->flags |= dir_flag;
+
+		if ((priv->flags & PROTO_TCP_FIN_RECV_BOTH) == PROTO_TCP_FIN_RECV_BOTH) {
+			priv->state = TCP_STATE_CLOSED; // We got FIN in both directions
+		} else {
+			priv->state = TCP_STATE_HALF_CLOSED;
+		}
+	} else if (flags & TH_RST) {
+		// RST always closes a connection
+		priv->state = TCP_STATE_CLOSED;
+	} else {
+		if (priv->state < TCP_STATE_ESTABLISHED)
+			priv->state = TCP_STATE_ESTABLISHED;
+	}
+	
+
+	uint16_t *delay = NULL;
+
+	switch (priv->state) {
+		case TCP_STATE_SYN_SENT:
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_sent_t);
+			break;
+		case TCP_STATE_SYN_RECV:
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_recv_t);
+			break;
+		case TCP_STATE_ESTABLISHED:
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_established_t);
+			break;
+		case TCP_STATE_HALF_CLOSED:
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_half_closed_t);
+			break;
+		case TCP_STATE_CLOSED:
+			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_closed_t);
+			break;
+		default:
+			pomlog(POMLOG_ERR "Internal error : Invalid state : %u", priv->state);
+			return PROTO_ERR;
+	}
+
+	if (conntrack_delayed_cleanup(ce, *delay, ts) != POM_OK) {
+		return PROTO_ERR;
+	}
+
+
+	return PROTO_OK;
 }
 
 static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -230,8 +289,6 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 	struct proto_tcp_priv *ppriv = proto_priv;
 	struct proto_tcp_conntrack_priv *priv = s->ce->priv;
 
-	uint16_t *delay = NULL;
-
 	if (!priv) {
 		priv = malloc(sizeof(struct proto_tcp_conntrack_priv));
 		if (!priv) {
@@ -246,59 +303,14 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		// TODO improve this
 		if (ntohs(hdr->th_sport) == 80 || ntohs(hdr->th_dport) == 80)
 			priv->proto = ppriv->proto_http;
-
-		// Set the correct state to the conntrack
-		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
-			priv->state = STATE_TCP_SYN_RECV;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_recv_t);
-		} else if (hdr->th_flags & TH_SYN) {
-			priv->state = STATE_TCP_SYN_SENT;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_sent_t);
-		} else if (hdr->th_flags & TH_RST || hdr->th_flags & TH_FIN) {
-			priv->state = STATE_TCP_LAST_ACK;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_close_t);
-		} else {
-			priv->state = STATE_TCP_ESTABLISHED;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_established_t);
-		}
-	} else {
-
-		// Update conntrack timer
-		if (hdr->th_flags & TH_SYN && hdr->th_flags & TH_ACK) {
-			priv->state = STATE_TCP_SYN_RECV;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_recv_t);
-		} else if (hdr->th_flags & TH_SYN) {
-			priv->state = STATE_TCP_SYN_SENT;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_syn_sent_t);
-		} else if (hdr->th_flags & TH_RST || hdr->th_flags & TH_FIN) {
-			if (hdr->th_flags & TH_ACK) {
-				priv->state = STATE_TCP_TIME_WAIT;
-				delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_time_wait_t);
-			} else {
-				priv->state = STATE_TCP_LAST_ACK;
-				delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_last_ack_t);
-			}
-		} else if (priv->state == STATE_TCP_LAST_ACK && hdr->th_flags & TH_ACK) {
-			priv->state = STATE_TCP_TIME_WAIT;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_time_wait_t);
-/*		} else if (priv->state == STATE_TCP_TIME_WAIT) {
-			conntrack_unlock(s->ce);
-			return POM_OK;
-*/		} else {
-			priv->state = STATE_TCP_ESTABLISHED;
-			delay = PTYPE_UINT16_GETVAL(ppriv->param_tcp_established_t);
-		}
-	}
-
-	if (conntrack_delayed_cleanup(s->ce, *delay, p->ts) != POM_OK) {
-		conntrack_unlock(s->ce);
-		return PROTO_ERR;
 	}
 
 
 	if (!priv->proto) {
+		// No further handling is done if we don't care about what's next in the protocol chain
+		int res = proto_tcp_update_state(ppriv, priv, s->ce, hdr->th_flags, s->direction, p->ts);
 		conntrack_unlock(s->ce);
-		return PROTO_OK;
+		return res;
 	}
 
 
@@ -318,12 +330,12 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 
 
 		if ((priv->flags & dir_flag) && priv->start_seq[s->direction] != seq) {
-			pomlog(POMLOG_DEBUG "Possible reused TCP connection %p in direction %u : old seq %u, new seq %u", s->ce, s->direction, priv->start_seq[s->direction], seq);
+			pomlog(POMLOG_DEBUG "Possible reused TCP connection %p (stream %p) in direction %u : old seq %u, new seq %u", priv, priv->stream, s->direction, priv->start_seq[s->direction], seq);
 		} else {
 			priv->start_seq[s->direction] = seq;
 			priv->flags |= dir_flag;
 
-			debug_tcp("Connection %p in direction %u : start seq %u from SYN", s->ce, s->direction, seq);
+			debug_tcp("Connection %p (stream %p) in direction %u : start seq %u from SYN", priv, priv->stream, s->direction, seq);
 			action |= dir_flag;
 		}
 
@@ -333,13 +345,13 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 			int rev_dir_flag = (s->direction == POM_DIR_REV ? PROTO_TCP_SEQ_KNOWN_DIR_FWD : PROTO_TCP_SEQ_KNOWN_DIR_REV);
 			uint32_t rev_seq = ntohl(hdr->th_ack);
 			if ((priv->flags & rev_dir_flag) && priv->start_seq[rev_dir] != rev_seq) {
-				pomlog(POMLOG_DEBUG "Most probably reused TCP connection %p in direction %u : old seq %u, new seq %u", s->ce, rev_dir, priv->start_seq[rev_dir], rev_seq);
+				pomlog(POMLOG_DEBUG "Most probably reused TCP connection %p (stream %p) in direction %u : old seq %u, new seq %u", priv, priv->stream, rev_dir, priv->start_seq[rev_dir], rev_seq);
 			} else {
 
 				priv->start_seq[rev_dir] = ntohl(hdr->th_ack);
 				priv->flags |= rev_dir_flag;
 
-				debug_tcp("Connection %p in direction %u : start seq %u from SYN+ACK", s->ce, rev_dir, rev_seq);
+				debug_tcp("Connection %p (stream %p) in direction %u : start seq %u from SYN+ACK", priv, priv->stream, rev_dir, rev_seq);
 				
 				action |= rev_dir_flag;
 			}
@@ -363,7 +375,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		priv->flags |= rev_dir_flag;
 		priv->flags |= PROTO_TCP_SEQ_ASSURED;
 
-		debug_tcp("Connection %p in direction %u : assured seq %u from ACK", s->ce, s->direction, seq);
+		debug_tcp("Connection %p (stream %p) in direction %u : assured seq %u from ACK", priv, priv->stream, s->direction, seq);
 		action |= rev_dir_flag;
 
 	}
@@ -374,7 +386,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
-		if (stream_set_timeout(priv->stream, 600, 2) != POM_OK) {
+		if (stream_set_timeout(priv->stream, 600, 30) != POM_OK) {
 			conntrack_unlock(s->ce);
 			stream_cleanup(priv->stream);
 			priv->stream = NULL;
@@ -385,17 +397,20 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 		action = priv->flags & (PROTO_TCP_SEQ_KNOWN_DIR_FWD | PROTO_TCP_SEQ_KNOWN_DIR_REV);
 	}
 
+	int res = PROTO_OK;
 	if (stream) {
 		if (action & PROTO_TCP_SEQ_KNOWN_DIR_FWD)
 			fwd_seq = priv->start_seq[POM_DIR_FWD];
 		if (action & PROTO_TCP_SEQ_KNOWN_DIR_REV)
 			rev_seq = priv->start_seq[POM_DIR_REV];
+	} else {
+		res = proto_tcp_update_state(ppriv, priv, s->ce, hdr->th_flags, s->direction, p->ts);
 	}
 
 	conntrack_unlock(s->ce);
 
 	if (!stream)
-		return POM_OK;
+		return res;
 
 	if (action & PROTO_TCP_SEQ_KNOWN_DIR_FWD)
 		stream_set_start_seq(stream, POM_DIR_FWD, fwd_seq);
@@ -405,7 +420,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 	if (plen || (hdr->th_flags & TH_FIN)) {
 
 		if (hdr->th_flags & TH_FIN) {
-			debug_tcp("Connection %p: queued FIN packet with TS %u.%06u, seq %u and ack %u", s->ce, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts), ntohs(hdr->th_seq), ntohs(hdr->th_ack));
+			debug_tcp("Connection %p (stream %p): queued FIN packet with TS %u.%06u, seq %u and ack %u", priv, priv->stream, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts), ntohs(hdr->th_seq), ntohs(hdr->th_ack));
 		}
 
 		// Queue the payload
@@ -432,6 +447,9 @@ static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *
 	uint8_t flags = *PTYPE_UINT8_GETVAL(s_tcp->pkt_info->fields_value[proto_tcp_field_flags]);
 	if (flags & TH_FIN) // Increase the sequence number by 1 if we got a FIN
 		stream_increase_seq(cp->stream, s_tcp->direction, 1);
+	
+	if (proto_tcp_update_state(proto_get_priv(s_tcp->proto), cp, ce, flags, s_tcp->direction, p->ts) != POM_OK)
+		return PROTO_ERR;
 
 	stack[stack_index].proto = cp->proto;
 	return core_process_multi_packet(stack, stack_index, p);
@@ -444,6 +462,7 @@ static int proto_tcp_conntrack_cleanup(void *ce_priv) {
 	if (!priv)
 		return POM_OK;
 
+	debug_tcp("Connection %p (stream %p) cleaned up", ce_priv, priv->stream);
 	if (priv->stream) {
 		if (stream_cleanup(priv->stream) != POM_OK)
 			return POM_ERR;
@@ -459,18 +478,16 @@ static int proto_tcp_cleanup(void *proto_priv) {
 	struct proto_tcp_priv *priv = proto_priv;
 
 	if (priv) {
-		if (priv->param_tcp_syn_sent_t)
-			ptype_cleanup(priv->param_tcp_syn_sent_t);
 		if (priv->param_tcp_syn_recv_t)
 			ptype_cleanup(priv->param_tcp_syn_recv_t);
-		if (priv->param_tcp_last_ack_t)
-			ptype_cleanup(priv->param_tcp_last_ack_t);
-		if (priv->param_tcp_close_t)
-			ptype_cleanup(priv->param_tcp_close_t);
-		if (priv->param_tcp_time_wait_t)
-			ptype_cleanup(priv->param_tcp_time_wait_t);
+		if (priv->param_tcp_syn_sent_t)
+			ptype_cleanup(priv->param_tcp_syn_sent_t);
 		if (priv->param_tcp_established_t)
 			ptype_cleanup(priv->param_tcp_established_t);
+		if (priv->param_tcp_half_closed_t)
+			ptype_cleanup(priv->param_tcp_half_closed_t);
+		if (priv->param_tcp_closed_t)
+			ptype_cleanup(priv->param_tcp_closed_t);
 		if (priv->param_tcp_reuse_handling)
 			ptype_cleanup(priv->param_tcp_reuse_handling);
 
