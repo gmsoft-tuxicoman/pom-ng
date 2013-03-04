@@ -247,10 +247,15 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 		t = core_processing_threads[thread_affinity % core_num_threads];
 		pom_mutex_lock(&t->pkt_queue_lock);
 	} else {
+		static volatile unsigned int start = 0;
 		unsigned int i;
 		while (1) {
+			unsigned int thread_id = start;
 			for (i = 0; i < core_num_threads; i++) {
-				t = core_processing_threads[i];
+				thread_id++;
+				if (thread_id >= core_num_threads)
+					thread_id -= core_num_threads;
+				t = core_processing_threads[thread_id];
 				int res = pthread_mutex_trylock(&t->pkt_queue_lock);
 				if (res == EBUSY) {
 					// Thread is busy, go to the next one
@@ -273,6 +278,7 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 
 			if (i < core_num_threads) {
 				// We locked on a thread
+				start = thread_id;
 				break;
 			}
 
