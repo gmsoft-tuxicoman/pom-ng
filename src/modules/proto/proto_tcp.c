@@ -386,7 +386,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
-		if (stream_set_timeout(priv->stream, 600, 30) != POM_OK) {
+		if (stream_set_timeout(priv->stream, 600) != POM_OK) {
 			conntrack_unlock(s->ce);
 			stream_cleanup(priv->stream);
 			priv->stream = NULL;

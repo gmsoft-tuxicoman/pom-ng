@@ -32,7 +32,7 @@
 struct proto_process_stack;
 
 struct stream* stream_alloc(uint32_t max_buff_size, struct conntrack_entry *ce, unsigned int flags, int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index));
-int stream_set_timeout(struct stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout);
+int stream_set_timeout(struct stream *stream, unsigned int timeout);
 int stream_increase_seq(struct stream *stream, unsigned int direction, uint32_t inc);
 int stream_set_start_seq(struct stream *stream, unsigned int direction, uint32_t seq);
 int stream_cleanup(struct stream *stream);

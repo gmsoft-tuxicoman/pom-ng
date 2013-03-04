@@ -61,15 +61,14 @@ struct stream* stream_alloc(uint32_t max_buff_size, struct conntrack_entry *ce, 
 	return res;
 }
 
-int stream_set_timeout(struct stream *stream, unsigned int same_dir_timeout, unsigned int rev_dir_timeout) {
+int stream_set_timeout(struct stream *stream, unsigned int timeout) {
 
 	if (!stream->t) {
 		stream->t = conntrack_timer_alloc(stream->ce, stream_timeout, stream);
 		if (!stream->t)
 			return POM_ERR;
 	}
-	stream->same_dir_timeout = same_dir_timeout;
-	stream->rev_dir_timeout = rev_dir_timeout;
+	stream->timeout = timeout;
 
 	return POM_OK;
 }
@@ -118,6 +117,14 @@ int stream_cleanup(struct stream *stream) {
 }
 
 static void stream_end_process_packet(struct stream *stream) {
+
+	if (stream->head[POM_DIR_FWD] || stream->head[POM_DIR_REV]) {
+		conntrack_timer_queue(stream->t, stream->timeout, stream->last_ts);
+		stream->flags |= STREAM_FLAG_TIMER_SET;
+	} else if (stream->flags & STREAM_FLAG_TIMER_SET) {
+		conntrack_timer_dequeue(stream->t);
+		stream->flags &= ~STREAM_FLAG_TIMER_SET;
+	}
 
 	pom_mutex_unlock(&stream->lock);
 	pom_mutex_lock(&stream->wait_lock);
@@ -202,8 +209,6 @@ static int stream_is_packet_next(struct stream *stream, struct stream_pkt *pkt, 
 		if ((rev_seq < pkt->ack && pkt->ack - rev_seq < STREAM_HALF_SEQ)
 			|| (rev_seq > pkt->ack && rev_seq - pkt->ack > STREAM_HALF_SEQ)) {
 			// The host processed data in the reverse direction which we haven't processed yet
-			if (stream->t)
-				conntrack_timer_queue(stream->t, stream->rev_dir_timeout, stream->last_ts);
 			debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : reverse missing : cur_seq %u, rev_seq %u", pthread_self(), stream, pom_ptime_sec(pkt->pkt->ts), pom_ptime_usec(pkt->pkt->ts), pkt->seq, pkt->ack, cur_seq, rev_seq);
 			return 0;
 		}
@@ -425,7 +430,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 
 			// Check if additional packets can be processed
 			struct stream_pkt *p = NULL;
-			unsigned int cur_dir = direction, additional_processed = 0;
+			unsigned int cur_dir = direction;
 			while ((p = stream_get_next(stream, &cur_dir))) {
 
 
@@ -439,15 +444,6 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 				stream->cur_seq[cur_dir] += p->plen;
 		
 				stream_free_packet(p);
-
-				additional_processed = 1;
-			}
-
-			if (additional_processed) {
-				if (!stream->head[POM_DIR_FWD] && !stream->head[POM_DIR_REV])
-					conntrack_timer_dequeue(stream->t);
-				else
-					conntrack_timer_queue(stream->t, stream->same_dir_timeout, stream->last_ts);
 			}
 
 			stream_end_process_packet(stream);
@@ -543,14 +539,8 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 			stream_end_process_packet(stream);
 			return POM_ERR;
 		}
-
-		if (stream->t)
-			conntrack_timer_dequeue(stream->t);
 	}
 
-	// Add timeout
-	if (stream->t && (stream->head[POM_DIR_FWD] || stream->head[POM_DIR_REV])) 
-		conntrack_timer_queue(stream->t, stream->same_dir_timeout, stream->last_ts);
 	stream_end_process_packet(stream);
 
 	debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : done queued", pthread_self(), stream, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), seq, ack);
@@ -848,6 +838,8 @@ int stream_increase_seq(struct stream *stream, unsigned int direction, uint32_t 
 	while ((p = stream_get_next(stream, &direction))) {
 
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack);
+		// Flag the stream as running
+		stream->flags |= STREAM_FLAG_RUNNING;
 
 		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == PROTO_ERR)
 			return POM_ERR;
@@ -880,6 +872,8 @@ int stream_set_start_seq(struct stream *stream, unsigned int direction, uint32_t
 	while ((p = stream_get_next(stream, &direction))) {
 
 		debug_stream("thread %p, entry %p, packet %u.%06u, seq %u, ack %u : process additional", pthread_self(), stream, pom_ptime_sec(p->pkt->ts), pom_ptime_usec(p->pkt->ts), p->seq, p->ack);
+		// Flag the stream as running
+		stream->flags |= STREAM_FLAG_RUNNING;
 
 		if (stream->handler(stream->ce, p->pkt, p->stack, p->stack_index) == PROTO_ERR) {
 			stream_end_process_packet(stream);

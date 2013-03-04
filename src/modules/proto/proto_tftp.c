@@ -192,7 +192,7 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 					conntrack_unlock(s->ce);
 					return PROTO_ERR;
 				}
-				stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER, 0);
+				stream_set_timeout(priv->stream, PROTO_TFTP_PKT_TIMER);
 				set_start_seq = 1;
 			}
 

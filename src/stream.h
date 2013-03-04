@@ -34,6 +34,7 @@
 #define STREAM_FLAG_GOT_REV_STARTSEQ	0x20
 #define STREAM_FLAG_GOT_BOTH_STARTSEQ	(STREAM_FLAG_GOT_FWD_STARTSEQ | STREAM_FLAG_GOT_REV_STARTSEQ)
 #define STREAM_FLAG_RUNNING		0x40 // The stream has started and no sequence update will be accepted
+#define STREAM_FLAG_TIMER_SET		0x80
 
 #define STREAM_GAP_STEP_MAX		2048
 
@@ -60,7 +61,7 @@ struct stream {
 	uint32_t cur_seq[POM_DIR_TOT];
 	uint32_t cur_buff_size, max_buff_size;
 	unsigned int flags;
-	unsigned int same_dir_timeout, rev_dir_timeout;
+	unsigned int timeout;
 	struct stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
 	int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 	ptime last_ts;
