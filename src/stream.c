@@ -145,6 +145,7 @@ int stream_timeout(struct conntrack_entry *ce, void *priv, ptime now) {
 
 	pom_mutex_lock(&stream->lock);
 	debug_stream("thread %p, entry %p : timeout at %u.%06u", pthread_self(), stream, pom_ptime_sec(now), pom_ptime_usec(now));
+	stream->flags &= ~STREAM_FLAG_TIMER_SET;
 	res = stream_force_dequeue(stream);
 	stream_end_process_packet(stream);
 
