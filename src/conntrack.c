@@ -607,6 +607,11 @@ int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay, pt
 		return POM_OK;
 	}
 
+	if (ce->cleanup_timer == (void *) -1) {
+		debug_conntrack("Not queuing timer for conntrack %p as it is currently being cleaned up", ce);
+		return POM_OK;
+	}
+
 	if (!ce->cleanup_timer) {
 		ce->cleanup_timer = malloc(sizeof(struct conntrack_timer));
 		if (!ce->cleanup_timer) {
@@ -731,9 +736,9 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 		free(ce->parent);
 	}
 
-	if (ce->cleanup_timer) {
+	if (ce->cleanup_timer && ce->cleanup_timer != (void *) -1) {
 		conntrack_timer_cleanup(ce->cleanup_timer);
-		ce->cleanup_timer = NULL;
+		ce->cleanup_timer = (void *) -1; // Mark that the conntrack is being cleaned up
 	}
 
 	if (ce->session)
