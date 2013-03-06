@@ -408,11 +408,16 @@ void *core_processing_thread_func(void *priv) {
 
 		__sync_fetch_and_sub(&core_pkt_queue_count, 1);
 
-		// Tell the input processes that they can continue queuing packets
-		int res = pthread_cond_broadcast(&core_pkt_queue_wait_cond);
-		if (res) {
-			pomlog(POMLOG_ERR "Error while signaling the main pkt_queue condition : %s", pom_strerror(res));
-			abort();
+		if (tpriv->pkt_count < CORE_THREAD_PKT_QUEUE_MIN) {
+
+			pom_mutex_lock(&core_pkt_queue_wait_lock);
+			// Tell the input processes that they can continue queuing packets
+			int res = pthread_cond_broadcast(&core_pkt_queue_wait_cond);
+			if (res) {
+				pomlog(POMLOG_ERR "Error while signaling the main pkt_queue condition : %s", pom_strerror(res));
+				abort();
+			}
+			pom_mutex_unlock(&core_pkt_queue_wait_lock);
 		}
 
 		// Keep track of our packet
