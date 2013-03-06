@@ -379,8 +379,10 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 			data_set(dst_data[analyzer_http_request_response_time]);
 		}
 
-		if (!dst_data[analyzer_http_request_query_time].value) // If we don't know when we started, use the reply time instead
+		if (!dst_data[analyzer_http_request_query_time].value) { // If we don't know when we started, use the reply time instead
 			dst_data[analyzer_http_request_query_time].value = src_data[proto_http_response_start_time].value;
+			data_set(dst_data[analyzer_http_request_query_time]);
+		}
 
 		dst_data[analyzer_http_request_response_headers].items = src_data[proto_http_response_headers].items;
 		dst_data[analyzer_http_request_response_headers].flags = DATA_FLAG_NO_CLEAN;
