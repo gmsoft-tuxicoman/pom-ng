@@ -380,7 +380,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 
 	}
 
-	if (!priv->stream && plen) {
+	if (!priv->stream && (plen || (hdr->th_flags & TH_FIN))) {
 		priv->stream = stream_alloc(*PTYPE_UINT32_GETVAL(ppriv->param_tcp_conn_buffer), s->ce, STREAM_FLAG_BIDIR, proto_tcp_process_payload);
 		if (!priv->stream) {
 			conntrack_unlock(s->ce);
