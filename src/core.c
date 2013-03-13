@@ -33,9 +33,9 @@
 #include <pom-ng/ptype_bool.h>
 
 #if 0
-#define debug_thread(x ...) pomlog(POMLOG_DEBUG "thread: " x)
+#define debug_core(x ...) pomlog(POMLOG_DEBUG x)
 #else
-#define debug_thread(x ...)
+#define debug_core(x ...)
 #endif
 
 
@@ -240,6 +240,8 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 	if (!core_run)
 		return POM_ERR;
 
+	debug_core("Queuing packet %p (%u.%06u)", p, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts));
+
 	// Find the right thread to queue to
 
 	struct core_processing_thread *t = NULL;
@@ -287,12 +289,12 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 				// Queue full
 				if (flags & CORE_QUEUE_DROP_IF_FULL) {
 					// TODO add dropped stats
-					debug_thread("All queues full. Dropping !");
+					debug_core("Dropped packet %p (%u.%06u) to thread %u", p, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts));
 					return POM_OK;
 				}
 
 				// We're not going to drop this. Wait then
-				debug_thread("All queues full. Waiting ...");
+				debug_core("All queues full. Waiting ...");
 				pom_mutex_lock(&core_pkt_queue_wait_lock);
 				int res = pthread_cond_wait(&core_pkt_queue_wait_cond, &core_pkt_queue_wait_lock);
 				if (res) {
@@ -344,9 +346,9 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 
 	registry_perf_inc(perf_pkt_queue, 1);
 
-	debug_thread("%u: Queued packet %p", t->thread_id, p);
 	pom_mutex_unlock(&t->pkt_queue_lock);
 
+	debug_core("Queued packet %p (%u.%06u) to thread %u", p, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts), t->thread_id);
 
 	return POM_OK;
 }
@@ -424,7 +426,7 @@ void *core_processing_thread_func(void *priv) {
 		struct packet *pkt = tmp->pkt;
 
 		pom_mutex_unlock(&tpriv->pkt_queue_lock);
-		debug_thread("%u: Processing packet %p", tpriv->thread_id, pkt);
+		debug_core("Processing packet %p (%u.%06u) in thread %u", pkt, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), tpriv->thread_id);
 
 		// Lock the processing lock
 		pom_rwlock_rlock(&core_processing_lock);
