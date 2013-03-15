@@ -1570,7 +1570,6 @@ void registry_perf_timeticks_restart(struct registry_perf *p) {
 	ptime now = pom_gettimeofday();
 
 	// value currently holds the runtime in usec
-	// Not sure if the below is correct ...
 	volatile uint64_t new_val = (now + REGISTRY_PERF_TIMETICKS_STARTED) - p->value;
 	p->value = new_val;
 }
@@ -1583,7 +1582,7 @@ uint64_t registry_perf_getval(struct registry_perf *p) {
 
 		if (p->update_hook) {
 			pom_mutex_lock(&p->hook_lock);
-			if (p->update_hook(&p->value, p->hook_priv) != POM_OK)
+			if (p->update_hook((uint64_t*)&p->value, p->hook_priv) != POM_OK)
 				pomlog(POMLOG_WARN "Warning: update of performance %s value failed.", p->name);
 			pom_mutex_unlock(&p->hook_lock);
 		}
@@ -1603,14 +1602,22 @@ uint64_t registry_perf_getval(struct registry_perf *p) {
 
 void registry_perf_reset(struct registry_perf *p) {
 
-	if (p->type != registry_perf_type_counter)
+	if (p->type == registry_perf_type_gauge)
 		return;
 
 	if (p->update_hook) {
 		pom_mutex_lock(&p->hook_lock);
 		p->value = 0;
 		pom_mutex_unlock(&p->hook_lock);
-	} else {
+	} if (p->type == registry_perf_type_timeticks) {
+		uint64_t running = p->value & REGISTRY_PERF_TIMETICKS_STARTED;
+		if (running) {
+			p->value = pom_gettimeofday() + REGISTRY_PERF_TIMETICKS_STARTED;
+		} else {
+			p->value = 0;
+		}
+
+	}else {
 		p->value = 0;
 	}
 }
