@@ -1553,7 +1553,6 @@ void registry_perf_timeticks_stop(struct registry_perf *p) {
 	// Not sure if the below is correct ...
 	volatile uint64_t new_val = (now + REGISTRY_PERF_TIMETICKS_STARTED) - p->value;
 	p->value = new_val;
-	__sync_synchronize();
 }
 
 void registry_perf_timeticks_restart(struct registry_perf *p) {
@@ -1574,7 +1573,6 @@ void registry_perf_timeticks_restart(struct registry_perf *p) {
 	// Not sure if the below is correct ...
 	volatile uint64_t new_val = (now + REGISTRY_PERF_TIMETICKS_STARTED) - p->value;
 	p->value = new_val;
-	__sync_synchronize();
 }
 
 uint64_t registry_perf_getval(struct registry_perf *p) {
@@ -1614,7 +1612,6 @@ void registry_perf_reset(struct registry_perf *p) {
 		pom_mutex_unlock(&p->hook_lock);
 	} else {
 		p->value = 0;
-		__sync_synchronize();
 	}
 }
 
