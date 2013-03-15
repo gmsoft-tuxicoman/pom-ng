@@ -38,7 +38,7 @@ struct registry_perf {
 	char *description;
 	char *unit;
 	enum registry_perf_type type;
-	uint64_t value;
+	volatile uint64_t value;
 	struct registry_perf *next;
 
 	int (*update_hook) (uint64_t *cur_val, void *priv);
