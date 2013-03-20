@@ -212,7 +212,8 @@ int core_cleanup(int emergency_cleanup) {
 		while (t->pkt_queue_head) {
 			tmp = t->pkt_queue_head;
 			t->pkt_queue_head = tmp->next;
-			packet_pool_release(tmp->pkt);
+			// packet_pool_cleanup() was already called when the thread stopped
+			// packet_pool_release(tmp->pkt);
 			free(tmp);
 			pomlog(POMLOG_WARN "A packet was still in a thread's queue");
 		}
@@ -220,7 +221,8 @@ int core_cleanup(int emergency_cleanup) {
 		while (t->pkt_queue_unused) {
 			tmp = t->pkt_queue_unused;
 			t->pkt_queue_unused = tmp->next;
-			packet_pool_release(tmp->pkt);
+			// packet_pool_cleanup() was already called when the thread stopped
+			// packet_pool_release(tmp->pkt);
 			free(tmp);
 		}
 
