@@ -160,7 +160,7 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 */
-	p = registry_new_param("conn_buffer", "65535", priv->param_tcp_conn_buffer, "Maximum buffer per connection", 0);
+	p = registry_new_param("conn_buffer", "8388608", priv->param_tcp_conn_buffer, "Maximum buffer per connection", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
