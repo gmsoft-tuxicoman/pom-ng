@@ -109,6 +109,65 @@ static int input_pcap_mod_unregister() {
 	return res;
 }
 
+static int input_pcap_common_init(struct input *i) {
+
+	struct input_pcap_priv *priv;
+	priv = malloc(sizeof(struct input_pcap_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct input_pcap_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct input_pcap_priv));
+
+	struct registry_param *p = NULL;
+
+	priv->p_filter = ptype_alloc("string");
+	if (!priv->p_filter)
+		goto err;
+		
+	p = registry_new_param("bpf_filter", "", priv->p_filter, "BPF filter to use", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	i->priv = priv;
+	
+	return POM_OK;
+err:
+
+	if (p)
+		registry_cleanup_param(p);
+
+	if (priv->p_filter)
+		ptype_cleanup(priv->p_filter);
+
+	free(priv);
+
+	return POM_ERR;
+}
+
+static int input_pcap_set_filter(pcap_t *p, char *filter) {
+
+	if (strlen(filter) <= 0)
+		return POM_OK;
+
+	struct bpf_program fp;
+
+	if (pcap_compile(p, &fp, filter, 1, PCAP_NETMASK_UNKNOWN) == -1) {
+		pomlog(POMLOG_ERR "Unable to compile BPF filter \"%s\"", filter);
+		return POM_ERR;
+	}
+
+	if (pcap_setfilter(p, &fp) == -1) {
+		pcap_freecode(&fp);
+		pomlog(POMLOG_ERR "Unable to set the BPF filter \"%s\"", filter);
+		return POM_ERR;
+	}
+
+	pcap_freecode(&fp);
+
+	return POM_OK;
+}
+
 static int input_pcap_common_open(struct input *i) {
 
 	struct input_pcap_priv *priv = i->priv;
@@ -162,6 +221,12 @@ static int input_pcap_common_open(struct input *i) {
 		return POM_ERR;
 	}
 
+
+	if (input_pcap_set_filter(priv->p, PTYPE_STRING_GETVAL(priv->p_filter)) != POM_OK) {
+		input_pcap_close(i);
+		return POM_ERR;
+	}
+
 	return POM_OK;
 
 }
@@ -172,13 +237,10 @@ static int input_pcap_common_open(struct input *i) {
 
 static int input_pcap_interface_init(struct input *i) {
 
-	struct input_pcap_priv *priv;
-	priv = malloc(sizeof(struct input_pcap_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct input_pcap_priv));
+	if (input_pcap_common_init(i) != POM_OK)
 		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct input_pcap_priv));
+
+	struct input_pcap_priv *priv = i->priv;
 	
 	struct registry_param *p = NULL;
 
@@ -203,8 +265,6 @@ static int input_pcap_interface_init(struct input *i) {
 		goto err;
 
 	priv->type = input_pcap_type_interface;
-
-	i->priv = priv;
 
 	return POM_OK;
 
@@ -249,13 +309,10 @@ static int input_pcap_interface_open(struct input *i) {
 
 static int input_pcap_file_init(struct input *i) {
 
-	struct input_pcap_priv *priv;
-	priv = malloc(sizeof(struct input_pcap_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct input_pcap_priv));
+	if (input_pcap_common_init(i) != POM_OK)
 		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct input_pcap_priv));
+
+	struct input_pcap_priv *priv = i->priv;
 
 	struct registry_param *p = NULL;
 
@@ -268,8 +325,6 @@ static int input_pcap_file_init(struct input *i) {
 		goto err;
 
 	priv->type = input_pcap_type_file;
-
-	i->priv = priv;
 
 	return POM_OK;
 
@@ -308,13 +363,10 @@ static int input_pcap_file_open(struct input *i) {
 
 static int input_pcap_dir_init(struct input *i) {
 
-	struct input_pcap_priv *priv;
-	priv = malloc(sizeof(struct input_pcap_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct input_pcap_priv));
+	if (input_pcap_common_init(i) != POM_OK)
 		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct input_pcap_priv));
+
+	struct input_pcap_priv *priv = i->priv;
 
 	struct registry_param *p = NULL;
 	priv->tpriv.dir.p_dir = ptype_alloc("string");
@@ -332,8 +384,6 @@ static int input_pcap_dir_init(struct input *i) {
 
 	priv->type = input_pcap_type_dir;
 	
-	i->priv = priv;
-
 	return POM_OK;
 
 err:
@@ -491,13 +541,20 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 			pomlog(POMLOG_WARN "Unable to open file %s : %s", cur->full_path, errbuf);
 			continue;
 		}
-		
+	
+		if (input_pcap_set_filter(priv->p, PTYPE_STRING_GETVAL(priv->p_filter)) != POM_OK) {
+			cur->next = priv->tpriv.dir.files;
+			priv->tpriv.dir.files = cur; // Add at the begning in order not to process it again
+			pomlog(POMLOG_WARN "Could not set filter on file %s", cur->full_path);
+			continue;
+		}
+
 		const u_char *next_pkt;
 		struct pcap_pkthdr *phdr;
 
 		int result = pcap_next_ex(p, &phdr, &next_pkt);
 
-		if (result <= 0 ) {
+		if (result <= 0) {
 			cur->next = priv->tpriv.dir.files;
 			priv->tpriv.dir.files = cur; // Add at the begning in order not to process it again
 			pomlog(POMLOG_WARN "Could not read first packet from file %s", cur->full_path);
@@ -581,8 +638,13 @@ static int input_pcap_dir_open_next(struct input_pcap_priv *p) {
 
 		char errbuf[PCAP_ERRBUF_SIZE + 1] = { 0 };
 		p->p = pcap_open_offline(dp->cur_file->full_path, errbuf);
-		if (!p->p) {
+		if (!p->p || input_pcap_set_filter(p->p, PTYPE_STRING_GETVAL(p->p_filter)) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while opening next file %s in the directory : %s. Skipping", dp->cur_file->filename, errbuf);
+			continue;
+		}
+
+		if (input_pcap_set_filter(p->p, PTYPE_STRING_GETVAL(p->p_filter)) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while setting filter on file %s", dp->cur_file->filename);
 			continue;
 		}
 

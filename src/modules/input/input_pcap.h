@@ -66,6 +66,8 @@ struct input_pcap_priv {
 		struct input_pcap_dir_priv dir;
 	} tpriv;
 
+	struct ptype *p_filter;
+
 	struct proto *datalink_proto;
 	int datalink_type;
 	unsigned int align_offset;
