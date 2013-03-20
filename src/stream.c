@@ -683,27 +683,23 @@ int stream_force_dequeue(struct stream *stream) {
 	
 		unsigned int next_rev_dir = POM_DIR_REVERSE(next_dir);
 
-		int rev_dir_flag = (next_rev_dir == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
+		int rev_dir_flag = (next_rev_dir == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_DIR : STREAM_FLAG_GOT_REV_DIR);
 
-		// We also know about the reverse seq now
-		if (!(stream->flags & rev_dir_flag)) {
-			stream->flags |= rev_dir_flag;
-			stream->cur_seq[POM_DIR_REVERSE(next_dir)] = p->ack;
+		// Only fill a gap in the reverse direction if we've had packets in that direction
+		if (stream->flags & rev_dir_flag) {
+
+			uint32_t rev_seq = stream->cur_seq[next_rev_dir];
+			if ((rev_seq < p->ack && p->ack - rev_seq < STREAM_HALF_SEQ)
+				|| (rev_seq > p->ack && rev_seq - p->ack > STREAM_HALF_SEQ)) {
+					
+
+				// We were waiting for reverse
+				uint32_t rev_gap = p->ack - stream->cur_seq[next_rev_dir];
+				res = stream_fill_gap(stream, p, rev_gap, 1);
+				stream->cur_seq[next_rev_dir] = p->ack;
+
+			}
 		}
-
-		
-		uint32_t rev_seq = stream->cur_seq[next_rev_dir];
-		if ((rev_seq < p->ack && p->ack - rev_seq < STREAM_HALF_SEQ)
-			|| (rev_seq > p->ack && rev_seq - p->ack > STREAM_HALF_SEQ)) {
-				
-
-			// We were waiting for reverse
-			uint32_t rev_gap = p->ack - stream->cur_seq[next_rev_dir];
-			res = stream_fill_gap(stream, p, rev_gap, 1);
-			stream->cur_seq[next_rev_dir] = p->ack;
-
-		}
-
 	}
 
 	uint32_t gap = p->seq - stream->cur_seq[next_dir];
