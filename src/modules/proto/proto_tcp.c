@@ -496,6 +496,8 @@ static int proto_tcp_cleanup(void *proto_priv) {
 			ptype_cleanup(priv->param_tcp_closed_t);
 		if (priv->param_tcp_reuse_handling)
 			ptype_cleanup(priv->param_tcp_reuse_handling);
+		if (priv->param_tcp_conn_buffer)
+			ptype_cleanup(priv->param_tcp_conn_buffer);
 		if (priv->param_tcp_stream_timeout)
 			ptype_cleanup(priv->param_tcp_stream_timeout);
 
