@@ -117,6 +117,7 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 	priv->param_tcp_closed_t = ptype_alloc_unit("uint16", "seconds");
 	priv->param_tcp_reuse_handling = ptype_alloc("bool");
 	priv->param_tcp_conn_buffer = ptype_alloc_unit("uint32", "bytes");
+	priv->param_tcp_stream_timeout = ptype_alloc_unit("uint16", "seconds");
 
 	// FIXME actually use param_tcp_reuse_handling !
 	
@@ -128,7 +129,8 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 		|| !priv->param_tcp_established_t
 		|| !priv->param_tcp_closed_t
 		|| !priv->param_tcp_reuse_handling
-		|| !priv->param_tcp_conn_buffer) {
+		|| !priv->param_tcp_conn_buffer
+		|| !priv->param_tcp_stream_timeout) {
 		
 		goto err;
 	}
@@ -159,6 +161,10 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 		goto err;
 */
 	p = registry_new_param("conn_buffer", "65535", priv->param_tcp_conn_buffer, "Maximum buffer per connection", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("stream_timeout", "60", priv->param_tcp_stream_timeout, "Stream timeout (for missing packets)", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
@@ -386,7 +392,7 @@ static int proto_tcp_process(void *proto_priv, struct packet *p, struct proto_pr
 			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
-		if (stream_set_timeout(priv->stream, 600) != POM_OK) {
+		if (stream_set_timeout(priv->stream, *PTYPE_UINT16_GETVAL(ppriv->param_tcp_stream_timeout)) != POM_OK) {
 			conntrack_unlock(s->ce);
 			stream_cleanup(priv->stream);
 			priv->stream = NULL;
@@ -490,6 +496,8 @@ static int proto_tcp_cleanup(void *proto_priv) {
 			ptype_cleanup(priv->param_tcp_closed_t);
 		if (priv->param_tcp_reuse_handling)
 			ptype_cleanup(priv->param_tcp_reuse_handling);
+		if (priv->param_tcp_stream_timeout)
+			ptype_cleanup(priv->param_tcp_stream_timeout);
 
 		free(priv);
 	}
