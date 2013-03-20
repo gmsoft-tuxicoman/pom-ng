@@ -141,7 +141,7 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("established_timer", "7200", priv->param_tcp_established_t, "Established timer", 0);
+	p = registry_new_param("established_timer", "1800", priv->param_tcp_established_t, "Established timer", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 
