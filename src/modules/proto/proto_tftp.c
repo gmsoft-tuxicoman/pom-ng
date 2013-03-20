@@ -201,12 +201,8 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 			if (set_start_seq)
 				stream_set_start_seq(priv->stream, s->direction, PROTO_TFTP_BLK_SIZE);
 			int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
-			if (res == PROTO_OK) {
-				conntrack_unlock(s->ce);
-				return PROTO_STOP;
-			}
 
-			return res;
+			return (res == PROTO_OK ? PROTO_STOP : res);
 		}
 
 		case tftp_ack:
