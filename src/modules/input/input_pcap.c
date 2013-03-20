@@ -794,6 +794,7 @@ static int input_pcap_cleanup(struct input *i) {
 			break;
 
 	}
+	ptype_cleanup(priv->p_filter);
 	free(priv);
 
 	return POM_OK;
