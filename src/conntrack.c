@@ -911,10 +911,8 @@ int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session 
 		conntrack_session_refcount_dec(ce->session);
 	}
 
-	pom_mutex_lock(&session->lock);
-	session->refcount++;
+	conntrack_session_refcount_inc(session);
 	ce->session = session;
-	pom_mutex_unlock(&session->lock);
 
 	return POM_OK;
 }
@@ -923,6 +921,11 @@ void conntrack_session_unlock(struct conntrack_session *session) {
 	pom_mutex_unlock(&session->lock);
 }
 
+void conntrack_session_refcount_inc(struct conntrack_session *session) {
+	pom_mutex_lock(&session->lock);
+	session->refcount++;
+	pom_mutex_unlock(&session->lock);
+}
 
 int conntrack_session_refcount_dec(struct conntrack_session *session) {
 

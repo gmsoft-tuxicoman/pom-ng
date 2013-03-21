@@ -26,6 +26,13 @@
 #include "mod.h"
 #include "filter.h"
 
+
+#if 0
+#define debug_expectation(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_expectation(x ...)
+#endif
+
 static struct proto *proto_head = NULL;
 
 static struct registry_class *proto_registry_class = NULL;
@@ -215,6 +222,8 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 			pom_rwlock_unlock(&proto->expectation_lock);
 			pom_rwlock_wlock(&proto->expectation_lock);
 
+			debug_expectation("Expectation %p matched !", e);
+
 			// Remove it from the list
 			
 			if (e->next)
@@ -240,7 +249,6 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 				proto_expectation_cleanup(e);
 				return PROTO_ERR;
 			}
-			e->session = NULL;
 
 			registry_perf_dec(e->proto->perf_expt_pending, 1);
 			registry_perf_inc(e->proto->perf_expt_matched, 1);
@@ -352,9 +360,20 @@ struct proto *proto_get(char *name) {
 	return tmp;
 }
 
-int proto_empty_conntracks() {
+int proto_finish() {
 
 	struct proto *proto;
+
+	// Cleanup the expectations first
+	for (proto = proto_head; proto; proto = proto->next) {
+		while (proto->expectations) {
+			struct proto_expectation *e = proto->expectations;
+			proto->expectations = e->next;
+			proto_expectation_cleanup(e);
+		}
+	}
+
+	// Cleanup the conntracks
 	for (proto = proto_head; proto; proto = proto->next) {
 		conntrack_table_empty(proto->ct);
 	}
@@ -455,6 +474,8 @@ struct proto_expectation *proto_expectation_alloc(struct proto *proto, void *pri
 	
 	res->priv = priv;
 	res->proto = proto;
+
+	debug_expectation("Expectation %p allocated", res);
 
 	return res;
 }
@@ -561,6 +582,8 @@ void proto_expectation_cleanup(struct proto_expectation *e) {
 	if (!e)
 		return;
 
+	debug_expectation("Cleaning up expectation %p", e);
+
 	while (e->head) {
 		struct proto_expectation_stack *es = e->head;
 		e->head = es->next;
@@ -630,6 +653,7 @@ int proto_expectation_add(struct proto_expectation *e, struct conntrack_session 
 	if (timer_queue_now(e->expiry, expiry, now) != POM_OK)
 		return POM_ERR;
 
+	conntrack_session_refcount_inc(session);
 	e->session = session;
 	
 	struct proto *proto = e->tail->proto;

@@ -348,9 +348,9 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 
 	registry_perf_inc(perf_pkt_queue, 1);
 
-	pom_mutex_unlock(&t->pkt_queue_lock);
-
 	debug_core("Queued packet %p (%u.%06u) to thread %u", p, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts), t->thread_id);
+
+	pom_mutex_unlock(&t->pkt_queue_lock);
 
 	return POM_OK;
 }
@@ -374,6 +374,8 @@ void *core_processing_thread_func(void *priv) {
 		while (!tpriv->pkt_queue_head) {
 			// We are not active while waiting for a packet
 			registry_perf_dec(perf_thread_active, 1);
+
+			debug_core("thread %u : waiting", tpriv->thread_id);
 
 			if (registry_perf_getval(perf_thread_active) == 0) {
 				if (core_get_state() == core_state_finishing)
@@ -427,8 +429,8 @@ void *core_processing_thread_func(void *priv) {
 		// Keep track of our packet
 		struct packet *pkt = tmp->pkt;
 
+		debug_core("thread %u : Processing packet %p (%u.%06u)", tpriv->thread_id, pkt, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts));
 		pom_mutex_unlock(&tpriv->pkt_queue_lock);
-		debug_core("Processing packet %p (%u.%06u) in thread %u", pkt, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts), tpriv->thread_id);
 
 		// Lock the processing lock
 		pom_rwlock_rlock(&core_processing_lock);
@@ -457,6 +459,7 @@ void *core_processing_thread_func(void *priv) {
 			break;
 		}
 		
+		debug_core("thread %u : Processed packet %p (%u.%06u)", tpriv->thread_id, pkt, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts));
 		// Re-lock our queue for the next run
 		pom_mutex_lock(&tpriv->pkt_queue_lock);
 
@@ -732,7 +735,7 @@ static int core_processing_stop() {
 		dns_cleanup();
 
 	// Free all the conntracks
-	proto_empty_conntracks();
+	proto_finish();
 
 	// Cleanup the packet pool
 	packet_pool_cleanup();
@@ -784,7 +787,9 @@ int core_set_state(enum core_state state) {
 		for (i = 0; i < core_num_threads; i++) {
 			struct core_processing_thread *t = core_processing_threads[i];
 
+			pom_mutex_lock(&t->pkt_queue_lock);
 			int res = pthread_cond_broadcast(&t->pkt_queue_cond);
+			pom_mutex_unlock(&t->pkt_queue_lock);
 			if (res) {
 				pomlog(POMLOG_ERR "Error while broadcasting restart condition after set state");
 				abort();
