@@ -1,3 +1,16 @@
+v0.0.9
+	Make a lot of critical code path lock-free.
+	Add various performance objects.
+	Improve and simplify conntrack.
+	Rework packet queuing.
+	Rename the packet_stream API to stream.
+	Improve start sequence handling of the stream API.
+	Add more parameter to proto_tcp to handle the buffer size.
+	Add the packet field 'crypted' to proto_docsis to make matching	easier.
+	Improve proto_tcp state machine.
+	Add BPF filter support for input_pcap.
+	Various cleanups and fix.
+
 v0.0.8
 	Add performance support.
 	Fix possible deadlock in packet_stream.
