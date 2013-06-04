@@ -32,6 +32,17 @@
 	if ((x)->value)				\
 		free((x)->value);		\
 	(x)->value = strdup(y);			\
+	if (!(x)->value)			\
+		pom_oom(strlen(y));		\
+}
+
+/// x is the struct ptype, y is the string
+#define PTYPE_STRING_SETVAL_N(x, y, n) {	\
+	if ((x)->value)				\
+		free((x)->value);		\
+	(x)->value = strndup(y, n);		\
+	if (!(x)->value)			\
+		pom_oom(strlen(y));		\
 }
 
 /// x is the struct ptype, y the string pointer
