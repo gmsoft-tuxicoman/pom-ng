@@ -27,15 +27,12 @@
 #define SMTP_MAX_LINE 4096
 
 // Either if it's invalid or encrypted
-#define PROTO_SMTP_FLAG_INVALID	0x1
+#define PROTO_SMTP_FLAG_INVALID		0x1
+#define PROTO_SMTP_CLIENT_DATA		0x2
 
-enum {
-	proto_smtp_state_init = 0,
-	proto_smtp_state_client_cmd,
-	proto_smtp_state_client_data,
-	proto_smtp_state_server,
-	proto_smtp_state_server_multiline
-};
+#define PROTO_SMTP_CMD_LEN		4
+
+#define PROTO_SMTP_DATA_END		"\r\n.\r\n"
 
 struct proto_smtp_priv {
 
@@ -45,10 +42,11 @@ struct proto_smtp_priv {
 
 struct proto_smtp_conntrack_priv {
 
-	struct packet_stream_parser *parser;
+	struct packet_stream_parser *parser[POM_DIR_TOT];
 	uint32_t flags;
 	int server_direction;
-	int state;
+//	unsigned int data_end_pos;
+	struct event *data_evt, *reply_evt;
 };
 
 struct mod_reg_info* proto_smtp_reg_info();

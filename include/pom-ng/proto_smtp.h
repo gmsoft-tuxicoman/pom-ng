@@ -28,7 +28,7 @@ enum {
 	proto_smtp_cmd_arg,
 };
 
-#define PROTO_SMTP_EVT_REPLY_DATA_COUNT 5
+#define PROTO_SMTP_EVT_REPLY_DATA_COUNT 2
 
 enum {
 	proto_smtp_reply_code,

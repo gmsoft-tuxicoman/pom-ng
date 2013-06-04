@@ -23,8 +23,11 @@
 #include <pom-ng/event.h>
 
 #include "proto_smtp.h"
+#include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint16.h>
 
 #include <string.h>
+#include <stdio.h>
 
 
 struct mod_reg_info* proto_smtp_reg_info() {
@@ -61,7 +64,6 @@ static int proto_smtp_mod_register(struct mod_reg *mod) {
 	return POM_ERR;
 
 }
-
 
 static int proto_smtp_init(struct proto *proto, struct registry_instance *i) {
 
@@ -102,7 +104,7 @@ static int proto_smtp_init(struct proto *proto, struct registry_instance *i) {
 	evt_reply_data_items[proto_smtp_reply_code].name = "code";
 	evt_reply_data_items[proto_smtp_reply_code].value_type = ptype_get_type("uint16");
 	evt_reply_data_items[proto_smtp_reply_text].name = "text";
-	evt_reply_data_items[proto_smtp_reply_text].value_type = ptype_get_type("string");
+	evt_reply_data_items[proto_smtp_reply_text].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_reg evt_reply_data = {
 		.items = evt_reply_data_items,
@@ -147,6 +149,7 @@ static int proto_smtp_cleanup(void *proto_priv) {
 static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
 		pomlog(POMLOG_ERR "Coult not get conntrack entry");
@@ -156,6 +159,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 	// There should no need to keep the lock here since we are in the packet_stream lock from proto_tcp
 	conntrack_unlock(s->ce);
 
+	struct proto_smtp_priv *ppriv = proto_priv;
 
 	struct proto_smtp_conntrack_priv *priv = s->ce->priv;
 	if (!priv) {
@@ -166,13 +170,20 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 		}
 		memset(priv, 0, sizeof(struct proto_smtp_conntrack_priv));
 
-		priv->parser = packet_stream_parser_alloc(SMTP_MAX_LINE);
-		if (!priv->parser) {
+		priv->parser[POM_DIR_FWD] = packet_stream_parser_alloc(SMTP_MAX_LINE);
+		if (!priv->parser[POM_DIR_FWD]) {
 			free(priv);
 			return PROTO_ERR;
 		}
 
-		priv->direction = POM_DIR_UNK;
+		priv->parser[POM_DIR_REV] = packet_stream_parser_alloc(SMTP_MAX_LINE);
+		if (!priv->parser[POM_DIR_REV]) {
+			packet_stream_parser_cleanup(priv->parser[POM_DIR_FWD]);
+			free(priv);
+			return PROTO_ERR;
+		}
+
+		priv->server_direction = POM_DIR_UNK;
 
 		s->ce->priv = priv;
 	}
@@ -180,7 +191,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 	if (priv->flags & PROTO_SMTP_FLAG_INVALID)
 		return PROTO_OK;
 
-	struct packet_stream_parser *parser = priv->parser;
+	struct packet_stream_parser *parser = priv->parser[s->direction];
 	if (packet_stream_parser_add_payload(parser, s->pload, s->plen) != POM_OK)
 		return PROTO_ERR;
 
@@ -188,6 +199,55 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 	unsigned int len = 0;
 	while (1) {
 
+		// Process the content of a message
+		if ((priv->flags & PROTO_SMTP_CLIENT_DATA) && s->direction == POM_DIR_REVERSE(priv->server_direction)) {
+			void *pload;
+			uint32_t plen;
+			packet_stream_parser_get_remaining(parser, &pload, &plen);
+
+			if (!plen)
+				return PROTO_OK;
+
+			// Look for lines starting by a dot
+			/*if (priv->data_end_pos > 0) {
+				// TODO The end line is split in multiple packets
+			} else {*/
+				char *dotline = strstr(pload, PROTO_SMTP_DATA_END);
+				if (dotline) {
+					if (pload + plen - strlen(PROTO_SMTP_DATA_END) != dotline) {
+						pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
+						priv->flags |= PROTO_SMTP_FLAG_INVALID;
+						event_process_end(priv->data_evt);
+						priv->data_evt = NULL;
+						return POM_OK;
+					}
+					s_next->pload = pload;
+					s_next->plen = plen - strlen(PROTO_SMTP_DATA_END) + 2; // The last line return is part of the payload
+					if (priv->data_evt) {
+						if (event_process_end(priv->data_evt) != POM_OK)
+							return PROTO_ERR;
+						priv->data_evt = NULL;
+					}
+
+					priv->flags &= ~PROTO_SMTP_CLIENT_DATA;
+
+				} else {
+					// TODO : Check if the end of the payload is the end of the message
+					/*int i;
+					for (i = PROTO_SMTP_DATA_END - 1; i > 0; i++) {
+						if (!memcmp(pload + plen - i, PROTO_SMTP_DATA_END, strlen(PROTO_SMTP_DATA_END) - i)) {
+							break;
+						}
+					}*/
+					s_next->pload = pload;
+					s_next->plen = plen;
+				}
+			//}
+
+			return PROTO_OK;
+		}
+
+		// Process commands
 		if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
 			return POM_ERR;
 
@@ -202,78 +262,126 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 			unsigned int code = 0;
 			if (sscanf(line, "%3u", &code) == 1 && code > 0) {
 				priv->server_direction = s->direction;
-				priv->state = proto_smtp_state_server;
 			} else {
 				priv->server_direction = POM_DIR_REVERSE(s->direction);
-				priv->state = proto_smtp_client_cmd;
 			}
 		}
 
-		switch (priv->state) {
-			case proto_smtp_state_client_cmd:
+		if (s->direction == priv->server_direction) {
 
-				break;
-
-			case proto_smtp_state_server: {
-				// Parse the response code and generate the event
-				if ((len < 5) || // Server response is 3 digit error code, a space or hyphen and then at least one letter of text
-					(line[3] != ' ' && line[3] != '-')) {
-					pomlog(POMLOG_DEBUG "Too short or invalid response from server");
-					priv->flags |= PROTO_SMTP_FLAG_INVALID;
-					return POM_OK;
-				}
-
-				int code = 0;
-				if (sscanf(line, "%3u", &code) != 1 || code == 0) {
-					pomlog(POMLOG_DEBUG "Invalid response from server");
-					priv->flags |= PROTO_SMTP_FLAG_INVALID;
-					return POM_OK;
-				}
-				
-				if (line[3] == '-') {
-					priv->state = proto_smtp_state_server_multiline;
-					continue;
-				}
-				
-				priv->state = proto_smtp_state_client_cmd;
-				// Buffer should be empty, we should return POM_OK
-				continue;
-
+			// Parse the response code and generate the event
+			if ((len < 5) || // Server response is 3 digit error code, a space or hyphen and then at least one letter of text
+				(line[3] != ' ' && line[3] != '-')) {
+				pomlog(POMLOG_DEBUG "Too short or invalid response from server");
+				priv->flags |= PROTO_SMTP_FLAG_INVALID;
+				return POM_OK;
 			}
 
-		}
+			int code = 0;
+			if (sscanf(line, "%3u", &code) != 1 || code == 0) {
+				pomlog(POMLOG_DEBUG "Invalid response from server");
+				priv->flags |= PROTO_SMTP_FLAG_INVALID;
+				return POM_OK;
+			}
+			
+			pomlog(POMLOG_DEBUG "Got response %u", code);
+
+			if (event_has_listener(ppriv->evt_reply)) {
+
+				struct data *evt_data = NULL;
+				if (priv->reply_evt) {
+					evt_data = event_get_data(priv->reply_evt);
+					uint16_t cur_code = *PTYPE_UINT16_GETVAL(evt_data[proto_smtp_reply_code].value);
+					if (cur_code != code) {
+						pomlog(POMLOG_WARN "Multiline code not the same as previous line : %hu -> %hu", cur_code, code);
+						event_process_end(priv->reply_evt);
+						priv->reply_evt = NULL;
+					}
+				}
 
 
-		if (priv->flags & PROTO_SMTP_FLAG_DATA) {
-			pomlog(POMLOG_DEBUG "Got data ");
+				if (!priv->reply_evt) {
+					priv->reply_evt = event_alloc(ppriv->evt_reply);
+					if (!priv->reply_evt)
+						return PROTO_ERR;
+
+					evt_data = event_get_data(priv->reply_evt);
+					PTYPE_UINT16_SETVAL(evt_data[proto_smtp_reply_code].value, code);
+					data_set(evt_data[proto_smtp_reply_code]);
+
+					event_process_begin(priv->reply_evt, stack, stack_index);
+				}
+
+				if (len > 4) {
+					struct ptype *txt = ptype_alloc("string");
+					if (!txt)
+						return PROTO_ERR;
+					PTYPE_STRING_SETVAL_N(txt, line + 4, len - 4);
+					if (data_item_add_ptype(evt_data, proto_smtp_reply_text, strdup("text"), txt) != POM_OK)
+						return PROTO_ERR;
+				}
+			}
+
+			if (line[3] != '-') {
+				// Last line in the response
+				if (priv->reply_evt) {
+					event_process_end(priv->reply_evt);
+					priv->reply_evt = NULL;
+				}
+			}
+			
 
 		} else {
 
-			if (priv->server_direction == s->direction) {
-				
-				if ((len < 5) || // 3 digit number, one space or hyphen, at least one letter of text
-					(line[3] != ' ' && line[3] != '-')) { // Response code must be followed by space or hyphen
+			// Client command or data
 
-					pomlog(POMLOG_DEBUG "Too short or invalid response from server");
-					priv->flags |= PROTO_SMTP_FLAG_INVALID;
-					return PROTO_OK;
-				}
-
-
-
-				// Handle responses from the server
-				unsigned int code = 0;
-				if (sscanf(line, "%3u", &code) != 1 || code == 0) {
-					pomlog(POMLOG_DEBUG "Invalid response received from server");
-					priv->flags |= PROTO_SMTP_FLAG_INVALID;
-					return PROTO_OK;
-				}
-
+			if (len < 4) { // Client commands are at least 4 bytes long
+				pomlog(POMLOG_DEBUG "Too short or invalid query from client");
+				priv->flags |= PROTO_SMTP_FLAG_INVALID;
+				return POM_OK;
 			}
+
+			// Make sure it's a command by checking it's a four letter word
+			int i;
+			for (i = 0; i < PROTO_SMTP_CMD_LEN; i++) {
+				if (line[i] < 'A' || line[i] > 'z' || (line[i] > 'Z' && line[i] < 'a'))
+					break;
+			}
+
+			if ((i < PROTO_SMTP_CMD_LEN) || (len > PROTO_SMTP_CMD_LEN && line[PROTO_SMTP_CMD_LEN] != ' ')) {
+				pomlog(POMLOG_DEBUG "Recieved invalid client command");
+				priv->flags |= PROTO_SMTP_FLAG_INVALID;
+				return POM_OK;
+			}
+
+			if (!strncasecmp(line, "DATA", PROTO_SMTP_CMD_LEN))
+				priv->flags |= PROTO_SMTP_CLIENT_DATA;
+
+			if (event_has_listener(ppriv->evt_cmd)) {
+				struct event *evt = event_alloc(ppriv->evt_cmd);
+				if (!evt)
+					return PROTO_ERR;
+
+				struct data *evt_data = event_get_data(evt);
+				PTYPE_STRING_SETVAL_N(evt_data[proto_smtp_cmd_name].value, line, PROTO_SMTP_CMD_LEN);
+				data_set(evt_data[proto_smtp_cmd_name]);
+				if (len > PROTO_SMTP_CMD_LEN + 1) {
+					PTYPE_STRING_SETVAL_N(evt_data[proto_smtp_cmd_arg].value, line + PROTO_SMTP_CMD_LEN + 1, len - 1 - PROTO_SMTP_CMD_LEN);
+					data_set(evt_data[proto_smtp_cmd_arg]);
+				}
+
+				if (priv->flags & PROTO_SMTP_CLIENT_DATA) {
+					// The event ends at the end of the message
+					priv->data_evt = evt;
+					return event_process_begin(evt, stack, stack_index);
+				} else {
+					return event_process(evt, stack, stack_index);
+				}
+			}
+
 		}
 
 
-		pomlog(POMLOG_ERR "Got line : %s", line);
 
 	}
 
@@ -287,8 +395,11 @@ static int proto_smtp_conntrack_cleanup(void *ce_priv) {
 	if (!priv)
 		return POM_OK;
 
-	if (priv->parser)
-		packet_stream_parser_cleanup(priv->parser);
+	if (priv->parser[POM_DIR_FWD])
+		packet_stream_parser_cleanup(priv->parser[POM_DIR_FWD]);
+
+	if (priv->parser[POM_DIR_REV])
+		packet_stream_parser_cleanup(priv->parser[POM_DIR_REV]);
 
 	return POM_OK;
 }
