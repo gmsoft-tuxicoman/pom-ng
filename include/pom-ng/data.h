@@ -33,6 +33,7 @@
 #define DATA_FLAG_NO_CLEAN	0x2
 
 #define data_set(x) ((x).flags |= DATA_FLAG_SET)
+#define data_unset(x) ((x).flags &= ~DATA_FLAG_SET)
 #define data_is_set(x) ((x).flags & DATA_FLAG_SET)
 #define data_do_clean(x) ((x).flags &= ~DATA_FLAG_NO_CLEAN)
 #define data_no_clean(x) ((x).flags |= DATA_FLAG_NO_CLEAN)
