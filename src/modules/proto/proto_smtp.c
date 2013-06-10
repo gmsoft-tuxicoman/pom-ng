@@ -56,6 +56,7 @@ static int proto_smtp_mod_register(struct mod_reg *mod) {
 
 	proto_smtp.init = proto_smtp_init;
 	proto_smtp.process = proto_smtp_process;
+	proto_smtp.post_process = proto_smtp_post_process;
 	proto_smtp.cleanup = proto_smtp_cleanup;
 
 	if (proto_register(&proto_smtp) == POM_OK)
@@ -200,7 +201,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 	while (1) {
 
 		// Process the content of a message
-		if ((priv->flags & PROTO_SMTP_CLIENT_DATA) && s->direction == POM_DIR_REVERSE(priv->server_direction)) {
+		if ((priv->flags & PROTO_SMTP_FLAG_CLIENT_DATA) && s->direction == POM_DIR_REVERSE(priv->server_direction)) {
 			void *pload;
 			uint32_t plen;
 			packet_stream_parser_get_remaining(parser, &pload, &plen);
@@ -223,13 +224,9 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 					}
 					s_next->pload = pload;
 					s_next->plen = plen - strlen(PROTO_SMTP_DATA_END) + 2; // The last line return is part of the payload
-					if (priv->data_evt) {
-						if (event_process_end(priv->data_evt) != POM_OK)
-							return PROTO_ERR;
-						priv->data_evt = NULL;
-					}
+					priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
 
-					priv->flags &= ~PROTO_SMTP_CLIENT_DATA;
+					priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
 
 				} else {
 					// TODO : Check if the end of the payload is the end of the message
@@ -355,7 +352,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 			}
 
 			if (!strncasecmp(line, "DATA", PROTO_SMTP_CMD_LEN))
-				priv->flags |= PROTO_SMTP_CLIENT_DATA;
+				priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA;
 
 			if (event_has_listener(ppriv->evt_cmd)) {
 				struct event *evt = event_alloc(ppriv->evt_cmd);
@@ -370,7 +367,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 					data_set(evt_data[proto_smtp_cmd_arg]);
 				}
 
-				if (priv->flags & PROTO_SMTP_CLIENT_DATA) {
+				if (priv->flags & PROTO_SMTP_FLAG_CLIENT_DATA) {
 					// The event ends at the end of the message
 					priv->data_evt = evt;
 					return event_process_begin(evt, stack, stack_index);
@@ -387,6 +384,27 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 
 	return PROTO_OK;
 
+}
+
+static int proto_smtp_post_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct conntrack_entry *ce = stack[stack_index].ce;
+	struct proto_smtp_conntrack_priv *priv = ce->priv;
+
+	if (!priv)
+		return PROTO_OK;
+	
+	if (priv->flags & PROTO_SMTP_FLAG_CLIENT_DATA_END) {
+		if (priv->data_evt) {
+			if (event_process_end(priv->data_evt) != POM_OK)
+				return PROTO_ERR;
+			priv->data_evt = NULL;
+		}
+		priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA_END;
+	}
+
+
+	return POM_OK;
 }
 
 static int proto_smtp_conntrack_cleanup(void *ce_priv) {

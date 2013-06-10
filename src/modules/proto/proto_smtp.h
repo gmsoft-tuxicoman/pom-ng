@@ -27,8 +27,9 @@
 #define SMTP_MAX_LINE 4096
 
 // Either if it's invalid or encrypted
-#define PROTO_SMTP_FLAG_INVALID		0x1
-#define PROTO_SMTP_CLIENT_DATA		0x2
+#define PROTO_SMTP_FLAG_INVALID			0x1
+#define PROTO_SMTP_FLAG_CLIENT_DATA		0x2
+#define PROTO_SMTP_FLAG_CLIENT_DATA_END		0x4
 
 #define PROTO_SMTP_CMD_LEN		4
 
@@ -54,6 +55,7 @@ static int proto_smtp_init(struct proto *proto, struct registry_instance *i);
 static int proto_smtp_cleanup(void *proto_priv);
 static int proto_smtp_mod_register(struct mod_reg *mod);
 static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_smtp_post_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_smtp_conntrack_cleanup(void *ce_priv);
 static int proto_smtp_mod_unregister();
 
