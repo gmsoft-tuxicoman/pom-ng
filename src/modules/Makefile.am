@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_png.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_png.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
@@ -52,6 +52,9 @@ analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_png_la_SOURCES = analyzer/analyzer_png.c analyzer/analyzer_png.h
 analyzer_png_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_png_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_smtp_la_SOURCES = analyzer/analyzer_smtp.c analyzer/analyzer_smtp.h
+analyzer_smtp_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_smtp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_tftp_la_SOURCES = analyzer/analyzer_tftp.c analyzer/analyzer_tftp.h
 analyzer_tftp_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_tftp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
