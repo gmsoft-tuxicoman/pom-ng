@@ -262,7 +262,14 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			while (*arg == ' ')
 				arg++;
 
-			PTYPE_STRING_SETVAL(msg_data[analyzer_smtp_msg_from].value, arg);
+			if (*arg == '<')
+				arg++;
+
+			size_t len = strlen(arg);
+			if (len > 0 && arg[len - 1] == '>')
+				len--;
+
+			PTYPE_STRING_SETVAL_N(msg_data[analyzer_smtp_msg_from].value, arg, len);
 			data_set(msg_data[analyzer_smtp_msg_from]);
 			cpriv->last_cmd = analyzer_smtp_last_cmd_mail_from;
 			
@@ -275,12 +282,19 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			while (*arg == ' ')
 				arg++;
 
+			if (*arg == '<')
+				arg++;
+
+			size_t len = strlen(arg);
+			if (len > 0 && arg[len - 1] == '>')
+				len--;
+
 			struct ptype *to = ptype_alloc("string");
 			if (!to)
 				return POM_ERR;
 
-			PTYPE_STRING_SETVAL(to, arg);
-			if (data_item_add_ptype(evt_data, analyzer_smtp_msg_to, strdup("to"), to) != POM_OK) {
+			PTYPE_STRING_SETVAL_N(to, arg, len);
+			if (data_item_add_ptype(msg_data, analyzer_smtp_msg_to, strdup("to"), to) != POM_OK) {
 				ptype_cleanup(to);
 				return POM_ERR;
 			}
