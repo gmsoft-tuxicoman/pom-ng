@@ -200,53 +200,64 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 	unsigned int len = 0;
 	while (1) {
 
-		// Process the content of a message
-		if ((priv->flags & PROTO_SMTP_FLAG_CLIENT_DATA) && s->direction == POM_DIR_REVERSE(priv->server_direction)) {
-			void *pload;
-			uint32_t plen;
-			packet_stream_parser_get_remaining(parser, &pload, &plen);
-
-			if (!plen)
+		// Some check to do prior to parse the payload
+		
+		if (s->direction == POM_DIR_REVERSE(priv->server_direction)) {
+			if (priv->flags & PROTO_SMTP_FLAG_STARTTLS) {
+				// Last command was a STARTTLS command, this is the TLS negociation
+				// Since we can't parse this, mark it as invalid
+				priv->flags |= PROTO_SMTP_FLAG_INVALID;
 				return PROTO_OK;
 
-			// Look for lines starting by a dot
-			/*if (priv->data_end_pos > 0) {
-				// TODO The end line is split in multiple packets
-			} else {*/
-				char *dotline = strstr(pload, PROTO_SMTP_DATA_END);
-				if (dotline) {
-					if (pload + plen - strlen(PROTO_SMTP_DATA_END) != dotline) {
-						pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
-						priv->flags |= PROTO_SMTP_FLAG_INVALID;
-						event_process_end(priv->data_evt);
-						priv->data_evt = NULL;
-						return POM_OK;
-					}
-					s_next->pload = pload;
-					s_next->plen = plen - strlen(PROTO_SMTP_DATA_END) + 2; // The last line return is part of the payload
-					priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
+			} else if (priv->flags & PROTO_SMTP_FLAG_CLIENT_DATA) {
 
-					priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
+				// We are receiving payload data, check where the end is
+				void *pload;
+				uint32_t plen;
+				packet_stream_parser_get_remaining(parser, &pload, &plen);
 
-				} else {
-					// TODO : Check if the end of the payload is the end of the message
-					/*int i;
-					for (i = PROTO_SMTP_DATA_END - 1; i > 0; i++) {
-						if (!memcmp(pload + plen - i, PROTO_SMTP_DATA_END, strlen(PROTO_SMTP_DATA_END) - i)) {
-							break;
+				if (!plen)
+					return PROTO_OK;
+
+				// Look for lines starting by a dot
+				/*if (priv->data_end_pos > 0) {
+					// TODO The end line is split in multiple packets
+				} else {*/
+					char *dotline = strstr(pload, PROTO_SMTP_DATA_END);
+					if (dotline) {
+						if (pload + plen - strlen(PROTO_SMTP_DATA_END) != dotline) {
+							pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
+							priv->flags |= PROTO_SMTP_FLAG_INVALID;
+							event_process_end(priv->data_evt);
+							priv->data_evt = NULL;
+							return PROTO_OK;
 						}
-					}*/
-					s_next->pload = pload;
-					s_next->plen = plen;
-				}
-			//}
+						s_next->pload = pload;
+						s_next->plen = plen - strlen(PROTO_SMTP_DATA_END) + 2; // The last line return is part of the payload
+						priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
 
-			return PROTO_OK;
+						priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
+
+					} else {
+						// TODO : Check if the end of the payload is the end of the message
+						/*int i;
+						for (i = PROTO_SMTP_DATA_END - 1; i > 0; i++) {
+							if (!memcmp(pload + plen - i, PROTO_SMTP_DATA_END, strlen(PROTO_SMTP_DATA_END) - i)) {
+								break;
+							}
+						}*/
+						s_next->pload = pload;
+						s_next->plen = plen;
+					}
+				//}
+
+				return PROTO_OK;
+			}
 		}
 
 		// Process commands
 		if (packet_stream_parser_get_line(parser, &line, &len) != POM_OK)
-			return POM_ERR;
+			return PROTO_ERR;
 
 		if (!line)
 			return PROTO_OK;
@@ -280,8 +291,6 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				priv->flags |= PROTO_SMTP_FLAG_INVALID;
 				return POM_OK;
 			}
-			
-			pomlog(POMLOG_DEBUG "Got response %u", code);
 
 			if (event_has_listener(ppriv->evt_reply)) {
 
@@ -327,10 +336,19 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				}
 			}
 			
+			if (priv->flags & PROTO_SMTP_FLAG_STARTTLS) {
+				// The last command was STARTTLS
+				priv->flags &= ~PROTO_SMTP_FLAG_STARTTLS;
+				if (code == 220) {
+					// TLS has the go, we can't parse  from now so mark as invalid
+					priv->flags |= PROTO_SMTP_FLAG_INVALID;
+					return POM_OK;
+				}
+			}
 
 		} else {
 
-			// Client command or data
+			// Client command
 
 			if (len < 4) { // Client commands are at least 4 bytes long
 				pomlog(POMLOG_DEBUG "Too short or invalid query from client");
@@ -338,32 +356,41 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				return POM_OK;
 			}
 
-			// Make sure it's a command by checking it's a four letter word
+			// Make sure it's a command by checking it's at least a four letter word
 			int i;
-			for (i = 0; i < PROTO_SMTP_CMD_LEN; i++) {
+			for (i = 0; i < 4; i++) {
 				if (line[i] < 'A' || line[i] > 'z' || (line[i] > 'Z' && line[i] < 'a'))
 					break;
 			}
 
-			if ((i < PROTO_SMTP_CMD_LEN) || (len > PROTO_SMTP_CMD_LEN && line[PROTO_SMTP_CMD_LEN] != ' ')) {
+			if ((i < 4)) {
 				pomlog(POMLOG_DEBUG "Recieved invalid client command");
 				priv->flags |= PROTO_SMTP_FLAG_INVALID;
 				return POM_OK;
 			}
 
-			if (!strncasecmp(line, "DATA", PROTO_SMTP_CMD_LEN))
+			if (!strncasecmp(line, "DATA", strlen("DATA")) && len == strlen("DATA")) {
 				priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA;
+			} else if (!strncasecmp(line, "STARTTLS", strlen("STARTTLS")) && len == strlen("STARTTLS")) {
+				priv->flags |= PROTO_SMTP_FLAG_STARTTLS;
+			}
+
 
 			if (event_has_listener(ppriv->evt_cmd)) {
 				struct event *evt = event_alloc(ppriv->evt_cmd);
 				if (!evt)
 					return PROTO_ERR;
 
+				size_t cmdlen = len;
+				char *space = memchr(line, ' ', len);
+				if (space)
+					cmdlen = space - line;
+
 				struct data *evt_data = event_get_data(evt);
-				PTYPE_STRING_SETVAL_N(evt_data[proto_smtp_cmd_name].value, line, PROTO_SMTP_CMD_LEN);
+				PTYPE_STRING_SETVAL_N(evt_data[proto_smtp_cmd_name].value, line, cmdlen);
 				data_set(evt_data[proto_smtp_cmd_name]);
-				if (len > PROTO_SMTP_CMD_LEN + 1) {
-					PTYPE_STRING_SETVAL_N(evt_data[proto_smtp_cmd_arg].value, line + PROTO_SMTP_CMD_LEN + 1, len - 1 - PROTO_SMTP_CMD_LEN);
+				if (space) {
+					PTYPE_STRING_SETVAL_N(evt_data[proto_smtp_cmd_arg].value, space + 1, len - 1 - cmdlen);
 					data_set(evt_data[proto_smtp_cmd_arg]);
 				}
 
