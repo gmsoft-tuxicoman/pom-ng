@@ -252,7 +252,6 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				arg++;
 		}
 
-		// MAIL FROM
 		if (!strcasecmp(cmd, "MAIL")) {
 			if (strncasecmp(arg, "FROM:", strlen("FROM:"))) {
 				pomlog(POMLOG_DEBUG "Unparseable MAIL command");
@@ -309,6 +308,10 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				pomlog(POMLOG_DEBUG "Message event already started !");
 			}
 
+		} else if (!strcasecmp(cmd, "RSET")) {
+			// Cleanup the event
+			event_cleanup(cpriv->evt_msg);
+			cpriv->evt_msg = NULL;
 		}
 
 	} else if (evt_reg == apriv->evt_reply) {
