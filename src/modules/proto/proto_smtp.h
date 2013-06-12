@@ -33,6 +33,7 @@
 #define PROTO_SMTP_FLAG_STARTTLS		0x8
 
 #define PROTO_SMTP_DATA_END		"\r\n.\r\n"
+#define PROTO_SMTP_DATA_END_LEN		5
 
 struct proto_smtp_priv {
 
@@ -45,7 +46,7 @@ struct proto_smtp_conntrack_priv {
 	struct packet_stream_parser *parser[POM_DIR_TOT];
 	uint32_t flags;
 	int server_direction;
-//	unsigned int data_end_pos;
+	unsigned int data_end_pos;
 	struct event *data_evt, *reply_evt;
 };
 

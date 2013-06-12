@@ -219,13 +219,23 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				if (!plen)
 					return PROTO_OK;
 
-				// Look for lines starting by a dot
-				/*if (priv->data_end_pos > 0) {
-					// TODO The end line is split in multiple packets
-				} else {*/
-					char *dotline = strstr(pload, PROTO_SMTP_DATA_END);
-					if (dotline) {
-						if (pload + plen - strlen(PROTO_SMTP_DATA_END) != dotline) {
+				// Look for the "<CR><LF>.<CR><LF>" sequence
+				if (priv->data_end_pos > 0) {
+					
+					// The previous packet ended with something that might be the final sequence
+					// Check if we have the rest
+					int i, found = 1;
+					for (i = 0; i < PROTO_SMTP_DATA_END_LEN - priv->data_end_pos && i <= plen; i++) {
+						if (*(char*)(pload + i) != PROTO_SMTP_DATA_END[priv->data_end_pos + i]) {
+							found = 0;
+							break;
+						}
+					}
+					if (found) {
+						// If we have already processed the dot after <CR><LF> there is no way to remove it
+						// Thus we mark this connection as invalid. Most MTA will send at worst the last
+						// 3 bytes of the end sequence in a sequence packet
+						if (i != plen || (priv->data_end_pos >= 2 && plen < 3)) {
 							pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
 							priv->flags |= PROTO_SMTP_FLAG_INVALID;
 							event_process_end(priv->data_evt);
@@ -233,23 +243,47 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 							return PROTO_OK;
 						}
 						s_next->pload = pload;
-						s_next->plen = plen - strlen(PROTO_SMTP_DATA_END) + 2; // The last line return is part of the payload
+						s_next->plen = plen - PROTO_SMTP_DATA_END_LEN + 2; // The last line return is part of the payload
 						priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
 
 						priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
 
-					} else {
-						// TODO : Check if the end of the payload is the end of the message
-						/*int i;
-						for (i = PROTO_SMTP_DATA_END - 1; i > 0; i++) {
-							if (!memcmp(pload + plen - i, PROTO_SMTP_DATA_END, strlen(PROTO_SMTP_DATA_END) - i)) {
-								break;
-							}
-						}*/
-						s_next->pload = pload;
-						s_next->plen = plen;
+						return PROTO_OK;
 					}
-				//}
+				}
+
+
+				char *dotline = strstr(pload, PROTO_SMTP_DATA_END);
+				if (dotline) {
+					if (pload + plen - PROTO_SMTP_DATA_END_LEN != dotline) {
+						pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
+						priv->flags |= PROTO_SMTP_FLAG_INVALID;
+						event_process_end(priv->data_evt);
+						priv->data_evt = NULL;
+						return PROTO_OK;
+					}
+					s_next->pload = pload;
+					s_next->plen = plen - PROTO_SMTP_DATA_END_LEN + 2; // The last line return is part of the payload
+					priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
+
+					priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
+
+				} else {
+					// Check if the end of the payload contains part of the "<CR><LF>.<CR><LF>" sequence
+					int i, found = 0;
+					for (i = 1 ; i < PROTO_SMTP_DATA_END_LEN; i++) {
+						if (!memcmp(pload + plen - i, PROTO_SMTP_DATA_END, i)) {
+							found = 1;
+							break;
+						}
+					}
+
+					if (found)
+						priv->data_end_pos = i;
+
+					s_next->pload = pload;
+					s_next->plen = plen;
+				}
 
 				return PROTO_OK;
 			}
