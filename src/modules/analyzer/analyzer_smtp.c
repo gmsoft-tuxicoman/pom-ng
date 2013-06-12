@@ -264,9 +264,12 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			if (*arg == '<')
 				arg++;
 
-			size_t len = strlen(arg);
-			if (len > 0 && arg[len - 1] == '>')
-				len--;
+			size_t len;
+			char *end = strchr(arg, '>');
+			if (end)
+				len = end - arg;
+			else
+				len = strlen(arg);
 
 			PTYPE_STRING_SETVAL_N(msg_data[analyzer_smtp_msg_from].value, arg, len);
 			data_set(msg_data[analyzer_smtp_msg_from]);
@@ -284,9 +287,12 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			if (*arg == '<')
 				arg++;
 
-			size_t len = strlen(arg);
-			if (len > 0 && arg[len - 1] == '>')
-				len--;
+			size_t len;
+			char *end = strchr(arg, '>');
+			if (end)
+				len = end - arg;
+			else
+				len = strlen(arg);
 
 			struct ptype *to = ptype_alloc("string");
 			if (!to)
