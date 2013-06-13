@@ -25,6 +25,9 @@
 
 #define ANALYZER_SMTP_EVT_MSG_DATA_COUNT 3
 
+#define ANALYZER_SMTP_DOTDOT		"\r\n.."
+#define ANALYZER_SMTP_DOTDOT_LEN	4
+
 enum {
 	analyzer_smtp_msg_from,
 	analyzer_smtp_msg_to,
@@ -49,6 +52,7 @@ struct analyzer_smtp_priv {
 struct analyzer_smtp_ce_priv {
 	struct event *evt_msg;
 	enum analyzer_smtp_last_cmd last_cmd;
+	unsigned int dotdot_pos;
 };
 
 

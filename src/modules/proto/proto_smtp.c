@@ -273,7 +273,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				} else {
 					// Check if the end of the payload contains part of the "<CR><LF>.<CR><LF>" sequence
 					int i, found = 0;
-					for (i = 1 ; i < PROTO_SMTP_DATA_END_LEN; i++) {
+					for (i = 1 ; (i < PROTO_SMTP_DATA_END_LEN) && (i <= plen); i++) {
 						if (!memcmp(pload + plen - i, PROTO_SMTP_DATA_END, i)) {
 							found = 1;
 							break;

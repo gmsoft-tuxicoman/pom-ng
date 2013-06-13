@@ -167,24 +167,76 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 		return POM_OK;
 	}
 
-	struct analyzer_pload_buffer *pload = event_get_priv(cpriv->evt_msg);
+	struct analyzer_pload_buffer *pload_buff = event_get_priv(cpriv->evt_msg);
 	struct analyzer_smtp_priv *apriv = analyzer->priv;
 
-	if (!pload) {
-		pload = analyzer_pload_buffer_alloc(apriv->rfc822_msg_pload_type, 0, 0);
-		if (!pload)
+	if (!pload_buff) {
+		pload_buff = analyzer_pload_buffer_alloc(apriv->rfc822_msg_pload_type, 0, 0);
+		if (!pload_buff)
 			return POM_ERR;
 
-		event_set_priv(cpriv->evt_msg, pload);
+		event_set_priv(cpriv->evt_msg, pload_buff);
 	}
 
 	struct proto_process_stack *pload_stack = &stack[stack_index];
 
-	// TODO trim <CR><LF>..
+	char *pload = pload_stack->pload;
+	size_t plen = pload_stack->plen;
 
-	if (analyzer_pload_buffer_append(pload, pload_stack->pload, pload_stack->plen) != POM_OK)
+
+	// Look for the end of the "<CR><LF>.." sequence if any
+	if (cpriv->dotdot_pos > 0){
+		int i, found = 1;
+		for (i = 0; i < ANALYZER_SMTP_DOTDOT_LEN - cpriv->dotdot_pos && i <= plen; i++) {
+			if (*(char*)(pload + i) != ANALYZER_SMTP_DOTDOT[cpriv->dotdot_pos + i]) {
+				found = 0;
+				break;
+			}
+		}
+		if (i >= ANALYZER_SMTP_DOTDOT_LEN - cpriv->dotdot_pos) {
+			if (found && (i >= ANALYZER_SMTP_DOTDOT_LEN - cpriv->dotdot_pos)) {
+				// Process up to the last dot
+				size_t len = ANALYZER_SMTP_DOTDOT_LEN - cpriv->dotdot_pos;
+				if (analyzer_pload_buffer_append(pload_buff, pload, len - 1) != POM_OK)
+					return POM_ERR;
+				pload += len;
+				plen -= len;
+
+			}
+			cpriv->dotdot_pos = 0;
+		} else {
+			cpriv->dotdot_pos += i;	
+		}
+	}
+
+	while (plen) {
+		char * dotdot = strstr(pload, ANALYZER_SMTP_DOTDOT);
+
+		if (!dotdot)
+			break;
+
+		size_t dotdot_len = dotdot - pload + ANALYZER_SMTP_DOTDOT_LEN;
+		if (analyzer_pload_buffer_append(pload_buff, pload, dotdot_len - 1) != POM_OK)
+			return POM_ERR;
+		pload = dotdot + ANALYZER_SMTP_DOTDOT_LEN;
+		plen -= dotdot_len;
+
+	}
+
+	// Check for a possible partial dotdot at the end of the pload
+	int i, found = 0;
+	for (i = 1; (i < ANALYZER_SMTP_DOTDOT_LEN) && (i <= plen); i++) {
+		if (!memcmp(pload + plen - i, ANALYZER_SMTP_DOTDOT, i)) {
+			found = 1;
+		}	break;
+	}
+
+	if (found)
+		cpriv->dotdot_pos = i;
+
+	// Add whatever remains
+	if (plen && analyzer_pload_buffer_append(pload_buff, pload, plen) != POM_OK)
 		return POM_ERR;
-
 
 	return POM_OK;
 }
