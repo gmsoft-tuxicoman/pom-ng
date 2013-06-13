@@ -247,9 +247,11 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 						priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
 
 						priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
+						priv->data_end_pos = 0;
 
 						return PROTO_OK;
 					}
+					priv->data_end_pos = 0;
 				}
 
 
@@ -462,6 +464,7 @@ static int proto_smtp_post_process(void *proto_priv, struct packet *p, struct pr
 			priv->data_evt = NULL;
 		}
 		priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA_END;
+		priv->data_end_pos = 0;
 	}
 
 
