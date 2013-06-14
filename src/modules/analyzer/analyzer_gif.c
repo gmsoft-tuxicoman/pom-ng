@@ -81,7 +81,7 @@ static int analyzer_gif_init(struct analyzer *analyzer) {
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
-	pload_reg.process = analyzer_gif_pload_process;
+	pload_reg.analyze = analyzer_gif_pload_analyze;
 	pload_reg.data_reg = &pload_gif_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
@@ -89,7 +89,7 @@ static int analyzer_gif_init(struct analyzer *analyzer) {
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
-static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_gif_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
 	if (pload->buff_pos < ANALYZER_GIF_HEADER_MIN_SIZE)
 		return POM_OK;

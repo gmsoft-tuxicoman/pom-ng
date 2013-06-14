@@ -655,7 +655,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					}
 				}
 
-				if (pload_analyzer->process(pload_analyzer->analyzer, pload) != POM_OK) {
+				if (pload_analyzer->analyze(pload_analyzer->analyzer, pload) != POM_OK) {
 					// The analyzer enountered an error. Not sure what is the best course of action here.
 					pomlog(POMLOG_DEBUG "Error while analyzing pload of type %s", pload->type->name);
 

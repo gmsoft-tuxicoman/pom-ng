@@ -34,13 +34,13 @@ int analyzer_http_post_init(struct analyzer *analyzer) {
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
-	pload_reg.process = analyzer_http_post_pload_process_full;
+	pload_reg.analyze = analyzer_http_post_pload_analyze_full;
 
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
 
-int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
 	if (!pload->rel_event) {
 		pomlog(POMLOG_ERR "No related event for this payload. Ignoring");

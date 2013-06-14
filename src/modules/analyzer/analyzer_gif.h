@@ -43,6 +43,6 @@ static int analyzer_gif_mod_register(struct mod_reg *mod);
 static int analyzer_gif_mod_unregister();
 
 static int analyzer_gif_init(struct analyzer *analyzer);
-static int analyzer_gif_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_gif_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 #endif

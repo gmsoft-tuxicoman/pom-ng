@@ -51,7 +51,7 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod);
 static int analyzer_jpeg_mod_unregister();
 
 static int analyzer_jpeg_init(struct analyzer *analyzer);
-static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo);

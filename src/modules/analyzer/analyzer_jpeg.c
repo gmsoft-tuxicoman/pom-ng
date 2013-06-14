@@ -91,7 +91,7 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
-	pload_reg.process = analyzer_jpeg_pload_process;
+	pload_reg.analyze = analyzer_jpeg_pload_analyze;
 	pload_reg.cleanup = analyzer_jpeg_pload_cleanup;
 	pload_reg.data_reg = &pload_jpeg_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
@@ -100,7 +100,7 @@ static int analyzer_jpeg_init(struct analyzer *analyzer) {
 }
 
 #ifdef HAVE_LIBEXIF
-static void analyzer_jpeg_exif_entry_process(ExifEntry *entry, void *pload) {
+static void analyzer_jpeg_exif_entry_analyze(ExifEntry *entry, void *pload) {
 
 	ExifIfd ifd = exif_content_get_ifd(entry->parent);
 
@@ -186,7 +186,7 @@ static void analyzer_jpeg_exif_content_process(ExifContent *content, void *pload
 }
 #endif
 
-static int analyzer_jpeg_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
 
 	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;

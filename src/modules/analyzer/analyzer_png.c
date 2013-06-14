@@ -82,14 +82,14 @@ static int analyzer_png_init(struct analyzer *analyzer) {
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
-	pload_reg.process = analyzer_png_pload_process;
+	pload_reg.analyze = analyzer_png_pload_analyze;
 	pload_reg.data_reg = &pload_png_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
-static int analyzer_png_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
 	if (pload->buff_pos < ANALYZER_PNG_HEADER_MIN_SIZE)
 		return POM_OK;

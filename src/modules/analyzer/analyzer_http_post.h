@@ -28,7 +28,7 @@
 
 int analyzer_http_post_init(struct analyzer *analyzer);
 
-int analyzer_http_post_pload_process_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 size_t analyzer_http_post_percent_decode(char *dst, char *src, size_t length);
 
