@@ -44,6 +44,8 @@ struct analyzer_jpeg_pload_priv {
 
 	jmp_buf jmp_buff;
 
+	void *pload_buff;
+	size_t pload_buff_len;
 };
 
 struct mod_reg_info* analyzer_jpeg_reg_info();
@@ -51,7 +53,7 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod);
 static int analyzer_jpeg_mod_unregister();
 
 static int analyzer_jpeg_init(struct analyzer *analyzer);
-static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buffer, size_t buff_len);
 static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo);

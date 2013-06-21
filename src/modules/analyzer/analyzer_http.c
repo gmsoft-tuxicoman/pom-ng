@@ -735,7 +735,7 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 		if (!epriv->pload[dir])
 			return POM_ERR;
 
-		epriv->pload[dir]->rel_event = evt;
+		analyzer_pload_buffer_set_related_event(epriv->pload[dir], evt);
 
 	}
 

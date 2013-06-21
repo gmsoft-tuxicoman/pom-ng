@@ -40,20 +40,21 @@ int analyzer_http_post_init(struct analyzer *analyzer) {
 }
 
 
-int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len) {
 
-	if (!pload->rel_event) {
+	struct event *rel_event = analyzer_pload_buffer_get_related_event(pload);
+
+	if (!rel_event) {
 		pomlog(POMLOG_ERR "No related event for this payload. Ignoring");
 		return POM_OK;
 	}
 
-	char *data = pload->buff;
+	char *data = buff;
 
-	size_t len = pload->buff_pos;
 	while (1) {
 		// Find the next param
-		char *eq = memchr(data, '=', len);
-		char *amp = memchr(data, '&', len);
+		char *eq = memchr(data, '=', buff_len);
+		char *amp = memchr(data, '&', buff_len);
 
 		if (!eq) {
 			// Nothing more to parse
@@ -62,7 +63,7 @@ int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct anal
 
 		if (amp && amp < eq) {
 			// Parameter without value, skip to next param
-			len -= amp - data + 1;
+			buff_len -= amp - data + 1;
 			data = amp + 1;
 			continue;
 		}
@@ -78,7 +79,7 @@ int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct anal
 
 		data = eq + 1;
 
-		size_t value_len = len - name_len - 1;
+		size_t value_len = buff_len - name_len - 1;
 		if (amp)
 			value_len = amp - data;
 
@@ -93,7 +94,7 @@ int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct anal
 		*(value + value_size) = 0;
 
 
-		struct ptype *value_pt = event_data_item_add(pload->rel_event, analyzer_http_request_post_data, name);
+		struct ptype *value_pt = event_data_item_add(rel_event, analyzer_http_request_post_data, name);
 
 		if (!value_pt) {
 			free(name);
@@ -109,7 +110,7 @@ int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct anal
 			break;
 	
 		data = amp + 1;
-		len -= value_len + name_len + 2;
+		buff_len -= value_len + name_len + 2;
 	}
 
 

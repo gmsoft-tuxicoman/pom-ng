@@ -44,6 +44,6 @@ static int analyzer_png_mod_register(struct mod_reg *mod);
 static int analyzer_png_mod_unregister();
 
 static int analyzer_png_init(struct analyzer *analyzer);
-static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len);
 
 #endif

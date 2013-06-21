@@ -186,10 +186,10 @@ static void analyzer_jpeg_exif_content_process(ExifContent *content, void *pload
 }
 #endif
 
-static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buffer, size_t buff_len) {
 
 
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_jpeg_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 
 	if (!priv) {
 		priv = malloc(sizeof(struct analyzer_jpeg_pload_priv));
@@ -198,6 +198,9 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 			return POM_ERR;
 		}
 		memset(priv, 0, sizeof(struct analyzer_jpeg_pload_priv));
+
+		priv->pload_buff = buffer;
+		priv->pload_buff_len = buff_len;
 		
 		// Setup error handler
 		struct jpeg_error_mgr *jerr = malloc(sizeof(struct jpeg_error_mgr));
@@ -213,7 +216,7 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 		// Allocate the decompressor
 		jpeg_create_decompress(&priv->cinfo);
 
-		priv->cinfo.client_data = pload;
+		priv->cinfo.client_data = priv;
 
 #ifdef HAVE_LIBEXIF
 		// Save APP1
@@ -240,12 +243,15 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 		priv->cinfo.src = src;
 
 
-		pload->analyzer_priv = priv;
+		analyzer_pload_buffer_set_priv(pload, priv);
 
+	} else {
+		priv->pload_buff = buffer;
+		priv->pload_buff_len = buff_len;
 	}
 
 
-	if (priv->jpeg_lib_pos >= pload->buff_pos)
+	if (priv->jpeg_lib_pos >= buff_len)
 		// Nothing more to process
 		return POM_OK;
 
@@ -253,18 +259,20 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 	if (!setjmp(priv->jmp_buff)) {
 
 		if (priv->jpeg_lib_pos) {
-			// It's not garanteed that pload->buff points to the
+			// It's not garanteed that buffer points to the
 			// same memory area after each call, so we reset it here
-			priv->cinfo.src->next_input_byte = pload->buff + priv->jpeg_lib_pos;
+			priv->cinfo.src->next_input_byte = buffer + priv->jpeg_lib_pos;
 		}
 
 		if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
 			return POM_OK; // Headers are incomplete
 
-		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
-		data_set(pload->data[analyzer_jpeg_pload_width]);
-		PTYPE_UINT16_SETVAL(pload->data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
-		data_set(pload->data[analyzer_jpeg_pload_height]);
+		struct data *data = analyzer_pload_buffer_get_data(pload);
+
+		PTYPE_UINT16_SETVAL(data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
+		data_set(data[analyzer_jpeg_pload_width]);
+		PTYPE_UINT16_SETVAL(data[analyzer_jpeg_pload_height].value, priv->cinfo.image_height);
+		data_set(data[analyzer_jpeg_pload_height]);
 		debug_jpeg("JPEG read header returned %u, image is %ux%u", res, priv->cinfo.image_width, priv->cinfo.image_height);
 
 #ifdef HAVE_LIBEXIF		
@@ -284,7 +292,7 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 		}
 #endif
 
-		pload->state = analyzer_pload_buffer_state_analyzed;
+		analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
 
 	} else {
 		pomlog(POMLOG_DEBUG "Error while parsing JPEG headers");
@@ -295,14 +303,14 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 	free(priv->cinfo.src);
 	jpeg_destroy_decompress(&priv->cinfo);
 	free(priv);
-	pload->analyzer_priv = NULL;
+	analyzer_pload_buffer_set_priv(pload, NULL);
 
 	return res;
 }
 
 static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_jpeg_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 
 	if (!priv)
 		return POM_OK;
@@ -318,13 +326,12 @@ static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyze
 
 static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo) {
 
-	struct analyzer_pload_buffer *pload = cinfo->client_data;
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_jpeg_pload_priv *priv = cinfo->client_data;
 
-	cinfo->src->next_input_byte = pload->buff;
-	cinfo->src->bytes_in_buffer = pload->buff_pos;
+	cinfo->src->next_input_byte = priv->pload_buff;
+	cinfo->src->bytes_in_buffer = priv->pload_buff_len;
 
-	priv->jpeg_lib_pos = pload->buff_pos;
+	priv->jpeg_lib_pos = priv->pload_buff_len;
 
 }
 
@@ -333,8 +340,7 @@ static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_b
 	if (num_bytes <= 0)
 		return;
 
-	struct analyzer_pload_buffer *pload = cinfo->client_data;
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_jpeg_pload_priv *priv = cinfo->client_data;
 
 	// Find out remaining bytes
 	if ((size_t)num_bytes >= cinfo->src->bytes_in_buffer) {
@@ -349,18 +355,17 @@ static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_b
 
 static boolean analyzer_jpeg_lib_fill_input_buffer(j_decompress_ptr cinfo) {
 
-	struct analyzer_pload_buffer *pload = cinfo->client_data;
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_jpeg_pload_priv *priv = cinfo->client_data;
 
 	// Remove whatever wasn't used
 
-	if (priv->jpeg_lib_pos >= pload->buff_pos)
+	if (priv->jpeg_lib_pos >= priv->pload_buff_len)
 		return FALSE;
 
-	cinfo->src->next_input_byte = pload->buff + priv->jpeg_lib_pos;
-	cinfo->src->bytes_in_buffer = pload->buff_pos - priv->jpeg_lib_pos;
+	cinfo->src->next_input_byte = priv->pload_buff + priv->jpeg_lib_pos;
+	cinfo->src->bytes_in_buffer = priv->pload_buff_len - priv->jpeg_lib_pos;
 
-	priv->jpeg_lib_pos = pload->buff_pos;
+	priv->jpeg_lib_pos = priv->pload_buff_len;
 
 
 	return TRUE;
@@ -374,8 +379,7 @@ static void analyzer_jpeg_lib_term_source(j_decompress_ptr cinfo) {
 
 static void analyzer_jpeg_lib_error_exit(j_common_ptr cinfo) {
 	
-	struct analyzer_pload_buffer *pload = cinfo->client_data;
-	struct analyzer_jpeg_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_jpeg_pload_priv *priv = cinfo->client_data;
 
 	longjmp(priv->jmp_buff, 1);
 }

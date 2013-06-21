@@ -89,6 +89,7 @@ enum analyzer_pload_class_id {
 
 struct analyzer_pload_instance;
 struct analyzer_pload_type;
+struct analyzer_pload_buffer;
 
 enum analyzer_pload_buffer_state {
 	
@@ -96,30 +97,9 @@ enum analyzer_pload_buffer_state {
 	analyzer_pload_buffer_state_magic,
 	analyzer_pload_buffer_state_partial,
 	analyzer_pload_buffer_state_analyzed,
+	analyzer_pload_buffer_state_analysis_failed,
 	analyzer_pload_buffer_state_error,
 	analyzer_pload_buffer_state_done,
-
-};
-
-struct analyzer_pload_buffer {
-
-	struct analyzer_pload_type *type;
-	size_t expected_size, buff_size;
-	size_t buff_pos;
-
-	void *buff;
-
-	enum analyzer_pload_buffer_state state;
-	unsigned int flags;
-
-	struct data *data;
-	struct event *rel_event;
-	struct analyzer_pload_instance *output_list;
-	void *analyzer_priv;
-
-#ifdef HAVE_ZLIB
-	z_stream *zbuff;
-#endif
 
 };
 
@@ -129,14 +109,13 @@ struct analyzer_pload_reg {
 	struct data_reg *data_reg;
 	unsigned int flags;
 
-	int (*analyze) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+	int (*analyze) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len);
 	int (*process) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len);
 	int (*cleanup) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 };
 
 struct analyzer_pload_output_reg {
-
 
 	int (*open) (struct analyzer_pload_instance *pi, void *output_priv);
 	int (*write) (void *output_priv, void *pload_instance_priv, void *data, size_t len);
@@ -160,5 +139,12 @@ int analyzer_pload_output_unregister(void *output_priv);
 
 void analyzer_pload_instance_set_priv(struct analyzer_pload_instance *pi, void *priv);
 struct analyzer_pload_buffer *analyzer_pload_instance_get_buffer(struct analyzer_pload_instance *pi);
+
+int analyzer_pload_buffer_set_state(struct analyzer_pload_buffer *pload, enum analyzer_pload_buffer_state state);
+struct data *analyzer_pload_buffer_get_data(struct analyzer_pload_buffer *pload);
+struct event *analyzer_pload_buffer_get_related_event(struct analyzer_pload_buffer *pload);
+void analyzer_pload_buffer_set_related_event(struct analyzer_pload_buffer *pload, struct event *evt);
+void *analyzer_pload_buffer_get_priv(struct analyzer_pload_buffer *pload);
+void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *priv);
 
 #endif

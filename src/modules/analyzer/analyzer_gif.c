@@ -89,31 +89,33 @@ static int analyzer_gif_init(struct analyzer *analyzer) {
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
-static int analyzer_gif_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_gif_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buffer, size_t buff_len) {
 
-	if (pload->buff_pos < ANALYZER_GIF_HEADER_MIN_SIZE)
+	if (buff_len < ANALYZER_GIF_HEADER_MIN_SIZE)
 		return POM_OK;
 
-	unsigned char *buff = pload->buff;
+	unsigned char *buff = buffer;
 
-	if (!memcmp(pload->buff, ANALYZER_GIF_VERSION_87A, strlen(ANALYZER_GIF_VERSION_87A)) || !memcmp(pload->buff, ANALYZER_GIF_VERSION_89A, strlen(ANALYZER_GIF_VERSION_89A))) {
+	if (!memcmp(buff, ANALYZER_GIF_VERSION_87A, strlen(ANALYZER_GIF_VERSION_87A)) || !memcmp(buff, ANALYZER_GIF_VERSION_89A, strlen(ANALYZER_GIF_VERSION_89A))) {
 		// We got a GIF file
 		uint16_t height, width;
 		width = (buff[7] << 8) + buff[8];
 		height = (buff[9] << 8) + buff[10];
 
-		pload->state = analyzer_pload_buffer_state_analyzed;
+		analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
 
-		PTYPE_UINT16_SETVAL(pload->data[analyzer_gif_pload_width].value, width);
-		data_set(pload->data[analyzer_gif_pload_width]);
-		PTYPE_UINT16_SETVAL(pload->data[analyzer_gif_pload_height].value, height);
-		data_set(pload->data[analyzer_gif_pload_height]);
+		struct data *pload_data = analyzer_pload_buffer_get_data(pload);
+
+		PTYPE_UINT16_SETVAL(pload_data[analyzer_gif_pload_width].value, width);
+		data_set(pload_data[analyzer_gif_pload_width]);
+		PTYPE_UINT16_SETVAL(pload_data[analyzer_gif_pload_height].value, height);
+		data_set(pload_data[analyzer_gif_pload_height]);
 
 		debug_gif("Got GIF image of %ux%u", width, height);
 
 	} else {
 		pomlog(POMLOG_DEBUG "GIF signature not found");
-		pload->type = NULL;
+		analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
 	}
 
 	return POM_OK;

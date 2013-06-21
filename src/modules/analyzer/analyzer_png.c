@@ -89,35 +89,36 @@ static int analyzer_png_init(struct analyzer *analyzer) {
 	return analyzer_pload_register(pload_type, &pload_reg);
 }
 
-static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len) {
 
-	if (pload->buff_pos < ANALYZER_PNG_HEADER_MIN_SIZE)
+	if (buff_len < ANALYZER_PNG_HEADER_MIN_SIZE)
 		return POM_OK;
 
-	if (!memcmp(pload->buff, ANALYZER_PNG_SIGNATURE, strlen(ANALYZER_PNG_SIGNATURE))) {
+	if (!memcmp(buff, ANALYZER_PNG_SIGNATURE, strlen(ANALYZER_PNG_SIGNATURE))) {
 		// We got a PNG file
-		if (!memcmp(pload->buff + 12, ANALYZER_PNG_HEADER_NAME, strlen(ANALYZER_PNG_HEADER_NAME))) {
+		if (!memcmp(buff + 12, ANALYZER_PNG_HEADER_NAME, strlen(ANALYZER_PNG_HEADER_NAME))) {
 			// We got the right header
 			uint16_t height, width;
-			width = ntohl(*(unsigned int*)(pload->buff + 16));
-			height = ntohl(*(unsigned int*)(pload->buff + 20));
+			width = ntohl(*(unsigned int*)(buff + 16));
+			height = ntohl(*(unsigned int*)(buff + 20));
 
-			pload->state = analyzer_pload_buffer_state_analyzed;
-	
-			PTYPE_UINT16_SETVAL(pload->data[analyzer_png_pload_width].value, width);
-			data_set(pload->data[analyzer_png_pload_width]);
-			PTYPE_UINT16_SETVAL(pload->data[analyzer_png_pload_height].value, height);
-			data_set(pload->data[analyzer_png_pload_height]);
+			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
+
+			struct data *pload_data = analyzer_pload_buffer_get_data(pload);
+			PTYPE_UINT16_SETVAL(pload_data[analyzer_png_pload_width].value, width);
+			data_set(pload_data[analyzer_png_pload_width]);
+			PTYPE_UINT16_SETVAL(pload_data[analyzer_png_pload_height].value, height);
+			data_set(pload_data[analyzer_png_pload_height]);
 			debug_png("Got PNG of %ux%u", width, height);
 
 		} else {
 			pomlog(POMLOG_DEBUG "IHDR not found where it was supposed to be");
-			pload->type = NULL;
+			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
 		}
 
 	} else {
 		pomlog(POMLOG_DEBUG "PNG signature not found");
-		pload->type = NULL;
+		analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
 	}
 
 	return POM_OK;

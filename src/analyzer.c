@@ -658,7 +658,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					}
 				}
 
-				if (pload_analyzer->analyze(pload_analyzer->analyzer, pload) != POM_OK) {
+				if (pload_analyzer->analyze(pload_analyzer->analyzer, pload, pload->buff, pload->buff_pos) != POM_OK) {
 					// The analyzer enountered an error. Not sure what is the best course of action here.
 					pomlog(POMLOG_DEBUG "Error while analyzing pload of type %s", pload->type->name);
 
@@ -666,9 +666,10 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					pload->type = NULL;
 				}
 	
-				if (!pload->type) {
+				if (!pload->state == analyzer_pload_buffer_state_analysis_failed) {
 					// The analyzer did not recognize the payload, nothing more to do
 					pload->state = analyzer_pload_buffer_state_analyzed;
+					pload->type = NULL;
 
 					if (pload->data) {
 						data_cleanup_table(pload->data, pload_analyzer->data_reg);
@@ -948,3 +949,40 @@ void analyzer_pload_instance_set_priv(struct analyzer_pload_instance *pi, void *
 struct analyzer_pload_buffer *analyzer_pload_instance_get_buffer(struct analyzer_pload_instance *pi) {
 	return pi->pload;
 }
+
+int analyzer_pload_buffer_set_state(struct analyzer_pload_buffer *pload, enum analyzer_pload_buffer_state state) {
+	if (state < pload->state) {
+		pomlog(POMLOG_ERR "Pload cannot go from state %u to %u !", pload->state, state);
+		return POM_ERR;
+	}
+
+	if (state < analyzer_pload_buffer_state_analyzed) {
+		pomlog(POMLOG_ERR "Pload state %u cannot be set externally !", state);
+		return POM_ERR;
+	}
+
+	pload->state = state;
+
+	return POM_OK;
+}
+
+struct data* analyzer_pload_buffer_get_data(struct analyzer_pload_buffer *pload) {
+	return pload->data;
+}
+
+struct event* analyzer_pload_buffer_get_related_event(struct analyzer_pload_buffer *pload) {
+	return pload->rel_event;
+}
+
+void analyzer_pload_buffer_set_related_event(struct analyzer_pload_buffer *pload, struct event *evt) {
+	pload->rel_event = evt;
+}
+
+void *analyzer_pload_buffer_get_priv(struct analyzer_pload_buffer *pload) {
+	return pload->analyzer_priv;
+}
+
+void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *priv) {
+	pload->analyzer_priv = priv;
+}
+

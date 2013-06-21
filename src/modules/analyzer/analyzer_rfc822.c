@@ -87,10 +87,10 @@ static int analyzer_rfc822_init(struct analyzer *analyzer) {
 
 }
 
-static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len) {
 
 
-	struct analyzer_rfc822_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 
 	if (!priv) {
 		priv = malloc(sizeof(struct analyzer_rfc822_pload_priv));
@@ -99,13 +99,13 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 			return POM_ERR;
 		}
 		memset(priv, 0, sizeof(struct analyzer_rfc822_pload_priv));
-		pload->analyzer_priv = priv;
+		analyzer_pload_buffer_set_priv(pload, priv);
 	}
 
 	// We are parsing the header
 	
-	char *hdr = pload->buff + priv->pload_pos;
-	size_t hdrlen = pload->buff_pos - priv->pload_pos;
+	char *hdr = buff + priv->pload_pos;
+	size_t hdrlen = buff_len - priv->pload_pos;
 
 	while (hdrlen) {
 		// CR and LF are not supposed to appear independently
@@ -113,7 +113,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 		char *crlf = memchr(hdr, '\n', hdrlen);
 		size_t line_len = crlf - hdr;
 		char *line = hdr;
-		if (crlf != pload->buff && *(crlf - 1) == '\r')
+		if (crlf != buff && *(crlf - 1) == '\r')
 			line_len--;
 		crlf++;
 		hdrlen -= crlf - hdr;
@@ -124,7 +124,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 			// It's the continuation of the previous header
 			if (!priv->last_hdr_value) {
 				pomlog(POMLOG_DEBUG "Header continuation found but no last value !");
-				pload->type = NULL;
+				analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
 				return POM_ERR;
 			}
 			size_t new_value_len = strlen(priv->last_hdr_value) + line_len;
@@ -151,7 +151,10 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 					return POM_ERR;
 				PTYPE_STRING_SETVAL_P(hdr_value, priv->last_hdr_value);
 				priv->last_hdr_value = NULL;
-				if (data_item_add_ptype(pload->data, analyzer_rfc822_pload_headers, priv->last_hdr_name, hdr_value) != POM_OK) {
+
+				struct data *data = analyzer_pload_buffer_get_data(pload);
+
+				if (data_item_add_ptype(data, analyzer_rfc822_pload_headers, priv->last_hdr_name, hdr_value) != POM_OK) {
 					free(priv->last_hdr_name);
 					priv->last_hdr_name = NULL;
 					ptype_cleanup(hdr_value);
@@ -162,7 +165,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 
 			if (!line_len) {
 				// Last line of headers, the body is now
-				pload->state = analyzer_pload_buffer_state_analyzed;
+				analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
 				// Exit the loop
 				hdrlen = 0;
 			} else {
@@ -171,7 +174,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 				char *colon = memchr(line, ':', line_len);
 				if (!colon) {
 					pomlog(POMLOG_DEBUG "No colon in header line, invalid content");
-					pload->type = NULL;
+					analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
 					return POM_ERR;
 				}
 				priv->last_hdr_name = strndup(line, colon - line);
@@ -194,7 +197,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 			}
 		}
 
-		priv->pload_pos = (void*)crlf - pload->buff;
+		priv->pload_pos = (void*)crlf - buff;
 	}
 
 	return POM_OK;
@@ -203,7 +206,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len) {
 
 	
-	struct analyzer_rfc822_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 
 	if (priv->state == analyzer_rfc822_pload_state_initial) {
 
@@ -238,7 +241,7 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 			return POM_ERR;
 		}
 
-		priv->sub_pload->rel_event = pload->rel_event;
+		analyzer_pload_buffer_set_related_event(priv->sub_pload, analyzer_pload_buffer_get_related_event(pload));
 		priv->state = analyzer_rfc822_pload_state_processing;
 
 	}
@@ -255,7 +258,7 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 
 static int analyzer_rfc822_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
 
-	struct analyzer_rfc822_pload_priv *priv = pload->analyzer_priv;
+	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 	if (!priv)
 		return POM_OK;
 

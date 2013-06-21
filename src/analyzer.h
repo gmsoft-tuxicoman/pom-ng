@@ -78,6 +78,28 @@ struct analyzer_pload_instance {
 	
 };
 
+struct analyzer_pload_buffer {
+
+	struct analyzer_pload_type *type;
+	size_t expected_size, buff_size;
+	size_t buff_pos;
+
+	void *buff;
+
+	enum analyzer_pload_buffer_state state;
+	unsigned int flags;
+
+	struct data *data;
+	struct event *rel_event;
+	struct analyzer_pload_instance *output_list;
+	void *analyzer_priv;
+
+#ifdef HAVE_ZLIB
+	z_stream *zbuff;
+#endif
+
+};
+
 int analyzer_init();
 int analyzer_cleanup();
 int analyzer_pload_output(struct analyzer_pload_buffer *pload);
