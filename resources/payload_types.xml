@@ -22,6 +22,7 @@
 			<item><name>webm</name><description>WebM video</description><extension>webm</extension><class>video</class></item>
 			<item><name>m2ts</name><description>MPEG2 TS video</description><extension>m2ts</extension><class>video</class></item>
 			<item><name>rfc822</name><description>RFC822 compliant message</description><extension>txt</extension><class>document</class></item>
+			<item><name>text</name><description>Plain text</description><extension>txt</extension><class>document</class></item>
 
 		</dataset>
 
@@ -47,6 +48,7 @@
 			<item><name>webm</name><mime>video/webm</mime></item>
 			<item><name>m2ts</name><mime>video/MP2T</mime></item>
 			<item><name>rfc822</name><mime>message/rfc822</mime></item>
+			<item><name>text</name><mime>text/plain</mime></item>
 		</dataset>
 	</datasets>
 
