@@ -52,6 +52,7 @@ static struct analyzer *analyzer_head = NULL;
 
 static struct analyzer_pload_type *analyzer_pload_types = NULL;
 static struct analyzer_pload_type *analyzer_binary_pload_type = NULL;
+static struct analyzer_pload_type *analyzer_text_pload_type = NULL;
 static struct analyzer_pload_mime_type *analyzer_pload_mime_types = NULL;
 
 static struct analyzer_pload_output *analyzer_pload_outputs = NULL;
@@ -228,6 +229,7 @@ int analyzer_init() {
 
 	// This is the 'match all' type
 	analyzer_binary_pload_type = analyzer_pload_type_get_by_name("binary");
+	analyzer_text_pload_type = analyzer_pload_type_get_by_name("text");
 
 	return POM_OK;
 
@@ -565,10 +567,11 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 		// We need to allocate the buffer for this payload
 #ifdef HAVE_LIBMAGIC
-		pload->state = analyzer_pload_buffer_state_magic;
-#else
-		pload->state = analyzer_pload_buffer_state_partial;
+		if (pload->flags & ANALYZER_PLOAD_BUFFER_NEED_MAGIC)
+			pload->state = analyzer_pload_buffer_state_magic;
+		else
 #endif
+			pload->state = analyzer_pload_buffer_state_partial;
 
 	}
 
@@ -606,7 +609,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			struct analyzer_pload_type *magic_pload_type = analyzer_pload_type_get_by_mime_type(magic_mime_type);
 
 			// If magic found something different, use that instead
-			if (magic_pload_type && (magic_pload_type != pload->type) && (magic_pload_type != analyzer_binary_pload_type)) {
+			if (magic_pload_type && (magic_pload_type != pload->type) && (magic_pload_type != analyzer_binary_pload_type) && (magic_pload_type != analyzer_text_pload_type)) {
 				debug_analyzer(POMLOG_DEBUG "Fixed payload type to %s according to libmagic", magic_mime_type);
 				pload->type = magic_pload_type;
 			}
@@ -706,6 +709,10 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	}
 
 	if (pload->state == analyzer_pload_buffer_state_analyzed) {
+		struct analyzer_pload_reg *pload_analyzer = NULL;
+		if (pload->type)
+			pload_analyzer = pload->type->analyzer;
+
 		if (!pload->output_list) {
 			// Try to send this payload to all the outputs
 			// TODO filtering
@@ -735,7 +742,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				pload->output_list = lst;
 
 			}
-			if (!pload->output_list) {
+
+			if (!pload->output_list && !(pload_analyzer && pload_analyzer->process)) {
 				pload->state = analyzer_pload_buffer_state_done;
 				if (pload->buff_size) 
 					free(pload->buff);
@@ -775,6 +783,22 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			}
 
 		}
+
+		if (pload_analyzer && pload_analyzer->process) {
+			if (pload->buff_size) {
+				if (pload->buff_pos) {
+					if (pload_analyzer->process(pload_analyzer->analyzer, pload, pload->buff, pload->buff_pos) != POM_OK)
+						return POM_ERR;
+				}
+			} else {
+				if (size) {
+					if (pload_analyzer->process(pload_analyzer->analyzer, pload, data, size) != POM_OK)
+						return POM_ERR;
+				}
+			}
+					
+		}
+
 
 		if (pload->buff_size) {
 			// The buffer was written, we can safely get rid of it

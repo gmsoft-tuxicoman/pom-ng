@@ -130,6 +130,7 @@ struct analyzer_pload_reg {
 	unsigned int flags;
 
 	int (*analyze) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+	int (*process) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len);
 	int (*cleanup) (struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
 
 };
