@@ -649,7 +649,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	return res;
 }
 
-struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size) {
+struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size, unsigned int flags) {
 	
 	struct packet_stream_parser *res = malloc(sizeof(struct packet_stream_parser));
 	if (!res) {
@@ -660,6 +660,7 @@ struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_si
 	memset(res, 0, sizeof(struct packet_stream_parser));
 
 	res->max_line_size = max_line_size;
+	res->flags = flags;
 
 	debug_stream_parser("entry %p, allocated with max_line_size %u", res, max_line_size);
 
@@ -780,15 +781,21 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 		sp->pload += str_len;
 
 	// Trim the string
-	while (*pload == ' ' && tmp_len) {
-		pload++;
-		tmp_len--;
+	if (sp->flags & PACKET_STREAM_PARSER_FLAG_TRIM) {
+		while (tmp_len && *pload == ' ') {
+			pload++;
+			tmp_len--;
+		}
+		while (tmp_len && pload[tmp_len] == ' ')
+			tmp_len--;
 	}
-	while (pload[tmp_len] == ' ' && tmp_len)
-		tmp_len--;
 
 	*line = pload;
-	*len = tmp_len;
+
+	if (sp->flags & PACKET_STREAM_PARSER_FLAG_INCLUDE_CRLF)
+		*len = str_len;
+	else
+		*len = tmp_len;
 
 	debug_stream_parser("entry %p, got line of %u bytes", sp, tmp_len);
 

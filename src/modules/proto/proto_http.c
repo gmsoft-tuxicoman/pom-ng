@@ -212,7 +212,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 	}
 
 	if (!priv->parser[s->direction]) {
-		priv->parser[s->direction] = packet_stream_parser_alloc(HTTP_MAX_HEADER_LINE);
+		priv->parser[s->direction] = packet_stream_parser_alloc(HTTP_MAX_HEADER_LINE, PACKET_STREAM_PARSER_FLAG_TRIM);
 		if (!priv->parser[s->direction])
 			return PROTO_ERR;
 	}
@@ -380,11 +380,8 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 						if (!line) // No more full line in this packet
 							return PROTO_OK;
 
-						// Remove trailing spaces
-						for (; len > 0 && line[len - 1] == ' '; len--);
-
-						// Remove leading '0' and spaces
-						for (; len > 1 && (*line == '0' || *line == ' '); len--, line++);
+						// Remove leading '0'
+						for (; len > 1 && *line == '0'; len--, line++);
 
 						char int_str[10] = {0};
 						if (len >= sizeof(int_str) || !len) {

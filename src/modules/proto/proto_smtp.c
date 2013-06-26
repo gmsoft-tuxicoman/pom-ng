@@ -171,13 +171,13 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 		}
 		memset(priv, 0, sizeof(struct proto_smtp_conntrack_priv));
 
-		priv->parser[POM_DIR_FWD] = packet_stream_parser_alloc(SMTP_MAX_LINE);
+		priv->parser[POM_DIR_FWD] = packet_stream_parser_alloc(SMTP_MAX_LINE, PACKET_STREAM_PARSER_FLAG_TRIM);
 		if (!priv->parser[POM_DIR_FWD]) {
 			free(priv);
 			return PROTO_ERR;
 		}
 
-		priv->parser[POM_DIR_REV] = packet_stream_parser_alloc(SMTP_MAX_LINE);
+		priv->parser[POM_DIR_REV] = packet_stream_parser_alloc(SMTP_MAX_LINE, PACKET_STREAM_PARSER_FLAG_TRIM);
 		if (!priv->parser[POM_DIR_REV]) {
 			packet_stream_parser_cleanup(priv->parser[POM_DIR_FWD]);
 			free(priv);

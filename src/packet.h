@@ -29,7 +29,6 @@
 #define PACKET_BUFFER_ALIGNMENT 4
 #define PACKET_BUFFER_POOL_ID_UNUSED -1
 
-
 struct packet_buffer {
 
 	void *base_buff;
@@ -48,6 +47,7 @@ struct packet_stream_parser {
 	unsigned int buff_pos;
 	char *pload;
 	unsigned int plen;
+	unsigned int flags;
 };
 
 void packet_buffer_pool_release(struct packet_buffer *pb);
