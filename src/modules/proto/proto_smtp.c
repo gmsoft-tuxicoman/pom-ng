@@ -483,6 +483,8 @@ static int proto_smtp_conntrack_cleanup(void *ce_priv) {
 	if (priv->parser[POM_DIR_REV])
 		packet_stream_parser_cleanup(priv->parser[POM_DIR_REV]);
 
+	free(priv);
+
 	return POM_OK;
 }
 
