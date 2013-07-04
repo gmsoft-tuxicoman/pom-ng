@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_png.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
@@ -49,6 +49,9 @@ analyzer_jpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la @libexif_LIBS@
 analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
 analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_multipart_la_SOURCES = analyzer/analyzer_multipart.c analyzer/analyzer_multipart.h
+analyzer_multipart_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_multipart_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_png_la_SOURCES = analyzer/analyzer_png.c analyzer/analyzer_png.h
 analyzer_png_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_png_la_LIBADD = $(top_builddir)/src/libpom-ng.la
