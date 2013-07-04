@@ -315,7 +315,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				f->next = NULL;
 
 				// Create the payload buffer
-				f->pload = analyzer_pload_buffer_alloc(NULL, 0, ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
+				f->pload = analyzer_pload_buffer_alloc(0, ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
 				if (!f->pload)
 					goto err;
 

@@ -127,12 +127,13 @@ int analyzer_register(struct analyzer_reg *reg_info);
 int analyzer_unregister(char *name);
 
 int analyzer_pload_register(struct analyzer_pload_type *pt, struct analyzer_pload_reg *pload_analyzer);
-struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(struct analyzer_pload_type *type, size_t expected_size, unsigned int flags);
+struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(size_t expected_size, unsigned int flags);
 int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data, size_t size);
 int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
 
-struct analyzer_pload_type *analyzer_pload_type_get_by_name(char *name);
-struct analyzer_pload_type *analyzer_pload_type_get_by_mime_type(char *mime_type);
+struct analyzer_pload_type* analyzer_pload_type_get_by_name(char *name);
+int analyzer_pload_buffer_set_type_by_content_type(struct analyzer_pload_buffer *pload, char *content_type);
+int analyzer_pload_buffer_set_type(struct analyzer_pload_buffer *pload, struct analyzer_pload_type *type);
 
 int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info);
 int analyzer_pload_output_unregister(void *output_priv);
@@ -146,5 +147,6 @@ struct event *analyzer_pload_buffer_get_related_event(struct analyzer_pload_buff
 void analyzer_pload_buffer_set_related_event(struct analyzer_pload_buffer *pload, struct event *evt);
 void *analyzer_pload_buffer_get_priv(struct analyzer_pload_buffer *pload);
 void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *priv);
+struct mime *analyzer_pload_buffer_get_mime(struct analyzer_pload_buffer *pload);
 
 #endif

@@ -109,6 +109,12 @@ static int analyzer_smtp_cleanup(struct analyzer *analyzer) {
 
 	struct analyzer_smtp_priv *priv = analyzer->priv;
 
+	if (priv->pkt_listener) {
+		event_listener_unregister(priv->evt_cmd, analyzer);
+		event_listener_unregister(priv->evt_reply, analyzer);
+		proto_packet_listener_unregister(priv->pkt_listener);
+	}
+
 	if (priv->evt_msg)
 		event_unregister(priv->evt_msg);
 
@@ -146,6 +152,9 @@ static int analyzer_smtp_event_listeners_notify(void *obj, struct event_reg *evt
 		if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
 			return POM_ERR;
 
+		event_listener_unregister(priv->evt_cmd, analyzer);
+		event_listener_unregister(priv->evt_reply, analyzer);
+
 		priv->pkt_listener = NULL;
 	}
 
@@ -171,7 +180,8 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 	struct analyzer_smtp_priv *apriv = analyzer->priv;
 
 	if (!pload_buff) {
-		pload_buff = analyzer_pload_buffer_alloc(apriv->rfc822_msg_pload_type, 0, 0);
+		pload_buff = analyzer_pload_buffer_alloc(0, 0);
+		analyzer_pload_buffer_set_type(pload_buff, apriv->rfc822_msg_pload_type);
 		if (!pload_buff)
 			return POM_ERR;
 
@@ -450,6 +460,9 @@ static int analyzer_smtp_event_process_end(struct event *evt, void *obj) {
 static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv) {
 
 	struct analyzer_smtp_ce_priv *cpriv = priv;
+
+	if (cpriv->evt_msg)
+		event_cleanup(cpriv->evt_msg);
 
 	free(cpriv);
 

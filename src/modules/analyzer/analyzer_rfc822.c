@@ -120,7 +120,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 		hdr = crlf;
 
 		
-		if (*line == ' ') {
+		if (*line == ' ' || *line == '\t') {
 			// It's the continuation of the previous header
 			if (!priv->last_hdr_value) {
 				pomlog(POMLOG_DEBUG "Header continuation found but no last value !");
@@ -228,18 +228,13 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 		if (!priv->content_transfer_encoding) // Default transfer encoding is 7bit
 			priv->content_transfer_encoding = "7bit";
 
-		priv->sub_type = analyzer_pload_type_get_by_mime_type(priv->content_type);
-
-		if (!priv->sub_type) { // Unrecognized content
-			priv->state = analyzer_rfc822_pload_state_done;
-			return POM_OK;
-		}
-
-		priv->sub_pload = analyzer_pload_buffer_alloc(priv->sub_type, 0, 0);
+		priv->sub_pload = analyzer_pload_buffer_alloc(0, 0);
 		if (!priv->sub_pload) {
 			priv->state = analyzer_rfc822_pload_state_done;
 			return POM_ERR;
 		}
+
+		analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, priv->content_type);
 
 		analyzer_pload_buffer_set_related_event(priv->sub_pload, analyzer_pload_buffer_get_related_event(pload));
 		priv->state = analyzer_rfc822_pload_state_processing;

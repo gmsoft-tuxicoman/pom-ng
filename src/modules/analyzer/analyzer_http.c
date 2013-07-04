@@ -726,14 +726,14 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 
 	struct analyzer_http_request_event_priv *epriv = event_get_priv(evt);
 
-	struct analyzer_pload_type *type = NULL;
-	if (epriv->content_type[dir])
-		type = analyzer_pload_type_get_by_mime_type(epriv->content_type[dir]);
 
 	if (!epriv->pload[dir]) {
-		epriv->pload[dir] = analyzer_pload_buffer_alloc(type, epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC | epriv->content_flags[dir]);
+		epriv->pload[dir] = analyzer_pload_buffer_alloc(epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC | epriv->content_flags[dir]);
 		if (!epriv->pload[dir])
 			return POM_ERR;
+
+		if (epriv->content_type[dir])
+			analyzer_pload_buffer_set_type_by_content_type(epriv->pload[dir], epriv->content_type[dir]);
 
 		analyzer_pload_buffer_set_related_event(epriv->pload[dir], evt);
 
