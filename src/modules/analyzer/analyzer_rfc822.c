@@ -21,6 +21,7 @@
 #include "analyzer_rfc822.h"
 
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/mime.h>
 
 struct mod_reg_info* analyzer_rfc822_reg_info() {
 
@@ -119,83 +120,15 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 		hdrlen -= crlf - hdr;
 		hdr = crlf;
 
-		
-		if (*line == ' ' || *line == '\t') {
-			// It's the continuation of the previous header
-			if (!priv->last_hdr_value) {
-				pomlog(POMLOG_DEBUG "Header continuation found but no last value !");
-				analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
-				return POM_ERR;
-			}
-			size_t new_value_len = strlen(priv->last_hdr_value) + line_len;
-			char *new_value = realloc(priv->last_hdr_value, new_value_len);
-			if (!new_value) {
-				pom_oom(new_value_len);
-				return POM_ERR;
-			}
-			priv->last_hdr_value = new_value;
-			strncat(new_value, line + 1, line_len);
-			new_value[new_value_len] = 0;
-		} else {
-			// Parse and add the previously saved header
-			if (priv->last_hdr_name && priv->last_hdr_value) {
-
-				if (!strcasecmp(priv->last_hdr_name, "Content-Type")) {
-					priv->content_type = priv->last_hdr_value;
-				} else if (!strcasecmp(priv->last_hdr_name, "Content-Transfer-Encoding")) {
-					priv->content_transfer_encoding = priv->last_hdr_value;
-				}
-
-				struct ptype *hdr_value = ptype_alloc("string");
-				if (!hdr_value)
-					return POM_ERR;
-				PTYPE_STRING_SETVAL_P(hdr_value, priv->last_hdr_value);
-				priv->last_hdr_value = NULL;
-
-				struct data *data = analyzer_pload_buffer_get_data(pload);
-
-				if (data_item_add_ptype(data, analyzer_rfc822_pload_headers, priv->last_hdr_name, hdr_value) != POM_OK) {
-					free(priv->last_hdr_name);
-					priv->last_hdr_name = NULL;
-					ptype_cleanup(hdr_value);
-					return POM_ERR;
-				}
-				priv->last_hdr_name = NULL;
-			}
-
-			if (!line_len) {
-				// Last line of headers, the body is now
-				analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
-				// Exit the loop
-				hdrlen = 0;
-			} else {
-
-				// Parse the new header
-				char *colon = memchr(line, ':', line_len);
-				if (!colon) {
-					pomlog(POMLOG_DEBUG "No colon in header line, invalid content");
-					analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
-					return POM_ERR;
-				}
-				priv->last_hdr_name = strndup(line, colon - line);
-				if (!priv->last_hdr_name) {
-					pom_oom(colon - line);
-					return POM_ERR;
-				}
-
-				colon++;
-				size_t value_len = line_len - (colon - line);
-				while (*colon == ' ' && value_len > 0) {
-					colon++;
-					value_len--;
-				}
-				priv->last_hdr_value = strndup(colon, value_len);
-				if (!priv->last_hdr_value) {
-					pom_oom(value_len);
-					return POM_ERR;
-				}
-			}
+		struct data *data = analyzer_pload_buffer_get_data(pload);
+		if (!line_len) {
+			// Last line of headers, the body is now
+			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
+			break;
+		} else if (mime_parse_header(&data[analyzer_rfc822_pload_headers], line, line_len) != POM_OK) {
+			return POM_ERR;
 		}
+
 
 		priv->pload_pos = (void*)crlf - buff;
 	}
@@ -222,19 +155,31 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 				return POM_OK;
 		}
 
-		if (!priv->content_type) // Default mime-type is text/plain
-			priv->content_type = "text/plain";
-
-		if (!priv->content_transfer_encoding) // Default transfer encoding is 7bit
-			priv->content_transfer_encoding = "7bit";
-
 		priv->sub_pload = analyzer_pload_buffer_alloc(0, 0);
 		if (!priv->sub_pload) {
 			priv->state = analyzer_rfc822_pload_state_done;
 			return POM_ERR;
 		}
 
-		analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, priv->content_type);
+		// Parse the headers
+		unsigned int content_type_found = 0, content_encoding_found = 0;
+		struct data *data = analyzer_pload_buffer_get_data(pload);
+		struct data_item *itm = data[analyzer_rfc822_pload_headers].items;
+		while (itm && (!content_type_found && !content_encoding_found)) {
+			if (!strcasecmp(itm->key, "Content-Type")) {
+				content_type_found = 1;
+				analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, PTYPE_STRING_GETVAL(itm->value));
+			} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
+				pomlog(POMLOG_DEBUG "Transfer encoding is %s", PTYPE_STRING_GETVAL(itm->value));
+			}
+
+			itm = itm->next;
+		}
+
+		if (!content_type_found)
+			analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, "text/plain; charset=US-ASCII");
+		if (!content_encoding_found)
+			pomlog(POMLOG_DEBUG "Transfer encoding is %s", "7bit");
 
 		analyzer_pload_buffer_set_related_event(priv->sub_pload, analyzer_pload_buffer_get_related_event(pload));
 		priv->state = analyzer_rfc822_pload_state_processing;
@@ -256,13 +201,6 @@ static int analyzer_rfc822_pload_cleanup(struct analyzer *analyzer, struct analy
 	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 	if (!priv)
 		return POM_OK;
-
-
-	if (priv->last_hdr_name)
-		free(priv->last_hdr_name);
-
-	if (priv->last_hdr_value)
-		free(priv->last_hdr_value);
 
 	if (priv->sub_pload)
 		analyzer_pload_buffer_cleanup(priv->sub_pload);

@@ -22,6 +22,7 @@
 #define __POM_NG_MIME_H__
 
 #include <pom-ng/base.h>
+#include <pom-ng/analyzer.h>
 
 #define MIME_MAX_PARAMETERS	5
 
@@ -61,5 +62,9 @@ struct mime *mime_parse(char *content_type);
 void mime_cleanup(struct mime *mime);
 
 char *mime_get_param(struct mime *mime, char *param_name);
+
+int mime_parse_header(struct data *data, char *line, size_t line_len);
+
+
 #endif
 

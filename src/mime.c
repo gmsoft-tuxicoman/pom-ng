@@ -21,6 +21,9 @@
 
 #include "common.h"
 #include <pom-ng/mime.h>
+#include <pom-ng/ptype_string.h>
+
+#include "analyzer.h"
 
 struct mime_top_type_str {
 	enum mime_top_type top_type;
@@ -164,5 +167,95 @@ char *mime_get_param(struct mime *mime, char *param_name) {
 	return NULL;
 }
 
+
+int mime_parse_header(struct data *data, char *line, size_t line_len) {
+
+	if (!line_len)
+		return POM_OK;
+
+	if (*line == ' ' || *line == '\t') {
+		while (line_len > 0 && (*line == ' ' || *line == '\t')) {
+			line_len--;
+			line++;
+		}
+
+		if (!line_len)
+			return POM_OK;
+
+		// Find the last item we added and append the string
+		struct data_item *itm = data->items;
+		if (!itm) {
+			pomlog(POMLOG_DEBUG "Last header not found, cannot append value");
+			return POM_ERR;
+		}
+
+		// The last one is pushed at the top of the stack by data_item_add_ptype
+
+		char *last_hdr_value = PTYPE_STRING_GETVAL(itm->value);
+		if (!last_hdr_value)
+			return POM_ERR;
+
+		size_t new_len = strlen(last_hdr_value) + line_len + 2;
+		char *new_value = malloc(new_len);
+
+		if (!new_value) {
+			pom_oom(new_len);
+			return POM_ERR;
+		}
+		strcpy(new_value, last_hdr_value);
+		strcat(new_value, " ");
+		strncat(new_value, line, line_len);
+		new_value[new_len - 1] = 0;
+
+		PTYPE_STRING_SETVAL_P(itm->value, new_value);
+
+	} else {
+		char *colon = memchr(line, ':', line_len);
+		if (!colon) {
+			pomlog(POMLOG_DEBUG "No colon in header line, invalid content");
+			return POM_ERR;
+		}
+
+		char *hdr_name = strndup(line, colon - line);
+		if (!hdr_name) {
+			pom_oom(colon - line);
+			return POM_ERR;
+		}
+
+		colon++;
+		
+		size_t value_len = line_len - (colon - line);
+		while (value_len > 0 && (*colon == ' ' || *colon == '\t')) {
+			colon++;
+			value_len--;
+		}
+
+		char *hdr_value = strndup(colon, value_len);
+		if (!hdr_value) {
+			free(hdr_name);
+			pom_oom(value_len);
+			return POM_ERR;
+		}
+
+		struct ptype *hdr_value_pt = ptype_alloc("string");
+		if (!hdr_value_pt) {
+			free(hdr_name);
+			free(hdr_value);
+			return POM_ERR;
+		}
+
+		PTYPE_STRING_SETVAL_P(hdr_value_pt, hdr_value);
+
+		if (data_item_add_ptype(data, 0, hdr_name, hdr_value_pt) != POM_OK) {
+			free(hdr_name);
+			ptype_cleanup(hdr_value_pt);
+			return POM_ERR;
+
+		}
+
+	}
+
+	return POM_OK;
+}
 
 

@@ -43,15 +43,9 @@ enum analyzer_rfc822_pload_state {
 };
 
 struct analyzer_rfc822_pload_priv {
-	char *last_hdr_name;
-	char *last_hdr_value;
 	size_t pload_pos;
 
-	char *content_type;
-	char *content_transfer_encoding;
-
 	enum analyzer_rfc822_pload_state state;
-	struct analyzer_pload_type *sub_type;
 	struct analyzer_pload_buffer *sub_pload;
 };
 
