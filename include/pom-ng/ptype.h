@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,8 +24,6 @@
 
 #include <pom-ng/base.h>
 #include <pom-ng/mod.h>
-
-#include <stdlib.h>
 
 /// Ptype operation reserved number
 #define PTYPE_OP_RSVD	0x00

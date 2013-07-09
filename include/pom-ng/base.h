@@ -41,6 +41,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
+#include <stdlib.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 
