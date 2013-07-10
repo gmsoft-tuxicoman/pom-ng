@@ -24,10 +24,18 @@
 
 #include <pom-ng/decoder.h>
 
+struct decoder_percent_priv {
+	char buff[4];
+	int buff_len;
+};
+
 struct mod_reg_info *decoder_percent_reg_info();
 
 static int decoder_percent_mod_register(struct mod_reg *mod);
 static int decoder_percent_mod_unregister();
+
+static int decoder_percent_alloc(struct decoder *dec);
+static int decoder_percent_cleanup(struct decoder *dec);
 
 static size_t decoder_percent_estimate_size(size_t encoded_size);
 static int decoder_percent_decode(struct decoder *dec);

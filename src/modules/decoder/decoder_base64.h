@@ -24,10 +24,18 @@
 
 #include <pom-ng/decoder.h>
 
+struct decoder_base64_priv {
+	char buff[5];
+	int buff_len;
+};
+
 struct mod_reg_info *decoder_base64_reg_info();
 
 static int decoder_base64_mod_register(struct mod_reg *mod);
 static int decoder_base64_mod_unregister();
+
+static int decoder_base64_alloc(struct decoder *dec);
+static int decoder_base64_cleanup(struct decoder *dec);
 
 static size_t decoder_base64_estimate_size(size_t encoded_size);
 static int decoder_base64_decode(struct decoder *dec);

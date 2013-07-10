@@ -38,6 +38,8 @@ static int decoder_base64_mod_register(struct mod_reg *mod) {
 	static struct decoder_reg_info dec_base64 = { 0 };
 	dec_base64.name = "base64";
 	dec_base64.mod = mod;
+	dec_base64.alloc = decoder_base64_alloc;
+	dec_base64.cleanup = decoder_base64_cleanup;
 	dec_base64.estimate_size = decoder_base64_estimate_size;
 	dec_base64.decode = decoder_base64_decode;
 
@@ -50,6 +52,28 @@ static int decoder_base64_mod_unregister() {
 	return decoder_unregister("base64");
 }
 
+static int decoder_base64_alloc(struct decoder *dec) {
+
+	struct decoder_base64_priv *priv = malloc(sizeof(struct decoder_base64_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct decoder_base64_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct decoder_base64_priv));
+
+	dec->priv = priv;
+
+	return POM_OK;
+}
+
+static int decoder_base64_cleanup(struct decoder *dec) {
+
+	if (dec->priv)
+		free(dec->priv);
+
+	return POM_OK;
+}
+
 static size_t decoder_base64_estimate_size(size_t encoded_size) {
 
 	return (encoded_size / 4) * 3 + 1;
@@ -57,6 +81,40 @@ static size_t decoder_base64_estimate_size(size_t encoded_size) {
 
 int decoder_base64_decode(struct decoder *dec) {
 
+
+	struct decoder_base64_priv *priv = dec->priv;
+
+	if (dec->priv && priv->buff_len) {
+		int i;
+		for (i = 0; i < (4 - priv->buff_len) && i < dec->avail_in; i++) {
+			priv->buff[priv->buff_len + i] = dec->next_in[i];
+		}
+		priv->buff_len += i;
+		dec->avail_in -= i;
+		dec->next_in += i;
+
+		if (priv->buff_len < 4)
+			return DEC_OK;
+
+		// Setup a temporary struct decoder to decode these 3 bytes
+		struct decoder tmp_dec = { 0 };
+		tmp_dec.avail_in = 4;
+		tmp_dec.next_in = priv->buff;
+		tmp_dec.avail_out = dec->avail_out;
+		tmp_dec.next_out = dec->next_out;
+
+		int res = decoder_base64_decode(&tmp_dec);
+		dec->avail_out = tmp_dec.avail_out;
+		dec->next_out = tmp_dec.next_out;
+
+		if (res != DEC_OK)
+			return res;
+
+
+		// Discard our buffer
+		priv->buff_len = 0;
+
+	}
 
 	char value[4];
 
@@ -105,8 +163,14 @@ int decoder_base64_decode(struct decoder *dec) {
 
 	if (dec->avail_out > 0)
 		*dec->next_out = 0;
-	if (dec->avail_in > 0)
-		return DEC_MORE;
+
+	if (dec->avail_in > 0) {
+		memcpy(priv->buff, dec->next_in, dec->avail_in);
+		priv->buff[dec->avail_in] = 0;
+		priv->buff_len = dec->avail_in;
+		dec->next_in += dec->avail_in;
+		dec->avail_in = 0;
+	}
 
 	return DEC_OK;
 }
