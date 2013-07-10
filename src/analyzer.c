@@ -20,10 +20,6 @@
 
 #include "config.h"
 
-#ifdef HAVE_ZLIB
-#include <zlib.h>
-#endif
-
 #include "analyzer.h"
 #include "output.h"
 #include "mod.h"
@@ -32,6 +28,7 @@
 #include <pom-ng/resource.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/mime.h>
+#include <pom-ng/decoder.h>
 
 #include <libxml/parser.h>
 
@@ -87,6 +84,13 @@ static struct resource_template analyzer_mime_template[] = {
 	{ "payload_types", analyzer_payload_types_template },
 	{ "mime_types", analyzer_mime_types_template },
 	{ 0 }
+};
+
+static char *analyzer_noop_decoders[] = {
+	"7bit",
+	"8bit",
+	"binary",
+	NULL
 };
 
 
@@ -408,11 +412,11 @@ struct analyzer_pload_buffer *analyzer_pload_buffer_alloc(size_t expected_size, 
 
 static int analyzer_pload_buffer_grow(struct analyzer_pload_buffer *pload) {
 
-	long pagesize = sysconf(_SC_PAGESIZE);
-	if (!pagesize)
-		pagesize = 4096;
+	size_t growsize = sysconf(_SC_PAGESIZE);
+	if (!growsize)
+		growsize = 4096;
 
-	size_t new_size = pload->buff_size + pagesize;
+	size_t new_size = pload->buff_size + growsize;
 
 	void *new_buff = realloc(pload->buff, new_size);
 	if (!new_buff) {
@@ -429,75 +433,73 @@ static int analyzer_pload_buffer_grow(struct analyzer_pload_buffer *pload) {
 
 static int analyzer_pload_buffer_append_to_buff(struct analyzer_pload_buffer *pload, void *data, size_t size) {
 
-	if (!pload->buff_size) {
+	if (!pload->buff_size && pload->expected_size) {
 		size_t alloc_size = (pload->expected_size > 65535 ? 65535 : pload->expected_size);
 		pload->buff_size = alloc_size;
 		pload->buff = malloc(pload->expected_size);
 		if (!pload->buff) {
 			pom_oom(pload->expected_size);
 			pload->state = analyzer_pload_buffer_state_error;
+			pload->buff_size = 0;
 			return POM_ERR;
 		}
 	}
 
-#ifdef HAVE_ZLIB
-	
-	if (pload->zbuff) {
-		// Handle zlib compression
-		pload->zbuff->next_in = data;
-		pload->zbuff->avail_in = size;
-		pload->zbuff->avail_out = pload->buff_size - pload->buff_pos;
+	if (pload->decoder) {
+		// Handle decoding
+
+		if (!pload->buff_size) {
+			size_t len = decoder_estimate_output_size(pload->decoder, size);
+			pload->buff = malloc(len);
+			if (!pload->buff) {
+				pom_oom(len);
+				return POM_ERR;
+			}
+			pload->buff_size = len;
+		}
+
+		pload->decoder->next_in = data;
+		pload->decoder->avail_in = size;
+		pload->decoder->avail_out = pload->buff_size - pload->buff_pos;
 		
 		int res;
 
-		do {
+		while (1) {
 
-			if (!pload->zbuff->avail_out) {
+			pload->decoder->next_out = pload->buff + pload->buff_pos;
+
+			res = decoder_decode(pload->decoder);
+
+			if (res == DEC_END) {
+				break;
+			} else if (res == DEC_ERR) {
+				// Mark this as error
+				pload->state = analyzer_pload_buffer_state_error;
+				return POM_OK;
+			} else if (res == DEC_MORE) {
+				pload->buff_pos = pload->buff_size - pload->decoder->avail_out;
 				if (analyzer_pload_buffer_grow(pload) != POM_OK)
 					return POM_OK;
-				pload->zbuff->avail_out = pload->buff_size - pload->buff_pos;
-			}
-			pload->zbuff->next_out = pload->buff + pload->buff_pos;
-
-			res = inflate(pload->zbuff, Z_SYNC_FLUSH);
-			if (res != Z_OK && res != Z_STREAM_END) {
-				char *msg = pload->zbuff->msg;
-				if (!msg)
-					msg = "Unknown error";
-				pomlog(POMLOG_DEBUG "Error while uncompressing the gzip content : %s", msg);
-				pload->state = analyzer_pload_buffer_state_error;
-				inflateEnd(pload->zbuff);
-				free(pload->zbuff);
-				pload->zbuff = NULL;
-				return POM_OK;
+				pload->decoder->avail_out = pload->buff_size - pload->buff_pos;
+			} else if (!pload->decoder->avail_in) {
+				break;
 			}
 
-		} while (pload->zbuff->avail_in && res == Z_OK);
-
-		pload->buff_pos = pload->buff_size - pload->zbuff->avail_out;
-
-		if (res == Z_STREAM_END) {
-			inflateEnd(pload->zbuff);
-			free(pload->zbuff);
-			pload->zbuff = NULL;
 		}
 
-	} else {
-#endif /* HAVE_ZLIB */
+		pload->buff_pos = pload->buff_size - pload->decoder->avail_out;
 
+	} else {
 		// Uncompressed stuff
 		if (pload->buff_size < pload->buff_pos + size) {
 			// Buffer is too small, add a page
 			if (analyzer_pload_buffer_grow(pload) != POM_OK)
 				return POM_OK;
 		}
-
 		memcpy(pload->buff + pload->buff_pos, data, size);
 		pload->buff_pos += size;
 
-#ifdef HAVE_ZLIB
 	}
-#endif
 
 	return POM_OK;
 }
@@ -517,42 +519,9 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	}
 
 	if (pload->state == analyzer_pload_buffer_state_empty) {
-		if (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_GZIP | ANALYZER_PLOAD_BUFFER_IS_DEFLATE)) {
-#ifdef HAVE_ZLIB
-			pload->zbuff = malloc(sizeof(z_stream));
-			if (!pload->zbuff) {
-				pom_oom(sizeof(z_stream));
-				pload->state = analyzer_pload_buffer_state_error;
-				return POM_OK;
-			}
-			memset(pload->zbuff, 0, sizeof(z_stream));
-			int window_bits = 15 + 32; // 15, default window bits. 32, magic value to enable header detection
-			if (pload->flags & ANALYZER_PLOAD_BUFFER_IS_DEFLATE)
-				window_bits = -15; // Raw data
 
-			if (inflateInit2(pload->zbuff, window_bits) != Z_OK) {
-				if (pload->zbuff->msg)
-					pomlog(POMLOG_ERR "Unable to init Zlib : %s", pload->zbuff->msg);
-				else
-					pomlog(POMLOG_ERR "Unable to init Zlib : Unknown error");
-				free(pload->zbuff);
-				pload->zbuff = NULL;
 
-				pload->state = analyzer_pload_buffer_state_error;
-				return POM_OK;
-			}
-
-#else /* HAVE_ZLIB */
-			pomlog(POMLOG_DEBUG "Got a zlib compressed payload but no zlib support. Ignoring");
-			pload->state = analyzer_pload_buffer_state_done;
-			return POM_OK;
-#endif /* HAVE_ZLIB */
-
-		} else if (pload->flags & ANALYZER_PLOAD_BUFFER_IS_BASE64) {
-			pomlog(POMLOG_DEBUG "Got a base64 payload but no support for that encoding yet");
-			pload->state = analyzer_pload_buffer_state_done;
-			return POM_OK;
-		} else {
+		if (!pload->decoder) {
 			// Use the current data as the buffer
 			pload->buff_pos = size;
 			pload->buff = data;
@@ -578,7 +547,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 	if (pload->state == analyzer_pload_buffer_state_magic) {
 		// We need to perform some magic
 
-		if (!pload->buff_size && (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_ENCODED))) {
+		if (!pload->buff_size && pload->decoder) {
 			// We need to decode/decompress the buffer before analyzing it
 			if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
 				return POM_ERR;
@@ -608,7 +577,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				return POM_ERR;
 			}
 			
-			if (!strcmp(magic_mime->type_str, "application/octet-stream") || !strcmp(magic_mime->type_str, "plain/text")) {
+			// Drop the magic mime if it's the same as the original one or if it's a useless one
+			if ((pload->mime && !strcmp(magic_mime->type_str, pload->mime->type_str)) || !strcmp(magic_mime->type_str, "application/octet-stream") || !strcmp(magic_mime->type_str, "plain/text")) {
 				// Discard this
 				if (!pload->mime) {
 					pload->mime = magic_mime;
@@ -620,12 +590,14 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 				}
 			} else {
 				if (pload->mime) {
-					mime_cleanup(magic_mime);
+					mime_cleanup(pload->mime);
 				}
 				pload->mime = magic_mime;
 				struct analyzer_pload_mime_type *tmp;
 				for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, magic_mime->type_str); tmp = tmp->next);
-				pload->type = tmp->type;
+
+				if (tmp)
+					pload->type = tmp->type;
 			}
 
 			pload->state = analyzer_pload_buffer_state_partial;
@@ -649,7 +621,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		// If we know what type of payload we are dealing with, try to analyze it
 		if (pload->type && pload->type->analyzer && pload->type->analyzer->analyze) {
 
-			if (!pload->buff_size && (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_ENCODED))) {
+			if (!pload->buff_size && pload->decoder) {
 				// We need to decode/decompress the buffer before analyzing it
 				if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
 					return POM_ERR;
@@ -674,8 +646,15 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					// The analyzer enountered an error. Not sure what is the best course of action here.
 					pomlog(POMLOG_DEBUG "Error while analyzing pload of type %s", pload->type->name);
 
+					if (pload_analyzer->cleanup)
+						pload_analyzer->cleanup(pload_analyzer->analyzer, pload);
+
 					// For now, remove the type from the payload
 					pload->type = NULL;
+					if (pload->data) {
+						data_cleanup_table(pload->data, pload_analyzer->data_reg);
+						pload->data = NULL;
+					}
 				}
 	
 				if (!pload->state == analyzer_pload_buffer_state_analysis_failed) {
@@ -683,6 +662,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					pload->state = analyzer_pload_buffer_state_analyzed;
 					pload->type = NULL;
 
+					pload_analyzer->cleanup(pload_analyzer->analyzer, pload);
 					if (pload->data) {
 						data_cleanup_table(pload->data, pload_analyzer->data_reg);
 						pload->data = NULL;
@@ -771,7 +751,7 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 		}
 
 		// There was some output for this pload, decode/decompress the buffer since it'll be needed
-		if (!pload->buff_size && (pload->flags & (ANALYZER_PLOAD_BUFFER_IS_ENCODED))) {
+		if (!pload->buff_size && pload->decoder) {
 			if (analyzer_pload_buffer_append_to_buff(pload, data, size) != POM_OK)
 				return POM_ERR;
 		}
@@ -853,12 +833,10 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 		free(lst);
 
 	}
-#ifdef HAVE_ZLIB
-	if (pload->zbuff) {
-		inflateEnd(pload->zbuff);
-		free(pload->zbuff);
-	}
-#endif
+
+	if (pload->decoder)
+		decoder_cleanup(pload->decoder);
+
 	if (pload->buff_size && pload->buff)
 		free(pload->buff);
 
@@ -883,6 +861,9 @@ int analyzer_pload_buffer_set_type_by_content_type(struct analyzer_pload_buffer 
 	if (!content_type)
 		return POM_ERR;
 
+	if (pload->state != analyzer_pload_buffer_state_empty)
+		return POM_ERR;
+
 	pload->mime = mime_parse(content_type);
 	if (!pload->mime)
 		return POM_ERR;
@@ -901,11 +882,35 @@ int analyzer_pload_buffer_set_type(struct analyzer_pload_buffer *pload, struct a
 	if (!type)
 		return POM_ERR;
 
+	if (pload->state != analyzer_pload_buffer_state_empty)
+		return POM_ERR;
+
 	pload->type = type;
 
 	return POM_OK;
 }
 
+int analyzer_pload_buffer_set_encoding(struct analyzer_pload_buffer *pload, char *encoding) {
+
+	if (pload->state != analyzer_pload_buffer_state_empty)
+		return POM_ERR;
+
+	// Check of the encoding is a NO OP
+	int i;
+	for (i = 0; analyzer_noop_decoders[i] && strcasecmp(encoding, analyzer_noop_decoders[i]); i++);
+	
+	if (analyzer_noop_decoders[i])
+		return POM_OK;
+
+	// Otherwise, try to allocate it
+	pload->decoder = decoder_alloc(encoding);
+	if (!pload->decoder) {
+		pload->state = analyzer_pload_buffer_state_error;
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
 
 int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info) {
 

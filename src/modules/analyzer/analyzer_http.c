@@ -25,7 +25,7 @@
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint64.h>
 #include <pom-ng/ptype_string.h>
-#include <pom-ng/decode.h>
+#include <pom-ng/decoder.h>
 #include <pom-ng/dns.h>
 
 struct mod_reg_info* analyzer_http_reg_info() {
@@ -429,21 +429,14 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				while (value[strlen(value)] == ' ')
 					value[strlen(value)] = 0;
 
-				int len = (strlen(value) / 4) * 3 + 1;
-				char *creds_buff = malloc(len);
-				if (!creds_buff) {
+				size_t out_len;
+				char *creds_buff;
+				if (decoder_decode_simple("base64", value, strlen(value), &creds_buff, &out_len) != POM_OK) {
 					free(value_buff);
-					pom_oom(len);
-					continue;
-				}
-				memset(creds_buff, 0, len);
-				int outlen = decode_base64(creds_buff, value, len);
-				free(value_buff);
-				if (outlen == POM_ERR) {
-					free(creds_buff);
 					pomlog(POMLOG_DEBUG "Unable to decode basic auth header value : \"%s\"", headers->value);
 					continue;
 				}
+				free(value_buff);
 
 				char *colon = strchr(creds_buff, ':');
 				if (!colon) {
@@ -474,11 +467,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		} else if (!strcasecmp(headers->key, "Content-Type")) {
 			epriv->content_type[s->direction] = PTYPE_STRING_GETVAL(headers->value);
 		} else if (!strcasecmp(headers->key, "Content-Encoding")) {
-			char *val = PTYPE_STRING_GETVAL(headers->value);
-			if (!strcasecmp(val, "gzip"))
-				epriv->content_flags[s->direction] |= ANALYZER_PLOAD_BUFFER_IS_GZIP;
-			else if (!strcasecmp(val, "deflate"))
-				epriv->content_flags[s->direction] |= ANALYZER_PLOAD_BUFFER_IS_DEFLATE;
+			epriv->content_encoding[s->direction] = PTYPE_STRING_GETVAL(headers->value);
 		}
 		
 
@@ -683,6 +672,7 @@ int analyzer_http_request_event_cleanup(struct event *evt) {
 		}
 		priv->content_len[i] = 0;
 		priv->content_type[i] = NULL;
+		priv->content_encoding[i] = NULL;
 	}
 
 	free(priv);
@@ -728,12 +718,15 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 
 
 	if (!epriv->pload[dir]) {
-		epriv->pload[dir] = analyzer_pload_buffer_alloc(epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC | epriv->content_flags[dir]);
+		epriv->pload[dir] = analyzer_pload_buffer_alloc(epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
 		if (!epriv->pload[dir])
 			return POM_ERR;
 
 		if (epriv->content_type[dir])
 			analyzer_pload_buffer_set_type_by_content_type(epriv->pload[dir], epriv->content_type[dir]);
+
+		if (epriv->content_encoding[dir])
+			analyzer_pload_buffer_set_encoding(epriv->pload[dir], epriv->content_encoding[dir]);
 
 		analyzer_pload_buffer_set_related_event(epriv->pload[dir], evt);
 

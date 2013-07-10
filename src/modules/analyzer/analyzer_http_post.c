@@ -20,7 +20,7 @@
 
 #include "analyzer_http_post.h"
 #include <pom-ng/ptype_string.h>
-#include <pom-ng/decode.h>
+#include <pom-ng/decoder.h>
 
 int analyzer_http_post_init(struct analyzer *analyzer) {
 
@@ -69,13 +69,12 @@ int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct anal
 		}
 
 		size_t name_len = eq - data;
-		char *name = malloc(name_len + 1);
-		if (!name) {
-			pom_oom(name_len);
-			return POM_ERR;
+
+		char *name = NULL;
+		size_t name_size = 0;
+		if (decoder_decode_simple("percent", data, name_len, &name, &name_size) == DEC_ERR) {
+			continue;
 		}
-		size_t name_size = decode_percent(name, data, name_len);
-		*(name + name_size) = 0;
 
 		data = eq + 1;
 
@@ -83,16 +82,12 @@ int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct anal
 		if (amp)
 			value_len = amp - data;
 
-		char *value = malloc(value_len + 1);
-		if (!value) {
-			pom_oom(value_len);
+		char *value = NULL;
+		size_t value_size = 0;
+		if (decoder_decode_simple("percent", data, value_len, &value, &value_size) == DEC_ERR) {
 			free(name);
-			return POM_ERR;
+			continue;
 		}
-
-		size_t value_size = decode_percent(value, data, value_len);
-		*(value + value_size) = 0;
-
 
 		struct ptype *value_pt = event_data_item_add(rel_event, analyzer_http_request_post_data, name);
 

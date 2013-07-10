@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,10 +18,18 @@
  *
  */
 
-#ifndef __POM_NG_DECODE_H__
-#define __POM_NG_DECODE_H__
+#ifndef __DECODER_H__
+#define __DECODER_H__
 
-size_t decode_percent(char *dst, char *src, size_t length);
-size_t decode_base64(char *output, char *input, size_t out_len);
+#include "common.h"
+
+#include <pom-ng/decoder.h>
+
+struct decoder_reg {
+
+	struct decoder_reg_info *info;
+	struct decoder_reg *prev, *next;
+
+};
 
 #endif

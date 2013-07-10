@@ -95,9 +95,7 @@ struct analyzer_pload_buffer {
 	struct analyzer_pload_instance *output_list;
 	void *analyzer_priv;
 
-#ifdef HAVE_ZLIB
-	z_stream *zbuff;
-#endif
+	struct decoder *decoder;
 
 };
 

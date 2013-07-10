@@ -20,12 +20,13 @@ libdir=$(mod_dir)
 
 ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
+DECODER_SRC = decoder_base64.la decoder_gzip.la decoder_percent.la
 INPUT_SRC = @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_80211.la proto_arp.la proto_dns.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_icmp6.la proto_ipv4.la proto_ipv6.la proto_mpeg.la proto_ppp.la proto_pppoe.la proto_radiotap.la proto_smtp.la proto_tcp.la proto_tftp.la proto_udp.la proto_vlan.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
 
-lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
+lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(DECODER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
 EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la input_pcap.la input_dvb.la output_pcap.la output_tap.la
 
@@ -68,6 +69,16 @@ analyzer_tftp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 datastore_sqlite_la_SOURCES = datastore/datastore_sqlite.c datastore/datastore_sqlite.h
 datastore_sqlite_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lsqlite3
 datastore_sqlite_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+
+decoder_base64_la_SOURCES = decoder/decoder_base64.c decoder/decoder_base64.h
+decoder_base64_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+decoder_base64_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+decoder_gzip_la_SOURCES = decoder/decoder_gzip.c decoder/decoder_gzip.h
+decoder_gzip_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+decoder_gzip_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+decoder_percent_la_SOURCES = decoder/decoder_percent.c decoder/decoder_percent.h
+decoder_percent_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+decoder_percent_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
 input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap

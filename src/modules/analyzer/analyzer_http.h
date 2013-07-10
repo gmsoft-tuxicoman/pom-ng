@@ -62,7 +62,7 @@ struct analyzer_http_request_event_priv {
 	struct analyzer_pload_buffer *pload[POM_DIR_TOT];
 	char *content_type[POM_DIR_TOT];
 	size_t content_len[POM_DIR_TOT];
-	unsigned int content_flags[POM_DIR_TOT];
+	char *content_encoding[POM_DIR_TOT];
 
 };
 

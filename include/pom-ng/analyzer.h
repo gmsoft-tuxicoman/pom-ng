@@ -43,11 +43,6 @@
 
 // Payload buffer flags
 #define ANALYZER_PLOAD_BUFFER_NEED_MAGIC	0x1
-#define ANALYZER_PLOAD_BUFFER_IS_GZIP		0x2
-#define ANALYZER_PLOAD_BUFFER_IS_DEFLATE	0x4
-#define ANALYZER_PLOAD_BUFFER_IS_BASE64		0x8
-
-#define ANALYZER_PLOAD_BUFFER_IS_ENCODED	0xE
 
 struct analyzer {
 
@@ -134,6 +129,7 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload);
 struct analyzer_pload_type* analyzer_pload_type_get_by_name(char *name);
 int analyzer_pload_buffer_set_type_by_content_type(struct analyzer_pload_buffer *pload, char *content_type);
 int analyzer_pload_buffer_set_type(struct analyzer_pload_buffer *pload, struct analyzer_pload_type *type);
+int analyzer_pload_buffer_set_encoding(struct analyzer_pload_buffer *pload, char *encoding);
 
 int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info);
 int analyzer_pload_output_unregister(void *output_priv);
