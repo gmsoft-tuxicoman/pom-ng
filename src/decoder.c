@@ -75,8 +75,10 @@ struct decoder *decoder_alloc(char *name) {
 
 	struct decoder_reg *tmp;
 	for (tmp = decoder_reg_head; tmp && strcasecmp(tmp->info->name, name); tmp = tmp->next);
-	if (!tmp)
+	if (!tmp) {
+		pomlog(POMLOG_DEBUG "Decoder %s not found !", name);
 		return NULL;
+	}
 	
 	struct decoder *dec = malloc(sizeof(struct decoder));
 	if (!dec) {
@@ -118,6 +120,9 @@ int decoder_cleanup_all() {
 }
 
 int decoder_decode(struct decoder *dec) {
+
+	if (!dec->avail_in)
+		return DEC_OK;
 
 	return dec->reg->decode(dec);
 
