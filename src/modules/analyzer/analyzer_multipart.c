@@ -87,7 +87,7 @@ static int analyzer_multipart_init(struct analyzer *analyzer) {
 
 }
 
-static int analyzer_multipar_pload_process_line(struct analyzer_pload_buffer *pload, char *line, size_t len) {
+static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *pload, char *line, size_t len) {
 
 	struct analyzer_multipart_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
 
@@ -138,6 +138,8 @@ static int analyzer_multipar_pload_process_line(struct analyzer_pload_buffer *pl
 			if (!priv->pload)
 				return POM_ERR;
 
+			analyzer_pload_buffer_set_related_event(priv->pload, analyzer_pload_buffer_get_related_event(pload));
+
 			// Parse the headers
 			while (priv->pload_data.items) {
 				struct data_item *itm = priv->pload_data.items;
@@ -146,8 +148,7 @@ static int analyzer_multipar_pload_process_line(struct analyzer_pload_buffer *pl
 				if (!strcasecmp(itm->key, "Content-Type")) {
 					analyzer_pload_buffer_set_type_by_content_type(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
-					// TODO
-					pomlog(POMLOG_DEBUG "Transfer encoding is %s", PTYPE_STRING_GETVAL(itm->value));
+					analyzer_pload_buffer_set_encoding(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				}
 				free(itm->key);
 				ptype_cleanup(itm->value);
@@ -259,7 +260,7 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 				break;
 
 			// Process this line and continue to the next
-			if (analyzer_multipar_pload_process_line(pload, priv->last_line, strlen(priv->last_line)) != POM_OK)
+			if (analyzer_multipart_pload_process_line(pload, priv->last_line, strlen(priv->last_line)) != POM_OK)
 				goto err;
 
 			// We need to process this part of the payload
@@ -282,7 +283,7 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 
 		line_len = cr - data;
 		
-		if (analyzer_multipar_pload_process_line(pload, data, line_len) != POM_OK)
+		if (analyzer_multipart_pload_process_line(pload, data, line_len) != POM_OK)
 			goto err;
 
 		remaining_len -= line_len;
