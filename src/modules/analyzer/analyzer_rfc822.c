@@ -170,7 +170,7 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 				content_type_found = 1;
 				analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, PTYPE_STRING_GETVAL(itm->value));
 			} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
-				pomlog(POMLOG_DEBUG "Transfer encoding is %s", PTYPE_STRING_GETVAL(itm->value));
+				analyzer_pload_buffer_set_encoding(priv->sub_pload, PTYPE_STRING_GETVAL(itm->value));
 			}
 
 			itm = itm->next;
