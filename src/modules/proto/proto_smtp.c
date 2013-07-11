@@ -303,8 +303,8 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 
 		// Try to find the server direction
 		if (priv->server_direction == POM_DIR_UNK) {
-			unsigned int code = 0;
-			if (sscanf(line, "%3u", &code) == 1 && code > 0) {
+			unsigned int code = atoi(line);
+			if (code > 0) {
 				priv->server_direction = s->direction;
 			} else {
 				priv->server_direction = POM_DIR_REVERSE(s->direction);
@@ -321,8 +321,8 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				return POM_OK;
 			}
 
-			int code = 0;
-			if (sscanf(line, "%3u", &code) != 1 || code == 0) {
+			int code = atoi(line);
+			if (code == 0) {
 				pomlog(POMLOG_DEBUG "Invalid response from server");
 				priv->flags |= PROTO_SMTP_FLAG_INVALID;
 				return POM_OK;
