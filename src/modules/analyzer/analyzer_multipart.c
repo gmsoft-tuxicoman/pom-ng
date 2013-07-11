@@ -137,8 +137,8 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 			priv->pload = analyzer_pload_buffer_alloc(0, 0);
 			if (!priv->pload)
 				return POM_ERR;
-
-			analyzer_pload_buffer_set_related_event(priv->pload, analyzer_pload_buffer_get_related_event(pload));
+			
+			analyzer_pload_buffer_set_container(priv->pload, pload);
 
 			// Parse the headers
 			while (priv->pload_data.items) {

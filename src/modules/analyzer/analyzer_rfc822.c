@@ -161,6 +161,8 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 			return POM_ERR;
 		}
 
+		analyzer_pload_buffer_set_container(priv->sub_pload, pload);
+
 		// Parse the headers
 		unsigned int content_type_found = 0, content_encoding_found = 0;
 		struct data *data = analyzer_pload_buffer_get_data(pload);
@@ -181,7 +183,6 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 		if (!content_encoding_found)
 			pomlog(POMLOG_DEBUG "Transfer encoding is %s", "7bit");
 
-		analyzer_pload_buffer_set_related_event(priv->sub_pload, analyzer_pload_buffer_get_related_event(pload));
 		priv->state = analyzer_rfc822_pload_state_processing;
 
 	}

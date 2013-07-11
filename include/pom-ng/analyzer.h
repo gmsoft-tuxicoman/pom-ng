@@ -144,5 +144,6 @@ void analyzer_pload_buffer_set_related_event(struct analyzer_pload_buffer *pload
 void *analyzer_pload_buffer_get_priv(struct analyzer_pload_buffer *pload);
 void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *priv);
 struct mime *analyzer_pload_buffer_get_mime(struct analyzer_pload_buffer *pload);
+void analyzer_pload_buffer_set_container(struct analyzer_pload_buffer *pload, struct analyzer_pload_buffer *container);
 
 #endif

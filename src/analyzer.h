@@ -84,6 +84,7 @@ struct analyzer_pload_buffer {
 	struct mime *mime;
 	size_t expected_size, buff_size;
 	size_t buff_pos;
+	struct analyzer_pload_buffer *container;
 
 	void *buff;
 

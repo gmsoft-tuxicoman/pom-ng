@@ -1006,3 +1006,8 @@ void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *p
 struct mime *analyzer_pload_buffer_get_mime(struct analyzer_pload_buffer *pload) {
 	return pload->mime;
 }
+
+void analyzer_pload_buffer_set_container(struct analyzer_pload_buffer *pload, struct analyzer_pload_buffer *container) {
+	pload->container = container;
+	pload->rel_event = container->rel_event;
+}
