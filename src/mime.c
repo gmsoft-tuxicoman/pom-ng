@@ -22,6 +22,7 @@
 #include "common.h"
 #include <pom-ng/mime.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/decoder.h>
 
 #include "analyzer.h"
 
@@ -168,6 +169,131 @@ char *mime_get_param(struct mime *mime, char *param_name) {
 }
 
 
+static int mime_parse_header_value_token(char *buff, size_t in_len, size_t *out_len) {
+	
+	// Parse =?charset?encoding?encoded_text?= where encoding is either B or Q
+	// See RFC 2047 for details
+
+	if (in_len < 9) // strlen("=?c?e?t?=")
+		return POM_ERR;
+
+	// We overwrite the original content
+	char *out = buff;
+
+	// Check for begining =? and ending ?=
+	if (buff[0] != '=' || buff[1] != '?' || buff[in_len - 2] != '?' || buff[in_len - 1] != '=')
+		return POM_ERR;
+	
+	buff += 2;
+	in_len -= 4;
+
+	char *charset = buff;
+
+	// Find the encoding
+	char *eq = memchr(buff, '?', in_len);
+	if (!eq)
+		return POM_ERR;
+
+	size_t charset_len = eq - charset;
+
+	in_len -= charset_len;
+
+	if (in_len < 4) // strlen("?e?t");
+		return POM_ERR;
+	
+	eq++;
+	in_len--;
+
+	char *qb = eq;
+
+	if (*qb != 'q' && *qb != 'Q' && *qb != 'b' && *qb != 'B')
+		return POM_ERR;
+
+	eq++;
+	in_len--;
+
+	if (*eq != '?')
+		return POM_ERR;
+	
+	eq++;
+	in_len--;
+
+	char *content = eq;
+
+	char *encoding = "base64";
+	if (*qb == 'q' || *qb == 'Q') {
+		encoding = "quoted-printable";
+
+		// Change _ into ' '
+		// See RFC 2047 4.2 (2)
+		char *u = NULL;
+		while ((u = memchr(content, '_', in_len)))
+			*u = ' ';
+	}
+
+	struct decoder *dec = decoder_alloc(encoding);
+	if (!dec)
+		return POM_ERR;
+
+
+	dec->avail_out = in_len;
+	dec->next_out = out;
+	dec->avail_in = in_len;
+	dec->next_in = content;
+
+	decoder_decode(dec);
+
+	*out_len = (in_len - dec->avail_out);
+
+	decoder_cleanup(dec);
+
+	return POM_OK;
+}
+
+static char *mime_parse_header_value(char *data, size_t len) {
+	
+	if (!data)
+		return NULL;
+
+	// The value will always be smaller or equal in length to the input
+	char *value = strndup(data, len);
+	if (!value) {
+		pom_oom(len);
+		return NULL;
+	}
+
+	char *output = value;
+	char *input = value;
+
+	while (len > 1) {
+		char *eq = memchr(input, '=', len);
+		if (!eq)
+			break;
+	
+		len -= eq - input;
+		size_t in_len = len;
+		output = eq;
+		input = eq;
+		char *end = memchr(eq, ' ', in_len);
+		if (end)
+			in_len = end - eq;
+		
+		size_t out_len = 0;
+		if (mime_parse_header_value_token(eq, in_len, &out_len) == POM_OK) {
+			output += out_len;
+		} else {
+			output += in_len;
+		}
+
+		input += in_len;
+		len -= in_len;
+
+	}
+
+	return value;
+
+}
+
 int mime_parse_header(struct data *data, char *line, size_t line_len) {
 
 	if (!line_len)
@@ -195,17 +321,25 @@ int mime_parse_header(struct data *data, char *line, size_t line_len) {
 		if (!last_hdr_value)
 			return POM_ERR;
 
+
 		size_t new_len = strlen(last_hdr_value) + line_len + 2;
 		char *new_value = malloc(new_len);
-
 		if (!new_value) {
 			pom_oom(new_len);
 			return POM_ERR;
 		}
+
+		char *param_tail = mime_parse_header_value(line, line_len);
+		if (!param_tail) {
+			free(new_value);
+			return POM_ERR;
+		}
+
 		strcpy(new_value, last_hdr_value);
 		strcat(new_value, " ");
-		strncat(new_value, line, line_len);
+		strcat(new_value, param_tail);
 		new_value[new_len - 1] = 0;
+		free(param_tail);
 
 		PTYPE_STRING_SETVAL_P(itm->value, new_value);
 
@@ -230,10 +364,9 @@ int mime_parse_header(struct data *data, char *line, size_t line_len) {
 			value_len--;
 		}
 
-		char *hdr_value = strndup(colon, value_len);
+		char *hdr_value = mime_parse_header_value(colon, value_len);
 		if (!hdr_value) {
 			free(hdr_name);
-			pom_oom(value_len);
 			return POM_ERR;
 		}
 
