@@ -198,7 +198,7 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_settable(L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
 	// Add the pload to the args
-	addon_pload_push(L, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
+	addon_pload_push(L, pi->pload, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
 
 	// Done playing with the __pload_listener table
 	pom_mutex_unlock(&p->lock);

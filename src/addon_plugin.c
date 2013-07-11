@@ -210,6 +210,9 @@ static int addon_plugin_pload_process(lua_State *L) {
 	// Get the output pload_instance
 	struct analyzer_pload_instance* output_pi = addon_pload_get_instance(L, 2);
 
+	if (!output_pi)
+		return 0;
+
 	if (!lua_istable(L, 3))
 		luaL_error(L, "Third argument must be parameter table");
 

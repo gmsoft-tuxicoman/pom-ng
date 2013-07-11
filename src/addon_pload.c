@@ -29,8 +29,8 @@ static int addon_pload_metatable(lua_State *L) {
 	
 	const char *key = luaL_checkstring(L, 2);
 
-	struct analyzer_pload_instance **i = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
-	struct analyzer_pload_buffer *p = analyzer_pload_instance_get_buffer(*i);
+	struct addon_pload *ap = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
+	struct analyzer_pload_buffer *p = ap->pload;
 
 	if (!strcmp(key, "event")) {
 		// Return the corresponding event
@@ -79,6 +79,8 @@ static int addon_pload_metatable(lua_State *L) {
 				break;
 		}
 		lua_settable(L, -3);
+	} else if (!strcmp(key, "container") && p->container) {
+		addon_pload_push(L, p->container, NULL);
 	} else {
 		return 0;
 	}
@@ -126,10 +128,12 @@ void addon_pload_data_update(lua_State *L, int n, void *data, size_t len) {
 	p->len = len;
 }
 
-void addon_pload_push(lua_State *L, struct analyzer_pload_instance *pi) {
+void addon_pload_push(lua_State *L, struct analyzer_pload_buffer *pload, struct analyzer_pload_instance *instance) {
 
-	struct analyzer_pload_instance **i = lua_newuserdata(L, sizeof(struct analyzer_pload_buffer *));
-	*i = pi;
+	struct addon_pload *p = lua_newuserdata(L, sizeof(struct addon_pload));
+	
+	p->pload = pload;
+	p->instance = instance;
 
 	luaL_getmetatable(L, ADDON_PLOAD_METATABLE);
 	lua_setmetatable(L, -2);
@@ -137,6 +141,6 @@ void addon_pload_push(lua_State *L, struct analyzer_pload_instance *pi) {
 
 struct analyzer_pload_instance *addon_pload_get_instance(lua_State *L, int n) {
 
-	struct analyzer_pload_instance **i = luaL_checkudata(L, n, ADDON_PLOAD_METATABLE);
-	return *i;
+	struct addon_pload *p = luaL_checkudata(L, n, ADDON_PLOAD_METATABLE);
+	return p->instance;
 }
