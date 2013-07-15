@@ -24,6 +24,7 @@
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/proto_smtp.h>
 #include <pom-ng/decoder.h>
+#include <pom-ng/dns.h>
 
 struct mod_reg_info *analyzer_smtp_reg_info() {
 	
@@ -74,6 +75,21 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 		goto err;
 
 	static struct data_item_reg evt_msg_data_items[ANALYZER_SMTP_EVT_MSG_DATA_COUNT] = { { 0 } };
+
+	evt_msg_data_items[analyzer_smtp_common_client_addr].name = "client_addr";
+	evt_msg_data_items[analyzer_smtp_common_client_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_msg_data_items[analyzer_smtp_common_server_addr].name = "server_addr";
+	evt_msg_data_items[analyzer_smtp_common_server_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_msg_data_items[analyzer_smtp_common_server_port].name = "server_port";
+	evt_msg_data_items[analyzer_smtp_common_server_port].value_type = ptype_get_type("uint16");
+	evt_msg_data_items[analyzer_smtp_common_server_host].name = "server_host";
+	evt_msg_data_items[analyzer_smtp_common_server_host].value_type = ptype_get_type("string");
+	evt_msg_data_items[analyzer_smtp_common_server_hello].name = "server_hello";
+	evt_msg_data_items[analyzer_smtp_common_server_hello].value_type = ptype_get_type("string");
+	evt_msg_data_items[analyzer_smtp_common_client_hello].name = "client_hello";
+	evt_msg_data_items[analyzer_smtp_common_client_hello].value_type = ptype_get_type("string");
+
+
 	evt_msg_data_items[analyzer_smtp_msg_from].name = "from";
 	evt_msg_data_items[analyzer_smtp_msg_from].value_type = ptype_get_type("string");
 	evt_msg_data_items[analyzer_smtp_msg_to].name = "to";
@@ -101,6 +117,19 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 
 
 	static struct data_item_reg evt_auth_data_items[ANALYZER_SMTP_EVT_AUTH_DATA_COUNT] = { { 0 } };
+	evt_auth_data_items[analyzer_smtp_common_client_addr].name = "client_addr";
+	evt_auth_data_items[analyzer_smtp_common_client_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_auth_data_items[analyzer_smtp_common_server_addr].name = "server_addr";
+	evt_auth_data_items[analyzer_smtp_common_server_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_auth_data_items[analyzer_smtp_common_server_port].name = "server_port";
+	evt_auth_data_items[analyzer_smtp_common_server_port].value_type = ptype_get_type("uint16");
+	evt_auth_data_items[analyzer_smtp_common_server_host].name = "server_host";
+	evt_auth_data_items[analyzer_smtp_common_server_host].value_type = ptype_get_type("string");
+	evt_auth_data_items[analyzer_smtp_common_server_hello].name = "server_hello";
+	evt_auth_data_items[analyzer_smtp_common_server_hello].value_type = ptype_get_type("string");
+	evt_auth_data_items[analyzer_smtp_common_client_hello].name = "client_hello";
+	evt_auth_data_items[analyzer_smtp_common_client_hello].value_type = ptype_get_type("string");
+
 	evt_auth_data_items[analyzer_smtp_auth_type].name = "type";
 	evt_auth_data_items[analyzer_smtp_auth_type].value_type = ptype_get_type("string");
 	evt_auth_data_items[analyzer_smtp_auth_params].name = "params";
@@ -283,6 +312,46 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 	return POM_OK;
 }
 
+static int analyzer_smtp_event_fill_common_data(struct analyzer_smtp_ce_priv *cpriv, struct data *data) {
+
+	if (cpriv->client_hello) {
+		PTYPE_STRING_SETVAL(data[analyzer_smtp_common_client_hello].value, cpriv->client_hello);
+		data_set(data[analyzer_smtp_common_client_hello]);
+	}
+
+	if (cpriv->server_hello) {
+		PTYPE_STRING_SETVAL(data[analyzer_smtp_common_server_hello].value, cpriv->server_hello);
+		data_set(data[analyzer_smtp_common_server_hello]);
+	}
+
+	if (cpriv->client_addr) {
+		data[analyzer_smtp_common_client_addr].value = ptype_alloc_from(cpriv->client_addr);
+		data[analyzer_smtp_common_client_addr].flags &= ~DATA_FLAG_NO_CLEAN;
+		if (data[analyzer_smtp_common_client_addr].value)
+			data_set(data[analyzer_smtp_common_client_addr]);
+	}
+
+	if (cpriv->server_addr) {
+		data[analyzer_smtp_common_server_addr].value = ptype_alloc_from(cpriv->server_addr);
+		data[analyzer_smtp_common_server_addr].flags &= ~DATA_FLAG_NO_CLEAN;
+		if (data[analyzer_smtp_common_server_addr].value)
+			data_set(data[analyzer_smtp_common_server_addr]);
+	}
+
+	if (cpriv->server_port) {
+		PTYPE_UINT16_SETVAL(data[analyzer_smtp_common_server_port].value, cpriv->server_port);
+		data_set(data[analyzer_smtp_common_server_port]);
+	}
+
+	if (cpriv->server_host) {
+		PTYPE_STRING_SETVAL(data[analyzer_smtp_common_server_host].value, cpriv->server_host);
+		data_set(data[analyzer_smtp_common_server_host]);
+	}
+
+	return POM_OK;
+
+}
+
 static int analyzer_smtp_parse_auth_plain(struct analyzer_smtp_priv *apriv, struct analyzer_smtp_ce_priv *cpriv, char *auth_plain) {
 
 	// Parse SASL AUTH PLAIN as described in RFC 4616
@@ -298,8 +367,11 @@ static int analyzer_smtp_parse_auth_plain(struct analyzer_smtp_priv *apriv, stru
 	if (!cpriv->evt_auth)
 		return POM_ERR;
 
-	// Set the authentication type
 	struct data *evt_data = event_get_data(cpriv->evt_auth);
+
+	analyzer_smtp_event_fill_common_data(cpriv, evt_data);
+
+	// Set the authentication type
 	PTYPE_STRING_SETVAL(evt_data[analyzer_smtp_auth_type].value, "PLAIN");
 	data_set(evt_data[analyzer_smtp_auth_type]);
 
@@ -368,6 +440,63 @@ err:
 	return POM_ERR;
 }
 
+static int analyzer_smtp_event_fetch_common_data(struct analyzer_smtp_ce_priv *cpriv, struct proto_process_stack *stack, unsigned int stack_index, int server_direction) {
+
+	struct  proto_process_stack *l4_stack = &stack[stack_index - 1];
+	struct  proto_process_stack *l3_stack = &stack[stack_index - 2];
+
+	int i;
+
+	char *port_str = "dport";
+	if (server_direction == POM_DIR_REV)
+		port_str = "sport";
+	
+	for (i = 0; !cpriv->server_port; i++) {
+		struct proto_reg_info *l4_info = proto_get_info(l4_stack->proto);
+		char *name = l4_info->pkt_fields[i].name;
+		if (!name)
+			break;
+		if (!strcmp(name, port_str))
+			cpriv->server_port = *PTYPE_UINT16_GETVAL(l4_stack->pkt_info->fields_value[i]);
+	}
+
+
+	struct ptype *src = NULL, *dst = NULL;
+	for (i = 0; !src || !dst; i++) {
+		struct proto_reg_info *l3_info = proto_get_info(l3_stack->proto);
+		char *name = l3_info->pkt_fields[i].name;
+		if (!name)
+			break;
+
+		if (!src && !strcmp(name, "src"))
+			src = l3_stack->pkt_info->fields_value[i];
+		else if (!dst && !strcmp(name, "dst"))
+			dst = l3_stack->pkt_info->fields_value[i];
+	}
+
+	if (server_direction == POM_DIR_FWD) {
+		if (src)
+			cpriv->client_addr = ptype_alloc_from(src);
+		if (dst)
+			cpriv->server_addr = ptype_alloc_from(dst);
+	} else {
+		if (src)
+			cpriv->server_addr = ptype_alloc_from(src);
+		if (dst)
+			cpriv->client_addr = ptype_alloc_from(dst);
+	}
+
+	if (cpriv->server_addr) {
+		char *host = dns_reverse_lookup_ptype(cpriv->server_addr);
+		if (host)
+			cpriv->server_host = strdup(host);
+	}
+
+	cpriv->common_data_fetched = 1;
+
+	return POM_OK;
+}
+
 static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct analyzer *analyzer = obj;
@@ -409,6 +538,9 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 	struct data *msg_data = event_get_data(cpriv->evt_msg);
 	
 	if (evt_reg == apriv->evt_cmd) {
+
+		if (!cpriv->common_data_fetched)
+			analyzer_smtp_event_fetch_common_data(cpriv, stack, stack_index, POM_DIR_REVERSE(s->direction));
 
 
 		// Process commands
@@ -488,6 +620,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			cpriv->last_cmd = analyzer_smtp_last_cmd_data;
 
 			if (!event_is_started(cpriv->evt_msg)) {
+				analyzer_smtp_event_fill_common_data(cpriv, msg_data);
 				event_process_begin(cpriv->evt_msg, stack, stack_index);
 			} else {
 				pomlog(POMLOG_DEBUG "Message event already started !");
@@ -497,6 +630,18 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			// Cleanup the event
 			event_cleanup(cpriv->evt_msg);
 			cpriv->evt_msg = NULL;
+		} else if (!strcasecmp(cmd, "HELO") || !strcasecmp(cmd, "EHLO")) {
+			if (cpriv->client_hello) {
+				pomlog(POMLOG_DEBUG "We already have a client hello !");
+				free(cpriv->client_hello);
+			}
+
+			cpriv->client_hello = strdup(arg);
+			if (!cpriv->client_hello) {
+				pom_oom(strlen(arg) + 1);
+				return POM_ERR;
+			}
+
 		} else if (!strcasecmp(cmd, "AUTH")) {
 			if (!strncasecmp(arg, "PLAIN", strlen("PLAIN"))) {
 				arg += strlen("PLAIN");
@@ -541,16 +686,28 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 		}
 
 	} else if (evt_reg == apriv->evt_reply) {
+
+		if (!cpriv->common_data_fetched)
+			analyzer_smtp_event_fetch_common_data(cpriv, stack, stack_index, s->direction);
+
 		// Process replies
-
-
 		uint16_t code = *PTYPE_UINT16_GETVAL(evt_data[proto_smtp_reply_code].value);
 
 		switch (cpriv->last_cmd) {
 
 			default:
 			case analyzer_smtp_last_cmd_other:
-				// We don't care about replies for other commands than the one we process
+				if (code == 220 && evt_data[proto_smtp_reply_text].items && evt_data[proto_smtp_reply_text].items->value) {
+					// STARTTLS returns 220 as well so ignore extra code 220
+					if (cpriv->server_hello) {
+						char *helo = PTYPE_STRING_GETVAL(evt_data[proto_smtp_reply_text].items->value);
+						cpriv->server_hello = strdup(helo);
+						if (!cpriv->server_hello) {
+							pom_oom(strlen(helo) + 1);
+							return POM_ERR;
+						}
+					}
+				}
 				break;
 
 			case analyzer_smtp_last_cmd_mail_from:
@@ -588,7 +745,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			case analyzer_smtp_last_cmd_auth_plain_creds: {
 				// We just processed the credentials
 				struct data *evt_data = event_get_data(cpriv->evt_auth);
-				int success = 0;
+				char success = 0;
 				if (code == 235)
 					success = 1;
 				PTYPE_BOOL_SETVAL(evt_data[analyzer_smtp_auth_success].value, success);
@@ -646,6 +803,17 @@ static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv) {
 
 	if (cpriv->evt_auth)
 		event_process_end(cpriv->evt_auth);
+
+	if (cpriv->client_hello)
+		free(cpriv->client_hello);
+	if (cpriv->server_hello)
+		free(cpriv->server_hello);
+	if (cpriv->server_host)
+		free(cpriv->server_host);
+	if (cpriv->client_addr)
+		ptype_cleanup(cpriv->client_addr);
+	if (cpriv->server_addr)
+		ptype_cleanup(cpriv->server_addr);
 
 	free(cpriv);
 

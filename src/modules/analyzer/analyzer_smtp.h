@@ -23,20 +23,36 @@
 
 #include <pom-ng/analyzer.h>
 
-#define ANALYZER_SMTP_EVT_MSG_DATA_COUNT 3
-#define ANALYZER_SMTP_EVT_AUTH_DATA_COUNT 3
+
+#define ANALYZER_SMTP_EVT_COMMON_DATA_COUNT	6
+#define ANALYZER_SMTP_EVT_MSG_DATA_COUNT	ANALYZER_SMTP_EVT_COMMON_DATA_COUNT + 3
+#define ANALYZER_SMTP_EVT_AUTH_DATA_COUNT	ANALYZER_SMTP_EVT_COMMON_DATA_COUNT + 3
 
 #define ANALYZER_SMTP_DOTDOT		"\r\n.."
 #define ANALYZER_SMTP_DOTDOT_LEN	4
 
+
+#define ANALYZER_SMTP_FLAGS_LISTENING	0x1
+#define ANALYZER_SMTP_FLAGS_COMMON_DATA	0x2
+
 enum {
-	analyzer_smtp_msg_from,
+	analyzer_smtp_common_client_addr = 0,
+	analyzer_smtp_common_server_addr,
+	analyzer_smtp_common_server_port,
+	analyzer_smtp_common_server_host,
+	analyzer_smtp_common_client_hello,
+	analyzer_smtp_common_server_hello,
+	analyzer_smtp_common_end
+};
+
+enum {
+	analyzer_smtp_msg_from = analyzer_smtp_common_end,
 	analyzer_smtp_msg_to,
 	analyzer_smtp_msg_result,
 };
 
 enum {
-	analyzer_smtp_auth_type,
+	analyzer_smtp_auth_type = analyzer_smtp_common_end,
 	analyzer_smtp_auth_params,
 	analyzer_smtp_auth_success,
 };
@@ -66,6 +82,10 @@ struct analyzer_smtp_ce_priv {
 	struct event *evt_msg, *evt_auth;
 	enum analyzer_smtp_last_cmd last_cmd;
 	unsigned int dotdot_pos;
+	char *client_hello, *server_hello, *server_host;
+	struct ptype *client_addr, *server_addr;
+	int common_data_fetched;
+	uint16_t server_port;
 };
 
 
