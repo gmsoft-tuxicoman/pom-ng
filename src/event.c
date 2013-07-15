@@ -48,14 +48,14 @@ int event_init() {
 
 int event_finish() {
 
-	if (event_registry_class)
-		registry_remove_class(event_registry_class);
-	event_registry_class = NULL;
-
 	while (event_reg_head) {
 		pomlog(POMLOG_ERR "Event %s is still registered", event_reg_head->info->name);
 		event_unregister(event_reg_head);
 	}
+
+	if (event_registry_class)
+		registry_remove_class(event_registry_class);
+	event_registry_class = NULL;
 
 	return POM_OK;
 }
