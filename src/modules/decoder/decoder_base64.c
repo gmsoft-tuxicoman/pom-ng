@@ -117,6 +117,7 @@ int decoder_base64_decode(struct decoder *dec) {
 	}
 
 	char value[4];
+	int res = DEC_OK;
 
 	while (dec->avail_in >= 4 && dec->avail_out >= 4) {
 		char *block = dec->next_in;
@@ -138,20 +139,26 @@ int decoder_base64_decode(struct decoder *dec) {
 		}
 		
 		char *output = dec->next_out;
-		if (block[1] == '=')
+		if (block[1] == '=') {
+			res = DEC_END;
 			break;
+		}
 		output[0] = ((value[0] << 2) | (0x3 & (value[1] >> 4)));
 		dec->avail_out--;
 		dec->next_out++;
 
-		if (block[2] == '=')
+		if (block[2] == '=') {
+			res = DEC_END;
 			break;
+		}
 		output[1] = ((value[1] << 4) | (0xf & (value[2] >> 2)));
 		dec->avail_out--;
 		dec->next_out++;
 
-		if (block[3] == '=')
+		if (block[3] == '=') {
+			res = DEC_END;
 			break;
+		}
 		output[2] = ((value[2] << 6) | value[3]);
 		dec->avail_out--;
 		dec->next_out++;
@@ -172,5 +179,10 @@ int decoder_base64_decode(struct decoder *dec) {
 		dec->avail_in = 0;
 	}
 
-	return DEC_OK;
+	if (res == DEC_END) {
+		dec->next_in += 4;
+		dec->avail_in -= 4;
+	}
+
+	return res;
 }
