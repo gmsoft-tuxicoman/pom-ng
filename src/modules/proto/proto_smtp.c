@@ -351,7 +351,6 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 					PTYPE_UINT16_SETVAL(evt_data[proto_smtp_reply_code].value, code);
 					data_set(evt_data[proto_smtp_reply_code]);
 
-					event_process_begin(priv->reply_evt, stack, stack_index);
 				}
 
 				if (len > 4) {
@@ -362,7 +361,11 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 					if (data_item_add_ptype(evt_data, proto_smtp_reply_text, strdup("text"), txt) != POM_OK)
 						return PROTO_ERR;
 				}
+				
+				if (!event_is_started(priv->reply_evt))
+					event_process_begin(priv->reply_evt, stack, stack_index);
 			}
+
 
 			if (line[3] != '-') {
 				// Last line in the response
