@@ -395,7 +395,11 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 			// Make sure it's a command by checking it's at least a four letter word
 			int i;
 			for (i = 0; i < 4; i++) {
-				if (line[i] < 'A' || line[i] > 'z' || (line[i] > 'Z' && line[i] < 'a'))
+				// In some case it can also be a base64 encoded word
+				if (! ((line[i] >= 'A' && line[i] <= 'Z')
+					|| (line[i] >= 'a' && line[i] <= 'z')
+					|| (line[i] >= '0' && line [i] <= '9')
+					|| line[i] == '='))
 					break;
 			}
 
@@ -482,6 +486,21 @@ static int proto_smtp_conntrack_cleanup(void *ce_priv) {
 
 	if (priv->parser[POM_DIR_REV])
 		packet_stream_parser_cleanup(priv->parser[POM_DIR_REV]);
+
+	if (priv->data_evt) {
+		if (event_is_started(priv->data_evt))
+			event_process_end(priv->data_evt);
+		else
+			event_cleanup(priv->data_evt);
+	}
+
+	if (priv->reply_evt) {
+		if (event_is_started(priv->reply_evt))
+			event_process_end(priv->reply_evt);
+		else
+			event_cleanup(priv->reply_evt);
+	}
+		
 
 	free(priv);
 
