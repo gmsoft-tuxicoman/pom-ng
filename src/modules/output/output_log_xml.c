@@ -319,8 +319,9 @@ int output_log_xml_process(struct event *evt, void *obj) {
 	}
 
 	// </event>
-	if (xmlTextWriterWriteString(writer, BAD_CAST "\n\n") < 0 ||
-		xmlTextWriterEndElement(writer) < 0)
+	if (xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0 ||
+		xmlTextWriterEndElement(writer) < 0 ||
+		xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0)
 		goto err;
 
 	xmlFreeTextWriter(writer);
