@@ -24,6 +24,7 @@
 #include <pom-ng/analyzer.h>
 
 #define ANALYZER_SMTP_EVT_MSG_DATA_COUNT 3
+#define ANALYZER_SMTP_EVT_AUTH_DATA_COUNT 3
 
 #define ANALYZER_SMTP_DOTDOT		"\r\n.."
 #define ANALYZER_SMTP_DOTDOT_LEN	4
@@ -31,26 +32,38 @@
 enum {
 	analyzer_smtp_msg_from,
 	analyzer_smtp_msg_to,
-	analyzer_smtp_msg_result
+	analyzer_smtp_msg_result,
+};
+
+enum {
+	analyzer_smtp_auth_type,
+	analyzer_smtp_auth_params,
+	analyzer_smtp_auth_success,
 };
 
 enum analyzer_smtp_last_cmd {
 	analyzer_smtp_last_cmd_other,
 	analyzer_smtp_last_cmd_mail_from,
 	analyzer_smtp_last_cmd_rcpt_to,
-	analyzer_smtp_last_cmd_data
+	analyzer_smtp_last_cmd_data,
+	analyzer_smtp_last_cmd_auth_plain,
+	analyzer_smtp_last_cmd_auth_plain_creds,
+	analyzer_smtp_last_cmd_auth_login,
+	analyzer_smtp_last_cmd_auth_login_user,
+	analyzer_smtp_last_cmd_auth_login_pass
 };
 
 
 struct analyzer_smtp_priv {
 	struct event_reg *evt_cmd, *evt_reply;
-	struct event_reg *evt_msg;
+	struct event_reg *evt_msg, *evt_auth;
 	struct proto_packet_listener *pkt_listener;
 	struct analyzer_pload_type *rfc822_msg_pload_type;
+	int listening;
 };
 
 struct analyzer_smtp_ce_priv {
-	struct event *evt_msg;
+	struct event *evt_msg, *evt_auth;
 	enum analyzer_smtp_last_cmd last_cmd;
 	unsigned int dotdot_pos;
 };

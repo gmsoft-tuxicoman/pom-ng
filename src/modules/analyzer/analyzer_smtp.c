@@ -19,9 +19,11 @@
  */
 
 #include "analyzer_smtp.h"
+#include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/proto_smtp.h>
+#include <pom-ng/decoder.h>
 
 struct mod_reg_info *analyzer_smtp_reg_info() {
 	
@@ -29,7 +31,7 @@ struct mod_reg_info *analyzer_smtp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_smtp_mod_register;
 	reg_info.unregister_func = analyzer_smtp_mod_unregister;
-	reg_info.dependencies = "proto_smtp, ptype_string, ptype_uint16";
+	reg_info.dependencies = "proto_smtp, ptype_bool, ptype_string, ptype_uint16";
 
 	return &reg_info;
 }
@@ -88,7 +90,7 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 	analyzer_smtp_evt_msg.source_name = "analyzer_smtp";
 	analyzer_smtp_evt_msg.source_obj = analyzer;
 	analyzer_smtp_evt_msg.name = "smtp_msg";
-	analyzer_smtp_evt_msg.description = "Message received over SMTP";
+	analyzer_smtp_evt_msg.description = "message received over smtp";
 	analyzer_smtp_evt_msg.data_reg = &evt_msg_data;
 	analyzer_smtp_evt_msg.listeners_notify = analyzer_smtp_event_listeners_notify;
 	analyzer_smtp_evt_msg.cleanup = analyzer_smtp_evt_msg_cleanup;
@@ -96,6 +98,33 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 	priv->evt_msg = event_register(&analyzer_smtp_evt_msg);
 	if (!priv->evt_msg)
 		goto err;
+
+
+	static struct data_item_reg evt_auth_data_items[ANALYZER_SMTP_EVT_AUTH_DATA_COUNT] = { { 0 } };
+	evt_auth_data_items[analyzer_smtp_auth_type].name = "type";
+	evt_auth_data_items[analyzer_smtp_auth_type].value_type = ptype_get_type("string");
+	evt_auth_data_items[analyzer_smtp_auth_params].name = "params";
+	evt_auth_data_items[analyzer_smtp_auth_params].flags = DATA_REG_FLAG_LIST;
+	evt_auth_data_items[analyzer_smtp_auth_success].name = "success";
+	evt_auth_data_items[analyzer_smtp_auth_success].value_type = ptype_get_type("bool");
+
+	static struct data_reg evt_auth_data = {
+		.items = evt_auth_data_items,
+		.data_count = ANALYZER_SMTP_EVT_AUTH_DATA_COUNT
+	};
+
+	static struct event_reg_info analyzer_smtp_evt_auth = { 0 };
+	analyzer_smtp_evt_auth.source_name = "analyzer_smtp";
+	analyzer_smtp_evt_auth.source_obj = analyzer;
+	analyzer_smtp_evt_auth.name = "smtp_auth";
+	analyzer_smtp_evt_auth.description = "SMTP authentication attempts";
+	analyzer_smtp_evt_auth.data_reg = &evt_auth_data;
+	analyzer_smtp_evt_auth.listeners_notify = analyzer_smtp_event_listeners_notify;
+
+	priv->evt_auth = event_register(&analyzer_smtp_evt_auth);
+	if (!priv->evt_auth)
+		goto err;
+	
 
 	return POM_OK;
 
@@ -128,10 +157,19 @@ static int analyzer_smtp_event_listeners_notify(void *obj, struct event_reg *evt
 	struct analyzer *analyzer = obj;
 	struct analyzer_smtp_priv *priv = analyzer->priv;
 
-	if (has_listeners) {
+	if (evt_reg == priv->evt_msg) {
+		if (has_listeners) {
+			priv->pkt_listener = proto_packet_listener_register(proto_get("smtp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_smtp_pkt_process);
+			if (!priv->pkt_listener)
+				return POM_ERR;
+		} else {
+			if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
+				return POM_ERR;
+		}
+	}
+
+	if (!priv->listening && (event_has_listener(priv->evt_msg) || event_has_listener(priv->evt_auth))) {
 		
-		if (priv->pkt_listener)
-			return POM_OK;
 
 		if (event_listener_register(priv->evt_cmd, analyzer, analyzer_smtp_event_process_begin, analyzer_smtp_event_process_end) != POM_OK) {
 			return POM_ERR;
@@ -140,23 +178,17 @@ static int analyzer_smtp_event_listeners_notify(void *obj, struct event_reg *evt
 			return POM_ERR;
 		}
 
-		priv->pkt_listener = proto_packet_listener_register(proto_get("smtp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_smtp_pkt_process);
-		if (!priv->pkt_listener) {
-			event_listener_unregister(priv->evt_cmd, analyzer);
-			event_listener_unregister(priv->evt_reply, analyzer);
-			return POM_ERR;
-		}
+		priv->listening = 1;
 
-	} else {
-		
-		if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
-			return POM_ERR;
+	} else if (priv->listening && !event_has_listener(priv->evt_msg) && !event_has_listener(priv->evt_auth)) {
 
 		event_listener_unregister(priv->evt_cmd, analyzer);
 		event_listener_unregister(priv->evt_reply, analyzer);
 
-		priv->pkt_listener = NULL;
+		priv->listening = 0;
+
 	}
+
 
 
 	return POM_OK;
@@ -249,6 +281,91 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 		return POM_ERR;
 
 	return POM_OK;
+}
+
+static int analyzer_smtp_parse_auth_plain(struct analyzer_smtp_priv *apriv, struct analyzer_smtp_ce_priv *cpriv, char *auth_plain) {
+
+	// Parse SASL AUTH PLAIN as described in RFC 4616
+
+	// The decoded arg must be at least 3 bytes
+	if (strlen(auth_plain) < 4 || memchr(auth_plain, '=', 4)) {
+		pomlog(POMLOG_DEBUG "AUTH PLAIN argument too short");
+		return POM_OK;
+	}
+
+	// Allocate the event
+	cpriv->evt_auth = event_alloc(apriv->evt_auth);
+	if (!cpriv->evt_auth)
+		return POM_ERR;
+
+	// Set the authentication type
+	struct data *evt_data = event_get_data(cpriv->evt_auth);
+	PTYPE_STRING_SETVAL(evt_data[analyzer_smtp_auth_type].value, "PLAIN");
+	data_set(evt_data[analyzer_smtp_auth_type]);
+
+	// Parse the authentication stuff
+	char *creds_str = NULL;
+	size_t out_len = 0;
+	if (decoder_decode_simple("base64", auth_plain, strlen(auth_plain), &creds_str, &out_len) != POM_OK) {
+		pomlog(POMLOG_DEBUG "Unable to decode AUTH PLAIN message");
+		return POM_OK;
+	}
+
+	if (out_len < 3) {
+		pomlog(POMLOG_DEBUG "Invalid decoded AUTH PLAIN data");
+		return POM_OK;
+	}
+
+
+
+	char *tmp = creds_str;
+
+	// Add the identity
+	if (strlen(tmp)) {
+		// SASL AUTH PLAIN specifies 
+		struct ptype *identity = ptype_alloc("string");
+		if (!identity)
+			goto err;
+		PTYPE_STRING_SETVAL(identity, tmp);
+		if (data_item_add_ptype(evt_data, analyzer_smtp_auth_params, strdup("identity"), identity) != POM_OK) {
+			ptype_cleanup(identity);
+			goto err;
+		}
+	}
+	tmp += strlen(tmp) + 1;
+	
+	// Add the username
+	struct ptype *username = ptype_alloc("string");
+	if (!username)
+		goto err;
+	PTYPE_STRING_SETVAL(username, tmp);
+	if (data_item_add_ptype(evt_data, analyzer_smtp_auth_params, strdup("username"), username) != POM_OK) {
+		ptype_cleanup(username);
+		goto err;
+	}
+	tmp += strlen(tmp) + 1;
+
+	// Add the password
+	struct ptype *password = ptype_alloc("string");
+	if (!password)
+		goto err;
+	PTYPE_STRING_SETVAL(password, tmp);
+	if (data_item_add_ptype(evt_data, analyzer_smtp_auth_params, strdup("password"), password) != POM_OK) {
+		ptype_cleanup(password);
+		goto err;
+	}
+
+	free(creds_str);
+	return POM_OK;
+
+err:
+
+	event_cleanup(cpriv->evt_auth);
+	cpriv->evt_auth = NULL;
+
+	free(creds_str);
+
+	return POM_ERR;
 }
 
 static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -380,6 +497,47 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			// Cleanup the event
 			event_cleanup(cpriv->evt_msg);
 			cpriv->evt_msg = NULL;
+		} else if (!strcasecmp(cmd, "AUTH")) {
+			if (!strncasecmp(arg, "PLAIN", strlen("PLAIN"))) {
+				arg += strlen("PLAIN");
+				while (*arg == ' ')
+					arg++;
+
+
+				if (cpriv->evt_auth) {
+					event_process_end(cpriv->evt_auth);
+					cpriv->evt_auth = NULL;
+				}
+
+				if (strlen(arg)) {
+					if (analyzer_smtp_parse_auth_plain(apriv, cpriv, arg) == POM_OK) {
+						event_process_begin(cpriv->evt_auth, stack, stack_index);
+						cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain_creds;
+					}
+				} else {
+					cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain;
+					
+				}
+
+			} else if (!strncasecmp(arg, "LOGIN", strlen("LOGIN"))) {
+				arg += strlen("LOGIN");
+				while (*arg == ' ')
+					arg++;
+
+				if (cpriv->evt_auth) {
+					event_process_end(cpriv->evt_auth);
+					cpriv->evt_auth = NULL;
+				}
+			}
+
+		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_plain) {
+			// We are expecting the credentials right now
+			if (analyzer_smtp_parse_auth_plain(apriv, cpriv, arg) == POM_OK) {
+				event_process_begin(cpriv->evt_auth, stack, stack_index);
+				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain_creds;
+			} else {
+				cpriv->last_cmd = analyzer_smtp_last_cmd_other;
+			}
 		}
 
 	} else if (evt_reg == apriv->evt_reply) {
@@ -418,6 +576,24 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 					cpriv->evt_msg = NULL;
 				}
 				break;
+
+			case analyzer_smtp_last_cmd_auth_plain:
+				// The client asked for AUTH PLAIN without providing credentials immediatly
+				if (code == 334) {
+					// Don't reset cpriv->last_cmd
+					return POM_OK;
+				}
+				break;
+
+			case analyzer_smtp_last_cmd_auth_plain_creds: {
+				// We just processed the credentials
+				struct data *evt_data = event_get_data(cpriv->evt_auth);
+				int success = 0;
+				if (code == 235)
+					success = 1;
+				PTYPE_BOOL_SETVAL(evt_data[analyzer_smtp_auth_success].value, success);
+				data_set(evt_data[analyzer_smtp_auth_success]);
+			}
 
 		}
 
@@ -461,8 +637,15 @@ static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv) {
 
 	struct analyzer_smtp_ce_priv *cpriv = priv;
 
-	if (cpriv->evt_msg)
-		event_cleanup(cpriv->evt_msg);
+	if (cpriv->evt_msg) {
+		if (event_is_started(cpriv->evt_msg))
+			event_process_end(cpriv->evt_msg);
+		else
+			event_cleanup(cpriv->evt_msg);
+	}
+
+	if (cpriv->evt_auth)
+		event_process_end(cpriv->evt_auth);
 
 	free(cpriv);
 
