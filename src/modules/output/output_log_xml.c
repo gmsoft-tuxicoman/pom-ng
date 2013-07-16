@@ -230,10 +230,14 @@ int output_log_xml_process(struct event *evt, void *obj) {
 	}
 
 	// <event name="event_name">
-	
+
+	char timestamp[21] = { 0 };
+	snprintf(timestamp, 20, "%"PRIu64, (uint64_t) event_get_timestamp(evt));
+
 	if (xmlTextWriterWriteString(writer, BAD_CAST "\n") < 0 ||
 		xmlTextWriterStartElement(writer, BAD_CAST "event") < 0 ||
-		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->name) < 0)
+		xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->name) < 0 ||
+		xmlTextWriterWriteAttribute(writer, BAD_CAST "timestamp", BAD_CAST timestamp) < 0)
 		goto err;
 
 	struct data *evt_data = event_get_data(evt);
