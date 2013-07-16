@@ -434,11 +434,13 @@ int addon_dns_forward_lookup(lua_State *L) {
 
 	const char *name = luaL_checkstring(L, 1);
 
-	const char *out = dns_forward_lookup(name);
-	if (out)
+	char *out = dns_forward_lookup(name);
+	if (out) {
 		lua_pushstring(L, out);
-	else
+		free(out);
+	} else {
 		lua_pushnil(L);
+	}
 
 	return 1;
 }
@@ -447,11 +449,13 @@ int addon_dns_reverse_lookup(lua_State *L) {
 
 	const char *name = luaL_checkstring(L, 1);
 
-	const char *out = dns_reverse_lookup(name);
-	if (out)
+	char *out = dns_reverse_lookup(name);
+	if (out) {
 		lua_pushstring(L, out);
-	else
+		free(out);
+	} else {
 		lua_pushnil(L);
+	}
 
 	return 1;
 }

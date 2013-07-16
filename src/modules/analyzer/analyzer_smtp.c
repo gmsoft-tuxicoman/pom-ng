@@ -494,7 +494,7 @@ static int analyzer_smtp_event_fetch_common_data(struct analyzer_smtp_ce_priv *c
 	if (cpriv->server_addr) {
 		char *host = dns_reverse_lookup_ptype(cpriv->server_addr);
 		if (host)
-			cpriv->server_host = strdup(host);
+			cpriv->server_host = host;
 	}
 
 	cpriv->common_data_fetched = 1;

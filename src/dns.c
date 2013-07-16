@@ -597,12 +597,14 @@ char* dns_forward_lookup(const char *record) {
 
 	int i;
 	for (i = 0; entry && entry->values && i < DNS_MAX_LOOKUP_DEPTH; i++, entry = entry->values->entry);
+
+	char *res = NULL;
+	if (entry)
+		res = strdup(entry->record);
+
 	pom_mutex_unlock(&dns_table_lock);
 
-	if (entry)
-		return entry->record;
-
-	return NULL;
+	return res;
 }
 char* dns_reverse_lookup(const char *record) {
 
@@ -620,12 +622,14 @@ char* dns_reverse_lookup(const char *record) {
 
 	int i;
 	for (i = 0; entry && entry->query && i < DNS_MAX_LOOKUP_DEPTH; i++, entry = entry->query->entry);
+
+	char *res = NULL;
+	if (entry)
+		res = strdup(entry->record);
+
 	pom_mutex_unlock(&dns_table_lock);
 
-	if (entry)
-		return entry->record;
-
-	return NULL;
+	return res;
 }
 
 char *dns_forward_lookup_ptype(struct ptype *record_pt) {
