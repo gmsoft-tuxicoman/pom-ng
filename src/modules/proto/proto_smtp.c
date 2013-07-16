@@ -363,7 +363,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				}
 				
 				if (!event_is_started(priv->reply_evt))
-					event_process_begin(priv->reply_evt, stack, stack_index);
+					event_process_begin(priv->reply_evt, stack, stack_index, p->ts);
 			}
 
 
@@ -440,9 +440,9 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				if (priv->flags & PROTO_SMTP_FLAG_CLIENT_DATA) {
 					// The event ends at the end of the message
 					priv->data_evt = evt;
-					return event_process_begin(evt, stack, stack_index);
+					return event_process_begin(evt, stack, stack_index, p->ts);
 				} else {
-					return event_process(evt, stack, stack_index);
+					return event_process(evt, stack, stack_index, p->ts);
 				}
 			}
 

@@ -620,7 +620,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 			if (!event_is_started(cpriv->evt_msg)) {
 				analyzer_smtp_event_fill_common_data(cpriv, msg_data);
-				event_process_begin(cpriv->evt_msg, stack, stack_index);
+				event_process_begin(cpriv->evt_msg, stack, stack_index, event_get_timestamp(evt));
 			} else {
 				pomlog(POMLOG_DEBUG "Message event already started !");
 			}
@@ -657,7 +657,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 				if (strlen(arg)) {
 					if (analyzer_smtp_parse_auth_plain(apriv, cpriv, arg) == POM_OK) {
-						event_process_begin(cpriv->evt_auth, stack, stack_index);
+						event_process_begin(cpriv->evt_auth, stack, stack_index, event_get_timestamp(evt));
 						cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain_creds;
 					}
 				} else {
@@ -708,7 +708,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 					if (!username_pt) {
 						cpriv->last_cmd = analyzer_smtp_last_cmd_other;
-						event_process_begin(cpriv->evt_auth, stack, stack_index);
+						event_process_begin(cpriv->evt_auth, stack, stack_index, event_get_timestamp(evt));
 					}
 				} else {
 					cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login;
@@ -718,7 +718,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_plain) {
 			// We are expecting the credentials right now
 			if (analyzer_smtp_parse_auth_plain(apriv, cpriv, cmd) == POM_OK) {
-				event_process_begin(cpriv->evt_auth, stack, stack_index);
+				event_process_begin(cpriv->evt_auth, stack, stack_index, event_get_timestamp(evt));
 				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain_creds;
 			} else {
 				cpriv->last_cmd = analyzer_smtp_last_cmd_other;
@@ -746,7 +746,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			if (!username_pt) {
 				cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 			} else {
-				event_process_begin(cpriv->evt_auth, stack, stack_index);
+				event_process_begin(cpriv->evt_auth, stack, stack_index, event_get_timestamp(evt));
 				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login_user;
 			}
 

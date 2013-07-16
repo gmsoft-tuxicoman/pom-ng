@@ -760,7 +760,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			continue;
 		}
 
-		if (event_process(evt_record, stack, stack_index) != POM_OK)
+		if (event_process(evt_record, stack, stack_index, p->ts) != POM_OK)
 			return POM_ERR;
 
 	}

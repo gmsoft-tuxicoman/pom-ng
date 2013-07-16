@@ -64,8 +64,8 @@ int event_listener_unregister(struct event_reg *evt_reg, void *obj);
 int event_add_listener(struct event *evt, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 int event_has_listener(struct event_reg *evt_reg);
 
-int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index);
-int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index);
+int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index, ptime ts);
+int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index, ptime ts);
 int event_process_end(struct event *evt);
 
 int event_refcount_inc(struct event *evt);
@@ -81,6 +81,6 @@ void event_set_priv(struct event *evt, void *priv);
 struct conntrack_entry *event_get_conntrack(struct event *evt);
 unsigned int event_is_started(struct event *evt);
 unsigned int event_is_done(struct event *evt);
-
+ptime event_get_timestamp(struct event *evt);
 #endif
 

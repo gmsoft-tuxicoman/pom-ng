@@ -24,7 +24,7 @@
 #include <pom-ng/analyzer.h>
 
 
-#define ANALYZER_SMTP_EVT_COMMON_DATA_COUNT	6
+#define ANALYZER_SMTP_EVT_COMMON_DATA_COUNT	7
 #define ANALYZER_SMTP_EVT_MSG_DATA_COUNT	ANALYZER_SMTP_EVT_COMMON_DATA_COUNT + 3
 #define ANALYZER_SMTP_EVT_AUTH_DATA_COUNT	ANALYZER_SMTP_EVT_COMMON_DATA_COUNT + 3
 
@@ -42,6 +42,7 @@ enum {
 	analyzer_smtp_common_server_host,
 	analyzer_smtp_common_client_hello,
 	analyzer_smtp_common_server_hello,
+	analyzer_smtp_common_data,
 	analyzer_smtp_common_end
 };
 

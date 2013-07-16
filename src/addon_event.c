@@ -32,6 +32,8 @@ static int addon_event_get_field(lua_State *L) {
 		lua_pushstring(L, e->evt->reg->info->name);
 	} else if (!strcmp(key, "data")) {
 		addon_data_push(L, e->evt->data, e->evt->reg->info->data_reg);
+	} else if (!strcmp(key, "timestamp")) {
+		lua_pushinteger(L, e->evt->ts);
 	} else {
 		lua_pushnil(L);
 	}

@@ -336,9 +336,9 @@ int event_has_listener(struct event_reg *evt_reg) {
 	return (evt_reg->listeners ? 1 : 0);
 }
 
-int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index) {
+int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index, ptime ts) {
 
-	int res = event_process_begin(evt, stack, stack_index);
+	int res = event_process_begin(evt, stack, stack_index, ts);
 	if (res != POM_OK) {
 		event_cleanup(evt);
 		return res;
@@ -347,7 +347,7 @@ int event_process(struct event *evt, struct proto_process_stack *stack, int stac
 	return event_process_end(evt);
 }
 
-int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index) {
+int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index, ptime ts) {
 
 	debug_event("Processing event begin %s", evt->reg->info->name);
 
@@ -358,6 +358,8 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 
 	if (stack)
 		evt->ce = stack[stack_index].ce;
+
+	evt->ts = ts;
 
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
@@ -468,4 +470,8 @@ unsigned int event_is_started(struct event *evt) {
 
 unsigned int event_is_done(struct event *evt) {
 	return (evt->flags & EVENT_FLAG_PROCESS_DONE ? 1 : 0);
+}
+
+ptime event_get_timestamp(struct event *evt) {
+	return evt->ts;
 }

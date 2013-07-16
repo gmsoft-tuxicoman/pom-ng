@@ -30,6 +30,7 @@ struct event {
 	void *priv;
 	unsigned int refcount;
 	struct data *data;
+	ptime ts;
 
 	struct event_listener* tmp_listeners;
 };

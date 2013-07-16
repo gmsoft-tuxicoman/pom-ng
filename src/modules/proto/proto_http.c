@@ -280,7 +280,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 							}
 
 							// Process the event
-							event_process_begin(priv->event[s->direction], stack, stack_index);
+							event_process_begin(priv->event[s->direction], stack, stack_index, p->ts);
 							event_process_end(priv->event[s->direction]);
 							priv->event[s->direction] = NULL;
 						
@@ -290,7 +290,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 
 					// There is some payload, switch to the right state and process the begining of the event
 					priv->state[s->direction]++;
-					event_process_begin(priv->event[s->direction], stack, stack_index);
+					event_process_begin(priv->event[s->direction], stack, stack_index, p->ts);
 
 					continue;
 				}

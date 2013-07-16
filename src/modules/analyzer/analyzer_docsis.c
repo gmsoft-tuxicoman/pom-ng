@@ -229,7 +229,7 @@ static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, 
 		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_reg_status_time].value, ts);
 		data_set(evt_data[analyzer_docsis_cm_reg_status_time]);
 
-		if (event_process(evt, stack, stack_index) != POM_OK) {
+		if (event_process(evt, stack, stack_index, ts) != POM_OK) {
 			pom_mutex_unlock(&priv->lock);
 			return POM_ERR;
 		}
@@ -366,7 +366,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 			PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_new_time].value, p->ts);
 			data_set(evt_data[analyzer_docsis_cm_new_time]);
 
-			if (event_process(evt, stack, stack_index) != POM_OK) {
+			if (event_process(evt, stack, stack_index, p->ts) != POM_OK) {
 				pom_mutex_unlock(&priv->lock);
 				return POM_ERR;
 			}

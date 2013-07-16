@@ -254,7 +254,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			spriv->files = fq;
 			conntrack_session_unlock(session);
 
-			event_process_begin(fq->evt, stack, stack_index);
+			event_process_begin(fq->evt, stack, stack_index, p->ts);
 
 			break;
 		}

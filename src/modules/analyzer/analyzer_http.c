@@ -566,7 +566,7 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 	
 	// Start processing our meta-event
 	if (start_process)
-		return event_process_begin(elist->evt, stack, stack_index);
+		return event_process_begin(elist->evt, stack, stack_index, event_get_timestamp(evt));
 
 	return POM_OK;
 }

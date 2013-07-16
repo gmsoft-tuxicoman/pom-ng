@@ -267,7 +267,7 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 			data_set(evt_data[analyzer_arp_new_sta_vlan]);
 			PTYPE_STRING_SETVAL(evt_data[analyzer_arp_new_sta_input].value, p->input->name);
 			data_set(evt_data[analyzer_arp_new_sta_input]);
-			if (event_process(evt, stack, stack_index) != POM_OK)
+			if (event_process(evt, stack, stack_index, p->ts) != POM_OK)
 				return POM_ERR;
 		}
 		
@@ -296,7 +296,7 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 			PTYPE_STRING_SETVAL(evt_data[analyzer_arp_sta_changed_input].value, p->input->name);
 			data_set(evt_data[analyzer_arp_sta_changed_input]);
 
-			if (event_process(evt, stack, stack_index) != POM_OK) {
+			if (event_process(evt, stack, stack_index, p->ts) != POM_OK) {
 				pom_mutex_unlock(&priv->lock);
 				return POM_ERR;
 			}
