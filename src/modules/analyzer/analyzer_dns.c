@@ -213,16 +213,18 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 	
 	size_t label_len = 0;
 
-	char *msg_end = *data + *data_len;
+	unsigned char *msg_end = *data + *data_len;
 	size_t msg_len = (*data - msg) + *data_len;
 
 	// Calculate the length
-	char *data_tmp = *data;
+	unsigned char *data_tmp = *data;
 	unsigned char len = *data_tmp;
 	while (len) {
 
 		// Check if it's a pointer or a normal label
 		if (len > 63) {
+			if (!msg) // Pointers are not allowed for the first record
+				return POM_ERR;
 			if ((len & 0xC0) != 0xC0) {
 				debug_dns("Invalid label length : 0x%X", len);
 				return POM_ERR;
