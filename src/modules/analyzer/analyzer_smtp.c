@@ -552,7 +552,6 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			cpriv->evt_msg = NULL;
 		}
 
-		cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 		char *cmd = PTYPE_STRING_GETVAL(evt_data[proto_smtp_cmd_name].value);
 		if (!cmd)
 			return POM_OK;
@@ -630,6 +629,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			// Cleanup the event
 			event_cleanup(cpriv->evt_msg);
 			cpriv->evt_msg = NULL;
+			cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 		} else if (!strcasecmp(cmd, "HELO") || !strcasecmp(cmd, "EHLO")) {
 			if (cpriv->client_hello) {
 				pomlog(POMLOG_DEBUG "We already have a client hello !");
@@ -641,6 +641,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				pom_oom(strlen(arg) + 1);
 				return POM_ERR;
 			}
+			cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 
 		} else if (!strcasecmp(cmd, "AUTH")) {
 			if (!strncasecmp(arg, "PLAIN", strlen("PLAIN"))) {
@@ -673,16 +674,109 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 					event_process_end(cpriv->evt_auth);
 					cpriv->evt_auth = NULL;
 				}
+
+				cpriv->evt_auth = event_alloc(apriv->evt_auth);
+				if (!cpriv->evt_auth)
+					return POM_ERR;
+
+				struct data *auth_data = event_get_data(cpriv->evt_auth);
+
+				analyzer_smtp_event_fill_common_data(cpriv, auth_data);
+
+				// Set the authentication type
+				PTYPE_STRING_SETVAL(auth_data[analyzer_smtp_auth_type].value, "LOGIN");
+				data_set(auth_data[analyzer_smtp_auth_type]);
+
+				if (strlen(arg)) {
+					char *username = NULL;
+					size_t out_len = 0;
+					struct ptype *username_pt = NULL;
+					if (decoder_decode_simple("base64", arg, strlen(arg), &username, &out_len) == POM_OK) {
+						username_pt = ptype_alloc("string");
+						if (username_pt) {
+							PTYPE_STRING_SETVAL_P(username_pt, username);
+							if (data_item_add_ptype(auth_data, analyzer_smtp_auth_params, strdup("username"), username_pt) != POM_OK) {
+								ptype_cleanup(username_pt);
+								event_cleanup(cpriv->evt_auth);
+								cpriv->evt_auth = NULL;
+								username_pt = NULL;
+							}
+						} else {
+							free(username);
+						}
+					}
+
+					if (!username_pt) {
+						cpriv->last_cmd = analyzer_smtp_last_cmd_other;
+						event_process_begin(cpriv->evt_auth, stack, stack_index);
+					}
+				} else {
+					cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login;
+				}
 			}
 
 		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_plain) {
 			// We are expecting the credentials right now
-			if (analyzer_smtp_parse_auth_plain(apriv, cpriv, arg) == POM_OK) {
+			if (analyzer_smtp_parse_auth_plain(apriv, cpriv, cmd) == POM_OK) {
 				event_process_begin(cpriv->evt_auth, stack, stack_index);
 				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain_creds;
 			} else {
 				cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 			}
+		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_login) {
+			char *username = NULL;
+			size_t out_len = 0;
+			struct ptype *username_pt = NULL;
+			if (decoder_decode_simple("base64", cmd, strlen(cmd), &username, &out_len) == POM_OK) {
+				username_pt = ptype_alloc("string");
+				if (username_pt) {
+					PTYPE_STRING_SETVAL_P(username_pt, username);
+					struct data *auth_data = event_get_data(cpriv->evt_auth);
+					if (data_item_add_ptype(auth_data, analyzer_smtp_auth_params, strdup("username"), username_pt) != POM_OK) {
+						ptype_cleanup(username_pt);
+						event_process_end(cpriv->evt_auth);
+						cpriv->evt_auth = NULL;
+						username_pt = NULL;
+					}
+				} else {
+					free(username);
+				}
+			}
+
+			if (!username_pt) {
+				cpriv->last_cmd = analyzer_smtp_last_cmd_other;
+			} else {
+				event_process_begin(cpriv->evt_auth, stack, stack_index);
+				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login_user;
+			}
+
+		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_login_user) {
+			char *password = NULL;
+			size_t out_len = 0;
+			struct ptype *password_pt = NULL;
+			if (decoder_decode_simple("base64", cmd, strlen(cmd), &password, &out_len) == POM_OK) {
+				password_pt = ptype_alloc("string");
+				if (password_pt) {
+					PTYPE_STRING_SETVAL_P(password_pt, password);
+					struct data *auth_data = event_get_data(cpriv->evt_auth);
+					if (data_item_add_ptype(auth_data, analyzer_smtp_auth_params, strdup("password"), password_pt) != POM_OK) {
+						ptype_cleanup(password_pt);
+						event_process_end(cpriv->evt_auth);
+						cpriv->evt_auth = NULL;
+						password_pt = NULL;
+					}
+				} else {
+					free(password);
+				}
+			}
+
+			if (!password_pt) {
+				cpriv->last_cmd = analyzer_smtp_last_cmd_other;
+			} else {
+				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login_pass;
+			}
+		} else {
+			cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 		}
 
 	} else if (evt_reg == apriv->evt_reply) {
@@ -699,7 +793,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			case analyzer_smtp_last_cmd_other:
 				if (code == 220 && evt_data[proto_smtp_reply_text].items && evt_data[proto_smtp_reply_text].items->value) {
 					// STARTTLS returns 220 as well so ignore extra code 220
-					if (cpriv->server_hello) {
+					if (!cpriv->server_hello) {
 						char *helo = PTYPE_STRING_GETVAL(evt_data[proto_smtp_reply_text].items->value);
 						cpriv->server_hello = strdup(helo);
 						if (!cpriv->server_hello) {
@@ -735,21 +829,33 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				break;
 
 			case analyzer_smtp_last_cmd_auth_plain:
-				// The client asked for AUTH PLAIN without providing credentials immediatly
+			case analyzer_smtp_last_cmd_auth_login:
+			case analyzer_smtp_last_cmd_auth_login_user:
+				// Check if authentication phase can continue
 				if (code == 334) {
 					// Don't reset cpriv->last_cmd
 					return POM_OK;
+				} else {
+					struct data *evt_data = event_get_data(cpriv->evt_auth);
+					PTYPE_BOOL_SETVAL(evt_data[analyzer_smtp_auth_success].value, 0);
+					data_set(evt_data[analyzer_smtp_auth_success]);
+					event_process_end(cpriv->evt_auth);
+					cpriv->evt_auth = NULL;
 				}
 				break;
 
-			case analyzer_smtp_last_cmd_auth_plain_creds: {
+			case analyzer_smtp_last_cmd_auth_plain_creds:
+			case analyzer_smtp_last_cmd_auth_login_pass: {
 				// We just processed the credentials
-				struct data *evt_data = event_get_data(cpriv->evt_auth);
+				struct data *auth_data = event_get_data(cpriv->evt_auth);
 				char success = 0;
 				if (code == 235)
 					success = 1;
-				PTYPE_BOOL_SETVAL(evt_data[analyzer_smtp_auth_success].value, success);
-				data_set(evt_data[analyzer_smtp_auth_success]);
+				PTYPE_BOOL_SETVAL(auth_data[analyzer_smtp_auth_success].value, success);
+				data_set(auth_data[analyzer_smtp_auth_success]);
+				event_process_end(cpriv->evt_auth);
+				cpriv->evt_auth = NULL;
+				break;
 			}
 
 		}
