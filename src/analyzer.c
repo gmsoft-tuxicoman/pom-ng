@@ -584,7 +584,10 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 					pload->mime = magic_mime;
 					struct analyzer_pload_mime_type *tmp;
 					for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, magic_mime->type_str); tmp = tmp->next);
-					pload->type = tmp->type;
+					if (tmp)
+						pload->type = tmp->type;
+					else
+						pload->type = NULL;
 				} else {
 					mime_cleanup(magic_mime);
 				}
@@ -598,6 +601,8 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 
 				if (tmp)
 					pload->type = tmp->type;
+				else
+					pload->type = NULL;
 			}
 
 			pload->state = analyzer_pload_buffer_state_partial;
