@@ -110,6 +110,7 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 	analyzer_smtp_evt_msg.data_reg = &evt_msg_data;
 	analyzer_smtp_evt_msg.listeners_notify = analyzer_smtp_event_listeners_notify;
 	analyzer_smtp_evt_msg.cleanup = analyzer_smtp_evt_msg_cleanup;
+	analyzer_smtp_evt_msg.flags = EVENT_REG_FLAG_PAYLOAD;
 
 	priv->evt_msg = event_register(&analyzer_smtp_evt_msg);
 	if (!priv->evt_msg)
@@ -827,6 +828,9 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 				// Message is over (if ever transmited)
 				if (event_is_started(cpriv->evt_msg)) {
+					struct data *msg_data = event_get_data(cpriv->evt_msg);
+					PTYPE_UINT16_SETVAL(msg_data[analyzer_smtp_msg_result].value, code);
+					data_set(msg_data[analyzer_smtp_msg_result]);
 					event_process_end(cpriv->evt_msg);
 					cpriv->evt_msg = NULL;
 				}
@@ -887,7 +891,7 @@ static int analyzer_smtp_event_process_end(struct event *evt, void *obj) {
 	if (!cmd)
 		return POM_OK;
 	
-	if (strcasecmp(cmd, "DATA"))
+	if (!strcasecmp(cmd, "DATA"))
 		return POM_OK;
 	
 	struct analyzer_smtp_ce_priv *cpriv = conntrack_get_priv(event_get_conntrack(evt), analyzer);
