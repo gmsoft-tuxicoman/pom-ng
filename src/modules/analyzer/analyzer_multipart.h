@@ -27,14 +27,8 @@
 
 #define ANALYZER_MULTIPART_PLOAD_TYPE		"multipart"
 
-#define ANALYZER_MULTIPART_PLOAD_DATA_COUNT	1
-
 // RFC 5233 actually specifies 1000 char including CRLF
 #define ANALYZER_MULTIPART_MAX_LINE_LEN		2048
-
-enum analyzer_multipart_pload_data {
-	analyzer_multipart_pload_headers,
-};
 
 enum analyzer_multipart_pload_state {
 	analyzer_multipart_pload_state_init,

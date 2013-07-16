@@ -62,21 +62,11 @@ static int analyzer_multipart_init(struct analyzer *analyzer) {
 		return POM_ERR;
 	}
 
-	static struct data_item_reg pload_multipart_data_items[ANALYZER_MULTIPART_PLOAD_DATA_COUNT] = { { 0 } };
-	pload_multipart_data_items[analyzer_multipart_pload_headers].name = "headers";
-	pload_multipart_data_items[analyzer_multipart_pload_headers].flags = DATA_REG_FLAG_LIST;
-
-	static struct data_reg pload_multipart_data = {
-		.items = pload_multipart_data_items,
-		.data_count = ANALYZER_MULTIPART_PLOAD_DATA_COUNT
-	};
-
 	static struct analyzer_pload_reg pload_reg;
 	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
 	pload_reg.analyzer = analyzer;
 	pload_reg.process = analyzer_multipart_pload_process;
 	pload_reg.cleanup = analyzer_multipart_pload_cleanup;
-	pload_reg.data_reg = &pload_multipart_data;
 	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
 
 
