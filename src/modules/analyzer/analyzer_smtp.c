@@ -168,9 +168,12 @@ static int analyzer_smtp_cleanup(struct analyzer *analyzer) {
 	struct analyzer_smtp_priv *priv = analyzer->priv;
 
 	if (priv->pkt_listener) {
+		proto_packet_listener_unregister(priv->pkt_listener);
+	}
+
+	if (priv->listening) {
 		event_listener_unregister(priv->evt_cmd, analyzer);
 		event_listener_unregister(priv->evt_reply, analyzer);
-		proto_packet_listener_unregister(priv->pkt_listener);
 	}
 
 	if (priv->evt_msg)
@@ -194,6 +197,7 @@ static int analyzer_smtp_event_listeners_notify(void *obj, struct event_reg *evt
 		} else {
 			if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
 				return POM_ERR;
+			priv->pkt_listener = NULL;
 		}
 	}
 
