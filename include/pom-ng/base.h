@@ -42,6 +42,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 
