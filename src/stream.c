@@ -154,6 +154,10 @@ int stream_timeout(struct conntrack_entry *ce, void *priv, ptime now) {
 
 static int stream_is_packet_old_dupe(struct stream *stream, struct stream_pkt *pkt, int direction) {
 
+	// Don't discard packets if there were not packets processed yet
+	if (!(stream->flags & STREAM_FLAG_RUNNING))
+		return 0;
+
 	uint32_t end_seq = pkt->seq + pkt->plen;
 	uint32_t cur_seq = stream->cur_seq[direction];
 
@@ -167,6 +171,10 @@ static int stream_is_packet_old_dupe(struct stream *stream, struct stream_pkt *p
 }
 
 static int stream_remove_dupe_bytes(struct stream *stream, struct stream_pkt *pkt, int direction) {
+
+	// Don't discard bytes if nothing was processed yet
+	if (!(stream->flags & STREAM_FLAG_RUNNING))
+		return POM_OK;
 
 	uint32_t cur_seq = stream->cur_seq[direction];
 	if ((cur_seq > pkt->seq && cur_seq - pkt->seq < STREAM_HALF_SEQ)
