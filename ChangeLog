@@ -1,3 +1,13 @@
+v0.0.10
+	Add support for SMTP protocol.
+	Add support for rfc822 messages and multipart content.
+	Rework decoders support.
+	Add timestemps to events.
+	Rework mime type support and make it more complete.
+	Make DNS lookup thread safe.
+	Fix DNS record expiration.
+	Fix stream (TCP) forced dequeue when the stream did not start.
+
 v0.0.9
 	Make a lot of critical code path lock-free.
 	Add various performance objects.
