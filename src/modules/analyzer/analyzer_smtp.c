@@ -180,6 +180,9 @@ static int analyzer_smtp_cleanup(struct analyzer *analyzer) {
 	if (priv->evt_msg)
 		event_unregister(priv->evt_msg);
 
+	if (priv->evt_auth)
+		event_unregister(priv->evt_auth);
+
 	free(priv);
 
 	return POM_OK;
