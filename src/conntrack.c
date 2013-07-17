@@ -598,7 +598,7 @@ void *conntrack_get_priv(struct conntrack_entry *ce, void *obj) {
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay, ptime now) {
 
 	if (!delay) {
-		if (ce->cleanup_timer) {
+		if (ce->cleanup_timer && ce->cleanup_timer != (void*)-1) {
 			timer_dequeue(ce->cleanup_timer->timer);
 			timer_cleanup(ce->cleanup_timer->timer);
 			free(ce->cleanup_timer);
