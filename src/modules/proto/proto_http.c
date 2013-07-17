@@ -204,10 +204,10 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 
 	}
 
-	debug_http("entry %p, current state %u, packet %u.%u", s->ce, priv->state[s->direction], (int)p->ts.tv_sec, (int)p->ts.tv_usec);
+	debug_http("entry %p, current state %u, packet %u.%u", s->ce, priv->state[s->direction], pom_ptime_sec(p->ts), pom_ptime_usec(p->ts));
 
 	if (priv->is_invalid) {
-		debug_http("entry %p, packet %u.%u : invalid", s->ce, (int)p->ts.tv_sec, (int)p->ts.tv_usec);
+		debug_http("entry %p, packet %u.%u : invalid", s->ce, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts));
 		return PROTO_INVALID;
 	}
 
@@ -560,7 +560,6 @@ static int proto_http_conntrack_cleanup(void *ce_priv) {
 
 		if (priv->event[direction]) {
 			if (event_is_started(priv->event[direction])) {
-				debug_http("entry %p, processing event on cleanup !", ce);
 				event_process_end(priv->event[direction]);
 			} else {
 				event_cleanup(priv->event[direction]);
