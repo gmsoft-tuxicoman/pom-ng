@@ -63,11 +63,6 @@ struct stream* stream_alloc(uint32_t max_buff_size, struct conntrack_entry *ce, 
 
 int stream_set_timeout(struct stream *stream, unsigned int timeout) {
 
-	if (!stream->t) {
-		stream->t = conntrack_timer_alloc(stream->ce, stream_timeout, stream);
-		if (!stream->t)
-			return POM_ERR;
-	}
 	stream->timeout = timeout;
 
 	return POM_OK;
@@ -88,8 +83,7 @@ int stream_cleanup(struct stream *stream) {
 		}
 	}
 
-	if (stream->t)
-		conntrack_timer_cleanup(stream->t);
+	conntrack_delayed_cleanup(stream->ce, 0, stream->last_ts);
 
 	int res = pthread_mutex_destroy(&stream->lock);
 	if (res){
@@ -118,13 +112,7 @@ int stream_cleanup(struct stream *stream) {
 
 static void stream_end_process_packet(struct stream *stream) {
 
-	if (stream->head[POM_DIR_FWD] || stream->head[POM_DIR_REV]) {
-		conntrack_timer_queue(stream->t, stream->timeout, stream->last_ts);
-		stream->flags |= STREAM_FLAG_TIMER_SET;
-	} else if (stream->flags & STREAM_FLAG_TIMER_SET) {
-		conntrack_timer_dequeue(stream->t);
-		stream->flags &= ~STREAM_FLAG_TIMER_SET;
-	}
+	conntrack_delayed_cleanup(stream->ce, stream->timeout, stream->last_ts);
 
 	pom_mutex_unlock(&stream->lock);
 	pom_mutex_lock(&stream->wait_lock);
@@ -133,23 +121,6 @@ static void stream_end_process_packet(struct stream *stream) {
 		pthread_cond_broadcast(&stream->wait_list_head->cond);
 	}
 	pom_mutex_unlock(&stream->wait_lock);
-}
-
-int stream_timeout(struct conntrack_entry *ce, void *priv, ptime now) {
-
-	struct stream *stream = priv;
-	int res = POM_OK;
-
-	// We need to unlock the conntrack first to avoid lock order problem
-	conntrack_unlock(ce);
-
-	pom_mutex_lock(&stream->lock);
-	debug_stream("thread %p, entry %p : timeout at %u.%06u", pthread_self(), stream, pom_ptime_sec(now), pom_ptime_usec(now));
-	stream->flags &= ~STREAM_FLAG_TIMER_SET;
-	res = stream_force_dequeue(stream);
-	stream_end_process_packet(stream);
-
-	return res;
 }
 
 static int stream_is_packet_old_dupe(struct stream *stream, struct stream_pkt *pkt, int direction) {

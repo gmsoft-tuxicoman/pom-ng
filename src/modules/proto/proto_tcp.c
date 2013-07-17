@@ -243,8 +243,14 @@ static int proto_tcp_update_state(struct proto_tcp_priv *ppriv, struct proto_tcp
 			return PROTO_ERR;
 	}
 
-	if (conntrack_delayed_cleanup(ce, *delay, ts) != POM_OK) {
-		return PROTO_ERR;
+	debug_tcp("Connection %p (stream %p) : Timing out in %u seconds", priv, priv->stream, *delay);
+	if (priv->stream) {
+		// If there is a stream, it will kill the conntrack for us
+		if (stream_set_timeout(priv->stream, *delay) != POM_OK)
+			return PROTO_ERR;
+	} else {
+		if (conntrack_delayed_cleanup(ce, *delay, ts) != POM_OK)
+			return PROTO_ERR;
 	}
 
 

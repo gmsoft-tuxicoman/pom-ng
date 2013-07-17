@@ -34,7 +34,6 @@
 #define STREAM_FLAG_GOT_REV_STARTSEQ	0x20
 #define STREAM_FLAG_GOT_BOTH_STARTSEQ	(STREAM_FLAG_GOT_FWD_STARTSEQ | STREAM_FLAG_GOT_REV_STARTSEQ)
 #define STREAM_FLAG_RUNNING		0x40 // The stream has started and no sequence update will be accepted
-#define STREAM_FLAG_TIMER_SET		0x80
 
 #define STREAM_GAP_STEP_MAX		2048
 
@@ -65,7 +64,6 @@ struct stream {
 	struct stream_pkt *head[POM_DIR_TOT], *tail[POM_DIR_TOT];
 	int (*handler) (struct conntrack_entry *ce, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 	ptime last_ts;
-	struct conntrack_timer *t;
 	struct conntrack_entry *ce;
 	pthread_mutex_t lock;
 
