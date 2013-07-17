@@ -54,20 +54,23 @@ static struct timer *dns_gc_run = NULL;
 static unsigned int dns_entry_count = 0;
 static int dns_enabled = 0;
 
-#define DNS_CACHE_QUEUE_COUNT 10
+#define DNS_CACHE_QUEUE_COUNT	10
+
+#define DNS_ADDITIONAL_TIMEOUT	300
+
 static uint32_t dns_cache_queues_time[DNS_CACHE_QUEUE_COUNT] = {
 	// Based on distribution observed in real life
 	// See https://00f.net/2012/05/10/distribution-of-dns-ttls/
-	60, // 1 min
-	2 * 60, // 2 min
-	5 * 60, // 5 min
-	30 * 60, // 30 min
-	60 * 60, // 1 hour
-	2 * 60 * 60, // 2 hours
-	4 * 60 * 60, // 4 hours
-	8 * 60 * 60, // 8 hours
-	12 * 60 * 60, // 12 hours
-	24 * 60 * 60 // 1 day (capped max value)
+	60 + DNS_ADDITIONAL_TIMEOUT, // 1 min
+	(2 * 60) + DNS_ADDITIONAL_TIMEOUT, // 2 min
+	(5 * 60) + DNS_ADDITIONAL_TIMEOUT, // 5 min
+	(30 * 60) + DNS_ADDITIONAL_TIMEOUT, // 30 min
+	(60 * 60) + DNS_ADDITIONAL_TIMEOUT, // 1 hour
+	(2 * 60 * 60) + DNS_ADDITIONAL_TIMEOUT, // 2 hours
+	(4 * 60 * 60) + DNS_ADDITIONAL_TIMEOUT, // 4 hours
+	(8 * 60 * 60) + DNS_ADDITIONAL_TIMEOUT, // 8 hours
+	(12 * 60 * 60) + DNS_ADDITIONAL_TIMEOUT, // 12 hours
+	(24 * 60 * 60) + DNS_ADDITIONAL_TIMEOUT // 1 day (capped max value)
 };
 
 static struct dns_entry *dns_cache_queues_head[DNS_CACHE_QUEUE_COUNT] = { 0 };
@@ -231,6 +234,8 @@ int dns_gc(void *priv, ptime now) {
 				dns_cache_queues_tail[i] = NULL;
 			}
 
+			debug_dns("Clearing entry %s. Expiry %"PRIu64" < now %"PRIu64, entry->record, entry->expiry, now);
+
 			while (entry->query) {
 			
 				struct dns_entry *query = entry->query->entry;
@@ -371,7 +376,7 @@ static int dns_update_expiry(struct dns_entry *a, struct dns_entry *b, uint32_t 
 
 	ptime now = core_get_clock(&now);
 
-	uint32_t expiry = now + (ttl * 1000000UL);
+	ptime expiry = now + ((ttl + DNS_ADDITIONAL_TIMEOUT) * 1000000UL);
 
 	if (a->expiry >= expiry) {
 		a = NULL;
@@ -530,6 +535,8 @@ int dns_process_event(struct event *evt, void *obj) {
 		pom_mutex_unlock(&dns_table_lock);
 		return POM_OK;
 	}
+	
+	debug_dns("Linking %s to %s", query->record, response->record);
 
 	// Link the query and the response
 	struct dns_entry_list *fwd = NULL, *rev = NULL;
@@ -577,6 +584,9 @@ static struct dns_entry *dns_find_entry(const char *record) {
 		if (!strcmp(entry->record, record))
 			break;
 	}
+
+	debug_dns("Entry for %s is %p", record, entry);
+
 	return entry;
 
 }
@@ -612,7 +622,7 @@ char* dns_reverse_lookup(const char *record) {
 		return NULL;
 
 	pom_mutex_lock(&dns_table_lock);
-	
+
 	struct dns_entry *entry = dns_find_entry(record);
 	
 	if (!entry) {

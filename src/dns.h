@@ -45,7 +45,7 @@ struct dns_entry_list {
 struct dns_entry {
 
 	char *record;
-	uint32_t expiry;
+	ptime expiry;
 
 	// Query for which this record is a value
 	struct dns_entry_list *query;
