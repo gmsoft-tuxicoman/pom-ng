@@ -28,6 +28,7 @@
 
 
 static xmlrpc_registry *xmlrpcsrv_registry = NULL;
+static int running = 0;
 
 int xmlrpcsrv_init() {
 
@@ -49,11 +50,16 @@ int xmlrpcsrv_init() {
 
 	xmlrpc_registry_set_shutdown(xmlrpcsrv_registry, xmlrpcsrv_shutdown, NULL);
 
+	running = 1;
+
 	return POM_OK;
 }
 
 int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen) {
-	
+
+	if (!running)
+		return POM_ERR;
+
 	xmlrpc_env env;
 	xmlrpc_env_init(&env);
 
@@ -82,9 +88,14 @@ int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen) 
 	return POM_OK;
 }
 
+int xmlrpcsrv_stop() {
+
+	running = 0;
+	return xmlrpccmd_cleanup();
+}
+
 int xmlrpcsrv_cleanup() {
 
-	xmlrpccmd_cleanup();
 
 	if (xmlrpcsrv_registry) {
 		xmlrpc_registry_free(xmlrpcsrv_registry);

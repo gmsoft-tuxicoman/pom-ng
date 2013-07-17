@@ -356,6 +356,7 @@ int main(int argc, char *argv[]) {
 	core_cleanup(shutdown_in_error);
 
 	input_cleanup();
+	xmlrpcsrv_stop();
 	httpd_cleanup();
 	xmlrpcsrv_cleanup();
 	output_cleanup();

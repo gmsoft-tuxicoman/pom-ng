@@ -37,6 +37,7 @@ struct xmlrpcsrv_command {
 
 int xmlrpcsrv_init();
 int xmlrpcsrv_process(char *data, size_t size, char **response, size_t *reslen);
+int xmlrpcsrv_stop();
 int xmlrpcsrv_cleanup();
 
 int xmlrpcsrv_register_command(struct xmlrpcsrv_command *cmd);
