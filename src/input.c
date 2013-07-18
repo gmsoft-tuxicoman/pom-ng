@@ -406,9 +406,11 @@ void *input_process_thread(void *param) {
 	
 		pom_mutex_unlock(&i->lock);
 		if (i->reg->info->read(i) != POM_OK) {
-			// This will update the value of i->running
-			pomlog(POMLOG_ERR "Error while reading from input %s", i->name);
-			registry_set_param(i->reg_instance, "running" , "0");
+			if (i->running == INPUT_RUN_RUNNING) {
+				// This will update the value of i->running
+				pomlog(POMLOG_ERR "Error while reading from input %s", i->name);
+				registry_set_param(i->reg_instance, "running" , "0");
+			}
 		}
 		pom_mutex_lock(&i->lock);
 
