@@ -725,7 +725,7 @@ static int input_pcap_read(struct input *i) {
 	if (!pkt)
 		return POM_ERR;
 
-	if (packet_buffer_pool_get(pkt, phdr->caplen, p->align_offset)) {
+	if (packet_buffer_pool_get(pkt, phdr->caplen, p->align_offset) != POM_OK) {
 		packet_pool_release(pkt);
 		return POM_ERR;
 	}
