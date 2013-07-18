@@ -88,6 +88,23 @@ int pom_write(int fd, const void *buf, size_t count) {
 	return POM_OK;
 }
 
+int pom_read(int fd, void *buf, size_t count) {
+
+	size_t pos = 0;
+	while (pos < count) {
+		ssize_t len = read(fd, buf + pos, count - pos);
+		if (len < 0) {
+			pomlog(POMLOG_ERR "Read error : %s", pom_strerror(errno));
+			return POM_ERR;
+		} else if (!len) {
+			return POM_ERR;
+		}
+		pos += len;
+	}
+
+	return POM_OK;
+}
+
 int pom_mutex_init_type(pthread_mutex_t *lock, int type) {
 
 	pthread_mutexattr_t attr;
@@ -123,4 +140,35 @@ ptime pom_gettimeofday() {
 	gettimeofday(&now, NULL);
 	return pom_timeval_to_ptime(now);
 }
+
+#ifndef bswap64
+
+uint64_t bswap64(uint64_t x) {
+
+#ifdef _LP64
+	/*
+	 * Assume we have wide enough registers to do it without touching
+	 * memory.
+	 */
+	return  ( (x << 56) & 0xff00000000000000UL ) |
+		( (x << 40) & 0x00ff000000000000UL ) |
+		( (x << 24) & 0x0000ff0000000000UL ) |
+		( (x <<  8) & 0x000000ff00000000UL ) |
+		( (x >>  8) & 0x00000000ff000000UL ) |
+		( (x >> 24) & 0x0000000000ff0000UL ) |
+		( (x >> 40) & 0x000000000000ff00UL ) |
+		( (x >> 56) & 0x00000000000000ffUL );
+#else
+	/*
+	 * Split the operation in two 32bit steps.
+	 */
+	uint32_t tl, th;
+
+	th = ntohl((uint32_t)(x & 0x00000000ffffffffULL));
+	tl = ntohl((uint32_t)((x >> 32) & 0x00000000ffffffffULL));
+	return ((uint64_t)th << 32) | tl;
+#endif
+}
+
+#endif
 

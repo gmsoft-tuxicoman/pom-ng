@@ -105,13 +105,18 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 // Wrapper for open() which creates the directory structure
 int pom_open(const char *filename, int flags, mode_t mode);
 
-// Wrapper for write() that writes the whole buffer
+// Wrapper for read() and write() that writes the whole buffer
 int pom_write(int fd, const void *buf, size_t count);
+int pom_read(int fd, void *buf, size_t count);
 
 // Init a mutex with a specific type
 int pom_mutex_init_type(pthread_mutex_t *lock, int type);
 
 // Usefull macros for byte swapping
+#ifndef bswap64
+uint64_t bswap64(uint64_t x);
+#endif
+
 #ifndef bswap16
 #define bswap16(x) \
 	((((x) >> 8) & 0xffu) | (((x) & 0xffu) << 8))
