@@ -21,7 +21,7 @@ libdir=$(mod_dir)
 ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 DECODER_SRC = decoder_base64.la decoder_gzip.la decoder_percent.la decoder_quoted_printable.la
-INPUT_SRC = @INPUT_OBJS@
+INPUT_SRC = input_kismet.la @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_80211.la proto_arp.la proto_dns.la proto_docsis.la proto_ethernet.la proto_http.la proto_icmp.la proto_icmp6.la proto_ipv4.la proto_ipv6.la proto_mpeg.la proto_ppp.la proto_pppoe.la proto_radiotap.la proto_smtp.la proto_tcp.la proto_tftp.la proto_udp.la proto_vlan.la
 PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
@@ -83,12 +83,15 @@ decoder_quoted_printable_la_SOURCES = decoder/decoder_quoted_printable.c decoder
 decoder_quoted_printable_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 decoder_quoted_printable_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
-input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
-input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
-input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 input_dvb_la_SOURCES = input/input_dvb.c input/input_dvb.h
 input_dvb_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 input_dvb_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+input_kismet_la_SOURCES = input/input_kismet.c input/input_kismet.h
+input_kismet_la_LDFLAGS = -module -avoid-version
+input_kismet_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+input_pcap_la_SOURCES = input/input_pcap.c input/input_pcap.h
+input_pcap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
+input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 output_file_la_SOURCES = output/output_file.c output/output_file.h
 output_file_la_LDFLAGS = -module -avoid-version
