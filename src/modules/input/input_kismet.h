@@ -25,7 +25,10 @@
 #define KISMET_DRONE_SENTINEL	0xDEADBEEF
 
 // Avoid depending on libpcap just for DLT values
-#define DLT_IEEE802_11 105
+#define DLT_IEEE802_11		105
+#define DLT_IEEE802_11_RADIO	127
+
+#define KISMET_DRONE_BIT_DATA_IEEEPACKET 0x80000000
 
 struct kismet_drone_source {
 
@@ -46,6 +49,7 @@ struct input_kismet_drone_priv {
 	int fd;
 
 	struct proto *datalink_80211;
+	struct proto *datalink_radiotap;
 
 	struct kismet_drone_source *srcs;
 

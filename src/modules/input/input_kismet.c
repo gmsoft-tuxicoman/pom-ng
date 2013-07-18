@@ -33,13 +33,20 @@
 
 #include "input_kismet.h"
 
+#if 0
+#define debug_kismet(x...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_kismet(x...)
+#endif
+
+
 struct mod_reg_info* input_kismet_reg_info() {
 	static struct mod_reg_info reg_info;
 	memset(&reg_info, 0, sizeof(struct mod_reg_info));
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_kismet_mod_register;
 	reg_info.unregister_func = input_kismet_mod_unregister;
-	reg_info.dependencies = "proto_80211, ptype_string, ptype_uint16";
+	reg_info.dependencies = "proto_80211, proto_radiotap, ptype_string, ptype_uint16";
 
 	return &reg_info;
 }
@@ -81,8 +88,9 @@ static int input_kismet_drone_init(struct input *i) {
 	priv->fd = -1;
 
 	priv->datalink_80211 = proto_get("80211");
-	if (!priv->datalink_80211) {
-		pomlog(POMLOG_ERR "Could not find datalink 80211");
+	priv->datalink_radiotap = proto_get("radiotap");
+	if (!priv->datalink_80211 || !priv->datalink_radiotap) {
+		pomlog(POMLOG_ERR "Could not find datalink 80211 or radiotap");
 		goto err;
 	}
 
@@ -247,6 +255,8 @@ static int input_kismet_drone_read(struct input *i) {
 		enum kismet_drone_cmd cmdnum = ntohl(kpkt.drone_cmdnum);
 		uint32_t data_len = ntohl(kpkt.data_len);
 
+		debug_kismet("CMD %u, data_len %u", cmdnum, data_len);
+
 		switch (cmdnum) {
 			case kismet_drone_cmd_hello: {
 				if (data_len != sizeof(struct kismet_drone_packet_hello)) {
@@ -324,7 +334,18 @@ static int input_kismet_drone_read(struct input *i) {
 				if (pom_read(priv->fd, &capture_pkt, sizeof(struct kismet_drone_packet_capture)) != POM_OK)
 					return POM_ERR;
 
+				debug_kismet("Capture packet bitmap 0x%X, offset %u", ntohl(capture_pkt.content_bitmap), ntohl(capture_pkt.packet_offset));
+
 				data_len -= sizeof(struct kismet_drone_packet_capture);
+
+				uint32_t bitmap = ntohl(capture_pkt.content_bitmap);
+
+				if (!(bitmap & KISMET_DRONE_BIT_DATA_IEEEPACKET)) {
+					debug_kismet("No data in this packet, skipping %u bytes of data", data_len);
+					if (input_kismet_drone_discard_bytes(priv, data_len) != POM_OK)
+						return POM_ERR;
+					break;
+				}
 
 				uint32_t offset = ntohl(capture_pkt.packet_offset);
 				if (offset > data_len) {
@@ -348,6 +369,8 @@ static int input_kismet_drone_read(struct input *i) {
 
 				data_len -= sizeof(struct kismet_drone_sub_packet_data);
 
+				debug_kismet("Capture data packet bitmap 0x%X, hdr len %u, pkt len %u", ntohl(data_pkt.content_bitmap), ntohs(data_pkt.data_hdr_len), ntohs(data_pkt.packet_len));
+
 				size_t pkt_len = ntohs(data_pkt.packet_len);
 
 				if (pkt_len > data_len) {
@@ -356,9 +379,17 @@ static int input_kismet_drone_read(struct input *i) {
 				}
 
 				uint32_t dlt = ntohl(data_pkt.dlt);
-				if (dlt != DLT_IEEE802_11) {
-					pomlog(POMLOG_ERR "Unexpected DLT received : %u", dlt);
-					return POM_ERR;
+				struct proto *datalink = NULL;
+				switch (dlt) {
+					case DLT_IEEE802_11:
+						datalink = priv->datalink_80211;
+						break;
+					case DLT_IEEE802_11_RADIO:
+						datalink = priv->datalink_radiotap;
+						break;
+					default:
+						pomlog(POMLOG_ERR "Unexpected DLT received : %u", dlt);
+						return POM_ERR;
 				}
 
 				struct packet *pkt = packet_pool_get();
@@ -371,7 +402,7 @@ static int input_kismet_drone_read(struct input *i) {
 				}
 
 				pkt->input = i;
-				pkt->datalink = priv->datalink_80211;
+				pkt->datalink = datalink;
 				pkt->ts = (ntohll(data_pkt.tv_sec) *  1000000UL) + ntohll(data_pkt.tv_usec);
 
 				if (pom_read(priv->fd, pkt->buff, pkt_len) != POM_OK)
