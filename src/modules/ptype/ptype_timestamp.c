@@ -141,15 +141,15 @@ int ptype_timestamp_compare(int op, void *val_a, void *val_b) {
 int ptype_timestamp_serialize(struct ptype *p, char *val, size_t size) {
 
 	ptime *v = p->value;
-	return snprintf(val, size, "%lu.%lu", pom_ptime_sec(*v), pom_ptime_usec(*v));
+	return snprintf(val, size, "%"PRIu64".%"PRIu64, pom_ptime_sec(*v), pom_ptime_usec(*v));
 
 }
 
 int ptype_timestamp_unserialize(struct ptype *p, char *val) {
 
 	ptime *v = p->value;
-	unsigned long long sec, usec;
-	if (sscanf(val, "%llu.%llu", &sec, &usec) != 2)
+	uint64_t sec, usec;
+	if (sscanf(val, "%"SCNu64".%"SCNu64, &sec, &usec) != 2)
 		return POM_ERR;
 
 	*v = (sec * 1000000ULL) + usec;
