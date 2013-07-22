@@ -87,14 +87,14 @@ static int input_kismet_drone_init(struct input *i) {
 	memset(priv, 0, sizeof(struct input_kismet_drone_priv));
 	priv->fd = -1;
 
+	struct registry_param *p = NULL;
+
 	priv->datalink_80211 = proto_get("80211");
 	priv->datalink_radiotap = proto_get("radiotap");
 	if (!priv->datalink_80211 || !priv->datalink_radiotap) {
 		pomlog(POMLOG_ERR "Could not find datalink 80211 or radiotap");
 		goto err;
 	}
-
-	struct registry_param *p = NULL;
 
 	priv->p_host = ptype_alloc("string");
 	priv->p_port = ptype_alloc("uint16");
