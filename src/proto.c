@@ -155,144 +155,142 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 	registry_perf_inc(proto->perf_pkts, 1);
 	registry_perf_inc(proto->perf_bytes, s->plen);
 
-	if (res == PROTO_OK) {
-		
-		// Process the expectations !
-		pom_rwlock_rlock(&proto->expectation_lock);
-		struct proto_expectation *e = proto->expectations;
-		while (e) {
-			
-			int expt_dir = POM_DIR_UNK;
-
-			struct proto_expectation_stack *es = e->tail;
-			struct ptype *fwd_value = s->pkt_info->fields_value[s->proto->info->ct_info->fwd_pkt_field_id];
-			struct ptype *rev_value = s->pkt_info->fields_value[s->proto->info->ct_info->rev_pkt_field_id];
-
-			if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) &&
-				(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
-				// Expectation matched the forward direction
-				expt_dir = POM_DIR_FWD;
-			} else if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) &&
-				(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
-				// Expectation matched the reverse direction
-				expt_dir = POM_DIR_REV;
-			}
-
-			if (expt_dir == POM_DIR_UNK) {
-				// Expectation not matched
-				e = e->next;
+	if (res == PROTO_OK || res == PROTO_STOP) {
+		struct proto_packet_listener *l;
+		for (l = proto->packet_listeners; l; l = l->next) {
+			if (l->filter && !filter_proto_match(s, l->filter))
 				continue;
+			if (l->process(l->object, p, s, stack_index) != POM_OK) {
+				pomlog(POMLOG_WARN "Warning packet listener failed");
+				// FIXME remove listener from the list ?
 			}
-			
-			es = es->prev;
-			int stack_index_tmp = stack_index - 1;
-			while (es) {
-
-				struct proto_process_stack *s_tmp = &stack[stack_index_tmp];
-
-				if (s_tmp->proto != es->proto) {
-					 e = e->next;
-					 continue;
-				}
-
-				fwd_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->fwd_pkt_field_id];
-				rev_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->rev_pkt_field_id];
-
-				if (expt_dir == POM_DIR_FWD) {
-					if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) ||
-						(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
-						e = e->next;
-						continue;
-					}
-				} else {
-					if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) ||
-						(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
-						e = e->next;
-						continue;
-					}
-
-				}
-
-				es = es->prev;
-				stack_index_tmp--;
-			}
-
-			// Expectation matched !
-			// Relock with write access
-			pom_rwlock_unlock(&proto->expectation_lock);
-			pom_rwlock_wlock(&proto->expectation_lock);
-
-			debug_expectation("Expectation %p matched !", e);
-
-			// Remove it from the list
-			
-			if (e->next)
-				e->next->prev = e->prev;
-
-			if (e->prev)
-				e->prev->next = e->next;
-			else
-				proto->expectations = e->next;
-
-			struct proto_process_stack *s_next = &stack[stack_index + 1];
-			s_next->proto = e->proto;
-
-			
-			if (conntrack_get_unique_from_parent(stack, stack_index + 1) != POM_OK) {
-				proto_expectation_cleanup(e);
-				return PROTO_ERR;
-			}
-
-			s_next->ce->priv = e->priv;
-
-			if (conntrack_session_bind(s_next->ce, e->session)) {
-				proto_expectation_cleanup(e);
-				return PROTO_ERR;
-			}
-
-			registry_perf_dec(e->proto->perf_expt_pending, 1);
-			registry_perf_inc(e->proto->perf_expt_matched, 1);
-
-			proto_expectation_cleanup(e);
-			conntrack_unlock(s_next->ce);
-
-			break;
-
 		}
-		pom_rwlock_unlock(&proto->expectation_lock);
 	}
+
+	if (res != PROTO_OK)
+		return res;
+		
+	// Process the expectations !
+	pom_rwlock_rlock(&proto->expectation_lock);
+	struct proto_expectation *e = proto->expectations;
+	while (e) {
+		
+		int expt_dir = POM_DIR_UNK;
+
+		struct proto_expectation_stack *es = e->tail;
+		struct ptype *fwd_value = s->pkt_info->fields_value[s->proto->info->ct_info->fwd_pkt_field_id];
+		struct ptype *rev_value = s->pkt_info->fields_value[s->proto->info->ct_info->rev_pkt_field_id];
+
+		if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) &&
+			(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
+			// Expectation matched the forward direction
+			expt_dir = POM_DIR_FWD;
+		} else if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) &&
+			(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
+			// Expectation matched the reverse direction
+			expt_dir = POM_DIR_REV;
+		}
+
+		if (expt_dir == POM_DIR_UNK) {
+			// Expectation not matched
+			e = e->next;
+			continue;
+		}
+		
+		es = es->prev;
+		int stack_index_tmp = stack_index - 1;
+		while (es) {
+
+			struct proto_process_stack *s_tmp = &stack[stack_index_tmp];
+
+			if (s_tmp->proto != es->proto) {
+				 e = e->next;
+				 continue;
+			}
+
+			fwd_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->fwd_pkt_field_id];
+			rev_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->rev_pkt_field_id];
+
+			if (expt_dir == POM_DIR_FWD) {
+				if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) ||
+					(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
+					e = e->next;
+					continue;
+				}
+			} else {
+				if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) ||
+					(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
+					e = e->next;
+					continue;
+				}
+
+			}
+
+			es = es->prev;
+			stack_index_tmp--;
+		}
+
+		// Expectation matched !
+		// Relock with write access
+		pom_rwlock_unlock(&proto->expectation_lock);
+		pom_rwlock_wlock(&proto->expectation_lock);
+
+		debug_expectation("Expectation %p matched !", e);
+
+		// Remove it from the list
+		
+		if (e->next)
+			e->next->prev = e->prev;
+
+		if (e->prev)
+			e->prev->next = e->next;
+		else
+			proto->expectations = e->next;
+
+		struct proto_process_stack *s_next = &stack[stack_index + 1];
+		s_next->proto = e->proto;
+
+		
+		if (conntrack_get_unique_from_parent(stack, stack_index + 1) != POM_OK) {
+			proto_expectation_cleanup(e);
+			return PROTO_ERR;
+		}
+
+		s_next->ce->priv = e->priv;
+
+		if (conntrack_session_bind(s_next->ce, e->session)) {
+			proto_expectation_cleanup(e);
+			return PROTO_ERR;
+		}
+
+		registry_perf_dec(e->proto->perf_expt_pending, 1);
+		registry_perf_inc(e->proto->perf_expt_matched, 1);
+
+		proto_expectation_cleanup(e);
+		conntrack_unlock(s_next->ce);
+
+		break;
+
+	}
+	pom_rwlock_unlock(&proto->expectation_lock);
 
 	return res;
 }
 
 
-int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index) {
+int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	if (!s[stack_index].plen)
-		return POM_OK;
+	// Process payload listeners of the previous proto
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	struct proto *proto = s->proto;
 
-	// Process packet listeners
-	struct proto *proto = s[stack_index].proto;
-	
-	if (!proto)
-		return POM_OK;
-
-	struct proto_packet_listener *l;
-	for (l = proto->packet_listeners; l; l = l->next) {
-		if (l->filter && !filter_proto_match(s, l->filter))
-			continue;
-		if (l->process(l->object, p, s, stack_index) != POM_OK) {
-			pomlog(POMLOG_WARN "Warning packet listener failed");
-			// FIXME remove listener from the list ?
-		}
-	}
-
-	// Process payload listeners
-	if (s[stack_index + 1].plen) {
+	if (proto && s_next->plen) {
+		struct proto_packet_listener *l;
 		for (l = proto->payload_listeners; l; l = l->next) {
-			if (l->filter && !filter_proto_match(s, l->filter))
+			if (l->filter && !filter_proto_match(stack, l->filter))
 				continue;
-			if (l->process(l->object, p, s, stack_index + 1) != POM_OK) {
+			if (l->process(l->object, p, stack, stack_index + 1) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning payload listener failed");
 				// FIXME remove listener from the list ?
 			}

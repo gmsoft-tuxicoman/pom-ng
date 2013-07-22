@@ -85,7 +85,7 @@ struct proto_expectation {
 
 
 int proto_init();
-int proto_process_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 int proto_finish();
 int proto_cleanup();
 

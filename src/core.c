@@ -548,6 +548,8 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 	for (i = stack_index; i < CORE_PROTO_STACK_MAX - CORE_PROTO_STACK_START; i++) {
 
+		proto_process_pload_listeners(p, stack, i - 1);
+
 		struct proto_process_stack *s = &stack[i];
 
 		if (!s->proto)
@@ -573,18 +575,6 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 			break;
 	
 	}
-
-	// Process packet listeners
-	if (res == PROTO_OK) {
-		int j, min = stack_index - 1;
-		for (j = i; j >= min; j--) {
-			if (proto_process_listeners(p, stack, j) != POM_OK) {
-				res = PROTO_ERR;
-				break;
-			}
-		}
-	}
-
 
 	for (; i >= stack_index; i--) {
 
