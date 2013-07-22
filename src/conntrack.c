@@ -317,6 +317,10 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 	conntrack_lock(res);
 	res->refcount++;
 	s->ce = res;
+	s->direction = s_prev->direction;
+
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	s_next->direction = s->direction;
 
 	return POM_OK;
 
