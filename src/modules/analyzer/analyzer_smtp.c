@@ -918,8 +918,12 @@ static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv) {
 			event_cleanup(cpriv->evt_msg);
 	}
 
-	if (cpriv->evt_auth)
-		event_process_end(cpriv->evt_auth);
+	if (cpriv->evt_auth) {
+		if (event_is_started(cpriv->evt_auth))
+			event_process_end(cpriv->evt_auth);
+		else
+			event_cleanup(cpriv->evt_auth);
+	}
 
 	if (cpriv->client_hello)
 		free(cpriv->client_hello);
