@@ -116,10 +116,17 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 	void *pload = s->pload;
 	uint32_t plen = s->plen;
 
+
+	// proto_tftp only process up to the opcode field
+	// afterwards, it's up to the analyzer to parse the rest
+
 	uint16_t opcode = ntohs(*((uint16_t*)pload));
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_tftp_field_opcode], opcode);
 	pload += sizeof(uint16_t);
 	plen -= sizeof(uint16_t);
+
+	s_next->pload = pload;
+	s_next->plen = plen;
 
 	switch (opcode) {
 		case tftp_rrq:
@@ -179,11 +186,6 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 				return PROTO_INVALID;
 			}
 			uint16_t block_id = ntohs(*((uint16_t*)(pload)));
-			pload += sizeof(uint16_t);
-			plen -= sizeof(uint16_t);
-
-			s_next->pload = pload;
-			s_next->plen = plen;
 
 			int set_start_seq = 0;
 			if (!priv->stream) {
@@ -199,8 +201,8 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 			conntrack_unlock(s->ce);
 			
 			if (set_start_seq)
-				stream_set_start_seq(priv->stream, s->direction, PROTO_TFTP_BLK_SIZE);
-			int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * 512, 0);
+				stream_set_start_seq(priv->stream, s->direction, PROTO_TFTP_BLK_SIZE + 2);
+			int res = stream_process_packet(priv->stream, p, stack, stack_index + 1, block_id * (PROTO_TFTP_BLK_SIZE + 2), 0);
 
 			return (res == PROTO_OK ? PROTO_STOP : res);
 		}

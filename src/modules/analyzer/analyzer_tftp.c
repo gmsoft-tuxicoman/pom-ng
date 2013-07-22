@@ -117,7 +117,7 @@ static int analyzer_tftp_event_listeners_notify(void *obj, struct event_reg *evt
 		if (priv->pkt_listener)
 			return POM_OK;
 
-		priv->pkt_listener = proto_packet_listener_register(proto_get("tftp"), 0, obj, analyzer_tftp_pkt_process);
+		priv->pkt_listener = proto_packet_listener_register(proto_get("tftp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_tftp_pkt_process);
 		if (!priv->pkt_listener)
 			return POM_ERR;
 	} else {
@@ -168,16 +168,12 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 	struct analyzer_tftp_priv *priv = obj;
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 
-	void *pload = s->pload;
-	uint32_t plen = s->plen;
-
-	uint16_t opcode = ntohs(*((uint16_t*)pload));
-	pload += sizeof(uint16_t);
-	plen += sizeof(uint16_t);
+	uint16_t opcode = *PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[proto_tftp_field_opcode]);
 
 	// Get the session
-	struct conntrack_session *session = conntrack_session_get(s->ce);
+	struct conntrack_session *session = conntrack_session_get(s_prev->ce);
 	if (!session)
 		return POM_ERR;
 
@@ -198,10 +194,15 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 		}
 	}
 
+	void *pload = s->pload;
+	uint32_t plen = s->plen;
+
 	switch (opcode) {
 		case tftp_rrq:
 		case tftp_wrq: {
 
+			if (plen < 3)
+				return POM_OK; // Invalid packet
 
 			// Find the filename
 			// The below should always be valid as proto_tftp already checked this
@@ -216,18 +217,18 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			memset(fq, 0, sizeof(struct analyzer_tftp_file));
 
 			// Get the port on which we expect this file
-			// No need to check the IP as we go the session biding
-			struct proto_process_stack *s_prev = &stack[stack_index - 1];
+			// No need to check the IP as we got the session biding
+			struct proto_process_stack *s_l4 = &stack[stack_index - 2];
 			unsigned int i;
 			for (i = 0; !fq->port ; i++) {
-				struct proto_reg_info *pinfo = proto_get_info(s_prev->proto);
+				struct proto_reg_info *pinfo = proto_get_info(s_l4->proto);
 				char *name = pinfo->pkt_fields[i].name;
 				if (!name) {
 					pomlog(POMLOG_ERR "Source port not found in RRQ/WRQ packets");
 					goto err;
 				}
 				if (!strcmp(name, "sport")) {
-					fq->port = *PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[i]);
+					fq->port = *PTYPE_UINT16_GETVAL(s_l4->pkt_info->fields_value[i]);
 					break;
 				}
 			}
@@ -261,28 +262,31 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 
 		case tftp_data: {
 
-			struct analyzer_tftp_file *f = conntrack_get_priv(s->ce, obj);
+			if (plen < sizeof(uint16_t))
+				return POM_OK; // Invalid packet
+
+			struct analyzer_tftp_file *f = conntrack_get_priv(s_prev->ce, obj);
 			struct data *evt_data = NULL;
 
 			if (!f) {
 				// The file is not yet associated to this connection
 				// Find it in the queue
 				
-				struct proto_process_stack *s_prev = &stack[stack_index - 1];
+				struct proto_process_stack *s_l4 = &stack[stack_index - 2];
 				unsigned int i;
 				uint16_t sport = 0, dport = 0;
 				for (i = 0; !sport || !dport ; i++) {
-					struct proto_reg_info *pinfo = proto_get_info(s_prev->proto);
+					struct proto_reg_info *pinfo = proto_get_info(s_l4->proto);
 					char *name = pinfo->pkt_fields[i].name;
 					if (!name) {
 						pomlog(POMLOG_ERR "Source port not found in data packets");
 						goto err;
 					}
 					if (!strcmp(name, "sport"))
-						sport = *PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[i]);
+						sport = *PTYPE_UINT16_GETVAL(s_l4->pkt_info->fields_value[i]);
 
 					if (!strcmp(name, "dport"))
-						dport = *PTYPE_UINT16_GETVAL(s_prev->pkt_info->fields_value[i]);
+						dport = *PTYPE_UINT16_GETVAL(s_l4->pkt_info->fields_value[i]);
 				}
 
 				// Find the file in the session list
@@ -319,7 +323,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				if (!f->pload)
 					goto err;
 
-				conntrack_add_priv(s->ce, obj, f, analyzer_tftp_conntrack_priv_cleanup);
+				conntrack_add_priv(s_prev->ce, obj, f, analyzer_tftp_conntrack_priv_cleanup);
 			} else {
 				evt_data = event_get_data(f->evt);
 			}
@@ -330,15 +334,17 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				return POM_OK;
 			}
 
-			struct proto_process_stack *s_next = &stack[stack_index + 1];
+			// Discard the block ID
+			pload += sizeof(uint16_t);
+			plen -= sizeof(uint16_t);
 
-			if (analyzer_pload_buffer_append(f->pload, s_next->pload, s_next->plen) != POM_OK)
+			if (analyzer_pload_buffer_append(f->pload, pload, plen) != POM_OK)
 				goto err;
 
 			uint32_t *size = PTYPE_UINT32_GETVAL(evt_data[analyzer_tftp_file_size].value);
-			*size += s_next->plen;
+			*size += plen;
 
-			if (s_next->plen < ANALYZER_TFTP_BLK_SIZE) {
+			if (plen < ANALYZER_TFTP_BLK_SIZE) {
 				// Got last packet !
 				data_set(evt_data[analyzer_tftp_file_size]);
 				
@@ -356,7 +362,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 		case tftp_error: {
 			conntrack_session_unlock(session);
 
-			struct analyzer_tftp_file *f = conntrack_get_priv(s->ce, obj);
+			struct analyzer_tftp_file *f = conntrack_get_priv(s_prev->ce, obj);
 			if (f && f->pload) {
 				int res = analyzer_pload_buffer_cleanup(f->pload);
 				res += event_process_end(f->evt);
