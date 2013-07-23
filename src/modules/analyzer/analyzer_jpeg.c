@@ -169,8 +169,8 @@ static void analyzer_jpeg_exif_entry_analyze(ExifEntry *entry, void *pload) {
 		return;
 	}
 
-	struct analyzer_pload_buffer *p = pload;
-	data_item_add_ptype(p->data, analyzer_jpeg_pload_exif, key, value);
+	struct data *data = analyzer_pload_buffer_get_data(pload);
+	data_item_add_ptype(data, analyzer_jpeg_pload_exif, key, value);
 
 }
 
@@ -182,7 +182,7 @@ static void analyzer_jpeg_exif_content_process(ExifContent *content, void *pload
 	if (ifd == EXIF_IFD_1 || ifd == EXIF_IFD_INTEROPERABILITY)
 		return;
 
-	exif_content_foreach_entry(content, analyzer_jpeg_exif_entry_process, pload);
+	exif_content_foreach_entry(content, analyzer_jpeg_exif_entry_analyze, pload);
 }
 #endif
 
