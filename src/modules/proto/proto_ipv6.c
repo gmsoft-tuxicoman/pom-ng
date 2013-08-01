@@ -172,8 +172,10 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 	registry_perf_inc(perf_frags, 1);
 
 	// Don't bother processing unsupported protocols
-	if (!next_proto)
+	if (!next_proto) {
+		conntrack_unlock(s->ce);
 		return PROTO_STOP;
+	}
 
 	uint16_t frag_offset = ntohs(fhdr->ip6f_offlg & IP6F_OFF_MASK);
 	int frag_more = fhdr->ip6f_offlg & IP6F_MORE_FRAG;
@@ -186,6 +188,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		tmp = malloc(sizeof(struct proto_ipv6_fragment));
 		if (!tmp) {
 			pom_oom(sizeof(struct proto_ipv6_fragment));
+			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
 		memset(tmp, 0, sizeof(struct proto_ipv6_fragment));
@@ -193,6 +196,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		tmp->t = conntrack_timer_alloc(s->ce, proto_ipv6_fragment_cleanup, tmp);
 		if (!tmp->t) {
 			free(tmp);
+			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
 		
@@ -202,6 +206,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		if (!tmp->multipart) {
 			conntrack_timer_cleanup(tmp->t);
 			free(tmp);
+			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		}
 
@@ -214,6 +219,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 	// Fragment was already handled
 	if (tmp->flags & PROTO_IPV6_FLAG_PROCESSED) {
 		registry_perf_inc(perf_frags_dropped, 1);
+		conntrack_unlock(s->ce);
 		return PROTO_STOP;
 	}
 	
@@ -222,6 +228,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		packet_multipart_cleanup(tmp->multipart);
 		conntrack_timer_cleanup(tmp->t);
 		free(tmp);
+		conntrack_unlock(s->ce);
 		return PROTO_ERR;
 	}
 	tmp->count++;
@@ -294,7 +301,6 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 	}
 
 	uint8_t nhdr = hdr->ip6_nxt;
-	int locked = 1;
 	int done = 0;
 	int res = PROTO_OK;
 	while (!done) {
@@ -306,8 +312,10 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 				struct ip6_ext *ehdr;
 				ehdr = s_next->pload;
 				unsigned int ehlen = (ehdr->ip6e_len + 1) * 8;
-				if (ehlen > s_next->plen)
+				if (ehlen > s_next->plen) {
+					conntrack_unlock(s->ce);
 					return PROTO_INVALID;
+				}
 				s_next->pload += ehlen;
 				s_next->plen -= ehlen;
 				nhdr = ehdr->ip6e_nxt;
@@ -330,11 +338,7 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 				break;
 
 			case IPPROTO_FRAGMENT: // 44
-				res = proto_ipv6_process_fragment(p, stack, stack_index);
-				locked = 0;
-				done = 1;
-				break;
-
+				return proto_ipv6_process_fragment(p, stack, stack_index);
 
 			case IPPROTO_NONE: // 59
 			default:
@@ -344,8 +348,7 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 		}
 	}
 
-	if (locked)
-		conntrack_unlock(s->ce);
+	conntrack_unlock(s->ce);
 	return res;
 }
 
