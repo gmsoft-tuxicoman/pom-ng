@@ -45,7 +45,7 @@ struct mod_reg_info* input_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_pcap_mod_register;
 	reg_info.unregister_func = input_pcap_mod_unregister;
-	reg_info.dependencies = "proto_80211, proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, proto_radiotap, ptype_string, ptype_bool";
+	reg_info.dependencies = "proto_80211, proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, proto_ppi, proto_radiotap, ptype_string, ptype_bool";
 
 	return &reg_info;
 }
@@ -207,6 +207,10 @@ static int input_pcap_common_open(struct input *i) {
 
 		case DLT_MPEGTS: // FIXME update this when upstream add it
 			datalink = "mpeg_ts";
+			break;
+
+		case DLT_PPI:
+			datalink = "ppi";
 			break;
 
 		default:
