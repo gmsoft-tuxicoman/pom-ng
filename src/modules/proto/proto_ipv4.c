@@ -324,7 +324,6 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 		int res = packet_multipart_process(tmp->multipart, stack, stack_index + 1);
 		tmp->multipart = NULL; // Multipart will be cleared automatically
 		if (res == PROTO_ERR) {
-			conntrack_unlock(s->ce);
 			return PROTO_ERR;
 		} else if (res == PROTO_INVALID) {
 			registry_perf_inc(perf_frags_dropped, tmp->count);
