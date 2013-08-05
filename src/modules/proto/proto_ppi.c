@@ -72,7 +72,7 @@ static int proto_ppi_process(void *proto_priv, struct packet *p, struct proto_pr
 	struct ppi_packet_header *ppkt = s->pload;
 
 	uint16_t hdr_len = le16(ppkt->pph_len);
-	if (hdr_len < s->plen)
+	if (hdr_len > s->plen)
 		return PROTO_INVALID;
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
