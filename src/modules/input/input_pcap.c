@@ -687,8 +687,10 @@ static int input_pcap_read(struct input *i) {
 	struct pcap_pkthdr *phdr;
 	const u_char *data;
 	int result = pcap_next_ex(p->p, &phdr, &data);
-	if (phdr->len > phdr->caplen) 
-		pomlog(POMLOG_WARN "Warning, some packets were truncated at capture time");
+	if (phdr->len > phdr->caplen && !p->warning) {
+		pomlog(POMLOG_WARN "Warning, some packets were truncated at capture time on input %s", i->name);
+		p->warning = 1;
+	}
 
 	if (result < 0) { // End of file or error 
 
@@ -699,6 +701,7 @@ static int input_pcap_read(struct input *i) {
 			
 			pcap_close(p->p);
 			p->p = NULL;
+			p->warning = 0;
 
 			if (input_pcap_dir_open_next(p) != POM_OK)
 				return POM_ERR;
