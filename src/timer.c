@@ -46,7 +46,7 @@ int timers_init() {
 	perf_timer_queues = core_add_perf("timer_queues", registry_perf_type_gauge, "Number of timer queues", "queues");
 
 	if (!perf_timer_processed || !perf_timer_queued || !perf_timer_allocated || !perf_timer_queues)
-		return POM_OK;
+		return POM_ERR;
 
 	return POM_OK;
 }
