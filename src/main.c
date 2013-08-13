@@ -324,6 +324,11 @@ int main(int argc, char *argv[]) {
 		goto err_timer;
 	}
 
+	if (packet_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing the packets");
+		goto err_packet;
+	}
+
 	system_store = open_system_datastore(system_store_uri);
 	if (!system_store) {
 		pomlog(POMLOG_ERR "Unable to open the system datastore");
@@ -386,6 +391,7 @@ err_addon:
 	addon_cleanup();
 err_dstore:
 err_timer:
+err_packet:
 	core_cleanup(1);
 err_core:
 	httpd_cleanup();

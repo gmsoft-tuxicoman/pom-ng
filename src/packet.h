@@ -50,6 +50,8 @@ struct packet_stream_parser {
 	unsigned int flags;
 };
 
+int packet_init();
+
 void packet_buffer_pool_release(struct packet_buffer *pb);
 void packet_pool_thread_cleanup();
 void packet_buffer_pool_thread_cleanup();

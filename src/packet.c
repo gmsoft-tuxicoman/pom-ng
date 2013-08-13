@@ -82,6 +82,26 @@ static __thread struct packet_buffer *packet_buffer_pool_tail[PACKET_BUFFER_POOL
 static struct packet_buffer *packet_buffer_global_pool = NULL;
 static pthread_mutex_t packet_buffer_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static struct registry_perf *perf_pkt_buff_used = NULL;
+static struct registry_perf *perf_pkt_buff_reserved = NULL;
+static struct registry_perf *perf_pkt_buff_bytes_used = NULL;
+static struct registry_perf *perf_pkt_buff_bytes_reserved = NULL;
+static struct registry_perf *perf_pkt_used = NULL;
+static struct registry_perf *perf_pkt_reserved = NULL;
+
+int packet_init() {
+	perf_pkt_buff_used = core_add_perf("pkt_buff_used", registry_perf_type_gauge, "Number of packet buffers in use", "pkts");
+	perf_pkt_buff_reserved = core_add_perf("pkt_buff_reserved", registry_perf_type_gauge, "Number of packet buffers reserved", "pkts");
+	perf_pkt_buff_bytes_used = core_add_perf("pkt_buff_bytes_used", registry_perf_type_gauge, "Number of bytes used by packets", "bytes");
+	perf_pkt_buff_bytes_reserved = core_add_perf("pkt_buff_bytes_reserved", registry_perf_type_gauge, "Number of bytes reserved for packets", "bytes");
+	perf_pkt_used = core_add_perf("pkt_used", registry_perf_type_gauge, "Number of packets in used", "pkts");
+	perf_pkt_reserved = core_add_perf("pkt_reserved", registry_perf_type_gauge, "Number of reserved packets", "pkts");
+
+	if (!perf_pkt_buff_used || !perf_pkt_buff_reserved || !perf_pkt_buff_bytes_used || !perf_pkt_buff_bytes_reserved || !perf_pkt_used || !perf_pkt_reserved)
+		return POM_ERR;
+	return POM_OK;
+}
+
 // Packet info pool stuff
 static __thread struct packet_info **packet_info_pool;
 
@@ -142,6 +162,8 @@ int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset)
 		else
 			packet_buffer_pool_head[pool_id] = pb->next;
 
+		registry_perf_dec(perf_pkt_buff_reserved, 1);
+		registry_perf_dec(perf_pkt_buff_bytes_reserved, packet_buffer_pool_size[pool_id]);
 	}
 
 	pb->pool_id = pool_id;
@@ -157,11 +179,18 @@ int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset)
 		packet_buffer_pool_head[pool_id] = pb;
 	packet_buffer_pool_tail[pool_id] = pb;
 
+	registry_perf_inc(perf_pkt_buff_used, 1);
+	registry_perf_inc(perf_pkt_buff_bytes_used, packet_buffer_pool_size[pool_id]);
+
 	return POM_OK;
 }
 
 void packet_buffer_pool_release(struct packet_buffer *pb) {
 
+	registry_perf_dec(perf_pkt_buff_used, 1);
+	registry_perf_dec(perf_pkt_buff_bytes_used, packet_buffer_pool_size[pb->pool_id]);
+	registry_perf_inc(perf_pkt_buff_reserved, 1);
+	registry_perf_inc(perf_pkt_buff_bytes_reserved, packet_buffer_pool_size[pb->pool_id]);
 	pb->pool_id = PACKET_BUFFER_POOL_ID_UNUSED;
 }
 
@@ -235,8 +264,9 @@ struct packet *packet_pool_get() {
 
 		if (tmp->pkt_buff) {
 			packet_buffer_pool_release(tmp->pkt_buff);
-
 		}
+
+		registry_perf_dec(perf_pkt_reserved, 1);
 	}
 
 
@@ -253,6 +283,8 @@ struct packet *packet_pool_get() {
 
 	// Init the refcount
 	tmp->refcount = 1;
+
+	registry_perf_inc(perf_pkt_used, 1);
 
 	return tmp;
 }
@@ -300,6 +332,8 @@ int packet_pool_release(struct packet *p) {
 	if (p->refcount == 1 && p->pkt_buff) {
 		packet_buffer_pool_release(p->pkt_buff);
 		p->pkt_buff = NULL;
+		registry_perf_dec(perf_pkt_used, 1);
+		registry_perf_inc(perf_pkt_reserved, 1);
 	}
 
 	__sync_fetch_and_sub(&p->refcount, 1);
