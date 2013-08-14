@@ -27,7 +27,7 @@
 #include <pom-ng/ptype_uint32.h>
 
 #ifdef HAVE_LIBEXIF
-#include <exif-data.h>
+#include <libexif/exif-data.h>
 #endif
 
 #if 0
