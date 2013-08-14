@@ -219,6 +219,13 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 	// Calculate the length
 	unsigned char *data_tmp = *data;
 	unsigned char len = *data_tmp;
+
+	if (!len) { // Special case where the RR name is empty, seen for EDNS0 (RFC2671)
+		*name = malloc(1);
+		**name = 0;
+		return POM_OK;
+	}
+
 	while (len) {
 
 		// Check if it's a pointer or a normal label
