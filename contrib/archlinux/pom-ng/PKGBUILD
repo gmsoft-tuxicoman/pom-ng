@@ -1,0 +1,37 @@
+# Contributor: Guy Martin <gmsoft@tuxicoman.be>
+# Maintainer: Gatien Bovyn <gatien.bovyn@gmail.com>
+pkgname=pom-ng
+pkgver=v0.0.12
+pkgrel=1
+pkgdesc="Real time network forensic tool."
+url="http://www.packet-o-matic.org/"
+license=('GPL')
+arch=('any')
+depends=('libxml2' 'libmicrohttpd' 'xmlrpc-c' 'lua51' 'file' 'libpcap' 'zlib' 'libjpeg' 'libexif' 'sqlite')
+makedepends=('git' 'gcc' 'binutils' 'make' 'libtool' 'pkg-config')
+provides=('pom-ng')
+install=$pkgname.install
+source=('git://github.com/gmsoft-tuxicoman/pom-ng.git')
+md5sums=('SKIP')
+
+_gitname="pom-ng"
+
+
+pkgver () {
+  cd $_gitname/
+  echo $(git describe --tags | sed 's/^release-//; s/-/./g')
+}
+ 
+build() {
+  cd $_gitname/
+  autoreconf -f -i
+  ./configure
+  echo $PWD
+  cp /usr/include/libexif/exif-data.h .
+  make PREFIX=/usr
+}
+ 
+package() {
+  cd $_gitname/
+  make PREFIX=/usr DESTDIR="$pkgdir" install
+}
