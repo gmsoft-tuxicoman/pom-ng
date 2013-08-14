@@ -56,48 +56,14 @@
 #undef PACKET_INFO_POOL_ALLOC_DEBUG
 
 
-// Packet pool stuff
-static __thread struct packet *packet_pool_head = NULL;
-static __thread struct packet *packet_pool_tail = NULL;
-static struct packet *packet_pool_global_head = NULL;
-static pthread_mutex_t packet_pool_lock = PTHREAD_MUTEX_INITIALIZER;
-
-
-// Packet buffer pool stuff
-#define PACKET_BUFFER_POOL_COUNT 9
-static size_t packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT] = {
-	80, // For small packets
-	200, // Special one for MPEG packets which are 188 bytes long
-	600, // Many packets are 576 bytes long
-	1300, // Intermediate one
-	1600, // For packets of size 1500 (and a bit more in case of vlan/wifi/etc)
-	2048, // Big packets
-	4096, // Even bigger packets
-	9100, // Jumbo frames
-	65535, // Very rare situations where captured packets are not downsized to MTU yet
-};
-
-static __thread struct packet_buffer *packet_buffer_pool_head[PACKET_BUFFER_POOL_COUNT] = { 0 };
-static __thread struct packet_buffer *packet_buffer_pool_tail[PACKET_BUFFER_POOL_COUNT] = { 0 };
-static struct packet_buffer *packet_buffer_global_pool = NULL;
-static pthread_mutex_t packet_buffer_pool_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static struct registry_perf *perf_pkt_buff_used = NULL;
-static struct registry_perf *perf_pkt_buff_reserved = NULL;
-static struct registry_perf *perf_pkt_buff_bytes_used = NULL;
-static struct registry_perf *perf_pkt_buff_bytes_reserved = NULL;
-static struct registry_perf *perf_pkt_used = NULL;
-static struct registry_perf *perf_pkt_reserved = NULL;
+static struct registry_perf *perf_pkt_buff = NULL;
+static struct registry_perf *perf_pkt_in_use = NULL;
 
 int packet_init() {
-	perf_pkt_buff_used = core_add_perf("pkt_buff_used", registry_perf_type_gauge, "Number of packet buffers in use", "pkts");
-	perf_pkt_buff_reserved = core_add_perf("pkt_buff_reserved", registry_perf_type_gauge, "Number of packet buffers reserved", "pkts");
-	perf_pkt_buff_bytes_used = core_add_perf("pkt_buff_bytes_used", registry_perf_type_gauge, "Number of bytes used by packets", "bytes");
-	perf_pkt_buff_bytes_reserved = core_add_perf("pkt_buff_bytes_reserved", registry_perf_type_gauge, "Number of bytes reserved for packets", "bytes");
-	perf_pkt_used = core_add_perf("pkt_used", registry_perf_type_gauge, "Number of packets in used", "pkts");
-	perf_pkt_reserved = core_add_perf("pkt_reserved", registry_perf_type_gauge, "Number of reserved packets", "pkts");
+	perf_pkt_buff = core_add_perf("pkt_buff", registry_perf_type_gauge, "Number of bytes used by packets", "bytes");
+	perf_pkt_in_use = core_add_perf("pkt_in_use", registry_perf_type_gauge, "Number of packets in use", "pkts");
 
-	if (!perf_pkt_buff_used || !perf_pkt_buff_reserved || !perf_pkt_buff_bytes_used || !perf_pkt_buff_bytes_reserved || !perf_pkt_used || !perf_pkt_reserved)
+	if (!perf_pkt_buff || !perf_pkt_in_use)
 		return POM_ERR;
 	return POM_OK;
 }
@@ -105,186 +71,52 @@ int packet_init() {
 // Packet info pool stuff
 static __thread struct packet_info **packet_info_pool;
 
-int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset) {
+int packet_buffer_alloc(struct packet *pkt, size_t size, size_t align_offset) {
 
 	if (align_offset >= PACKET_BUFFER_ALIGNMENT) {
 		pomlog(POMLOG_ERR "Alignment offset too big");
 		return POM_ERR;
 	}
 
-	size_t tot_size = size + align_offset + PACKET_BUFFER_ALIGNMENT;
+	size_t tot_size = size + align_offset + PACKET_BUFFER_ALIGNMENT + sizeof(struct packet_buffer);
 
-	if (tot_size > packet_buffer_pool_size[PACKET_BUFFER_POOL_COUNT - 1]) {
-		pomlog(POMLOG_ERR "Requested size too big : %llu", size);
+	struct packet_buffer *pb = malloc(tot_size);
+	if (!pb) {
+		pom_oom(tot_size);
 		return POM_ERR;
 	}
+	memset(pb, 0, tot_size);
 
-	unsigned int pool_id;
-	for (pool_id = 0; pool_id < PACKET_BUFFER_POOL_COUNT && packet_buffer_pool_size[pool_id] < tot_size; pool_id++);
+	pb->base_buff = (void*)pb + sizeof(struct packet_buffer);
+	pb->aligned_buff = (void*) (((long)pb->base_buff & ~(PACKET_BUFFER_ALIGNMENT - 1)) + PACKET_BUFFER_ALIGNMENT + align_offset);
+	pb->buff_size = tot_size;
 
-	struct packet_buffer *pb = packet_buffer_pool_head[pool_id];
-	unsigned int i, num_threads = core_get_num_threads();
-
-
-	for (i = 0; pb && i < num_threads; i++) {
-		if (pb->pool_id != PACKET_BUFFER_POOL_ID_UNUSED) {
-			pb = pb->next;
-		} else {
-			break;
-		}
-	}
-
-	if (!pb || i >= num_threads) {
-
-		// Allocate a new one
-		size_t alloc_size = packet_buffer_pool_size[pool_id] + sizeof(struct packet_buffer);
-
-		pb = malloc(alloc_size);
-		if (!pb) {
-			pom_oom(alloc_size);
-			return POM_ERR;
-		}
-		memset(pb, 0, alloc_size);
-
-		pb->base_buff = (void*)pb + sizeof(struct packet_buffer);
-		pb->aligned_buff = (void*) (((long)pb->base_buff & ~(PACKET_BUFFER_ALIGNMENT - 1)) + PACKET_BUFFER_ALIGNMENT + align_offset);
-
-	} else {
-		// Remove the packet from the queue
-
-		if (pb->next)
-			pb->next->prev = pb->prev;
-		else
-			packet_buffer_pool_tail[pool_id] = pb->prev;
-
-		if (pb->prev)
-			pb->prev->next = pb->next;
-		else
-			packet_buffer_pool_head[pool_id] = pb->next;
-
-		registry_perf_dec(perf_pkt_buff_reserved, 1);
-		registry_perf_dec(perf_pkt_buff_bytes_reserved, packet_buffer_pool_size[pool_id]);
-	}
-
-	pb->pool_id = pool_id;
 	pkt->pkt_buff = pb;
 	pkt->len = size;
 	pkt->buff = pb->aligned_buff;
 
-	// Add it back to the end of the pool
-	pb->prev = packet_buffer_pool_tail[pool_id];
-	if (pb->prev)
-		pb->prev->next = pb;
-	else
-		packet_buffer_pool_head[pool_id] = pb;
-	packet_buffer_pool_tail[pool_id] = pb;
 
-	registry_perf_inc(perf_pkt_buff_used, 1);
-	registry_perf_inc(perf_pkt_buff_bytes_used, packet_buffer_pool_size[pool_id]);
+	registry_perf_inc(perf_pkt_buff, tot_size);
 
 	return POM_OK;
 }
 
-void packet_buffer_pool_release(struct packet_buffer *pb) {
+void packet_buffer_release(struct packet_buffer *pb) {
 
-	registry_perf_dec(perf_pkt_buff_used, 1);
-	registry_perf_dec(perf_pkt_buff_bytes_used, packet_buffer_pool_size[pb->pool_id]);
-	registry_perf_inc(perf_pkt_buff_reserved, 1);
-	registry_perf_inc(perf_pkt_buff_bytes_reserved, packet_buffer_pool_size[pb->pool_id]);
-	pb->pool_id = PACKET_BUFFER_POOL_ID_UNUSED;
+	registry_perf_dec(perf_pkt_buff, pb->buff_size);
+	free(pb);
 }
 
-void packet_buffer_pool_thread_cleanup() {
 
-	pom_mutex_lock(&packet_buffer_pool_lock);
+struct packet *packet_alloc() {
 
-	unsigned int i;
-	for (i = 0; i < PACKET_BUFFER_POOL_COUNT; i++) {
-		if (!packet_buffer_pool_head[i])
-			continue;
-
-		packet_buffer_pool_tail[i]->next = packet_buffer_global_pool;
-		packet_buffer_global_pool = packet_buffer_pool_head[i];
-
-		packet_buffer_pool_tail[i] = NULL;
-		packet_buffer_pool_head[i] = NULL;
-	}
-	pom_mutex_unlock(&packet_buffer_pool_lock);
-}
-
-int packet_buffer_pool_cleanup() {
-
-	struct packet_buffer *tmp = packet_buffer_global_pool;
-
-	while (tmp) {
-		if (tmp->pool_id != PACKET_BUFFER_POOL_ID_UNUSED)
-			pomlog(POMLOG_WARN "A buffer was still in use on packet_buffer_pool_cleanup().");
-
-		packet_buffer_global_pool = tmp->next;
-		free(tmp);
-		tmp = packet_buffer_global_pool;
-	}
-
-	return POM_OK;
-}
-
-struct packet *packet_pool_get() {
-
-	struct packet *tmp = packet_pool_head;
-
-	unsigned int i, num_threads = core_get_num_threads();
-
-	// Try to find a free packet in the pool for at least the number of threads
-	for (i = 0; tmp && i < num_threads; i++) {
-		if (tmp->refcount)
-			tmp = tmp->next;
-		else
-			break;
-	}
-
-	if (!tmp || i >= num_threads) {
-		// No free packet found
-		// Alloc a new packet
-		tmp = malloc(sizeof(struct packet));
-		if (!tmp) {
-			pom_oom(sizeof(struct packet));
-			return NULL;
-		}
-	} else {
-		// Remove the packet from the queue
-		if (tmp->next)
-			tmp->next->prev = tmp->prev;
-		else
-			packet_pool_tail = tmp->prev;
-
-		if (tmp->prev)
-			tmp->prev->next = tmp->next;
-		else
-			packet_pool_head = tmp->next;
-
-		if (tmp->pkt_buff) {
-			packet_buffer_pool_release(tmp->pkt_buff);
-		}
-
-		registry_perf_dec(perf_pkt_reserved, 1);
-	}
-
-
+	struct packet *tmp = malloc(sizeof(struct packet));
 	memset(tmp, 0, sizeof(struct packet));
-
-	// Add the packet at the end of the pool
-	
-	tmp->prev = packet_pool_tail;
-	if (tmp->prev)
-		tmp->prev->next = tmp;
-	else
-		packet_pool_head = tmp;
-	packet_pool_tail = tmp;
 
 	// Init the refcount
 	tmp->refcount = 1;
 
-	registry_perf_inc(perf_pkt_used, 1);
+	registry_perf_inc(perf_pkt_in_use, 1);
 
 	return tmp;
 }
@@ -296,12 +128,12 @@ struct packet *packet_clone(struct packet *src, unsigned int flags) {
 	if (!(flags & PACKET_FLAG_FORCE_NO_COPY) && !src->pkt_buff) {
 		// If it doesn't have a pkt_buff structure, it means it was not allocated by us
 		// That means that the packet is somewhere probably in a ringbuffer (pcap)
-		dst = packet_pool_get();
+		dst = packet_alloc();
 		if (!dst)
 			return NULL;
 		// FIXME get the alignment offset from the input
-		if (packet_buffer_pool_get(dst, src->len, 0) != POM_OK) {
-			packet_pool_release(dst);
+		if (packet_buffer_alloc(dst, src->len, 0) != POM_OK) {
+			packet_release(dst);
 			return NULL;
 		}
 
@@ -320,7 +152,7 @@ struct packet *packet_clone(struct packet *src, unsigned int flags) {
 	return src;
 }
 
-int packet_pool_release(struct packet *p) {
+int packet_release(struct packet *p) {
 
 	// Release the multipart
 	struct packet_multipart *multipart = __sync_fetch_and_and(&p->multipart, 0);
@@ -329,47 +161,16 @@ int packet_pool_release(struct packet *p) {
 
 	// The packet refcount will be 0 afterwards
 	// We can clean up the buffer if any
-	if (p->refcount == 1 && p->pkt_buff) {
-		packet_buffer_pool_release(p->pkt_buff);
-		p->pkt_buff = NULL;
-		registry_perf_dec(perf_pkt_used, 1);
-		registry_perf_inc(perf_pkt_reserved, 1);
+	if (p->refcount > 1) {
+		__sync_fetch_and_sub(&p->refcount, 1);
+		return POM_OK;
 	}
-
-	__sync_fetch_and_sub(&p->refcount, 1);
-
-	return POM_OK;
-}
-
-void packet_pool_thread_cleanup() {
 	
-	if (!packet_pool_head)
-		return;
+	if (p->pkt_buff)
+		packet_buffer_release(p->pkt_buff);
 
-	pom_mutex_lock(&packet_pool_lock);
-	packet_pool_tail->next = packet_pool_global_head;
-	packet_pool_global_head = packet_pool_head;
-	pom_mutex_unlock(&packet_pool_lock);
-
-	packet_pool_head = NULL;
-	packet_pool_tail = NULL;
-}
-
-int packet_pool_cleanup() {
-
-
-	struct packet *tmp = packet_pool_global_head;
-	while (tmp) {
-		if (tmp->refcount)
-			pomlog(POMLOG_WARN "A packet was not released, refcount : %u", tmp->refcount);
-
-		if (tmp->pkt_buff)
-			packet_buffer_pool_release(tmp->pkt_buff);
-	
-		packet_pool_global_head = tmp->next;
-		free(tmp);
-		tmp = packet_pool_global_head;
-	}
+	registry_perf_dec(perf_pkt_in_use, 1);
+	free(p);
 
 	return POM_OK;
 }
@@ -531,7 +332,7 @@ int packet_multipart_cleanup(struct packet_multipart *m) {
 		tmp = m->head;
 		m->head = tmp->next;
 
-		packet_pool_release(tmp->pkt);
+		packet_release(tmp->pkt);
 		free(tmp);
 
 	}
@@ -640,7 +441,7 @@ int packet_multipart_add_packet(struct packet_multipart *multipart, struct packe
 
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index) {
 
-	struct packet *p = packet_pool_get();
+	struct packet *p = packet_alloc();
 	if (!p) {
 		packet_multipart_cleanup(multipart);
 		return PROTO_ERR;
@@ -648,8 +449,8 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 
 
 	// FIXME align offset
-	if (packet_buffer_pool_get(p, multipart->cur, 0)) {
-		packet_pool_release(p);
+	if (packet_buffer_alloc(p, multipart->cur, 0)) {
+		packet_release(p);
 		packet_multipart_cleanup(multipart);
 		pom_oom(multipart->cur);
 		return PROTO_ERR;
@@ -659,7 +460,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	for (; tmp; tmp = tmp->next) {
 		if (tmp->offset + tmp->len > multipart->cur) {
 			pomlog(POMLOG_DEBUG "Offset in packet fragment is bigger than packet size.");
-			packet_pool_release(p);
+			packet_release(p);
 			packet_multipart_cleanup(multipart);
 			return PROTO_INVALID;
 		}
@@ -678,7 +479,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 
 	int res = core_process_multi_packet(stack, stack_index, p);
 
-	packet_pool_release(p);
+	packet_release(p);
 
 	return res;
 }

@@ -209,7 +209,7 @@ static void stream_free_packet(struct stream_pkt *p) {
 	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].proto; i++)
 		packet_info_pool_release(p->stack[i].pkt_info, p->stack[i].proto->id);
 	free(p->stack);
-	packet_pool_release(p->pkt);
+	packet_release(p->pkt);
 	free(p);
 }
 
@@ -459,7 +459,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 	p->stack = core_stack_backup(stack, pkt, p->pkt);
 	if (!p->stack) {
 		stream_end_process_packet(stream);
-		packet_pool_release(p->pkt);
+		packet_release(p->pkt);
 		free(p);
 		return PROTO_ERR;
 	}

@@ -672,13 +672,13 @@ static int input_dvb_read(struct input *i) {
 	ssize_t len = 0, r = 0;
 
 	// Get a new place holder for our packet
-	struct packet *pkt = packet_pool_get();
+	struct packet *pkt = packet_alloc();
 
 	if (!pkt)
 		return POM_ERR;
 
-	if (packet_buffer_pool_get(pkt, MPEG_TS_LEN, 0) != POM_OK) {
-		packet_pool_release(pkt);
+	if (packet_buffer_alloc(pkt, MPEG_TS_LEN, 0) != POM_OK) {
+		packet_release(pkt);
 		return POM_ERR;
 	}
 

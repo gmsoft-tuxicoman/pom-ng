@@ -67,11 +67,11 @@ struct packet_info {
 	struct packet_info *next;
 };
 
-int packet_buffer_pool_get(struct packet *pkt, size_t size, size_t align_offset);
+int packet_buffer_alloc(struct packet *pkt, size_t size, size_t align_offset);
 
-struct packet *packet_pool_get();
+struct packet *packet_alloc();
 struct packet *packet_clone(struct packet *src, unsigned int flags);
-int packet_pool_release(struct packet *p);
+int packet_release(struct packet *p);
 
 struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags);
 int packet_multipart_cleanup(struct packet_multipart *m);

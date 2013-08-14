@@ -424,8 +424,6 @@ void *input_process_thread(void *param) {
 	i->running = INPUT_RUN_STOPPED;
 	registry_perf_timeticks_stop(i->perf_runtime);
 	pom_mutex_unlock(&i->lock);
-	packet_pool_thread_cleanup();
-	packet_buffer_pool_thread_cleanup();
 	pomlog("Input %s stopped", i->name);
 
 	return NULL;

@@ -392,12 +392,12 @@ static int input_kismet_drone_read(struct input *i) {
 						return POM_ERR;
 				}
 
-				struct packet *pkt = packet_pool_get();
+				struct packet *pkt = packet_alloc();
 				if (!pkt)
 					return POM_ERR;
 
-				if (packet_buffer_pool_get(pkt, pkt_len, 0) != POM_OK) {
-					packet_pool_release(pkt);
+				if (packet_buffer_alloc(pkt, pkt_len, 0) != POM_OK) {
+					packet_release(pkt);
 					return POM_ERR;
 				}
 

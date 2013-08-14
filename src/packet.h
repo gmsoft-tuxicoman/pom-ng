@@ -27,14 +27,12 @@
 #include <pom-ng/packet.h>
 
 #define PACKET_BUFFER_ALIGNMENT 4
-#define PACKET_BUFFER_POOL_ID_UNUSED -1
 
 struct packet_buffer {
 
 	void *base_buff;
 	void *aligned_buff;
-	volatile int pool_id;
-	struct packet_buffer *next, *prev;
+	size_t buff_size;
 
 	// The actual data will be after this
 	
@@ -52,11 +50,7 @@ struct packet_stream_parser {
 
 int packet_init();
 
-void packet_buffer_pool_release(struct packet_buffer *pb);
-void packet_pool_thread_cleanup();
-void packet_buffer_pool_thread_cleanup();
-int packet_buffer_pool_cleanup();
-
+void packet_buffer_release(struct packet_buffer *pb);
 
 struct packet_info *packet_info_pool_get(struct proto *p);
 struct packet_info *packet_info_pool_clone(struct proto *p, struct packet_info *info);

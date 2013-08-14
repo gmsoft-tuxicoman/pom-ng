@@ -454,8 +454,8 @@ void *core_processing_thread_func(void *priv) {
 
 		pom_rwlock_unlock(&core_processing_lock);
 
-		if (packet_pool_release(pkt) != POM_OK) {
-			pomlog(POMLOG_ERR "Error while releasing the packet to the pool");
+		if (packet_release(pkt) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while releasing the packet");
 			break;
 		}
 		
@@ -467,8 +467,6 @@ void *core_processing_thread_func(void *priv) {
 
 	halt("Processing thread encountered an error", 1);
 end:
-	packet_pool_thread_cleanup();
-	packet_buffer_pool_thread_cleanup();
 	packet_info_pool_cleanup();
 
 	return NULL;
@@ -726,10 +724,6 @@ static int core_processing_stop() {
 
 	// Free all the conntracks
 	proto_finish();
-
-	// Cleanup the packet pool
-	packet_pool_cleanup();
-	packet_buffer_pool_cleanup();
 
 	return POM_OK;
 }
