@@ -10,7 +10,6 @@ arch=('any')
 depends=('libxml2' 'libmicrohttpd' 'xmlrpc-c' 'lua51' 'file' 'libpcap' 'zlib' 'libjpeg' 'libexif' 'sqlite')
 makedepends=('git' 'gcc' 'binutils' 'make' 'libtool' 'pkg-config')
 provides=('pom-ng')
-install=$pkgname.install
 source=('git://github.com/gmsoft-tuxicoman/pom-ng.git')
 md5sums=('SKIP')
 
