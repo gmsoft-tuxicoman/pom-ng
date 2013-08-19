@@ -32,6 +32,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <ieee80211.h>
+#include <stddef.h>
 
 static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL;
 
@@ -107,7 +108,7 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	if (s->plen < 12) // Min length is 12 (CTRL ACK frame)
+	if (s->plen < offsetof(struct ieee80211_hdr, duration)) // We need at least the type field
 		return PROTO_INVALID;
 
 	struct ieee80211_hdr *i80211hdr = s->pload;
@@ -122,10 +123,10 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 	switch (i80211hdr->u1.fc.type) {
 		case WLAN_FC_TYPE_MGMT:
 			/* Management frames */
-			if (s->plen < 24)
-				return PROTO_INVALID;
 			switch (i80211hdr->u1.fc.subtype) {
 				case WLAN_FC_SUBTYPE_PROBEREQ:
+					if (s->plen < 24)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], i80211hdr->addr2);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr2);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_bssid], i80211hdr->addr2);
@@ -134,12 +135,16 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 				case WLAN_FC_SUBTYPE_DISASSOC:
 				case WLAN_FC_SUBTYPE_AUTH:
 				case WLAN_FC_SUBTYPE_DEAUTH:
+					if (s->plen < 24)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr1);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], i80211hdr->addr2);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_bssid], i80211hdr->addr3);
 					offt = 24;
 					break;
 				default:
+					if (s->plen < 32)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr1);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], i80211hdr->addr2);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_bssid], i80211hdr->addr3);
@@ -154,6 +159,8 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 				case WLAN_FC_SUBTYPE_RTS:
 				case WLAN_FC_SUBTYPE_CFEND:
 				case WLAN_FC_SUBTYPE_CFENDACK:
+					if (s->plen < 16)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr1);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], i80211hdr->addr2);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_bssid], empty_addr);
@@ -162,6 +169,8 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 
 				case WLAN_FC_SUBTYPE_CTS:
 				case WLAN_FC_SUBTYPE_ACK:
+					if (s->plen < 10)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr1);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], empty_addr);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_bssid], empty_addr);
@@ -169,12 +178,16 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 					break;
 
 				case WLAN_FC_SUBTYPE_BLOCKACKREQ:
+					if (s->plen < 20)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr1);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], i80211hdr->addr2);
 					offt = 20; // 16 + 2 for BAR Control + 2 BAR Seq Control
 					break;
 				
 				case WLAN_FC_SUBTYPE_BLOCKACK:
+					if (s->plen < 148)
+						return PROTO_INVALID;
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_dst], i80211hdr->addr1);
 					PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_80211_field_src], i80211hdr->addr2);
 					offt = 148; // 16 + 2 for BA Control + 2 Seq Control + 128 BA Bitmap
