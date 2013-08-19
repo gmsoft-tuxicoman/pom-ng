@@ -238,7 +238,7 @@ int output_log_txt_open(void *output_priv) {
 		if (res < 0)
 			goto err;
 		if (res == DATASET_QUERY_OK) {
-			pomlog(POMLOG_ERR "Log template %s does not exists");
+			pomlog(POMLOG_ERR "Log template %s does not exists", template_name);
 			goto err;
 		}
 		char *name = PTYPE_STRING_GETVAL(v[0].value);
