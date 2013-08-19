@@ -440,8 +440,8 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 
 				char *colon = strchr(creds_buff, ':');
 				if (!colon) {
+					pomlog(POMLOG_DEBUG "Unable to parse the basic auth credentials");
 					free(creds_buff);
-					pomlog(POMLOG_DEBUG "Unable to parse the basic auth credentials : \"%s\"", creds_buff);
 					continue;
 				}
 				*colon = 0;
