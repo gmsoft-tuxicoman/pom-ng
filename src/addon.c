@@ -41,8 +41,10 @@ int addon_init() {
 	DIR *d;
 	d = opendir(ADDON_DIR);
 	if (!d) {
-		pomlog(POMLOG_ERR "Could not open addon directory %s for browsing : %s", ADDON_DIR, pom_strerror(errno));
-		goto err;
+		pomlog(POMLOG_INFO "Could not open addon directory %s for browsing : %s", ADDON_DIR, pom_strerror(errno));
+		pomlog(POMLOG_INFO "You might want to install addons.", ADDON_DIR, pom_strerror(errno));
+		closedir(d);
+		return POM_OK;
 	}
 
 	struct dirent tmp, *dp;
