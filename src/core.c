@@ -747,6 +747,7 @@ int core_set_state(enum core_state state) {
 		pom_mutex_unlock(&core_state_lock);
 		return POM_ERR;
 	}
+	pom_mutex_unlock(&core_state_lock);
 
 	if (state == core_state_idle) {
 
@@ -780,7 +781,6 @@ int core_set_state(enum core_state state) {
 			}
 		}
 	}
-	pom_mutex_unlock(&core_state_lock);
 	return res;
 }
 
