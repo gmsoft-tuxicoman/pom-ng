@@ -24,6 +24,11 @@
 
 #include "output_log.h"
 
+struct output_log_xml_evt {
+	struct event_reg *evt;
+	struct output_log_xml_evt *next;
+};
+
 struct output_log_xml_priv {
 
 	int fd;
@@ -31,7 +36,7 @@ struct output_log_xml_priv {
 	struct ptype *p_filename;
 	struct ptype *p_source;
 
-	struct event_reg *evt;
+	struct output_log_xml_evt *evt_lst;
 
 	struct registry_perf *perf_events;
 };

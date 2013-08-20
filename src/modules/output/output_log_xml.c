@@ -122,7 +122,7 @@ int addon_log_xml_open(void *output_priv) {
 	struct output_log_xml_priv *priv = output_priv;
 
 	if (priv->fd != -1) {
-		pomlog(POMLOG_ERR "Output already started");
+		pomlog(POMLOG_ERR "Output log_xml already started");
 		return POM_ERR;
 	}
 
@@ -149,34 +149,60 @@ int output_log_xml_open(void *output_priv) {
 	if (addon_log_xml_open(priv) != POM_OK)
 		return POM_ERR;
 
-	char *src_name = PTYPE_STRING_GETVAL(priv->p_source);
-	if (!strlen(src_name)) {
+	if (!strlen(PTYPE_STRING_GETVAL(priv->p_source))) {
 		pomlog(POMLOG_ERR "You need to specify a source for this output");
 		goto err;
 	}
 
-	priv->evt = event_find(src_name);
+	char *src = strdup(PTYPE_STRING_GETVAL(priv->p_source));
 
-	if (!priv->evt) {
-		pomlog(POMLOG_ERR "Source \"%s\" does not exists", src_name);
+	if (!src) {
+		pom_oom(strlen(PTYPE_STRING_GETVAL(priv->p_source)));
 		goto err;
 	}
 
+	char *token, *saveptr, *str = src;
+	for (; ; str = NULL) {
+		token = strtok_r(str, ", ", &saveptr);
 
-	// Listen to the right event
-	if (event_listener_register(priv->evt, priv, NULL, output_log_xml_process) != POM_OK)
-		goto err;
+		if (!token)
+			break;
+
+		struct event_reg *evt = event_find(token);
+		if (!evt) {
+			pomlog(POMLOG_WARN "Event \"%s\" does not exists", token);
+			continue;
+		}
+
+		struct output_log_xml_evt *evt_lst = malloc(sizeof(struct output_log_xml_evt));
+		if (!evt_lst) {
+			pom_oom(sizeof(struct output_log_xml_evt));
+			free(src);
+			goto err;
+		}
+		memset(evt_lst, 0, sizeof(struct output_log_xml_evt));
+		evt_lst->evt = evt;
+
+		// Start listening to the event
+		if (event_listener_register(evt, priv, NULL, output_log_xml_process) != POM_OK) {
+			free(evt_lst);
+			free(src);
+			goto err;
+		}
+
+		evt_lst->next = priv->evt_lst;
+		priv->evt_lst = evt_lst;
+
+
+	}
+
+	free(src);
+
 
 	return POM_OK;
 
 err:
-	if (priv->fd != -1) {
-		close(priv->fd);
-		priv->fd = -1;
-	}
-
-	priv->evt = NULL;
-
+	output_log_xml_close(priv);
 
 	return POM_ERR;
 
@@ -196,6 +222,8 @@ int addon_log_xml_close(void *output_priv) {
 		return POM_ERR;
 	}
 
+	priv->fd = -1;
+
 	return POM_OK;
 }
 
@@ -206,7 +234,12 @@ int output_log_xml_close(void *output_priv) {
 	if (addon_log_xml_close(priv) != POM_OK)
 		return POM_ERR;
 
-	event_listener_unregister(priv->evt, priv);
+	while (priv->evt_lst) {
+		struct output_log_xml_evt *tmp = priv->evt_lst;
+		priv->evt_lst = tmp->next;
+		event_listener_unregister(tmp->evt, priv);
+		free(tmp);
+	}
 
 	return POM_OK;
 }
