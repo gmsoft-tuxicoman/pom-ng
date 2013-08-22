@@ -651,8 +651,15 @@ int stream_force_dequeue(struct stream *stream) {
 	// If we didn't we now know about the sequence
 	int dir_flag = (next_dir == POM_DIR_FWD ? STREAM_FLAG_GOT_FWD_STARTSEQ : STREAM_FLAG_GOT_REV_STARTSEQ);
 	if (!(stream->flags & dir_flag)) {
-		stream->flags |= dir_flag;
 		stream->cur_seq[next_dir] = p->seq;
+
+		// We know about the reverse direction as well now
+		if (stream->flags & STREAM_FLAG_BIDIR) {
+			stream->flags |= STREAM_FLAG_GOT_BOTH_STARTSEQ;
+			stream->cur_seq[POM_DIR_REVERSE(next_dir)] = p->ack;
+		} else {
+			stream->flags |= dir_flag;
+		}
 	}
 
 	int res = PROTO_OK;
