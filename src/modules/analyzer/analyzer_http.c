@@ -619,11 +619,11 @@ int analyzer_http_event_finalize_process(struct analyzer_http_ce_priv *cpriv) {
 
 	struct analyzer_http_event_list *elist = cpriv->evt_head;
 	struct event *evt = elist->evt;
-	struct analyzer_http_request_event_priv *epriv = event_get_priv(evt);
 
+/*	struct analyzer_http_request_event_priv *epriv = event_get_priv(evt);
 	if (!epriv->query_event || !epriv->response_event)
 		pomlog(POMLOG_DEBUG "Processing incomplete event !");
-
+*/
 	cpriv->evt_head = cpriv->evt_head->next;
 	if (cpriv->evt_head)
 		cpriv->evt_head->prev = NULL;

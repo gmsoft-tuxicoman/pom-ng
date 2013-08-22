@@ -641,7 +641,7 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					for (i = 0; i < tok_len; i++) {
 						if ((token[i]) < 'A' || (token[i] > 'Z' && token[i] < 'a') || (token[i] > 'z')) {
 							// Definitely not a HTTP method
-							pomlog(POMLOG_DEBUG "Not identified as an HTTP method");
+							// pomlog(POMLOG_DEBUG "Not identified as an HTTP method");
 							return PROTO_INVALID;
 						}
 					}

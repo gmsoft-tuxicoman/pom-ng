@@ -373,7 +373,6 @@ static int proto_ipv6_fragment_cleanup(struct conntrack_entry *ce, void *priv, p
 	conntrack_unlock(ce);
 
 	if (!(f->flags & PROTO_IPV6_FLAG_PROCESSED)) {
-		pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
 		registry_perf_inc(perf_frags_dropped, f->count);
 	}
 
@@ -398,7 +397,6 @@ static int proto_ipv6_conntrack_cleanup(void *ce_priv) {
 		frag_list = f->next;
 
 		if (!(f->flags & PROTO_IPV6_FLAG_PROCESSED)) {
-			pomlog(POMLOG_DEBUG "Cleaning up unprocessed fragment");
 			registry_perf_inc(perf_frags_dropped, f->count);
 		}
 
