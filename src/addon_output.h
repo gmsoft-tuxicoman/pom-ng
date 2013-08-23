@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include "output.h"
 #include "analyzer.h"
 
+#define ADDON_OUTPUTS_TABLE		"outputs"
 #define ADDON_OUTPUT_METATABLE		"addon.output"
 #define ADDON_OUTPUT_PRIV_METATABLE	"addon.output_priv"
 #define ADDON_OUTPUT_REG_METATABLE	"addon.output_reg"
@@ -56,7 +57,7 @@ struct addon_output_pload_priv {
 };
 
 int addon_output_lua_register(lua_State *L);
-int addon_output_register(lua_State *L);
+int addon_output_register_all(struct addon *addon);
 
 int addon_output_init(struct output *o);
 int addon_output_cleanup(void *output_priv);

@@ -41,22 +41,31 @@ static int addon_output_new(lua_State *L) {
 
 	luaL_checkstring(L, 1);
 
-	// Create the new instance
-	lua_newtable(L); // Stack : name, params, instance
+	// Create a new addon class
+	lua_newtable(L); // Stack : name, params, class
 
 	// Assign the metatable
-	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE); // Stack : name, params, instance, metatable
-	lua_setmetatable(L, -2); // Stack : name, params, instance
-
-	// Set its name
-	lua_pushvalue(L, 1); // Stack : name, params, instance, name
-	lua_setfield(L, -2, "name"); // Stack : name, params, instance
+	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE); // Stack : name, params, class, metatable
+	lua_setmetatable(L, -2); // Stack : name, params, class
 
 	// Save the parameter table
-	lua_pushvalue(L, 2); // Stack : name, params, instance, params
-	lua_setfield(L, -2, "params"); // Stack : name, params, instance
+	lua_pushvalue(L, -2); // Stack : name, params, class, params
+	lua_setfield(L, -2, "__params"); // Stack : name, params, class
+	lua_remove(L, -2); // Stack : name, class
 
-	// TODO make fields read-only
+	// Add the output to the outputs table
+	lua_getfield(L, LUA_REGISTRYINDEX, ADDON_OUTPUTS_TABLE); // Stack : name, class, outputs
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 1); // Stack : name, class
+		lua_newtable(L); // Stack : name, class, outputs
+		lua_pushvalue(L, -1); // Stack : name,  class, outputs, outputs
+		lua_setfield(L, LUA_REGISTRYINDEX, ADDON_OUTPUTS_TABLE); // Stack : name, class, outputs
+	}
+	lua_pushvalue(L, -3); // Stack : name, class, outputs, name
+	lua_pushvalue(L, -3); // Stack : name, class, outputs, name, class
+	lua_settable(L, -3); // Stack : name, class, outputs
+	lua_pop(L, 1); // Stack : name, class
+	lua_remove(L, 1); // Stack : class
 
 	return 1;
 }
@@ -155,10 +164,14 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 
 	struct addon_instance_priv *p = output_priv;
 
-	lua_State *L = addon_get_instance_and_thread(output_priv); // Stack : self
-	
+	// Lock the output
+	pom_mutex_lock(&p->lock);
+
+	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
+
 	struct addon_output_pload_priv *ppriv = malloc(sizeof(struct addon_output_pload_priv));
 	if (!ppriv) {
+		pom_mutex_unlock(&p->lock);
 		pom_oom(sizeof(struct addon_output_pload_priv));
 		return POM_ERR;
 	}
@@ -166,63 +179,59 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 
 	analyzer_pload_instance_set_priv(pi, ppriv);
 
-	// We need to lock while playing with the __pload_listener table
-	pom_mutex_lock(&p->lock);
-
 	// Get the __pload_listener table
-	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
+	lua_getfield(p->L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Get the open function
-	lua_getfield(L, -1, "open"); // Stack : self, __pload_listener, open_func
+	lua_getfield(p->L, -1, "open"); // Stack : self, __pload_listener, open_func
 
 	// Check if there is an open function
-	if (lua_isnil(L, -1)) {
+	if (lua_isnil(p->L, -1)) {
 		pom_mutex_unlock(&p->lock);
-		lua_pop(L, 3); // Stack : empty
+		lua_pop(p->L, 3); // Stack : empty
 		return POM_OK;
 	}
 
 	// Add self
-	lua_pushvalue(L, -3); // Stack : self, __pload_listener, open_func, self
+	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, open_func, self
 
 	// Create a new table for the pload priv and store it into __pload_listener
-	lua_newtable(L); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+	lua_newtable(p->L); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
 	// Add output_pload_data to it
-	addon_pload_data_push(L); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_data
-	lua_setfield(L, -2, "__pload_data"); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+	addon_pload_data_push(p->L); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_data
+	lua_setfield(p->L, -2, "__pload_data"); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
 	// Add the new priv to the __pload_listener table
-	lua_pushlightuserdata(L, ppriv); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv
-	lua_pushvalue(L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
-	lua_settable(L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
+	lua_pushlightuserdata(p->L, ppriv); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv
+	lua_pushvalue(p->L, -2); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload_priv, pload_priv_table
+	lua_settable(p->L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
 	// Add the pload to the args
-	addon_pload_push(L, pi->pload, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
+	addon_pload_push(p->L, pi->pload, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
 
-	// Done playing with the __pload_listener table
-	pom_mutex_unlock(&p->lock);
 
 	// Call the open function
-	addon_pcall(L, 3, 1); // Stack : self, __pload_listener, result
+	addon_pcall(p->L, 3, 1); // Stack : self, __pload_listener, result
 
 	int res = 0;
-	if (!lua_isboolean(L, -1)) {
+	if (!lua_isboolean(p->L, -1)) {
 		pomlog(POMLOG_WARN "LUA coding error: pload open function result must be a boolean");
 	} else {
-		res = lua_toboolean(L, -1);
+		res = lua_toboolean(p->L, -1);
 	}
 
 	if (!res) { // The payload doesn't need to be processed, remove the payload_priv_table and the __pload_data
-		lua_pushlightuserdata(L, ppriv); // Stack : self, __pload_listener, result, pload_priv
-		lua_pushnil(L); // Stack : self, __pload_listener, result, pload_priv, nil
-		lua_settable(L, -4); // Stack : self, __pload_listener, result
-		lua_pushnil(L); // Stack : self, __pload_listener, result, nil
-		lua_setfield(L, -3, "__pload_data"); // Stack : self, __pload_listener, result
+		lua_pushlightuserdata(p->L, ppriv); // Stack : self, __pload_listener, result, pload_priv
+		lua_pushnil(p->L); // Stack : self, __pload_listener, result, pload_priv, nil
+		lua_settable(p->L, -4); // Stack : self, __pload_listener, result
+		lua_pushnil(p->L); // Stack : self, __pload_listener, result, nil
+		lua_setfield(p->L, -3, "__pload_data"); // Stack : self, __pload_listener, result
 	}
 
 	// Remove leftovers
-	lua_pop(L, 3); // Stack : empty
+	lua_pop(p->L, 3); // Stack : empty
+	pom_mutex_unlock(&p->lock);
 
 	return POM_OK;
 }
@@ -232,6 +241,8 @@ static int addon_output_pload_write(void *output_priv, void *pload_instance_priv
 
 	struct addon_output_pload_priv *ppriv = pload_instance_priv;
 	struct addon_instance_priv *p = output_priv;
+
+	pom_mutex_lock(&p->lock);
 
 	// First process all the plugins attached to this pload
 	struct addon_output_pload_plugin *tmp;
@@ -245,59 +256,60 @@ static int addon_output_pload_write(void *output_priv, void *pload_instance_priv
 		}
 	}
 
-	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
+	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
 
-	pom_mutex_lock(&p->lock);
-	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
+	lua_getfield(p->L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Get the write function
-	lua_getfield(L, -1, "write"); // Stack : self, __pload_listener, write_func
+	lua_getfield(p->L, -1, "write"); // Stack : self, __pload_listener, write_func
 	
 	// Check if there is a write function
-	if (lua_isnil(L, -1)) {
+	if (lua_isnil(p->L, -1)) {
+		lua_pop(p->L, 3); // Stack : empty
 		pom_mutex_unlock(&p->lock);
-		lua_pop(L, 3); // Stack : empty
 		return POM_OK;
 	}
 
 	// Setup args
-	lua_pushvalue(L, -3); // Stack : self, __pload_listener, write_func, self
-	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
-	lua_gettable(L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
+	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, write_func, self
+	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, write_func, self, pload_priv
+	lua_gettable(p->L, -4); // Stack : self, __pload_listener, write_func, self, pload_priv_table
 
-	if (lua_isnil(L, -1)) {
+	if (lua_isnil(p->L, -1)) {
 		// There is no pload_priv_table, payload doesn't need to be processed
+		lua_pop(p->L, 5); // Stack : empty
 		pom_mutex_unlock(&p->lock);
-		lua_pop(L, 5); // Stack : empty
 		return POM_OK;
 	}
 
-	lua_getfield(L, -1, "__pload_data"); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
+	lua_getfield(p->L, -1, "__pload_data"); // Stack : self, __pload_listener, write_func, self, pload_priv_table, pload_data
 
 	// Update the pload_data
-	addon_pload_data_update(L, -1, data, len);
+	addon_pload_data_update(p->L, -1, data, len);
 	pom_mutex_unlock(&p->lock);
 
-	int res = addon_pcall(L, 3, 1); // Stack : self, __pload_listener, result
+	int res = addon_pcall(p->L, 3, 1); // Stack : self, __pload_listener, result
 
 	int write_res = 0;
 
 	if (res == POM_OK) {
-		if (!lua_isboolean(L, -1)) {
+		if (!lua_isboolean(p->L, -1)) {
 			pomlog(POMLOG_WARN "LUA coding error: pload write function result must be a boolean");
 		} else {
-			write_res = lua_toboolean(L, -1);
+			write_res = lua_toboolean(p->L, -1);
 		}
 	}
 
 	if (!write_res) {
 		// Remove the pload_priv_table since it failed
-		lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, result, pload_priv
-		lua_pushnil(L); // Stack : self, __pload_listener, result, pload_priv, nil
-		lua_settable(L, -4); // Stack : self, __pload_listener, result
+		lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, result, pload_priv
+		lua_pushnil(p->L); // Stack : self, __pload_listener, result, pload_priv, nil
+		lua_settable(p->L, -4); // Stack : self, __pload_listener, result
 	}
 
-	lua_pop(L, 3); // Stack : empty
+	lua_pop(p->L, 3); // Stack : empty
+
+	pom_mutex_unlock(&p->lock);
 
 	return POM_OK;
 }
@@ -309,7 +321,8 @@ static int addon_output_pload_close(void *output_priv, void *pload_instance_priv
 	struct addon_instance_priv *p = output_priv;
 	int res = POM_OK;
 
-	lua_State *L = addon_get_instance_and_thread(p); // Stack : self
+
+	pom_mutex_lock(&p->lock);
 
 	// Process all the plugins attached to this pload
 	struct addon_output_pload_plugin *tmp;
@@ -319,47 +332,47 @@ static int addon_output_pload_close(void *output_priv, void *pload_instance_priv
 		addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv);
 	}
 
-	pom_mutex_lock(&p->lock);
-	lua_getfield(L, -1, "__pload_listener"); // Stack : self, __pload_listener
+	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
+	lua_getfield(p->L, -1, "__pload_listener"); // Stack : self, __pload_listener
 
 	// Get the pload_priv_table
-	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, pload_priv
-	lua_gettable(L, -2); // Stack : self, __pload_listener, pload_priv_table
+	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, pload_priv
+	lua_gettable(p->L, -2); // Stack : self, __pload_listener, pload_priv_table
 
-	if (lua_isnil(L, -1)) {
+	if (lua_isnil(p->L, -1)) {
 		// There is no pload_priv_table, the payload doesn't need to be processed
+		lua_pop(p->L, 3);
 		pom_mutex_unlock(&p->lock);
-		lua_pop(L, 3);
 		goto cleanup;
 	}
 
 	// Remove the payload_priv_table from __pload_listener
-	lua_pushlightuserdata(L, pload_instance_priv); // Stack : self, __pload_listener, pload_priv_table, pload_priv
-	lua_pushnil(L); // Stack : self, __pload_listener, pload_priv_table, pload_priv, nil
-	lua_settable(L, -4); // Stack : self, __pload_listener, pload_priv_table
+	lua_pushlightuserdata(p->L, pload_instance_priv); // Stack : self, __pload_listener, pload_priv_table, pload_priv
+	lua_pushnil(p->L); // Stack : self, __pload_listener, pload_priv_table, pload_priv, nil
+	lua_settable(p->L, -4); // Stack : self, __pload_listener, pload_priv_table
 
 	// Get the close function
-	lua_getfield(L, -2,  "close"); // Stack : self, __pload_listener, pload_priv_table, close_func
+	lua_getfield(p->L, -2,  "close"); // Stack : self, __pload_listener, pload_priv_table, close_func
 
-	// Done fidling with the __pload_listener table
-	pom_mutex_unlock(&p->lock);
-
-	if (lua_isnil(L, -1)) {
+	if (lua_isnil(p->L, -1)) {
 		// There is no close function
-		lua_pop(L, 4); // Stack : empty
+		lua_pop(p->L, 4); // Stack : empty
 		goto cleanup;
 	}
 
 
 	// Setup args
-	lua_pushvalue(L, 1); // Stack : self, __pload_listener, pload_priv_table, close_func, self
-	lua_pushvalue(L, -3); // Stack : self, __pload_listener, pload_priv_table, close_func, self, pload_priv_table
+	lua_pushvalue(p->L, 1); // Stack : self, __pload_listener, pload_priv_table, close_func, self
+	lua_pushvalue(p->L, -3); // Stack : self, __pload_listener, pload_priv_table, close_func, self, pload_priv_table
 
-	res = addon_pcall(L, 2, 0); // Stack : self, __pload_listener, pload_priv_table
+	res = addon_pcall(p->L, 2, 0); // Stack : self, __pload_listener, pload_priv_table
 
-	lua_pop(L, 3); // Stack : empty
+	lua_pop(p->L, 3); // Stack : empty
 
 cleanup:
+
+	pom_mutex_unlock(&p->lock);
+
 	while (ppriv->plugins) {
 		tmp = ppriv->plugins;
 		ppriv->plugins = tmp->next;
@@ -505,7 +518,6 @@ int addon_output_lua_register(lua_State *L) {
 	// Register the output functions
 	struct luaL_Reg l[] = {
 		{ "new", addon_output_new },
-		{ "register", addon_output_register },
 		{ 0 }
 	};
 	addon_pomlib_register(L, "output", l);
@@ -549,48 +561,49 @@ int addon_output_lua_register(lua_State *L) {
 	return POM_OK;
 }
 
-int addon_output_register(lua_State *L) {
 
-	struct addon *addon = addon_get_from_registry(L);
+// Called from C to register all the outputs after the lua file was executed
+int addon_output_register_all(struct addon *addon) {
 
-	// Stack : class
+	lua_getfield(addon->L, LUA_REGISTRYINDEX, ADDON_OUTPUTS_TABLE); // Stack : outputs
 
-	// Get the name of the output
-	lua_getfield(L, 1, "name"); // Stack : class, name
-	const char *name = lua_tostring(L, -1);
+	lua_pushnil(addon->L); // Stack : outputs, nil
+	while (lua_next(addon->L, -2)) { // Stack : outputs, name, output
 
-	pomlog(POMLOG_DEBUG "Registering addon output %s ...", name);
+		// Key is the name of the output
+		const char *name = lua_tostring(addon->L, -2);
+		
+		pomlog(POMLOG_DEBUG "Registering addon output %s ...", name);
 
-	struct output_reg_info *output_info = lua_newuserdata(L, sizeof(struct output_reg_info)); // Stack : class, name, info
-	memset(output_info, 0, sizeof(struct output_reg_info));
+		struct output_reg_info *output_info = lua_newuserdata(addon->L, sizeof(struct output_reg_info)); // Stack : outputs, name, output, output_info
+		memset(output_info, 0, sizeof(struct output_reg_info));
 
-	// Add the output_reg metatable
-	luaL_getmetatable(L, ADDON_OUTPUT_REG_METATABLE); // Stack : class, name, info, metatable
-	lua_setmetatable(L, -2); // Stack : class, name, info
+		// Add the output_reg metatable
+		luaL_getmetatable(addon->L, ADDON_OUTPUT_REG_METATABLE); // Stack : outputs, name, output, output_info, metatable
+		lua_setmetatable(addon->L, -2); // Stack : outputs, name, output, output_info
 	
-	output_info->name = strdup(name);
-	if (!output_info->name)
-		addon_oom(L, strlen(name) + 1);
+		output_info->name = strdup(name);
+		if (!output_info->name)
+			addon_oom(addon->L, strlen(name) + 1);
 
-	output_info->api_ver = OUTPUT_API_VER;
-	output_info->mod = addon->mod;
-	output_info->init = addon_output_init;
-	output_info->open = addon_output_open;
-	output_info->close = addon_output_close;
-	output_info->cleanup = addon_output_cleanup;
+		output_info->api_ver = OUTPUT_API_VER;
+		output_info->mod = addon->mod;
+		output_info->init = addon_output_init;
+		output_info->open = addon_output_open;
+		output_info->close = addon_output_close;
+		output_info->cleanup = addon_output_cleanup;
 
-	if (output_register(output_info) != POM_OK)
-		luaL_error(L, "Error while registering addon input %s", name);
+		if (output_register(output_info) != POM_OK)
+			luaL_error(addon->L, "Error while registering addon input %s", name);
 
-	// Add the info to the class
-	lua_setfield(L, 1, "__info"); // Stack : class, name
+		// Add the info to the class, we need to keep a copy of that so lua is a perfect location to store it
+		lua_setfield(addon->L, -2, "__info"); // Stack : outputs, name, output
+		lua_pop(addon->L, 1); // Stack : outputs, name
 
-	// Save our template in the registry
-	lua_pushlightuserdata(L, output_info);  // Stack : class, name, info_p
-	lua_pushvalue(L, 1); // Stack : class, name, info_p, class
-	lua_settable(L, LUA_REGISTRYINDEX); // Stack : class, name
+		pomlog(POMLOG_DEBUG "Registered addon output %s", name);
+	}
 
-	pomlog(POMLOG_DEBUG "Registered addon output %s", name);
+	lua_pop(addon->L, 1); // Stack : empty
 
 	return 0;
 }
@@ -599,38 +612,30 @@ int addon_output_init(struct output *o) {
 
 	struct addon *addon = o->info->reg_info->mod->priv;
 
-	lua_State *L = lua_newthread(addon->L); // Addon stack : thread
+	lua_State *L = addon_create_state(addon->filename); // Stack : empty
 
 	if (!L) {
 		pomlog(POMLOG_ERR "Error while creating new lua state for output %s", o->info->reg_info->name);
 		return POM_ERR;
 	}
 
-	// Create a new global table for this thread to avoid memory corruption
-	lua_newtable(L); // Stack : global
-	// Create a new metatable to 'inherit' the main thread global
-	lua_newtable(L); // Stack : global, metatable
-	lua_pushvalue(L, LUA_GLOBALSINDEX); // Stack : global, metatable, _G
-	lua_setfield(L, -1, "__index"); // Stack : global, metatable
-	// Set the metatable to the new global table
-	lua_setmetatable(L, -2); // Stack : global
-	// Replace the old table
-	lua_replace(L, LUA_GLOBALSINDEX); // Stack : empty
+	// Get the output from the outputs table
+	lua_getfield(L, LUA_REGISTRYINDEX, ADDON_OUTPUTS_TABLE); // Stack : outputs
+	lua_getfield(L, -1, o->info->reg_info->name); // Stack : outputs, output
 
+	// Get rid of the outputs table
+	lua_remove(L, -2); // Stack : output
+	lua_pushnil(L); // Stack : output, nil
+	lua_setfield(L, LUA_REGISTRYINDEX, ADDON_OUTPUTS_TABLE); // Stack : output
 
-	// Create a new instance of the class
-	lua_newtable(L); // Stack : instance
+	// Add the output to the registry
+	lua_pushvalue(L, -1); // Stack : output, output
+	lua_setfield(L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : output
 
-	// Do the inheritence
-	lua_newtable(L); // Stack : instance, metatable
-	lua_pushlightuserdata(L, o->info->reg_info); // Stack : instance, metatable, reg_info_p
-	lua_gettable(L, LUA_REGISTRYINDEX); // Stack : instance, metatable, class
-	lua_setfield(L, -2, "__index"); // Stack : instance, metatable
-	lua_setmetatable(L, -2); // Stack : instance
 
 	// Create the private data
 	// TODO make __priv read-only
-	struct addon_instance_priv *p = lua_newuserdata(L, sizeof(struct addon_instance_priv)); // Stack : instance, priv
+	struct addon_instance_priv *p = lua_newuserdata(L, sizeof(struct addon_instance_priv)); // Stack : output, priv
 	memset(p, 0, sizeof(struct addon_instance_priv));
 	o->priv = p;
 	p->instance = o;
@@ -642,69 +647,61 @@ int addon_output_init(struct output *o) {
 	}
 
 	// Assign the output_priv metatable
-	luaL_getmetatable(L, ADDON_OUTPUT_PRIV_METATABLE); // Stack : instance, priv, metatable
-	lua_setmetatable(L, -2); // Stack : instance, priv
+	luaL_getmetatable(L, ADDON_OUTPUT_PRIV_METATABLE); // Stack : output, priv, metatable
+	lua_setmetatable(L, -2); // Stack : output, priv
 	// Add it to __priv
-	lua_setfield(L, -2, "__priv"); // Stack : instance
+	lua_setfield(L, -2, "__priv"); // Stack : output
 
-	// Add the new instance in the registry
-	lua_pushlightuserdata(L, p); // Stack : instance, instance_p
-	lua_pushvalue(L, -2); // Stack : instance, instance_p, instance
-	lua_settable(L, LUA_REGISTRYINDEX); // Stack : instance
-	lua_pop(L, 1); // Stack : empty
-	
-	// Fetch the parameters table from the class
-	lua_pushlightuserdata(L, o->info->reg_info); // Stack : reg_info_p
-	lua_gettable(L, LUA_REGISTRYINDEX); // Stack : class
-	lua_getfield(L, -1, "params"); // Stack : class, params
+	// Fetch the parameters table 
+	lua_getfield(L, -1, "__params"); // Stack : output, params
 
 	// Parse each param from the class
-	lua_pushnil(L); // Stack : class, params, nil
-	while (lua_next(L, -2) != 0) { // Stack : class, params, key, param
+	lua_pushnil(L); // Stack : output, params, nil
+	while (lua_next(L, -2) != 0) { // Stack : output, params, key, param
 		if (!lua_istable(L, -1)) {
 			pomlog(POMLOG_ERR "Parameters should be described in tables");
 			goto err;
 		}
 
 		// Fetch the name
-		lua_pushinteger(L, 1); // Stack : class, params, key, param, 1
-		lua_gettable(L, -2); // Stack : class, params, key, param, name
+		lua_pushinteger(L, 1); // Stack : output, params, key, param, 1
+		lua_gettable(L, -2); // Stack : output, params, key, param, name
 		if (!lua_isstring(L, -1)) {
 			pomlog(POMLOG_ERR "Parameter name is not a string");
 			goto err;
 		}
 		const char *name = luaL_checkstring(L, -1);
-		lua_pop(L, 1); // Stack : class, params, key, param
+		lua_pop(L, 1); // Stack : output, params, key, param
 
 		// Fetch the ptype type
-		lua_pushinteger(L, 2); // Stack : class, params, key, param, 2
-		lua_gettable(L, -2); // Stack : class, params, key, param, type
+		lua_pushinteger(L, 2); // Stack : output, params, key, param, 2
+		lua_gettable(L, -2); // Stack : output, params, key, param, type
 		if (!lua_isstring(L, -1)) {
 			pomlog(POMLOG_ERR "Parameter type is not a string");
 			goto err;
 		}
 		const char *type = lua_tostring(L, -1);
-		lua_pop(L, 1); // Stack : class, params, key, param
+		lua_pop(L, 1); // Stack : output, params, key, param
 
 		// Fetch the default value
-		lua_pushinteger(L, 3); // Stack : class, params, key, param, 3
-		lua_gettable(L, -2); // Stack : class, params, key, param, defval
+		lua_pushinteger(L, 3); // Stack : output, params, key, param, 3
+		lua_gettable(L, -2); // Stack : output, params, key, param, defval
 		if (!lua_isstring(L, -1)) {
 			pomlog(POMLOG_ERR "Parameter default value is not a string");
 			goto err;
 		}
 		const char *defval = lua_tostring(L, -1);
-		lua_pop(L, 1); // Stack : class, params, key, param
+		lua_pop(L, 1); // Stack : output, params, key, param
 
 		// Fetch the description
-		lua_pushinteger(L, 4); // Stack : class, params, key, param, 4
-		lua_gettable(L, -2); // Stack : class, params, key, param, descr
+		lua_pushinteger(L, 4); // Stack : output, params, key, param, 4
+		lua_gettable(L, -2); // Stack : output, params, key, param, descr
 		if (!lua_isstring(L, -1)) {
 			pomlog(POMLOG_ERR "Parameter description is not a string");
 			goto err;
 		}
 		const char *descr = lua_tostring(L, -1);
-		lua_pop(L, 1); // Stack : class, params, key, param
+		lua_pop(L, 1); // Stack : output, params, key, param
 
 		// Allocate it
 		struct addon_param *param = malloc(sizeof(struct addon_param));
@@ -742,27 +739,16 @@ int addon_output_init(struct output *o) {
 
 
 		// Pop the value (the param table)
-		lua_pop(L, 1); // Stack : class, params, key
+		lua_pop(L, 1); // Stack : output, params, key
 	}
-	// At this point the stack is : class, params
+	// At this point the stack is : output, params
 	lua_pop(L, 2); // Stack : empty
-
-	// Add the thread to the instance
-	lua_pushlightuserdata(addon->L, p); // Addon stack : thread, instance_p
-	lua_gettable(addon->L, LUA_REGISTRYINDEX); // Addon stack : thread, instance
-	lua_newtable(addon->L); // Addon stack : thread, instance, __thread
-	lua_pushvalue(addon->L, -1); // Addon stack : thread, instance, __thread, __thread
-	lua_setfield(addon->L, -3, "__thread"); // Addon stack : thread, instance, __thread
-	lua_pushvalue(addon->L, -3); // Addon stack : thread, instance, __thread, thread
-	lua_setfield(addon->L, -2, "main"); // Addon stack : thread, instance, __thread
-	lua_pop(addon->L, 3); // Addon stack : empty
-
 
 	pomlog(POMLOG_DEBUG "Output %s created", o->name);
 	return POM_OK;
 
 err:
-	lua_pop(addon->L, 1); // Addon stack : empty
+	lua_close(L);
 	return POM_ERR;
 }
 
@@ -770,9 +756,7 @@ int addon_output_cleanup(void *output_priv) {
 	
 	struct addon_instance_priv *p = output_priv;
 
-	lua_pushlightuserdata(p->L, p);
-	lua_pushnil(p->L);
-	lua_settable(p->L, LUA_REGISTRYINDEX);
+	lua_close(p->L);
 
 	return POM_OK;
 }
@@ -780,11 +764,10 @@ int addon_output_cleanup(void *output_priv) {
 int addon_output_open(void *output_priv) {
 
 	struct addon_instance_priv *p = output_priv;
-	if (addon_get_instance(p) != POM_OK) // Stack : self
-		return POM_ERR;
 
-	lua_pushliteral(p->L, "open");
-	lua_gettable(p->L, -2); // Stack : self, open_func
+	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
+
+	lua_getfield(p->L, -1, "open"); // Stack : self, open_func
 
 	lua_pushvalue(p->L, -2); // Stack : self, open_func, self
 
@@ -798,17 +781,15 @@ int addon_output_open(void *output_priv) {
 int addon_output_close(void *output_priv) {
 
 	struct addon_instance_priv *p = output_priv;
-	if (addon_get_instance(p) != POM_OK) // Stack : self
-		return POM_ERR;
 
-	lua_pushliteral(p->L, "close");
-	lua_gettable(p->L, -2); // Stack : self, close_func
+	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
+	lua_getfield(p->L, -1, "close"); // Stack : self, close_func
 
 	lua_pushvalue(p->L, -2); // Stack : self, close_func, self
 
 	int res =  addon_pcall(p->L, 1, 0); // Stack : self
 	
-	lua_pop(p->L, 1);
+	lua_pop(p->L, 1); // Stack : empty
 
 	return res;
 }

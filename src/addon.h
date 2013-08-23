@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,9 +31,9 @@
 #define ADDON_DIR DATAROOT "/addons/"
 #define ADDON_LIBS_PATH ADDON_DIR "libs/?.lua"
 #define ADDON_EXT ".lua"
-#define ADDON_REGISTER_FUNC_SUFFIX "_register"
 #define ADDON_POM_LIB "pom"
 #define ADDON_REG_REGISTRY_KEY "addon_reg"
+#define ADDON_INSTANCE "__instance"
 
 struct addon {
 
@@ -70,8 +70,6 @@ void addon_lua_register(lua_State *L);
 
 struct addon *addon_get_from_registry(lua_State *L);
 
-int addon_get_instance(struct addon_instance_priv *p);
-lua_State *addon_get_instance_and_thread(struct addon_instance_priv *p);
 int addon_pcall(lua_State *L, int nargs, int nresults);
 
 void addon_pomlib_register(lua_State *L, const char *sub, luaL_Reg *l);

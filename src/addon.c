@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -120,7 +120,6 @@ int addon_init() {
 			} else {
 				pomlog("Loaded addon : %s", dp->d_name);
 			}
-		
 		}
 	}
 
@@ -141,54 +140,20 @@ int addon_mod_register(struct mod_reg *mod) {
 	struct addon *addon = mod->priv;
 	addon->mod = mod;
 
-	char *dot = strrchr(addon->name, '.');
-	size_t name_len = strlen(addon->name);
-	if (dot)
-		name_len = dot - addon->name;
-	
-	size_t reg_func_len = name_len + strlen(ADDON_REGISTER_FUNC_SUFFIX) + 1;
-	char *reg_func_name = malloc(reg_func_len);
-	if (!reg_func_name) {
-		pom_oom(reg_func_len);
-		return POM_ERR;
-		
-	}
+	// Register all declared objects
+	addon_output_register_all(addon);
 
-	memset(reg_func_name, 0, reg_func_len);
-	memcpy(reg_func_name, addon->name, name_len);
-	strcat(reg_func_name, ADDON_REGISTER_FUNC_SUFFIX);
-
-	// Add the addon_reg structure in the registry
+	// Add the addon structure in the registry to store it
 	lua_pushstring(addon->L, ADDON_REG_REGISTRY_KEY);
 	lua_pushlightuserdata(addon->L, addon);
 	lua_settable(addon->L, LUA_REGISTRYINDEX);
 
-	// Call the register function
-	lua_getglobal(addon->L, reg_func_name);
-	if (!lua_isfunction(addon->L, -1)) {
-		pomlog(POMLOG_ERR "Failed load addon %s. Register function %s() not found.", addon->name, reg_func_name);
-		free(reg_func_name);
-		return POM_ERR;
-	}
-	free(reg_func_name);
-
-	if (addon_pcall(addon->L, 0, 0) != POM_OK)
-		goto err;
-	
 	addon->next = addon_head;
 	if (addon->next)
 		addon->next->prev = addon;
 	addon_head = addon;
 
 	return POM_OK;
-
-err:
-	// Remove the addon from the lua registry
-	lua_pushstring(addon->L, ADDON_REG_REGISTRY_KEY);
-	lua_pushnil(addon->L);
-	lua_settable(addon->L, LUA_REGISTRYINDEX);
-
-	return POM_ERR;
 
 }
 
@@ -291,44 +256,6 @@ struct addon *addon_get_from_registry(lua_State *L) {
 	lua_gettable(L, LUA_REGISTRYINDEX);
 	struct addon *tmp = lua_touserdata(L, -1);
 	return tmp;
-}
-
-int addon_get_instance(struct addon_instance_priv *p) {
-
-	// Fetch the corresponding instance
-	lua_pushlightuserdata(p->L, p);
-	lua_gettable(p->L, LUA_REGISTRYINDEX);
-	if (!lua_istable(p->L, -1)) {
-		pomlog(POMLOG_ERR, "Could not find instance %p", p->instance);
-		return POM_ERR;
-	}
-	return POM_OK;
-}
-
-lua_State *addon_get_instance_and_thread(struct addon_instance_priv *p) {
-
-	pom_mutex_lock(&p->lock);
-	lua_pushlightuserdata(p->L, p); // Stack : instance_p
-	lua_gettable(p->L, LUA_REGISTRYINDEX); // Stack : instance
-	lua_getfield(p->L, -1, "__thread"); // Stack : instance, __thread
-	lua_rawgeti(p->L, -1, pthread_self()); // Stack : instance, __thread, thread
-
-	lua_State *L = NULL;
-
-	if (lua_isnil(p->L, -1)) {
-		L = lua_newthread(p->L); // Stack : instance, __thread, nil, thread
-		lua_rawseti(p->L, -3, pthread_self()); // Stack : instance, __thread, nil
-	} else {
-	 	L = lua_tothread(p->L, -1);
-	}
-
-	lua_pop(p->L, 3); // Stack : empty
-	pthread_mutex_unlock(&p->lock);
-
-	// Fetch the instance in the new thread
-	lua_pushlightuserdata(L, p);
-	lua_gettable(L, LUA_REGISTRYINDEX);
-	return L;
 }
 
 int addon_pcall(lua_State *L, int nargs, int nresults) {
@@ -461,3 +388,4 @@ int addon_dns_reverse_lookup(lua_State *L) {
 
 	return 1;
 }
+
