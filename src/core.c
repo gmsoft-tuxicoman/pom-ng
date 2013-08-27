@@ -298,10 +298,14 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 				// We're not going to drop this. Wait then
 				debug_core("All queues full. Waiting ...");
 				pom_mutex_lock(&core_pkt_queue_wait_lock);
-				int res = pthread_cond_wait(&core_pkt_queue_wait_cond, &core_pkt_queue_wait_lock);
-				if (res) {
-					pomlog(POMLOG_ERR "Error while waiting for the core pkt_queue condition : %s", pom_strerror(res));
-					abort();
+
+				// Recheck the count after locking
+				if (core_pkt_queue_count >= ((CORE_THREAD_PKT_QUEUE_MAX - 1) * core_num_threads)) {
+					int res = pthread_cond_wait(&core_pkt_queue_wait_cond, &core_pkt_queue_wait_lock);
+					if (res) {
+						pomlog(POMLOG_ERR "Error while waiting for the core pkt_queue condition : %s", pom_strerror(res));
+						abort();
+					}
 				}
 				pom_mutex_unlock(&core_pkt_queue_wait_lock);
 
