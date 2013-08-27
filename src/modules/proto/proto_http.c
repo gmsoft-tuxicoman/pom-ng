@@ -357,6 +357,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 				if (priv->client_direction == POM_DIR_REVERSE(s->direction) && priv->info[s->direction].content_pos == 0) {
 					// If it was a HEAD request, we might think there is some payload
 					// while there actually isn't any. Check for that
+					// It might also be the next reply in the stream
 					unsigned int remaining_size = 0;
 					void *pload = NULL;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
@@ -467,6 +468,9 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 						s_next->plen = pload_remaining;
 						priv->info[s->direction].content_pos = priv->info[s->direction].content_pos;
 						debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
+
+						if (core_process_multi_packet(stack, stack_index + 1, p) == PROTO_ERR)
+							return POM_ERR;
 
 						// Do the post processing
 						if (proto_http_post_process(priv, p, stack, stack_index) != POM_OK)
