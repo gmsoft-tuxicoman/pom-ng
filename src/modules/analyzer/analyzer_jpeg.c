@@ -212,6 +212,7 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 		memset(jerr, 0, sizeof(struct jpeg_error_mgr));
 		priv->cinfo.err = jpeg_std_error(jerr);
 		priv->cinfo.err->error_exit = analyzer_jpeg_lib_error_exit;
+		priv->cinfo.err->output_message = analyzer_jpeg_lib_output_message;
 
 		// Allocate the decompressor
 		jpeg_create_decompress(&priv->cinfo);
@@ -382,4 +383,13 @@ static void analyzer_jpeg_lib_error_exit(j_common_ptr cinfo) {
 	struct analyzer_jpeg_pload_priv *priv = cinfo->client_data;
 
 	longjmp(priv->jmp_buff, 1);
+}
+
+static void analyzer_jpeg_lib_output_message(j_common_ptr cinfo) {
+	
+	char buffer[JMSG_LENGTH_MAX];
+
+	cinfo->err->format_message(cinfo, buffer);
+
+	pomlog(POMLOG_DEBUG "%s", buffer);
 }
