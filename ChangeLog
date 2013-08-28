@@ -1,3 +1,16 @@
+v0.0.13
+	Move addons to a separate repository.
+	Add Arch Linux build files.
+	Update Gentoo ebuilds.
+	Get rid of packet and packet buffer pools.
+	Fix build of exif support on some distro.
+	Make lua addons thread safe.
+	Fix possible deadlock in the core packet processing.
+	Add performance objects for packet allocation.
+	Fix HTTP parsing in some rare situations.
+	Improve output_log_xml to support multiple source events.
+	Various minor cleanups and fix.
+
 v0.0.12
 	Fix possible deadlock in proto_ipv6.
 	Add proto_ppi.
