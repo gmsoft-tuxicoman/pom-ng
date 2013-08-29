@@ -102,6 +102,10 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 		abort();													\
 	}															\
 }
+
+// Create a directory where a file resides
+int pom_mkdir(const char *path);
+
 // Wrapper for open() which creates the directory structure
 int pom_open(const char *filename, int flags, mode_t mode);
 

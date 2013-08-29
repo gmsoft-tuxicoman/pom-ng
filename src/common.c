@@ -37,17 +37,11 @@ void pom_oom_internal(size_t size, char *file, unsigned int line) {
 	pomlog(POMLOG_ERR "Not enough memory to allocate %u bytes at %s:%u", size, file, line);
 }
 
-
-int pom_open(const char *filename, int flags, mode_t mode) {
-
-	if (strstr(filename, "..")) {
-		pomlog(POMLOG_ERR "String '..' found in the filename");
-		return -1;
-	}
+int pom_mkdir(const char *path) {
 
 	char buffer[NAME_MAX + 1];
 	buffer[NAME_MAX] = 0;
-	strncpy(buffer, filename, NAME_MAX);
+	strncpy(buffer, path, NAME_MAX);
 
 	char *slash = buffer;
 	if (*slash == '/') // we assume that the root directory exists :)
@@ -63,14 +57,27 @@ int pom_open(const char *filename, int flags, mode_t mode) {
 					mkdir(buffer, 00777);
 					break;
 				default:
-					return -1;
+					return POM_ERR;
 			}
 		}
 		*slash = '/';
 		slash = strchr(slash + 1, '/');
 	}
 
-	return open(buffer, flags, mode);
+	return POM_OK;
+}
+
+int pom_open(const char *filename, int flags, mode_t mode) {
+
+	if (strstr(filename, "..")) {
+		pomlog(POMLOG_ERR "String '..' found in the filename");
+		return -1;
+	}
+
+	if (pom_mkdir(filename) != POM_OK)
+		return -1;
+
+	return open(filename, flags, mode);
 }
 
 int pom_write(int fd, const void *buf, size_t count) {
