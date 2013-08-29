@@ -30,6 +30,7 @@
 #include <pom-ng/ptype_timestamp.h>
 
 #include <stdio.h>
+#include <wordexp.h>
 
 #define DATASTORE_SQLITE_PKID "pkid"
 
@@ -141,22 +142,41 @@ static int datastore_sqlite_connect(struct datastore_connection *dc) {
 
 	char *dbfile = PTYPE_STRING_GETVAL(priv->p_dbfile);
 
+	wordexp_t exp = { 0 };
+
+	if (wordexp(dbfile, &exp, WRDE_NOCMD)) {
+		pomlog(POMLOG_ERR "Unable to expand %s", dbfile);
+		return POM_ERR;
+	}
+
+	if (exp.we_wordc < 1) {
+		wordfree(&exp);
+		return POM_ERR;
+	}
+
+	if (pom_mkdir(exp.we_wordv[0]) != POM_OK)
+		return POM_ERR;
+	
 	struct datastore_sqlite_connection_priv *cpriv = malloc(sizeof(struct datastore_sqlite_connection_priv));
 	if (!cpriv) {
 		pom_oom(sizeof(struct datastore_sqlite_connection_priv));
+		wordfree(&exp);
 		return POM_ERR;
 	}
 	memset(cpriv, 0, sizeof(struct datastore_sqlite_priv));
 	
-	if (sqlite3_open_v2(dbfile, &cpriv->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL)) {
-		pomlog(POMLOG_ERR "Connection to database %s failed : %s", dbfile, sqlite3_errmsg(cpriv->db));
+	if (sqlite3_open_v2(exp.we_wordv[0], &cpriv->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL)) {
+		pomlog(POMLOG_ERR "Connection to database %s failed : %s", exp.we_wordv[0], sqlite3_errmsg(cpriv->db));
 		if (cpriv->db)
 			if (sqlite3_close(cpriv->db) != SQLITE_OK)
 				pomlog(POMLOG_WARN "Warning, sqlite3_close() failed.");
 		free(cpriv);
+		wordfree(&exp);
 		return POM_ERR;
 
 	}
+
+	wordfree(&exp);
 
 	sqlite3_busy_handler(cpriv->db, datastore_sqlite_busy_callback, NULL);
 
