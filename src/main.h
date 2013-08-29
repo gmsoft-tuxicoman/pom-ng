@@ -24,7 +24,7 @@
 
 #define POMNG_HTTPD_PORT	8080
 #define POMNG_HTTPD_WWW_DATA	DATAROOT "/pom-ng-webui/"
-#define POMNG_SYSTEM_DATASTORE "sqlite:system?dbfile=pom-ng.db"
+#define POMNG_SYSTEM_DATASTORE "sqlite:system?dbfile=~/.pom-ng/sys_datastore.db"
 
 void signal_handler(int signal);
 struct datastore *open_system_datastore(char *dstore_uri);
