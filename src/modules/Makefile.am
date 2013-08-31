@@ -28,7 +28,7 @@ PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.l
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(DECODER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la input_pcap.la input_dvb.la output_pcap.la output_tap.la
+EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la datastore_postgres.la input_pcap.la input_dvb.la output_pcap.la output_tap.la
 
 
 analyzer_arp_la_SOURCES = analyzer/analyzer_arp.c analyzer/analyzer_arp.h
@@ -69,6 +69,9 @@ analyzer_tftp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 datastore_sqlite_la_SOURCES = datastore/datastore_sqlite.c datastore/datastore_sqlite.h
 datastore_sqlite_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lsqlite3
 datastore_sqlite_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+datastore_postgres_la_SOURCES = datastore/datastore_postgres.c datastore/datastore_postgres.h
+datastore_postgres_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpq
+datastore_postgres_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 
 decoder_base64_la_SOURCES = decoder/decoder_base64.c decoder/decoder_base64.h
 decoder_base64_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'

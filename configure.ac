@@ -240,6 +240,13 @@ then
 	DATASTORE_OBJS="$DATASTORE_OBJS datastore_sqlite.la"
 fi
 
+# Check for PostgreSQL
+AC_CHECK_HEADERS([libpq-fe.h], [want_postgres=yes], [want_postgres=no])
+if test "x$want_postgres" = "xyes"
+then
+	DATASTORE_OBJS="$DATASTORE_OBJS datastore_postgres.la"
+fi
+
 # Check for Lua
 PKG_CHECK_MODULES(lua, [lua5.1], [has_lua=yes], [has_lua=no])
 if test "x$has_lua" = "xno"
@@ -290,6 +297,7 @@ echo " * Libmagic         : $want_magic"
 echo " * Zlib             : $want_zlib"
 echo " * JPEG             : $want_jpeg"
 echo " * Sqlite3          : $want_sqlite3"
+echo " * Postgresql       : $want_postgres"
 echo " * libexif          : $want_libexif"
 echo ""
 echo "Author : Guy Martin <gmsoft@tuxicoman.be>"
