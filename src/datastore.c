@@ -88,6 +88,12 @@ int datastore_register(struct datastore_reg_info *reg_info) {
 	mod_refcount_inc(reg_info->mod);
 	reg->module = reg_info->mod;
 
+
+	if (registry_add_instance_type(datastore_registry_class, reg_info->name) != POM_OK) {
+		free(reg);
+		return POM_ERR;
+	}
+
 	reg->next = datastore_reg_head;
 	datastore_reg_head = reg;
 	if (reg->next)
@@ -104,6 +110,8 @@ int datastore_unregister(char *name) {
 	for (reg = datastore_reg_head; reg && strcmp(reg->info->name, name); reg = reg->next);
 	if (!reg)
 		return POM_OK;
+
+	registry_remove_instance_type(datastore_registry_class, name);
 
 	if (reg->prev)
 		reg->prev->next = reg->next;
@@ -436,7 +444,9 @@ int datastore_open(struct datastore *d) {
 	}
 
 	datastore_dataset_query_cleanup(dataset_db_query);
+	dataset_db_query = NULL;
 	datastore_dataset_query_cleanup(dataset_schema_query);
+	dataset_schema_query = NULL;
 
 
 	ds_template = NULL;
