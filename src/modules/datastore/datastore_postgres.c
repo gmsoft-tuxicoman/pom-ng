@@ -475,6 +475,13 @@ static int datastore_postgres_transaction_begin(struct datastore_connection *dc)
 	struct datastore_postgres_connection_priv *cpriv = dc->priv;
 
 	pom_mutex_lock(&cpriv->lock);
+
+	if (cpriv->transaction != DATASTORE_POSTGRES_TRANSACTION_NONE) {
+		pomlog(POMLOG_ERR "Temporary transactions are already in progress, complete your queries first");
+		pom_mutex_unlock(&cpriv->lock);
+		return DATASET_QUERY_ERR;
+	}
+
 	int res = datastore_postgres_exec(dc, "BEGIN");
 
 	if (res != DATASET_QUERY_OK) {
@@ -494,12 +501,22 @@ static int datastore_postgres_transaction_commit(struct datastore_connection *dc
 	struct datastore_postgres_connection_priv *cpriv = dc->priv;
 
 	pom_mutex_lock(&cpriv->lock);
+
+	if (cpriv->transaction != DATASTORE_POSTGRES_TRANSACTION_USER) {
+		if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_NONE)
+			pomlog(POMLOG_ERR "No transaction in progress");
+		else
+			pomlog(POMLOG_ERR "Cannot finish temporary transactions");
+		pom_mutex_unlock(&cpriv->lock);
+		return DATASET_QUERY_ERR;
+	}
+
 	int res = datastore_postgres_exec(dc, "COMMIT");
 	if (res != DATASET_QUERY_OK) {
 		pomlog(POMLOG_ERR "Failed to commit transaction on datastore \"%s\" : %s", dc->d->name, PQerrorMessage(cpriv->db));
 		res = POM_ERR;
 	} else {
-		cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_NONE;;
+		cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_NONE;
 		res = POM_OK;
 	}
 	pom_mutex_unlock(&cpriv->lock);
@@ -511,6 +528,15 @@ static int datastore_postgres_transaction_rollback(struct datastore_connection *
 	
 	struct datastore_postgres_connection_priv *cpriv = dc->priv;
 	pom_mutex_lock(&cpriv->lock);
+	if (cpriv->transaction != DATASTORE_POSTGRES_TRANSACTION_USER) {
+		if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_NONE)
+			pomlog(POMLOG_ERR "No transaction in progress");
+		else
+			pomlog(POMLOG_ERR "Cannot finish temporary transactions");
+		pom_mutex_unlock(&cpriv->lock);
+		return DATASET_QUERY_ERR;
+	}
+
 	int res = datastore_postgres_exec(dc, "ROLLBACK");
 	if (res != DATASET_QUERY_OK) {
 		pomlog(POMLOG_ERR "Failed to rollback transaction on datastore \"%s\" : %s", dc->d->name, PQerrorMessage(cpriv->db));
@@ -921,15 +947,17 @@ static int datastore_postgres_dataset_read(struct dataset_query *dsq) {
 			return res;
 		}
 		cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_TEMP;
+	} else if (cpriv->transaction >= DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+		cpriv->transaction++;
 	}
-
-	res = datastore_postgres_exec(dsq->con, qpriv->query_read_start);
-	if (res != DATASET_QUERY_OK)
-		goto end;
 
 
 	if (!qpriv->read_res) {
 		
+		res = datastore_postgres_exec(dsq->con, qpriv->query_read_start);
+		if (res != DATASET_QUERY_OK)
+			goto end;
+
 		qpriv->read_res = PQexec(cpriv->db, priv->query_read);
 		if (PQresultStatus(qpriv->read_res) != PGRES_TUPLES_OK) {
 			pomlog(POMLOG_ERR "Error while executing the READ SQL query : %s", PQresultErrorMessage(qpriv->read_res));
@@ -957,7 +985,7 @@ static int datastore_postgres_dataset_read(struct dataset_query *dsq) {
 		// It was the last entry
 		PQclear(qpriv->read_res);
 		qpriv->read_res = NULL;
-		datastore_postgres_exec(dsq->con, priv->query_read_end);
+		res = DATASET_QUERY_OK;
 		goto end;
 	}
 
@@ -980,8 +1008,8 @@ static int datastore_postgres_dataset_read(struct dataset_query *dsq) {
 					break;
 				}
 				case DATASTORE_POSTGRES_PTYPE_UINT8: {
-					uint8_t *res = (uint8_t*) PQgetvalue(qpriv->read_res, qpriv->read_query_cur, i + 1);
-					PTYPE_UINT8_SETVAL(dv[i].value, *res);
+					uint16_t *res = (uint16_t*) PQgetvalue(qpriv->read_res, qpriv->read_query_cur, i + 1);
+					PTYPE_UINT8_SETVAL(dv[i].value, ntohs(*res));
 					break;
 				}
 				case DATASTORE_POSTGRES_PTYPE_UINT16: {
@@ -1032,7 +1060,8 @@ static int datastore_postgres_dataset_read(struct dataset_query *dsq) {
 			}
 		}
 	}
-
+	
+	qpriv->read_query_cur++;
 	res = DATASET_QUERY_MORE;
 
 end:
@@ -1040,7 +1069,9 @@ end:
 	if (res == DATASET_QUERY_OK)
 		datastore_postgres_exec(dsq->con, priv->query_read_end);
 
-	if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_TEMP && res != DATASET_QUERY_MORE) {
+	if (cpriv->transaction > DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+		cpriv->transaction--;
+	} else if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_TEMP && res != DATASET_QUERY_MORE) {
 		if (res == DATASET_QUERY_OK)
 			datastore_postgres_exec(dsq->con, "COMMIT;");
 		else
@@ -1073,6 +1104,8 @@ static int datastore_postgres_dataset_write(struct dataset_query *dsq) {
 			return res;
 		}
 		cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_TEMP;
+	} else if (cpriv->transaction >= DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+		cpriv->transaction++;
 	}
 
 	int i;
@@ -1082,9 +1115,14 @@ static int datastore_postgres_dataset_write(struct dataset_query *dsq) {
 		 } else {
 			switch (dt[i].native_type) {
 				case DATASTORE_POSTGRES_PTYPE_BOOL:
-				case DATASTORE_POSTGRES_PTYPE_UINT8:
-					qpriv->write_query_param_val[i] = (char*) PTYPE_BOOL_GETVAL(dv[i].value);
+					qpriv->write_data_buff[i].uint8 = *PTYPE_BOOL_GETVAL(dv[i].value);
+					qpriv->write_query_param_val[i] = (char*) &qpriv->write_data_buff[i].uint16;
 					qpriv->write_query_param_len[i] = sizeof(uint8_t);
+					break;
+				case DATASTORE_POSTGRES_PTYPE_UINT8:
+					qpriv->write_data_buff[i].uint16 = htons(*PTYPE_UINT8_GETVAL(dv[i].value));
+					qpriv->write_query_param_val[i] = (char*) &qpriv->write_data_buff[i].uint16;
+					qpriv->write_query_param_len[i] = sizeof(uint16_t);
 					break;
 				case DATASTORE_POSTGRES_PTYPE_UINT16:
 					qpriv->write_data_buff[i].uint16 = htons(*PTYPE_UINT16_GETVAL(dv[i].value));
@@ -1177,8 +1215,9 @@ static int datastore_postgres_dataset_write(struct dataset_query *dsq) {
 	PQclear(pgres);
 
 end:
-
-	if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+	if (cpriv->transaction > DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+		cpriv->transaction--;
+	} else if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_TEMP) {
 		if (res == DATASET_QUERY_OK)
 			datastore_postgres_exec(dsq->con, "COMMIT;");
 		else
