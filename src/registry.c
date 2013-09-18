@@ -1401,8 +1401,10 @@ int registry_config_delete(char *config_name) {
 err:
 	registry_unlock();
 
-	datastore_dataset_query_cleanup(dsq_config_list);
-	datastore_dataset_query_cleanup(dsq_config);
+	if (dsq_config_list)
+		datastore_dataset_query_cleanup(dsq_config_list);
+	if (dsq_config)
+		datastore_dataset_query_cleanup(dsq_config);
 
 	return POM_ERR;
 }
