@@ -881,12 +881,17 @@ static int datastore_postgres_dataset_query_prepare(struct dataset_query *dsq) {
 		}
 	}
 
+	char delete_query[DATASTORE_POSTGRES_QUERY_BUFF_LEN] = { 0 };
+	snprintf(delete_query, sizeof(delete_query), "DELETE FROM %s", dsq->ds->name);
+
 	if (qc) {
 		strncat(read_query, cond_query, DATASTORE_POSTGRES_QUERY_BUFF_LEN - strlen(read_query));
+		strncat(delete_query, cond_query, DATASTORE_POSTGRES_QUERY_BUFF_LEN - strlen(delete_query));
 	}
 
 	if (qro) {
 		strncat(read_query, order_query, DATASTORE_POSTGRES_QUERY_BUFF_LEN - strlen(read_query));
+		strncat(delete_query, order_query, DATASTORE_POSTGRES_QUERY_BUFF_LEN - strlen(delete_query));
 	}
 
 	struct dataset_postgres_query_priv *dsqpriv = dsq->priv;
@@ -897,6 +902,15 @@ static int datastore_postgres_dataset_query_prepare(struct dataset_query *dsq) {
 	dsqpriv->query_read_start = strdup(read_query);
 	if (!dsqpriv->query_read_start) {
 		pom_oom(strlen(read_query) + 1);
+		return DATASET_QUERY_ERR;
+	}
+
+	pomlog(POMLOG_DEBUG "Prepared delete query : %s", delete_query);
+	if (dsqpriv->query_delete)
+		free(dsqpriv->query_delete);
+	dsqpriv->query_delete = strdup(delete_query);
+	if (!dsqpriv->query_delete) {
+		pom_oom(strlen(delete_query) + 1);
 		return DATASET_QUERY_ERR;
 	}
 
@@ -938,22 +952,23 @@ static int datastore_postgres_dataset_read(struct dataset_query *dsq) {
 
 	int res;
 
+
+
+
 	pom_mutex_lock(&cpriv->lock);
-
-	if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_NONE) {
-		res = datastore_postgres_exec(dsq->con, "BEGIN;");
-		if (res != DATASET_QUERY_OK) {
-			pom_mutex_unlock(&cpriv->lock);
-			return res;
-		}
-		cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_TEMP;
-	} else if (cpriv->transaction >= DATASTORE_POSTGRES_TRANSACTION_TEMP) {
-		cpriv->transaction++;
-	}
-
-
 	if (!qpriv->read_res) {
 		
+		if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_NONE) {
+			res = datastore_postgres_exec(dsq->con, "BEGIN;");
+			if (res != DATASET_QUERY_OK) {
+				pom_mutex_unlock(&cpriv->lock);
+				return res;
+			}
+			cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_TEMP;
+		} else if (cpriv->transaction >= DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+			cpriv->transaction++;
+		}
+
 		res = datastore_postgres_exec(dsq->con, qpriv->query_read_start);
 		if (res != DATASET_QUERY_OK)
 			goto end;
@@ -1069,14 +1084,16 @@ end:
 	if (res == DATASET_QUERY_OK)
 		datastore_postgres_exec(dsq->con, priv->query_read_end);
 
-	if (cpriv->transaction > DATASTORE_POSTGRES_TRANSACTION_TEMP) {
-		cpriv->transaction--;
-	} else if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_TEMP && res != DATASET_QUERY_MORE) {
-		if (res == DATASET_QUERY_OK)
-			datastore_postgres_exec(dsq->con, "COMMIT;");
-		else
-			datastore_postgres_exec(dsq->con, "ROLLBACK;");
-		cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_NONE;
+	if (cpriv->transaction >= DATASTORE_POSTGRES_TRANSACTION_TEMP && res != DATASET_QUERY_MORE) {
+		if (cpriv->transaction == DATASTORE_POSTGRES_TRANSACTION_TEMP) {
+			if (res == DATASET_QUERY_OK)
+				datastore_postgres_exec(dsq->con, "COMMIT;");
+			else
+				datastore_postgres_exec(dsq->con, "ROLLBACK;");
+			cpriv->transaction = DATASTORE_POSTGRES_TRANSACTION_NONE;
+		} else {
+			cpriv->transaction--;
+		}
 	}
 
 	pom_mutex_unlock(&cpriv->lock);
@@ -1232,6 +1249,6 @@ end:
 
 static int datastore_postgres_dataset_delete(struct dataset_query *dsq) {
 
-	// TODO
-	return POM_OK;
+	struct dataset_postgres_query_priv *qpriv = dsq->priv;
+	return datastore_postgres_exec(dsq->con, qpriv->query_delete);
 }

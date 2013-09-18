@@ -78,6 +78,7 @@ union datastore_postgres_data {
 struct dataset_postgres_query_priv {
 	PGresult *read_res;
 	char *query_read_start;
+	char *query_delete;
 	unsigned int read_query_cur;
 	unsigned int read_query_tot;
 	union datastore_postgres_data *write_data_buff;
