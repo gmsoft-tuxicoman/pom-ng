@@ -25,9 +25,21 @@
 
 #define OUTPUT_LOG_TXT_RESOURCE "output_log_txt"
 
-struct output_log_txt_event_field {
+enum output_log_txt_field_type {
+	output_log_txt_event_field,
+	output_log_txt_event_property
+};
+
+enum output_log_txt_event_property {
+	output_log_txt_event_property_ts,
+	output_log_txt_event_property_name,
+	output_log_txt_event_property_source_name,
+	output_log_txt_event_property_description
+};
+
+struct output_log_txt_field {
+	enum output_log_txt_field_type type;
 	int id;
-	uint32_t hash;
 	unsigned int start_off, end_off;
 	char *key;
 };
@@ -47,7 +59,7 @@ struct output_log_txt_event {
 
 	char *format;
 	
-	struct output_log_txt_event_field *fields;
+	struct output_log_txt_field *fields;
 
 	struct output_log_txt_event *prev, *next;
 	struct output_log_txt_file *file;
