@@ -13,12 +13,12 @@
 			<item><template>http_apache</template><event>http_request</event><format>$server_name $client_addr $username $url [$query_time] "$first_line" $status $response_size</format><file>http_apache_log</file></item>
 			
 			<!-- arpwatch -->
-			<item><template>arpwatch</template><event>arp_new_sta</event><format>New station : $ip_addr $mac_addr on input '$input' and vlan $vlan</format><file>arpwatch_log</file></item>
-			<item><template>arpwatch</template><event>arp_sta_changed</event><format>Station address changed : $ip_addr from $old_mac_addr to $new_mac_addr on input '$input' and vlan $vlan</format><file>arpwatch_log</file></item>
+			<item><template>arpwatch</template><event>arp_new_sta</event><format>[$_time] New station : $ip_addr $mac_addr on input '$input' and vlan $vlan</format><file>arpwatch_log</file></item>
+			<item><template>arpwatch</template><event>arp_sta_changed</event><format>[$_time] Station address changed : $ip_addr from $old_mac_addr to $new_mac_addr on input '$input' and vlan $vlan</format><file>arpwatch_log</file></item>
 
 			<!-- docsis_monitor -->
-			<item><template>docsis_monitor</template><event>docsis_cm_new</event><format>$time | New cable modem found on input '$input' : $mac</format><file>docsis_monitor_log</file></item>
-			<item><template>docsis_monitor</template><event>docsis_cm_reg_status</event><format>$time | Cable modem $mac status changed from $old_status to $new_status (T4 timeout is $timeout sec)</format><file>docsis_monitor_log</file></item>
+			<item><template>docsis_monitor</template><event>docsis_cm_new</event><format>[$_time] New cable modem found on input '$input' : $mac</format><file>docsis_monitor_log</file></item>
+			<item><template>docsis_monitor</template><event>docsis_cm_reg_status</event><format>[$_time] Cable modem $mac status changed from $old_status to $new_status (T4 timeout is $timeout sec)</format><file>docsis_monitor_log</file></item>
 		</dataset>
 
 		<dataset name="files">
