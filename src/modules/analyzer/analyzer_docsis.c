@@ -80,8 +80,6 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 	evt_cm_new_data_items[analyzer_docsis_cm_new_mac].value_type = ptype_get_type("mac");
 	evt_cm_new_data_items[analyzer_docsis_cm_new_input].name = "input",
 	evt_cm_new_data_items[analyzer_docsis_cm_new_input].value_type = ptype_get_type("string");
-	evt_cm_new_data_items[analyzer_docsis_cm_new_time].name = "time",
-	evt_cm_new_data_items[analyzer_docsis_cm_new_time].value_type = ptype_get_type("timestamp");
 
 	static struct data_reg evt_cm_new_data = {
 		.items = evt_cm_new_data_items,
@@ -109,8 +107,6 @@ static int analyzer_docsis_init(struct analyzer *analyzer) {
 	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_mac].value_type = ptype_get_type("mac");
 	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_timeout].name = "timeout",
 	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_timeout].value_type = ptype_get_type("uint8");
-	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_time].name = "time";
-	evt_cm_reg_status_data_items[analyzer_docsis_cm_reg_status_time].value_type = ptype_get_type("timestamp");
 
 	static struct data_reg evt_cm_reg_status_data = {
 		.items = evt_cm_reg_status_data_items,
@@ -226,8 +222,6 @@ static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, 
 		data_set(evt_data[analyzer_docsis_cm_reg_status_mac]);
 		PTYPE_UINT8_SETVAL(evt_data[analyzer_docsis_cm_reg_status_timeout].value, T4_TIMEOUT * cm->t4_multiplier);
 		data_set(evt_data[analyzer_docsis_cm_reg_status_timeout]);
-		PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_reg_status_time].value, ts);
-		data_set(evt_data[analyzer_docsis_cm_reg_status_time]);
 
 		if (event_process(evt, stack, stack_index, ts) != POM_OK) {
 			pom_mutex_unlock(&priv->lock);
@@ -363,8 +357,6 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 			data_set(evt_data[analyzer_docsis_cm_new_mac]);
 			PTYPE_STRING_SETVAL(evt_data[analyzer_docsis_cm_new_input].value, p->input->name);
 			data_set(evt_data[analyzer_docsis_cm_new_input]);
-			PTYPE_TIMESTAMP_SETVAL(evt_data[analyzer_docsis_cm_new_time].value, p->ts);
-			data_set(evt_data[analyzer_docsis_cm_new_time]);
 
 			if (event_process(evt, stack, stack_index, p->ts) != POM_OK) {
 				pom_mutex_unlock(&priv->lock);

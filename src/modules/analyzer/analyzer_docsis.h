@@ -28,22 +28,20 @@
 #define ANALYZER_DOCSIS_CM_TABLE_SIZE (1 << 12)
 #define ANALYZER_DOCSIS_CM_MASK (ANALYZER_DOCSIS_CM_TABLE_SIZE - 1)
 
-#define ANALYZER_DOCSIS_EVT_CM_NEW_DATA_COUNT 3
+#define ANALYZER_DOCSIS_EVT_CM_NEW_DATA_COUNT 2
 
 enum {
 	analyzer_docsis_cm_new_mac,
 	analyzer_docsis_cm_new_input,
-	analyzer_docsis_cm_new_time
 };
 
-#define ANALYZER_DOCSIS_EVT_CM_REG_STATUS_DATA_COUNT 5
+#define ANALYZER_DOCSIS_EVT_CM_REG_STATUS_DATA_COUNT 4
 
 enum {
 	analyzer_docsis_cm_reg_status_old,
 	analyzer_docsis_cm_reg_status_new,
 	analyzer_docsis_cm_reg_status_mac,
 	analyzer_docsis_cm_reg_status_timeout,
-	analyzer_docsis_cm_reg_status_time
 };
 
 struct analyzer_docsis_cm {
