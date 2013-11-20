@@ -158,9 +158,9 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 	if (res == PROTO_OK || res == PROTO_STOP) {
 		struct proto_packet_listener *l;
 		for (l = proto->packet_listeners; l; l = l->next) {
-			if (l->filter && !filter_proto_match(s, l->filter))
+			if (l->filter && !filter_proto_match(stack, l->filter))
 				continue;
-			if (l->process(l->object, p, s, stack_index) != POM_OK) {
+			if (l->process(l->object, p, stack, stack_index) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning packet listener failed");
 				// FIXME remove listener from the list ?
 			}
