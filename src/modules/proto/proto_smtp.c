@@ -156,7 +156,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
-		pomlog(POMLOG_ERR "Coult not get conntrack entry");
+		pomlog(POMLOG_ERR "Could not get conntrack entry");
 		return PROTO_ERR;
 	}
 
