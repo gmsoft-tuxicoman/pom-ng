@@ -71,21 +71,23 @@ static int proto_ppp_process(void *proto_priv, struct packet *p, struct proto_pr
 	if (sizeof(struct ppp_comp_header) > s->plen)
 		return PROTO_INVALID;
 
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	size_t hdrlen = 0;
+
 	if (*(uint8_t*)s->pload == 0xff) {
 		if (sizeof(struct ppp_header) > s->plen)
 			return PROTO_INVALID;
 		struct ppp_header *phdr = s->pload;
 		ppp_type = ntohs(phdr->ppp_type);
+		hdrlen = sizeof(struct ppp_header);
 	} else {
 		struct ppp_comp_header *phdr = s->pload;
 		ppp_type = ntohs(phdr->ppp_type);
+		hdrlen = sizeof(struct ppp_comp_header);
 	}
 
-	struct proto_process_stack *s_next = &stack[stack_index + 1];
-
-	s_next->pload = s->pload + sizeof(struct ppp_header);
-	s_next->plen  = s->plen  - sizeof(struct ppp_header);
-
+	s_next->pload = s->pload + hdrlen;
+	s_next->plen = s->plen - hdrlen;
 	s_next->proto = proto_get_by_number(s->proto, ppp_type);
 
 	return PROTO_OK;
