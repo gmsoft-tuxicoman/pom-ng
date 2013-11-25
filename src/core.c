@@ -573,7 +573,7 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 
 		struct proto_process_stack *s_next = &stack[i + 1];
 
-		if (!s_next->pload)
+		if (!s_next->pload || !s_next->plen)
 			break;
 	
 	}
