@@ -57,7 +57,14 @@ static int proto_pppoe_mod_register(struct mod_reg *mod) {
 	proto_pppoe.mod = mod;
 	proto_pppoe.pkt_fields = fields;
 
+	static struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 256;
+	ct_info.fwd_pkt_field_id = proto_pppoe_field_session_id;
+	ct_info.rev_pkt_field_id = CONNTRACK_PKT_FIELD_NONE;
+	proto_pppoe.ct_info = &ct_info;
+
 	proto_pppoe.init = proto_pppoe_init;
+	proto_pppoe.cleanup = proto_pppoe_cleanup;
 	proto_pppoe.process = proto_pppoe_process;
 
 	if (proto_register(&proto_pppoe) == POM_OK)
@@ -82,12 +89,52 @@ static int proto_pppoe_init(struct proto *proto, struct registry_instance *i) {
 		return POM_ERR;
 	}
 
+	struct proto_pppoe_priv *priv = malloc(sizeof(struct proto_pppoe_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_pppoe_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct proto_pppoe_priv));
+
+	proto_set_priv(proto, priv);
+
+	struct registry_param *p = NULL;
+
+	priv->p_session_timeout = ptype_alloc_unit("uint16", "seconds");
+	if (!priv->p_session_timeout)
+		goto err;
+
+	p = registry_new_param("stream_timeout", "1800", priv->p_session_timeout, "Timeout for PPPoE sessions", 0);
+	if (registry_instance_add_param(i, p) != POM_OK)
+		goto err;
+
 	return POM_OK;
 
+err:
+	if (p)
+		registry_cleanup_param(p);
+
+	proto_pppoe_cleanup(priv);
+
+	return POM_ERR;
+}
+
+static int proto_pppoe_cleanup(void *proto_priv) {
+
+	if (proto_priv) {
+		struct proto_pppoe_priv *p = proto_priv;
+		if (p->p_session_timeout)
+			ptype_cleanup(p->p_session_timeout);
+
+		free(p);
+	}
+
+	return POM_OK;
 }
 
 static int proto_pppoe_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct proto_pppoe_priv *priv = proto_priv;
 	struct proto_process_stack *s = &stack[stack_index];
 
 	if (sizeof(struct pppoe_header) > s->plen)
@@ -97,6 +144,11 @@ static int proto_pppoe_process(void *proto_priv, struct packet *p, struct proto_
 
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_pppoe_field_code], phdr->code);
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_pppoe_field_session_id],ntohs(phdr->session_id));
+
+	if (conntrack_get(stack, stack_index) != POM_OK)
+		return PROTO_ERR;
+	conntrack_delayed_cleanup(s->ce, *PTYPE_UINT16_GETVAL(priv->p_session_timeout) , p->ts);
+	conntrack_unlock(s->ce);
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 

@@ -41,6 +41,10 @@ struct pppoe_header
 
 #define PROTO_PPPOE_FIELD_NUM 2
 
+struct proto_pppoe_priv {
+	struct ptype *p_session_timeout;
+};
+
 enum proto_pppoe_fields {
 	proto_pppoe_field_code = 0,
 	proto_pppoe_field_session_id,
@@ -48,6 +52,7 @@ enum proto_pppoe_fields {
 
 struct mod_reg_info* proto_pppoe_reg_info();
 static int proto_pppoe_init(struct proto *proto, struct registry_instance *i);
+static int proto_pppoe_cleanup(void *proto_priv);
 static int proto_pppoe_mod_register(struct mod_reg *mod);
 static int proto_pppoe_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_pppoe_mod_unregister();
