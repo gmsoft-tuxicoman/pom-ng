@@ -219,8 +219,15 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 
 	struct conntrack_entry *parent = s_prev->ce;
 
-	if (!s->proto || !parent)
+	if (!s->proto) {
+		pomlog(POMLOG_ERR "Cannot allocate conntrack for NULL proto");
 		return POM_ERR;
+	}
+
+	if (!parent) {
+		pomlog(POMLOG_ERR "Cannot allocate unique conntrack without a parent");
+		return POM_ERR;
+	}
 
 
 	if (s->ce) { // This should only occur in the case that an expectation matched
@@ -245,7 +252,16 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 	struct conntrack_tables *ct = s->proto->ct;
 	struct conntrack_entry *res = NULL;
 
-	if (!parent->children) {
+	// Look for the conntrack
+	
+	if (parent->children) {
+		struct conntrack_node_list *child = parent->children;
+		for (child = parent->children; child && child->ce->proto != s->proto; child = child->next);
+		if (child)
+			res = child->ce;
+	} 
+
+	if (!res) {
 
 		// Alloc the conntrack
 		res = malloc(sizeof(struct conntrack_entry));
@@ -307,11 +323,8 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 		registry_perf_inc(s->proto->perf_conn_cur, 1);
 		registry_perf_inc(s->proto->perf_conn_tot, 1);
 
-	} else if (parent->children->next) {
-		pomlog(POMLOG_ERR "Error, parent has more than one child while it was supposed to have only one");
-	} else {
-		res = parent->children->ce;
 	}
+
 	conntrack_unlock(parent);
 
 	conntrack_lock(res);
