@@ -45,6 +45,10 @@ static int proto_ppp_mod_register(struct mod_reg *mod) {
 	proto_ppp.mod = mod;
 	proto_ppp.number_class = "ppp";
 
+	struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 1; // No hashing done here
+	proto_ppp.ct_info = &ct_info;
+
 	proto_ppp.init = proto_ppp_init;
 	proto_ppp.process = proto_ppp_process;
 
@@ -85,6 +89,12 @@ static int proto_ppp_process(void *proto_priv, struct packet *p, struct proto_pr
 		ppp_type = ntohs(phdr->ppp_type);
 		hdrlen = sizeof(struct ppp_comp_header);
 	}
+
+	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
+		pomlog(POMLOG_ERR "Could not get conntrack entry");
+		return POM_ERR;
+	}
+	conntrack_unlock(s->ce);
 
 	s_next->pload = s->pload + hdrlen;
 	s_next->plen = s->plen - hdrlen;
