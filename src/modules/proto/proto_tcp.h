@@ -63,7 +63,6 @@ struct proto_tcp_priv {
 	struct ptype *param_tcp_reuse_handling;
 	struct ptype *param_tcp_conn_buffer;
 	struct ptype *param_tcp_stream_timeout;
-	struct proto *proto_http, *proto_smtp;
 };
 
 struct proto_tcp_conntrack_priv {

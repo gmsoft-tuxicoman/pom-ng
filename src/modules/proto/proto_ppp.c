@@ -27,15 +27,12 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-static struct proto *proto_ipv4 = NULL, *proto_ipv6 = NULL;
-
 struct mod_reg_info* proto_ppp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ppp_mod_register;
 	reg_info.unregister_func = proto_ppp_mod_unregister;
-	reg_info.dependencies = "proto_ipv4, proto_ipv6";
 
 	return &reg_info;
 }
@@ -46,6 +43,7 @@ static int proto_ppp_mod_register(struct mod_reg *mod) {
 	proto_ppp.name = "ppp";
 	proto_ppp.api_ver = PROTO_API_VER;
 	proto_ppp.mod = mod;
+	proto_ppp.number_class = "ppp";
 
 	proto_ppp.init = proto_ppp_init;
 	proto_ppp.process = proto_ppp_process;
@@ -58,46 +56,37 @@ static int proto_ppp_mod_register(struct mod_reg *mod) {
 
 }
 
-
 static int proto_ppp_init(struct proto *proto, struct registry_instance *i) {
-	
-	proto_ipv4 = proto_get("ipv4");
-	proto_ipv6 = proto_get("ipv6");
 
-	if (!proto_ipv4 || !proto_ipv6) {
-		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
-		return POM_ERR;
-	}
-
-	return POM_OK;
-
+	return proto_number_register("ethernet", 0x880b, proto);
 }
+
 
 static int proto_ppp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 
-	if (sizeof(struct ppp_header) > s->plen)
+	uint16_t ppp_type = 0;
+
+	if (sizeof(struct ppp_comp_header) > s->plen)
 		return PROTO_INVALID;
 
-	struct ppp_header *ehdr = s->pload;
+	if (*(uint8_t*)s->pload == 0xff) {
+		if (sizeof(struct ppp_header) > s->plen)
+			return PROTO_INVALID;
+		struct ppp_header *phdr = s->pload;
+		ppp_type = ntohs(phdr->ppp_type);
+	} else {
+		struct ppp_comp_header *phdr = s->pload;
+		ppp_type = ntohs(phdr->ppp_type);
+	}
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
 	s_next->pload = s->pload + sizeof(struct ppp_header);
 	s_next->plen  = s->plen  - sizeof(struct ppp_header);
 
-	switch (ntohs(ehdr->ppp_type)) {
-		case 0x21:
-			s_next->proto = proto_ipv4;
-			break;
-		case 0x57:
-			s_next->proto = proto_ipv6;
-			break;
-		default:
-			s_next->proto = NULL;
-			break;
-	}
+	s_next->proto = proto_get_by_number(s->proto, ppp_type);
 
 	return PROTO_OK;
 

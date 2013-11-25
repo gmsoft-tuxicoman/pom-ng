@@ -30,7 +30,6 @@
 #define __FAVOR_BSD // We use BSD favor of the udp header
 #include <netinet/udp.h>
 
-static struct proto *proto_dns = NULL, *proto_tftp = NULL;
 static struct ptype *param_conntrack_timeout = NULL;
 
 struct mod_reg_info* proto_udp_reg_info() {
@@ -39,7 +38,7 @@ struct mod_reg_info* proto_udp_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_udp_mod_register;
 	reg_info.unregister_func = proto_udp_mod_unregister;
-	reg_info.dependencies = "proto_dns, proto_tftp, ptype_uint16, ptype_uint32";
+	reg_info.dependencies = "ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 }
@@ -50,6 +49,7 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 	proto_udp.name = "udp";
 	proto_udp.api_ver = PROTO_API_VER;
 	proto_udp.mod = mod;
+	proto_udp.number_class = "udp";
 
 	static struct proto_pkt_field fields[PROTO_UDP_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "sport";
@@ -80,8 +80,8 @@ static int proto_udp_mod_register(struct mod_reg *mod) {
 
 static int proto_udp_init(struct proto *proto, struct registry_instance *i) {
 
-	proto_dns = proto_get("dns");
-	proto_tftp = proto_get("tftp");
+	if (proto_number_register("ip", IPPROTO_UDP, proto) != POM_OK)
+		return POM_ERR;
 
 	param_conntrack_timeout = ptype_alloc_unit("uint32", "seconds");
 	if (!param_conntrack_timeout)
@@ -156,11 +156,9 @@ static int proto_udp_process(void *proto_priv, struct packet *p, struct proto_pr
 
 	if (!s_next->proto) {
 
-		if (dport == 53 || sport == 53)
-			s_next->proto = proto_dns;
-
-		if (dport == 69 || sport == 69)
-			s_next->proto = proto_tftp;
+		s_next->proto = proto_get_by_number(s->proto, sport);
+		if (!s_next->proto)
+			s_next->proto = proto_get_by_number(s->proto, dport);
 	}
 
 	return res;

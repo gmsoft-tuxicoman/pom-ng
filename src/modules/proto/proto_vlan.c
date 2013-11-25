@@ -29,15 +29,13 @@
 
 #include <arpa/inet.h>
 
-static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL, *proto_pppoe = NULL, *proto_vlan = NULL;
-
 struct mod_reg_info* proto_vlan_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_vlan_mod_register;
 	reg_info.unregister_func = proto_vlan_mod_unregister;
-	reg_info.dependencies = "proto_arp, proto_ipv4, proto_ipv6, proto_pppoe, ptype_bool, ptype_uint8, ptype_uint16";
+	reg_info.dependencies = "ptype_bool, ptype_uint8, ptype_uint16";
 
 	return &reg_info;
 }
@@ -60,6 +58,7 @@ static int proto_vlan_mod_register(struct mod_reg *mod) {
 	proto_vlan.api_ver = PROTO_API_VER;
 	proto_vlan.mod = mod;
 	proto_vlan.pkt_fields = fields;
+	proto_vlan.number_class = "ethernet";
 
 	// No contrack here
 
@@ -74,22 +73,9 @@ static int proto_vlan_mod_register(struct mod_reg *mod) {
 
 }
 
-
 static int proto_vlan_init(struct proto *proto, struct registry_instance *i) {
 	
-	proto_arp = proto_get("arp");
-	proto_ipv4 = proto_get("ipv4");
-	proto_ipv6 = proto_get("ipv6");
-	proto_pppoe = proto_get("pppoe");
-	proto_vlan = proto;
-
-	if (!proto_arp || !proto_ipv4 || !proto_ipv6 || !proto_pppoe) {
-		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
-		return POM_ERR;
-	}
-
-	return POM_OK;
-
+	return proto_number_register("ethernet", 0x8100, proto);
 }
 
 static int proto_vlan_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -117,31 +103,7 @@ static int proto_vlan_process(void *proto_priv, struct packet *p, struct proto_p
 	s_next->pload = s->pload + PROTO_VLAN_HEADER_SIZE;
 	s_next->plen = s->plen - PROTO_VLAN_HEADER_SIZE;
 
-	switch (ntohs(*ether_type)) {
-		case 0x0800:
-			s_next->proto = proto_ipv4;
-			break;
-		case 0x0806:
-			s_next->proto = proto_arp;
-			break;
-		case 0x8100:
-			s_next->proto = proto_vlan;
-			break;
-
-		case 0x86dd:
-			s_next->proto = proto_ipv6;
-			break;
-
-		case 0x8863:
-		case 0x8864:
-			s_next->proto = proto_pppoe;
-			break;
-
-		default:
-			s_next->proto = NULL;
-			break;
-
-	}
+	s_next->proto = proto_get_by_number(s->proto, ntohs(*ether_type));
 
 	return PROTO_OK;
 

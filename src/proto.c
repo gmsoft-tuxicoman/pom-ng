@@ -37,6 +37,8 @@ static struct proto *proto_head = NULL;
 
 static struct registry_class *proto_registry_class = NULL;
 
+static struct proto_number_class *proto_number_class_head = NULL;
+
 unsigned int proto_count = 0;
 
 int proto_init() {
@@ -73,6 +75,12 @@ int proto_register(struct proto_reg_info *reg_info) {
 	proto->info = reg_info;
 	proto->id = proto_count;
 	proto_count++;
+
+	if (reg_info->number_class) {
+		proto->number_class = proto_number_class_get(reg_info->number_class);
+		if (!proto->number_class)
+			goto err_proto;
+	}
 
 	if (pthread_rwlock_init(&proto->expectation_lock, NULL)) {
 		pomlog(POMLOG_ERR "Error while initializing the proto_expectation rwlock : %s", pom_strerror(errno));	
@@ -130,6 +138,8 @@ int proto_register(struct proto_reg_info *reg_info) {
 	return POM_OK;
 
 err_conntrack:
+	// Remove proto number if any
+	proto_number_unregister(proto);
 	conntrack_table_cleanup(proto->ct);
 err_registry:
 	registry_remove_instance(proto->reg_instance);
@@ -322,6 +332,8 @@ int proto_unregister(char *name) {
 	for (proto = proto_head; proto && strcmp(proto->info->name, name); proto = proto->next);
 	if (!proto)
 		return POM_OK;
+
+	proto_number_unregister(proto);
 	
 	if (proto->info->cleanup && proto->info->cleanup(proto->priv)) {
 		pomlog(POMLOG_ERR "Error while cleaning up the protocol %s", name);
@@ -400,6 +412,18 @@ int proto_cleanup() {
 	if (proto_registry_class)
 		registry_remove_class(proto_registry_class);
 	proto_registry_class = NULL;
+
+	while (proto_number_class_head) {
+		struct proto_number_class *cls = proto_number_class_head;
+		proto_number_class_head = cls->next;
+		while (cls->nums) {
+			struct proto_number *num = cls->nums;
+			cls->nums = num->next;
+			free(num);
+		}
+		free(cls->name);
+		free(cls);
+	}
 
 	return POM_OK;
 }
@@ -714,4 +738,96 @@ struct proto_reg_info *proto_get_info(struct proto *p) {
 
 unsigned int proto_get_count() {
 	return proto_count;
+}
+
+struct proto_number_class *proto_number_class_get(char *name) {
+	
+	struct proto_number_class *cls = proto_number_class_head;
+
+	for (cls = proto_number_class_head; cls && strcmp(cls->name, name); cls = cls->next);
+
+	if (cls)
+		return cls;
+
+	cls = malloc(sizeof(struct proto_number_class));
+	if (!cls) {
+		pom_oom(sizeof(struct proto_number_class));
+		return NULL;
+	}
+	memset(cls, 0, sizeof(struct proto_number_class));
+	cls->name = strdup(name);
+	if (!cls->name) {
+		pom_oom(strlen(name) + 1);
+		free(cls);
+		return NULL;
+	}
+
+	cls->next = proto_number_class_head;
+	proto_number_class_head = cls;
+
+	return cls;
+
+}
+
+int proto_number_register(char *class, unsigned int proto_num, struct proto *p) {
+
+	struct proto_number_class *cls = proto_number_class_get(class);
+	if (!cls)
+		return POM_ERR;
+
+	struct proto_number *num = malloc(sizeof(struct proto_number));
+	if (!num) {
+		pom_oom(sizeof(struct proto_number));
+		return POM_ERR;
+	}
+	memset(num, 0, sizeof(struct proto_number));
+
+	num->val = proto_num;
+	num->proto = p;
+
+	num->next = cls->nums;
+	if (num->next)
+		num->next->prev = num;
+	cls->nums = num;
+
+	return POM_OK;
+}
+
+struct proto *proto_get_by_number(struct proto *p, unsigned int num) {
+
+	if (!p->number_class) {
+		pomlog(POMLOG_ERR "No number class for this protocol !");
+		return NULL;
+	}
+
+	struct proto_number *n;
+	for (n = p->number_class->nums; n && n->val != num; n = n->next);
+
+	if (n)
+		return n->proto;
+
+	return NULL;
+}
+
+int proto_number_unregister(struct proto *p) {
+
+	struct proto_number_class *cls;
+	for (cls = proto_number_class_head; cls; cls = cls->next) {
+		struct proto_number *num;
+		for (num = cls->nums; num && num->proto != p; num = num->next);
+
+		if (num) {
+			if (num->next)
+				num->next->prev = num->prev;
+			if (num->prev)
+				num->prev->next = num->next;
+			else
+				cls->nums = num->next;
+			free(num);
+		}
+
+	}
+
+	return POM_OK;
+
 }

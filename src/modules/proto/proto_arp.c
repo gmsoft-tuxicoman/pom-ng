@@ -67,10 +67,16 @@ static int proto_arp_mod_register(struct mod_reg *mod) {
 
 	// No contrack here
 
+	proto_arp.init = proto_arp_init;
 	proto_arp.process = proto_arp_process;
 
 	return proto_register(&proto_arp);
 
+}
+
+static int proto_arp_init(struct proto *proto, struct registry_instance *i) {
+
+	return proto_number_register("ethernet", 0x0806, proto);
 }
 
 static int proto_arp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {

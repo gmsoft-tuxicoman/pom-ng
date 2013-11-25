@@ -70,6 +70,7 @@ struct proto_reg_info {
 	struct proto_pkt_field *pkt_fields;
 	struct conntrack_info *ct_info;
 	struct proto_event_reg *events;
+	char *number_class;
 
 	int (*init) (struct proto *proto, struct registry_instance *i);
 	int (*process) (void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
@@ -123,5 +124,8 @@ int proto_expectation_add(struct proto_expectation *e, struct conntrack_session 
 
 void proto_set_priv(struct proto *p, void *priv);
 void *proto_get_priv(struct proto *p);
-struct proto_reg_info *proto_get_info(struct proto *p);
+struct proto_reg_info *proto_get_info(struct proto *p); 
+
+int proto_number_register(char *class, unsigned int proto_num, struct proto *p);
+struct proto *proto_get_by_number(struct proto *p, unsigned int num);
 #endif

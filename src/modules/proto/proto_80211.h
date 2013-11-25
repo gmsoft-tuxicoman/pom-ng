@@ -32,7 +32,6 @@ enum proto_80211_fields {
 };
 
 struct mod_reg_info* proto_80211_reg_info();
-static int proto_80211_init(struct proto *proto, struct registry_instance *i);
 static int proto_80211_mod_register(struct mod_reg *mod);
 static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_80211_mod_unregister();

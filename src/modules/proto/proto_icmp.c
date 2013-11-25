@@ -24,8 +24,6 @@
 
 #include "proto_icmp.h"
 
-#include <string.h>
-
 struct mod_reg_info* proto_icmp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -55,6 +53,7 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 
 	// No contrack here
 
+	proto_icmp.init = proto_icmp_init;
 	proto_icmp.process = proto_icmp_process;
 
 	if (proto_register(&proto_icmp) == POM_OK)
@@ -64,6 +63,10 @@ static int proto_icmp_mod_register(struct mod_reg *mod) {
 
 }
 
+static int proto_icmp_init(struct proto *proto, struct registry_instance *i) {
+
+	return proto_number_register("ip", IPPROTO_ICMP, proto);
+}
 
 static int proto_icmp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 

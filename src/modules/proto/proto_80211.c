@@ -34,15 +34,13 @@
 #include <ieee80211.h>
 #include <stddef.h>
 
-static struct proto *proto_arp = NULL, *proto_ipv4 = NULL, *proto_ipv6 = NULL;
-
 struct mod_reg_info* proto_80211_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_80211_mod_register;
 	reg_info.unregister_func = proto_80211_mod_unregister;
-	reg_info.dependencies = "proto_arp, proto_ipv4, proto_ipv6, ptype_mac, ptype_string, ptype_uint8";
+	reg_info.dependencies = "ptype_mac, ptype_string, ptype_uint8";
 
 	return &reg_info;
 }
@@ -72,10 +70,10 @@ static int proto_80211_mod_register(struct mod_reg *mod) {
 	proto_80211.api_ver = PROTO_API_VER;
 	proto_80211.mod = mod;
 	proto_80211.pkt_fields = fields;
+	proto_80211.number_class = "ethernet";
 
 	// No contrack here
 
-	proto_80211.init = proto_80211_init;
 	proto_80211.process = proto_80211_process;
 
 	if (proto_register(&proto_80211) == POM_OK)
@@ -83,23 +81,6 @@ static int proto_80211_mod_register(struct mod_reg *mod) {
 
 
 	return POM_ERR;
-
-}
-
-
-static int proto_80211_init(struct proto *proto, struct registry_instance *i) {
-	
-	proto_arp = proto_get("arp");
-	proto_ipv4 = proto_get("ipv4");
-	proto_ipv6 = proto_get("ipv6");
-
-	if (!proto_arp || !proto_ipv4 || !proto_ipv6) {
-		pomlog(POMLOG_ERR "Could not get hold of all the needed protocols");
-		return POM_ERR;
-	}
-
-
-	return POM_OK;
 
 }
 
@@ -261,18 +242,7 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 
 			offt += sizeof(struct ieee80211_llc);
 
-			switch (ntohs(llc->ethertype)) {
-				case 0x0800:
-					s_next->proto = proto_ipv4;
-					break;
-				case 0x0806:
-					s_next->proto = proto_arp;
-					break;
-				case 0x86dd:
-					s_next->proto = proto_ipv6;
-					break;
-			}
-
+			s_next->proto = proto_get_by_number(s->proto, ntohs(llc->ethertype));
 			break;
 
 		default:

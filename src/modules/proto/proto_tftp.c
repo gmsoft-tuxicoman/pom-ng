@@ -36,8 +36,6 @@
 #define debug_tftp(x ...)
 #endif
 
-struct proto *proto_tftp = NULL;
-
 struct mod_reg_info* proto_tftp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -80,8 +78,7 @@ static int proto_tftp_mod_register(struct mod_reg *mod) {
 
 static int proto_tftp_init(struct proto *proto, struct registry_instance *i) {
 
-	proto_tftp = proto;
-	return POM_OK;
+	return proto_number_register("udp", 69, proto);
 }
 
 static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -162,7 +159,7 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 			// We don't need to do anything with the session
 			conntrack_session_unlock(session);
 
-			struct proto_expectation *expt = proto_expectation_alloc_from_conntrack(s_prev->ce, proto_tftp, NULL);
+			struct proto_expectation *expt = proto_expectation_alloc_from_conntrack(s_prev->ce, s->proto, NULL);
 
 			if (!expt) {
 				conntrack_unlock(s->ce);

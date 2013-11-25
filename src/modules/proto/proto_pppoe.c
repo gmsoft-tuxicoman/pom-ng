@@ -71,6 +71,10 @@ static int proto_pppoe_mod_register(struct mod_reg *mod) {
 
 static int proto_pppoe_init(struct proto *proto, struct registry_instance *i) {
 
+	if (proto_number_register("ethernet", 0x8863, proto) != POM_OK ||
+		proto_number_register("ethernet", 0x8864, proto) != POM_OK)
+			return POM_ERR;
+
 	proto_ppp = proto_get("ppp");
 
 	if (!proto_ppp) {

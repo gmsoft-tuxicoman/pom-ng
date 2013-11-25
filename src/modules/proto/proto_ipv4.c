@@ -34,8 +34,6 @@
 #define IP_MORE_FRAG 0x2000
 #define IP_OFFSET_MASK 0x1fff
 
-static struct proto *proto_icmp = NULL, *proto_ipv6 = NULL, *proto_tcp = NULL, *proto_udp = NULL;
-
 static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
 static struct registry_perf *perf_frags = NULL, *perf_frags_dropped = NULL, *perf_reassembled_pkts = NULL;
@@ -46,7 +44,7 @@ struct mod_reg_info* proto_ipv4_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ipv4_mod_register;
 	reg_info.unregister_func = proto_ipv4_mod_unregister;
-	reg_info.dependencies = "proto_icmp, proto_tcp, proto_udp, ptype_ipv4, proto_ipv6, ptype_uint8, ptype_uint32";
+	reg_info.dependencies = "ptype_ipv4, ptype_uint8, ptype_uint32";
 
 	return &reg_info;
 }
@@ -58,6 +56,7 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 	proto_ipv4.name = "ipv4";
 	proto_ipv4.api_ver = PROTO_API_VER;
 	proto_ipv4.mod = mod;
+	proto_ipv4.number_class = "ip";
 
 	static struct proto_pkt_field fields[PROTO_IPV4_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "src";
@@ -94,6 +93,11 @@ static int proto_ipv4_mod_register(struct mod_reg *mod) {
 
 static int proto_ipv4_init(struct proto *proto, struct registry_instance *i) {
 
+	if (proto_number_register("ethernet", 0x0800, proto) != POM_OK ||
+		proto_number_register("ip", IPPROTO_IPIP, proto) != POM_OK ||
+		proto_number_register("ppp", 0x21, proto) != POM_OK)
+		return POM_ERR;
+
 	perf_frags = registry_instance_add_perf(i, "fragments", registry_perf_type_counter, "Number of fragments received", "pkts");
 	perf_frags_dropped = registry_instance_add_perf(i, "dropped_fragments", registry_perf_type_counter, "Number of fragments dropped", "pkts");
 	perf_reassembled_pkts = registry_instance_add_perf(i, "reassembled_pkts", registry_perf_type_counter, "Number of reassembled packets", "pkts");
@@ -116,16 +120,6 @@ static int proto_ipv4_init(struct proto *proto, struct registry_instance *i) {
 	p = registry_new_param("conntrack_timeout", "7200", param_conntrack_timeout, "Timeout for ipv4 connections", 0);
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
-
-	proto_icmp = proto_get("icmp");
-	proto_ipv6 = proto_get("ipv6");
-	proto_tcp = proto_get("tcp");
-	proto_udp = proto_get("udp");
-
-	if (!proto_icmp || !proto_ipv6 || !proto_tcp || !proto_udp) {
-		proto_ipv4_cleanup(proto);
-		return POM_ERR;
-	}
 
 	return POM_OK;
 
@@ -172,31 +166,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 	s_next->pload = s->pload + hdr_len;
 	s_next->plen = ntohs(hdr->ip_len) - hdr_len;
 
-	struct proto *next_proto = NULL;
-	switch (hdr->ip_p) {
-		case IPPROTO_ICMP: // 1
-			next_proto = proto_icmp;
-			break;
-		case IPPROTO_TCP: // 6
-			next_proto = proto_tcp;
-			break;
-		case IPPROTO_UDP: // 17
-			next_proto = proto_udp;
-			break;
-		case IPPROTO_IPV6: // 41
-			next_proto = proto_ipv6;
-			break;
-/*		case IPPROTO_GRE: // 47
-			next_proto = proto_gre;
-			break;
-*/
-		default:
-			next_proto = NULL;
-			break;
-
-	}
-
-	s_next->proto = next_proto;
+	s_next->proto = proto_get_by_number(s->proto, hdr->ip_p);
 
 
 	int res = POM_ERR;
@@ -266,7 +236,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 		
 		tmp->id = hdr->ip_id;
 
-		if (!next_proto) {
+		if (!s_next->proto) {
 			// Set processed flag so no attempt to process this will be done
 			tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
 			conntrack_unlock(s->ce);
@@ -275,7 +245,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 			return PROTO_STOP;
 		}
 
-		tmp->multipart = packet_multipart_alloc(next_proto, 0);
+		tmp->multipart = packet_multipart_alloc(s_next->proto, 0);
 		if (!tmp->multipart) {
 			conntrack_unlock(s->ce);
 			conntrack_timer_cleanup(tmp->t);

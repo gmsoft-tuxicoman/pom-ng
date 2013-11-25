@@ -29,6 +29,7 @@ enum proto_icmp6_fields {
 };
 
 struct mod_reg_info* proto_icmp6_reg_info();
+static int proto_icmp6_init(struct proto *proto, struct registry_instance *i);
 static int proto_icmp6_mod_register(struct mod_reg *mod);
 static int proto_icmp6_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 static int proto_icmp6_mod_unregister();

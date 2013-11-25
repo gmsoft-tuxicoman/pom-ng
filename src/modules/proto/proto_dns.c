@@ -76,7 +76,8 @@ static int proto_dns_mod_register(struct mod_reg *mod) {
 	proto_dns.pkt_fields = fields;
 
 	// No contrack here
-	
+
+	proto_dns.init = proto_dns_init;
 	proto_dns.process = proto_dns_process;
 
 	if (proto_register(&proto_dns) == POM_OK)
@@ -84,6 +85,12 @@ static int proto_dns_mod_register(struct mod_reg *mod) {
 
 	return POM_ERR;
 
+}
+
+static int proto_dns_init(struct proto *proto, struct registry_instance *i) {
+
+	// TODO Add TCP support
+	return proto_number_register("udp", 53, proto);
 }
 
 static int proto_dns_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {

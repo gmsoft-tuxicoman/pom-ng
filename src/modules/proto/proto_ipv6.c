@@ -33,8 +33,6 @@
 
 #include <netinet/ip6.h>
 
-static struct proto *proto_icmp6 = NULL, *proto_tcp = NULL, *proto_udp = NULL;
-
 static struct ptype *param_frag_timeout = NULL, *param_conntrack_timeout = NULL;
 
 static struct registry_perf *perf_frags = NULL, *perf_frags_dropped = NULL, *perf_reassembled_pkts = NULL;
@@ -45,7 +43,7 @@ struct mod_reg_info* proto_ipv6_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ipv6_mod_register;
 	reg_info.unregister_func = proto_ipv6_mod_unregister;
-	reg_info.dependencies = "proto_icmp6, proto_tcp, proto_udp, ptype_ipv6, ptype_uint8, ptype_uint32";
+	reg_info.dependencies = "ptype_ipv6, ptype_uint8, ptype_uint32";
 
 	return &reg_info;
 }
@@ -57,6 +55,7 @@ static int proto_ipv6_mod_register(struct mod_reg *mod) {
 	proto_ipv6.name = "ipv6";
 	proto_ipv6.api_ver = PROTO_API_VER;
 	proto_ipv6.mod = mod;
+	proto_ipv6.number_class = "ip";
 
 	static struct proto_pkt_field fields[PROTO_IPV6_FIELD_NUM + 1] = { { 0 } };
 	fields[0].name = "src";
@@ -90,6 +89,11 @@ static int proto_ipv6_mod_register(struct mod_reg *mod) {
 
 static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
 
+	if (proto_number_register("ethernet", 0x86dd, proto) != POM_OK ||
+		proto_number_register("ip", IPPROTO_IPV6, proto) != POM_OK ||
+		proto_number_register("ppp", 0x57, proto) != POM_OK)
+		return POM_ERR;
+
 	perf_frags = registry_instance_add_perf(i, "fragments", registry_perf_type_counter, "Number of fragments received", "pkts");
 	perf_frags_dropped = registry_instance_add_perf(i, "dropped_fragments", registry_perf_type_counter, "Number of fragments dropped", "pkts");
 	perf_reassembled_pkts = registry_instance_add_perf(i, "reassembled_pkts", registry_perf_type_counter, "Number of reassembled packets", "pkts");
@@ -113,15 +117,6 @@ static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
 	if (registry_instance_add_param(i, p) != POM_OK)
 		goto err;
 	
-	proto_icmp6 = proto_get("icmp6");
-	proto_tcp = proto_get("tcp");
-	proto_udp = proto_get("udp");
-
-	if (!proto_icmp6 || !proto_tcp || !proto_udp) {
-		proto_ipv6_cleanup(proto);
-		return POM_ERR;
-	}
-
 	return POM_OK;
 
 err:
@@ -153,26 +148,12 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 	void *frag_data = s_next->pload + sizeof(struct ip6_frag);
 	size_t frag_len = s_next->plen - sizeof(struct ip6_frag);
 
-	struct proto *next_proto = NULL;
-	switch (fhdr->ip6f_nxt) {
-		case IPPROTO_TCP: // 6
-			next_proto = proto_tcp;
-			break;
-
-		case IPPROTO_UDP: // 17
-			next_proto = proto_udp;
-			break;
-
-		case IPPROTO_ICMPV6: // 58
-			next_proto = proto_icmp6;
-			break;
-
-	}
+	s_next->proto = proto_get_by_number(s->proto, fhdr->ip6f_nxt);
 
 	registry_perf_inc(perf_frags, 1);
 
 	// Don't bother processing unsupported protocols
-	if (!next_proto) {
+	if (!s_next->proto) {
 		conntrack_unlock(s->ce);
 		return PROTO_STOP;
 	}
@@ -202,7 +183,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		
 		tmp->id = fhdr->ip6f_ident;
 		tmp->nxthdr = nxthdr;
-		tmp->multipart = packet_multipart_alloc(next_proto, 0);
+		tmp->multipart = packet_multipart_alloc(s_next->proto, 0);
 		if (!tmp->multipart) {
 			conntrack_timer_cleanup(tmp->t);
 			free(tmp);
@@ -327,26 +308,11 @@ static int proto_ipv6_process(void *proto_priv, struct packet *p, struct proto_p
 				break;
 			}
 
-			case IPPROTO_TCP: // 6
-				done = 1;
-				s_next->proto = proto_tcp;
-				break;
-
-			case IPPROTO_UDP: // 17
-				done = 1;
-				s_next->proto = proto_udp;
-				break;
-
-			case IPPROTO_ICMPV6: // 58
-				done = 1;
-				s_next->proto = proto_icmp6;
-				break;
-
 			case IPPROTO_FRAGMENT: // 44
 				return proto_ipv6_process_fragment(p, stack, stack_index);
 
-			case IPPROTO_NONE: // 59
 			default:
+				s_next->proto = proto_get_by_number(s->proto, nhdr);
 				done = 1;
 				break;
 

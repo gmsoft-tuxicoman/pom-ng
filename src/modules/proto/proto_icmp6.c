@@ -55,6 +55,7 @@ static int proto_icmp6_mod_register(struct mod_reg *mod) {
 
 	// No contrack here
 
+	proto_icmp6.init = proto_icmp6_init;
 	proto_icmp6.process = proto_icmp6_process;
 
 	if (proto_register(&proto_icmp6) == POM_OK)
@@ -64,6 +65,10 @@ static int proto_icmp6_mod_register(struct mod_reg *mod) {
 
 }
 
+static int proto_icmp6_init(struct proto *proto, struct registry_instance *i) {
+
+	return proto_number_register("ip", IPPROTO_ICMPV6, proto);
+}
 
 static int proto_icmp6_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 

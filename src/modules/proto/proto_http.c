@@ -78,6 +78,9 @@ static int proto_http_mod_register(struct mod_reg *mod) {
 
 static int proto_http_init(struct proto *proto, struct registry_instance *ri) {
 
+	if (proto_number_register("tcp", 80, proto) != POM_OK)
+		return POM_ERR;
+
 	struct proto_http_priv *priv = malloc(sizeof(struct proto_http_priv));
 	if (!priv) {
 		pom_oom(sizeof(struct proto_http_priv));

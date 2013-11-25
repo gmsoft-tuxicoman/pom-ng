@@ -24,7 +24,14 @@
 
 #include <stdint.h>
 
-struct ppp_header
+
+struct ppp_header {
+	uint8_t ppp_addr;
+	uint8_t ppp_control;
+	uint16_t ppp_type;
+} __attribute__ ((__packed__));
+
+struct ppp_comp_header
 {
 	uint16_t ppp_type;
 } __attribute__ ((__packed__));

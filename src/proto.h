@@ -48,6 +48,8 @@ struct proto {
 	pthread_rwlock_t expectation_lock;
 	struct proto_expectation *expectations;
 
+	struct proto_number_class *number_class;
+
 	struct registry_perf *perf_pkts;
 	struct registry_perf *perf_bytes;
 	struct registry_perf *perf_conn_cur;
@@ -83,6 +85,20 @@ struct proto_expectation {
 	struct proto_expectation *prev, *next;
 };
 
+struct proto_number {
+
+	struct proto *proto;
+	unsigned int val;
+	struct proto_number *prev, *next;
+};
+
+struct proto_number_class {
+	char *name;
+	size_t size;
+	
+	struct proto_number_class *next;
+	struct proto_number *nums;
+};
 
 int proto_init();
 int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
@@ -92,5 +108,7 @@ int proto_cleanup();
 int proto_expectation_expiry(void *priv, ptime now);
 
 unsigned int proto_get_count();
+struct proto_number_class *proto_number_class_get(char *name);
+int proto_number_unregister(struct proto *p);
 
 #endif
