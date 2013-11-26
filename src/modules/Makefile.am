@@ -24,7 +24,7 @@ DECODER_SRC = decoder_base64.la decoder_gzip.la decoder_percent.la decoder_quote
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_80211.la proto_arp.la proto_dns.la proto_docsis.la proto_ethernet.la proto_gre.la proto_http.la proto_icmp.la proto_icmp6.la proto_ipv4.la proto_ipv6.la proto_mpeg.la proto_ppi.la proto_ppp.la proto_pppoe.la proto_radiotap.la proto_smtp.la proto_tcp.la proto_tftp.la proto_udp.la proto_vlan.la
-PTYPE_SRC = ptype_bool.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
+PTYPE_SRC = ptype_bool.la ptype_bytes.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(DECODER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
@@ -177,6 +177,9 @@ proto_vlan_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_bool_la_SOURCES = ptype/ptype_bool.c ptype/ptype_bool.h
 ptype_bool_la_LDFLAGS = -module -avoid-version 
 ptype_bool_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+ptype_bytes_la_SOURCES = ptype/ptype_bytes.c ptype/ptype_bytes.h
+ptype_bytes_la_LDFLAGS = -module -avoid-version 
+ptype_bytes_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 ptype_mac_la_SOURCES = ptype/ptype_mac.c ptype/ptype_mac.h
 ptype_mac_la_LDFLAGS = -module -avoid-version 
 ptype_mac_la_LIBADD = $(top_builddir)/src/libpom-ng.la
