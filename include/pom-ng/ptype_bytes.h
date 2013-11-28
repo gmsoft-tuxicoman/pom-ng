@@ -41,6 +41,10 @@ struct ptype_bytes_val {
 }
 
 /// x is the struct ptype
+#define PTYPE_BYTES_GETLEN(x) \
+	((struct ptype_bytes_val *)((x)->value))->length;
+
+/// x is the struct ptype
 #define PTYPE_BYTES_GETVAL(x) \
 	((struct ptype_bytes_val *)((x)->value))->value;
 	
