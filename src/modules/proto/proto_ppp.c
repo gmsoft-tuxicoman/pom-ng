@@ -90,9 +90,18 @@ static int proto_ppp_process(void *proto_priv, struct packet *p, struct proto_pr
 		hdrlen = sizeof(struct ppp_comp_header);
 	}
 
-	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
-		pomlog(POMLOG_ERR "Could not get conntrack entry");
-		return POM_ERR;
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	if (!s_prev->proto) { // We are the link protocol
+		if (conntrack_get_unique(stack, stack_index) != POM_OK) {
+			pomlog(POMLOG_ERR "Could not get conntrack entry");
+			return POM_ERR;
+		}
+	} else {
+
+		if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK) {
+			pomlog(POMLOG_ERR "Could not get conntrack entry");
+			return POM_ERR;
+		}
 	}
 	conntrack_unlock(s->ce);
 
