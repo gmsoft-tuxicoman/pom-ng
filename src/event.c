@@ -356,6 +356,8 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 		return POM_ERR;
 	}
 
+	event_refcount_inc(evt);
+
 	if (stack)
 		evt->ce = stack[stack_index].ce;
 
@@ -391,7 +393,6 @@ int event_process_end(struct event *evt) {
 		return POM_ERR;
 	}
 
-	event_refcount_inc(evt);
 
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
