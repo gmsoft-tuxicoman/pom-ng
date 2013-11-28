@@ -1,5 +1,5 @@
 # This file is part of pom-ng.
-# Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+# Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 DECODER_SRC = decoder_base64.la decoder_gzip.la decoder_percent.la decoder_quoted_printable.la
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
@@ -56,6 +56,9 @@ analyzer_multipart_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_png_la_SOURCES = analyzer/analyzer_png.c analyzer/analyzer_png.h
 analyzer_png_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_png_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_ppp_chap_la_SOURCES = analyzer/analyzer_ppp_chap.c analyzer/analyzer_ppp_chap.h
+analyzer_ppp_chap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_ppp_chap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_rfc822_la_SOURCES = analyzer/analyzer_rfc822.c analyzer/analyzer_rfc822.h
 analyzer_rfc822_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_rfc822_la_LIBADD = $(top_builddir)/src/libpom-ng.la
