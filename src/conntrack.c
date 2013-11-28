@@ -209,6 +209,87 @@ struct conntrack_entry *conntrack_find(struct conntrack_list *lst, struct ptype 
 	return NULL;
 }
 
+int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
+	if (s_prev->proto) {
+		pomlog(POMLOG_ERR "conntrack_get_unique() can only be used for link protocols");
+		return POM_ERR;
+	}
+
+	if (s->ce) { // This should only occur in the case that an expectation matched
+		// Make sure the conntrack is locked
+		int res = pthread_mutex_trylock(&s->ce->lock);
+		if (res && res != EBUSY && res == EDEADLK) {
+			pomlog(POMLOG_ERR "Error while locking the conntrack : %s", pom_strerror(res));
+			return POM_ERR;
+		}
+		return POM_OK;
+	}
+
+	struct conntrack_tables *ct = s->proto->ct;
+	pom_mutex_lock(&ct->locks[0]);
+
+	struct conntrack_list *lst = ct->table[0];
+
+	for (lst = ct->table[0]; lst && lst->ce->parent; lst = lst->next);
+
+	if (lst) {
+		// Conntrack found
+		s->ce = lst->ce;
+		pom_mutex_unlock(&ct->locks[0]);
+	} else {
+		// Alloc the conntrack
+		struct conntrack_entry *res = NULL;
+		res = malloc(sizeof(struct conntrack_entry));
+		if (!res) {
+			pom_oom(sizeof(struct conntrack_entry));
+			pom_mutex_unlock(&ct->locks[0]);
+			return POM_ERR;
+		}
+
+		memset(res, 0, sizeof(struct conntrack_entry));
+		res->proto = s->proto;
+
+		if (pom_mutex_init_type(&res->lock, PTHREAD_MUTEX_ERRORCHECK) != POM_OK) {
+			pom_mutex_unlock(&ct->locks[0]);
+			return POM_ERR;
+		}
+
+		// Alloc the list node
+		lst = malloc(sizeof(struct conntrack_list));
+		if (!lst) {
+			pom_oom(sizeof(struct conntrack_list));
+			pom_mutex_unlock(&ct->locks[0]);
+			return POM_ERR;
+		}
+		memset(lst, 0, sizeof(struct conntrack_list));
+		lst->ce = res;
+
+		// Add the conntrack to the table
+		lst->next = ct->table[0];
+		if (lst->next)
+			lst->next->prev = lst;
+		ct->table[0] = lst;
+		pom_mutex_unlock(&ct->locks[0]);
+		debug_conntrack("Allocated unique conntrack %p", res);
+
+		registry_perf_inc(s->proto->perf_conn_cur, 1);
+		registry_perf_inc(s->proto->perf_conn_tot, 1);
+		s->ce = res;
+	}
+
+	conntrack_lock(s->ce);
+	s->ce->refcount++;
+
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	s_next->direction = s->direction;
+
+	return POM_OK;
+
+}
+
 int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct conntrack_node_list *child = NULL;

@@ -63,6 +63,7 @@ struct conntrack_info {
 
 int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index);
 int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned int stack_index);
+int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_index);
 
 void conntrack_lock(struct conntrack_entry *ce);
 void conntrack_unlock(struct conntrack_entry *ce);
