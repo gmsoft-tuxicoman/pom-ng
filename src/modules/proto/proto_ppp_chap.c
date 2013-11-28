@@ -35,7 +35,7 @@ struct mod_reg_info* proto_ppp_chap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_ppp_chap_mod_register;
 	reg_info.unregister_func = proto_ppp_chap_mod_unregister;
-	reg_info.dependencies = "ptype_bytes, ptype_string, ptype_uint8";
+	reg_info.dependencies = "ptype_bytes, ptype_string, ptype_uint8, ptype_uint32";
 
 	return &reg_info;
 }
@@ -55,6 +55,12 @@ static int proto_ppp_chap_mod_register(struct mod_reg *mod) {
 	fields[1].value_type = ptype_get_type("uint8");
 	fields[1].description = "Identifier";
 	proto_ppp_chap.pkt_fields = fields;
+
+	static struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 16;
+	ct_info.fwd_pkt_field_id = proto_ppp_chap_identifier;
+	ct_info.rev_pkt_field_id = CONNTRACK_PKT_FIELD_NONE;
+	proto_ppp_chap.ct_info = &ct_info;
 
 	proto_ppp_chap.init = proto_ppp_chap_init;
 	proto_ppp_chap.cleanup = proto_ppp_chap_cleanup;
@@ -133,6 +139,15 @@ static int proto_ppp_chap_init(struct proto *proto, struct registry_instance *i)
 	if (!priv->evt_success_failure)
 		goto err;
 
+	priv->p_auth_timeout = ptype_alloc_unit("uint32", "seconds");
+	(!priv->p_auth_timeout)
+		goto err;
+
+	struct registry_param *p = registry_new_param("auth_timeout", "60", priv->p_auth_timeout, "Authentification timeout", 0);
+	if (registry_instance_add_param(i, p) != POM_OK) {
+		registry_cleanup_param(p);
+		goto err;
+	}
 
 	return POM_OK;
 
@@ -148,6 +163,9 @@ static int proto_ppp_chap_cleanup(void *proto_priv) {
 		return POM_OK;
 
 	struct proto_ppp_chap_priv *priv = proto_priv;
+
+	if (priv->p_auth_timeout)
+		ptype_cleanup(priv->p_auth_timeout);
 
 	if (priv->evt_challenge_response)
 		event_unregister(priv->evt_challenge_response);
@@ -178,6 +196,15 @@ static int proto_ppp_chap_process(void *proto_priv, struct packet *p, struct pro
 
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_ppp_chap_field_code], pchdr->code);
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_ppp_chap_field_identifier], pchdr->identifier);
+
+	if (conntrack_get(stack, stack_index) != POM_OK)
+		return PROTO_ERR;
+	if (conntrack_delayed_cleanup(s->ce, PTYPE_UINT32_GETVAL(priv->p_auth_timeout))) {
+		conntrack_unlock(s->ce);
+		return PROTO_ERR;
+	}
+	
+	conntrack_unlock(s->ce);
 
 	struct proto_ppp_chap_priv *priv = proto_priv;
 

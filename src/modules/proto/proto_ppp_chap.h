@@ -40,6 +40,7 @@ struct ppp_chap_header {
 
 
 struct proto_ppp_chap_priv {
+	struct ptyep *p_auth_timeout;
 	struct event_reg *evt_challenge_response;
 	struct event_reg *evt_success_failure;
 };
