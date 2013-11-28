@@ -493,7 +493,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 
 	// It's not found in the reverse direction either, let's create it then
 
-	if (s_prev->direction == POM_DIR_REV) {
+	if (s_prev->direction == POM_DIR_REV && rev_value) {
 		// This indicates that the parent conntrack matched in a reverse direction
 		// Let's keep directions consistent and swap fwd and rev values
 		struct ptype *tmp = rev_value;
