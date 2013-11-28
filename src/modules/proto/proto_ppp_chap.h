@@ -26,6 +26,8 @@
 #define PROTO_PPP_CHAP_EVT_CHALLENGE_RESPONSE_DATA_COUNT	4
 #define PROTO_PPP_CHAP_EVT_SUCCESS_FAILURE_DATA_COUNT		3
 
+#include <pom-ng/proto_ppp_chap.h>
+
 enum proto_ppp_chap_fields {
 
 	proto_ppp_chap_field_code = 0,
@@ -43,19 +45,6 @@ struct proto_ppp_chap_priv {
 	struct ptype *p_auth_timeout;
 	struct event_reg *evt_challenge_response;
 	struct event_reg *evt_success_failure;
-};
-
-enum {
-	evt_ppp_chap_challenge_response_code = 0,
-	evt_ppp_chap_challenge_response_identifier,
-	evt_ppp_chap_challenge_response_value,
-	evt_ppp_chap_challenge_response_name
-};
-
-enum {
-	evt_ppp_chap_success_failure_code = 0,
-	evt_ppp_chap_success_failure_identifier,
-	evt_ppp_chap_success_failure_message
 };
 
 struct mod_reg_info* proto_ppp_chap_reg_info();
