@@ -71,6 +71,7 @@ struct input_pcap_priv {
 	struct proto *datalink_proto;
 	int datalink_type;
 	unsigned int align_offset;
+	unsigned int skip_offset;
 	int warning;
 };
 

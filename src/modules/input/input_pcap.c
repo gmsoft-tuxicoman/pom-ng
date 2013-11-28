@@ -213,6 +213,11 @@ static int input_pcap_common_open(struct input *i) {
 			datalink = "ppi";
 			break;
 
+		case DLT_PPP_WITH_DIR:
+			datalink = "ppp";
+			priv->skip_offset = 1;
+			break;
+
 		default:
 			pomlog(POMLOG_ERR "Datalink %s (%u) is not supported", pcap_datalink_val_to_name(priv->datalink_type), priv->datalink_type);
 	}
@@ -732,7 +737,7 @@ static int input_pcap_read(struct input *i) {
 	if (!pkt)
 		return POM_ERR;
 
-	if (packet_buffer_alloc(pkt, phdr->caplen, p->align_offset) != POM_OK) {
+	if (packet_buffer_alloc(pkt, phdr->caplen - p->skip_offset, p->align_offset) != POM_OK) {
 		packet_release(pkt);
 		return POM_ERR;
 	}
@@ -740,7 +745,7 @@ static int input_pcap_read(struct input *i) {
 	pkt->input = i;
 	pkt->datalink = p->datalink_proto;
 	pkt->ts = pom_timeval_to_ptime(phdr->ts);
-	memcpy(pkt->buff, data, phdr->caplen);
+	memcpy(pkt->buff, data + p->skip_offset, phdr->caplen - p->skip_offset);
 
 	unsigned int flags = 0, affinity = 0;
 
@@ -767,6 +772,7 @@ static int input_pcap_close(struct input *i) {
 
 	priv->datalink_proto = NULL;
 	priv->align_offset = 0;
+	priv->skip_offset = 0;
 
 	if (priv->type == input_pcap_type_dir) {
 		struct input_pcap_dir_priv *dp = &priv->tpriv.dir;
