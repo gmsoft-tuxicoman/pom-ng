@@ -6,6 +6,7 @@
 			<item><name>http_apache</name><description>Apache like HTTP logs</description></item>
 			<item><name>arpwatch</name><description>arpwatch like logs</description></item>
 			<item><name>docsis_monitor</name><description>Monitor DOCSIS cable modems</description></item>
+			<item><name>john_mschapv2</name><description>Output MSCHAPv2 hash for john the ripper</description></item>
 		</dataset>
 
 		<dataset name="events">
@@ -19,12 +20,16 @@
 			<!-- docsis_monitor -->
 			<item><template>docsis_monitor</template><event>docsis_cm_new</event><format>[$_time] New cable modem found on input '$input' : $mac</format><file>docsis_monitor_log</file></item>
 			<item><template>docsis_monitor</template><event>docsis_cm_reg_status</event><format>[$_time] Cable modem $mac status changed from $old_status to $new_status (T4 timeout is $timeout sec)</format><file>docsis_monitor_log</file></item>
+
+			<!-- john_mschapv2 -->
+			<item><template>john_mschapv2</template><event>mschapv2_auth</event><format>$username:::$auth_challenge:$response:$peer_challenge</format><file>john_mschapv2_log</file></item>
 		</dataset>
 
 		<dataset name="files">
 			<item><template>http_apache</template><name>http_apache_log</name><path>http.log</path></item>
 			<item><template>arpwatch</template><name>arpwatch_log</name><path>arp.log</path></item>
 			<item><template>docsis_monitor</template><name>docsis_monitor_log</name><path>docsis.log</path></item>
+			<item><template>john_mschapv2</template><name>john_mschapv2_log</name><path>mschapv2.john</path></item>
 		</dataset>
 	</datasets>
 
