@@ -79,6 +79,10 @@ int ptype_bytes_alloc(struct ptype *p) {
 }
 
 int ptype_bytes_cleanup(struct ptype *p) {
+	
+	struct ptype_bytes_val *v = p->value;
+	if (v->value)
+		free(v->value);
 
 	free(p->value);
 	return POM_OK;
@@ -148,7 +152,7 @@ int ptype_bytes_print(struct ptype *p, char *val, size_t size) {
 	unsigned char *tmp = v->value;
 
 	size_t i;
-	for (i = 0; i < (size / 2) && i < v->length; i++) {
+	for (i = 0; i < ((size - 1) / 2) && i < v->length; i++) {
 		char h = *tmp >> 4;
 		if (h < 0xa)
 			val[0] = h + '0';
@@ -163,7 +167,9 @@ int ptype_bytes_print(struct ptype *p, char *val, size_t size) {
 		tmp++;
 	}
 
-	return i * 2;
+	*val = 0;
+
+	return (i * 2) + 1;
 
 }
 
