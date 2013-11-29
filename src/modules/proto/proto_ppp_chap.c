@@ -144,7 +144,7 @@ static int proto_ppp_chap_init(struct proto *proto, struct registry_instance *i)
 	if (!priv->p_auth_timeout)
 		goto err;
 
-	struct registry_param *p = registry_new_param("auth_timeout", "60", priv->p_auth_timeout, "Authentification timeout", 0);
+	struct registry_param *p = registry_new_param("auth_timeout", "60", priv->p_auth_timeout, "Authentication timeout", 0);
 	if (registry_instance_add_param(i, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
