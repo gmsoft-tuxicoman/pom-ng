@@ -1,3 +1,15 @@
+v0.0.14
+	Move the default system datastore (sqlite) to '~/.pom-ng/sys_datastore.db'.
+	Add datastore postgres.
+	Add the ability to log event properties.
+	Have sub protocols register their numbers to their parent protocols.
+	Add ptype_bytes.
+	Add proto_gre, proto_ppp_chap.
+	Add analyzer_ppp_chap.
+	Add support for DLT_PPP_WITH_DIR in input_pcap.
+	Add log_txt templates for logging ppp-mschapv2 and ppp-chap-md5.
+	Various fixes.
+
 v0.0.13
 	Move addons to a separate repository.
 	Add Arch Linux build files.
