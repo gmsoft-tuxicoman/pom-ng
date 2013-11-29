@@ -77,14 +77,13 @@ int analyzer_ppp_chap_init(struct analyzer *analyzer) {
 	if (!priv->evt_challenge_response || !priv->evt_success_failure)
 		goto err;
 
-
 	static struct data_item_reg evt_mschapv2_data_items[ANALYZER_PPP_CHAP_MSCHAPV2_DATA_COUNT] = { { 0 } };
 
-	evt_mschapv2_data_items[analyzer_ppp_chap_common_src].name = "src";
-	evt_mschapv2_data_items[analyzer_ppp_chap_common_src].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_client].name = "client";
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_client].flags = DATA_REG_FLAG_NO_ALLOC;
 
-	evt_mschapv2_data_items[analyzer_ppp_chap_common_dst].name = "dst";
-	evt_mschapv2_data_items[analyzer_ppp_chap_common_dst].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_server].name = "server";
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_server].flags = DATA_REG_FLAG_NO_ALLOC;
 
 	evt_mschapv2_data_items[analyzer_ppp_chap_common_identifier].name = "identifier";
 	evt_mschapv2_data_items[analyzer_ppp_chap_common_identifier].value_type = ptype_get_type("uint8");
@@ -112,13 +111,55 @@ int analyzer_ppp_chap_init(struct analyzer *analyzer) {
 	static struct event_reg_info analyzer_ppp_chap_evt_mschapv2 = { 0 };
 	analyzer_ppp_chap_evt_mschapv2.source_name = "analyzer_ppp_chap";
 	analyzer_ppp_chap_evt_mschapv2.source_obj = analyzer;
-	analyzer_ppp_chap_evt_mschapv2.name = "mschapv2_auth";
-	analyzer_ppp_chap_evt_mschapv2.description = "MS-CHAPv2 authentication";
+	analyzer_ppp_chap_evt_mschapv2.name = "ppp_chap_mschapv2_auth";
+	analyzer_ppp_chap_evt_mschapv2.description = "PPP MS-CHAPv2 authentication";
 	analyzer_ppp_chap_evt_mschapv2.data_reg = &evt_mschapv2_data;
 	analyzer_ppp_chap_evt_mschapv2.listeners_notify = analyzer_ppp_chap_event_listeners_notify;
 
 	priv->evt_mschapv2 = event_register(&analyzer_ppp_chap_evt_mschapv2);
 	if (!priv->evt_mschapv2)
+		goto err;
+
+
+	static struct data_item_reg evt_md5_data_items[ANALYZER_PPP_CHAP_MD5_DATA_COUNT] = { { 0 } };
+
+	evt_md5_data_items[analyzer_ppp_chap_common_client].name = "client";
+	evt_md5_data_items[analyzer_ppp_chap_common_client].flags = DATA_REG_FLAG_NO_ALLOC;
+
+	evt_md5_data_items[analyzer_ppp_chap_common_server].name = "server";
+	evt_md5_data_items[analyzer_ppp_chap_common_server].flags = DATA_REG_FLAG_NO_ALLOC;
+
+	evt_md5_data_items[analyzer_ppp_chap_common_identifier].name = "identifier";
+	evt_md5_data_items[analyzer_ppp_chap_common_identifier].value_type = ptype_get_type("uint8");
+
+	evt_md5_data_items[analyzer_ppp_chap_common_username].name = "username";
+	evt_md5_data_items[analyzer_ppp_chap_common_username].value_type = ptype_get_type("string");
+
+	evt_md5_data_items[analyzer_ppp_chap_common_success].name = "success";
+	evt_md5_data_items[analyzer_ppp_chap_common_success].value_type = ptype_get_type("bool");
+
+	evt_md5_data_items[analyzer_ppp_chap_md5_challenge].name = "challenge";
+	evt_md5_data_items[analyzer_ppp_chap_md5_challenge].value_type = ptype_get_type("bytes");
+
+	evt_md5_data_items[analyzer_ppp_chap_md5_response].name = "response";
+	evt_md5_data_items[analyzer_ppp_chap_md5_response].value_type = ptype_get_type("bytes");
+
+
+	static struct data_reg evt_md5_data = {
+		.items = evt_md5_data_items,
+		.data_count = ANALYZER_PPP_CHAP_MD5_DATA_COUNT
+	};
+
+	static struct event_reg_info analyzer_ppp_chap_evt_md5 = { 0 };
+	analyzer_ppp_chap_evt_md5.source_name = "analyzer_ppp_chap";
+	analyzer_ppp_chap_evt_md5.source_obj = analyzer;
+	analyzer_ppp_chap_evt_md5.name = "ppp_chap_md5_auth";
+	analyzer_ppp_chap_evt_md5.description = "PPP CHAP MD5 authentication";
+	analyzer_ppp_chap_evt_md5.data_reg = &evt_md5_data;
+	analyzer_ppp_chap_evt_md5.listeners_notify = analyzer_ppp_chap_event_listeners_notify;
+
+	priv->evt_md5 = event_register(&analyzer_ppp_chap_evt_md5);
+	if (!priv->evt_md5)
 		goto err;
 
 	return POM_OK;
@@ -139,6 +180,8 @@ int analyzer_ppp_chap_cleanup(struct analyzer *analyzer) {
 
 	if (priv->evt_mschapv2)
 		res += event_unregister(priv->evt_mschapv2);
+	if (priv->evt_md5)
+		res += event_unregister(priv->evt_md5);
 
 	free(priv);
 
@@ -180,6 +223,8 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 
 	conntrack_lock(s->ce);
 
+	struct ptype *src = NULL, *dst = NULL;
+
 	struct analyzer_ppp_chap_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
 	if (!cpriv) {
 		cpriv = malloc(sizeof(struct analyzer_ppp_chap_ce_priv));
@@ -195,10 +240,38 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 			goto err;
 		}
 
+		// Try to find the source and destination
+		
+		unsigned int i = 0;
+		for (i = 1; i <= 4; i++) {
+			struct proto_process_stack *prev_stack = &stack[stack_index - i];
+			if (!prev_stack->proto)
+				break;
+
+			unsigned int j;
+			for (j = 0; !src || !dst; j++) {
+				struct proto_reg_info *prev_info = proto_get_info(prev_stack->proto);
+				if (!prev_info->pkt_fields)
+					break;
+				char *name = prev_info->pkt_fields[j].name;
+				if (!name)
+					break;
+
+				if (!src && !strcmp(name, "src"))
+					src = prev_stack->pkt_info->fields_value[j];
+				else if (!dst && !strcmp(name, "dst"))
+					dst = prev_stack->pkt_info->fields_value[j];
+			}
+
+			if (src || dst)
+				break;
+		}
 	}
 
 	struct event_reg *evt_reg = event_get_reg(evt);
 	struct data *evt_data = event_get_data(evt);
+
+	int dir = POM_DIR_UNK;
 
 	if (evt_reg == apriv->evt_challenge_response) {
 		uint8_t code = *PTYPE_UINT8_GETVAL(evt_data[evt_ppp_chap_challenge_response_code].value);
@@ -208,11 +281,13 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 				event_refcount_inc(evt);
 				cpriv->evt_challenge = evt;
 			}
+			dir = POM_DIR_REV;
 		} else if (code == 2) {
 			if (!cpriv->evt_response) {
 				event_refcount_inc(evt);
 				cpriv->evt_response = evt;
 			}
+			dir = POM_DIR_FWD;
 		}
 
 
@@ -229,6 +304,17 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 				event_refcount_inc(evt);
 				cpriv->evt_result = evt;
 			}
+		}
+		dir = POM_DIR_REV;
+	}
+
+	if (src && dst && dir != POM_DIR_UNK) {
+		if (dir == POM_DIR_FWD) {
+			cpriv->client = ptype_alloc_from(src);
+			cpriv->server = ptype_alloc_from(dst);
+		} else {
+			cpriv->client = ptype_alloc_from(dst);
+			cpriv->server = ptype_alloc_from(src);
 		}
 	}
 
@@ -266,8 +352,20 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 	size_t len = PTYPE_BYTES_GETLEN(evt_rsp_data[evt_ppp_chap_challenge_response_value].value);
 	unsigned char *value = PTYPE_BYTES_GETVAL(evt_rsp_data[evt_ppp_chap_challenge_response_value].value);
 	if (len == 16) {
-		// TODO : CHAP-MD5
-		return POM_OK;
+		evt = event_alloc(apriv->evt_md5);
+		if (!evt)
+			return POM_ERR;
+
+		evt_data = event_get_data(evt);
+
+		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+			return POM_ERR;
+		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_response].value, evt_rsp_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+			return POM_ERR;
+		data_set(evt_data[analyzer_ppp_chap_md5_response]);
+		
+		auth_type = analyzer_ppp_chap_auth_md5;
+
 	} else if (len == 49 && !value[16] && !value[17] && !value[18] && !value[19] &&
 		!value[20] && !value[21] && !value[22] && !value[23] &&
 		!value[48]) {
@@ -291,6 +389,20 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 	}
 
 
+	if (cpriv->client) {
+		evt_data[analyzer_ppp_chap_common_client].value = cpriv->client;
+		data_set(evt_data[analyzer_ppp_chap_common_client]);
+		data_do_clean(evt_data[analyzer_ppp_chap_common_client]);
+		cpriv->client = NULL;
+	}
+
+	if (cpriv->server) {
+		evt_data[analyzer_ppp_chap_common_server].value = cpriv->server;
+		data_set(evt_data[analyzer_ppp_chap_common_server]);
+		data_do_clean(evt_data[analyzer_ppp_chap_common_server]);
+		cpriv->server = NULL;
+	}
+
 	if (ptype_copy(evt_data[analyzer_ppp_chap_common_identifier].value, evt_chl_data[evt_ppp_chap_challenge_response_identifier].value) != POM_OK)
 		return POM_ERR;
 	data_set(evt_data[analyzer_ppp_chap_common_identifier]);
@@ -309,6 +421,13 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 			if (ptype_copy(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
 				return POM_ERR;
 			data_set(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge]);
+			break;
+		case analyzer_ppp_chap_auth_md5:
+			if (!data_is_set(evt_chl_data[evt_ppp_chap_challenge_response_value]))
+				return POM_OK;
+			if (ptype_copy(evt_data[analyzer_ppp_chap_md5_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+				return POM_ERR;
+			data_set(evt_data[analyzer_ppp_chap_md5_challenge]);
 			break;
 		default:
 			return POM_OK;
@@ -354,6 +473,11 @@ int analyzer_ppp_chap_ce_priv_cleanup(void *obj, void *priv) {
 		event_refcount_dec(cpriv->evt_response);
 	if (cpriv->evt_result)
 		event_refcount_dec(cpriv->evt_result);
+
+	if (cpriv->client)
+		ptype_cleanup(cpriv->client);
+	if (cpriv->server)
+		ptype_cleanup(cpriv->server);
 
 
 	free(priv);
