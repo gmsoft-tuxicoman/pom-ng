@@ -7,6 +7,7 @@
 			<item><name>arpwatch</name><description>arpwatch like logs</description></item>
 			<item><name>docsis_monitor</name><description>Monitor DOCSIS cable modems</description></item>
 			<item><name>john_mschapv2</name><description>Output MSCHAPv2 hash for john the ripper</description></item>
+			<item><name>hashcat_md5chap</name><description>Output MD5(Chap) hash for hashcat</description></item>
 		</dataset>
 
 		<dataset name="events">
@@ -22,7 +23,12 @@
 			<item><template>docsis_monitor</template><event>docsis_cm_reg_status</event><format>[$_time] Cable modem $mac status changed from $old_status to $new_status (T4 timeout is $timeout sec)</format><file>docsis_monitor_log</file></item>
 
 			<!-- john_mschapv2 -->
-			<item><template>john_mschapv2</template><event>mschapv2_auth</event><format>$username:::$auth_challenge:$response:$peer_challenge</format><file>john_mschapv2_log</file></item>
+			<item><template>john_mschapv2</template><event>ppp_chap_mschapv2_auth</event><format>$username:::$auth_challenge:$response:$peer_challenge</format><file>john_mschapv2_log</file></item>
+
+
+			<!-- hashcat_md5chap -->
+			<item><template>hashcat_md5chap</template><event>ppp_chap_md5_auth</event><format>$response:$challenge:$identifier</format><file>hashcat_md5chap_log</file></item>
+
 		</dataset>
 
 		<dataset name="files">
@@ -30,6 +36,7 @@
 			<item><template>arpwatch</template><name>arpwatch_log</name><path>arp.log</path></item>
 			<item><template>docsis_monitor</template><name>docsis_monitor_log</name><path>docsis.log</path></item>
 			<item><template>john_mschapv2</template><name>john_mschapv2_log</name><path>mschapv2.john</path></item>
+			<item><template>hashcat_md5chap</template><name>hashcat_md5chap_log</name><path>md5chap_4800.hashcat</path></item>
 		</dataset>
 	</datasets>
 
