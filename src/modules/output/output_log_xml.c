@@ -198,6 +198,8 @@ int output_log_xml_open(void *output_priv) {
 
 	free(src);
 
+	if (!priv->evt_lst)
+		goto err;
 
 	return POM_OK;
 
