@@ -23,8 +23,8 @@
 
 #include <pom-ng/event.h>
 
-#define ANALYZER_PPP_CHAP_MSCHAPV2_DATA_COUNT 8
-#define ANALYZER_PPP_CHAP_MD5_DATA_COUNT 7
+#define ANALYZER_PPP_CHAP_MSCHAPV2_DATA_COUNT 10
+#define ANALYZER_PPP_CHAP_MD5_DATA_COUNT 9
 
 #define ANALYZER_PPP_CHAP_CHALLENGE	0x1
 #define ANALYZER_PPP_CHAP_RESPONSE	0x2
@@ -42,13 +42,6 @@ struct analyzer_ppp_chap_priv {
 
 };
 
-
-enum analyzer_ppp_chap_auth_type {
-	analyzer_ppp_chap_auth_unknown = 0,
-	analyzer_ppp_chap_auth_mschapv2,
-	analyzer_ppp_chap_auth_md5,
-};
-
 struct analyzer_ppp_chap_ce_priv {
 
 
@@ -59,6 +52,8 @@ struct analyzer_ppp_chap_ce_priv {
 	struct event *evt;
 
 	struct ptype *client, *server;
+	struct ptype *vlan;
+	char *top_proto;
 
 };
 
@@ -66,6 +61,8 @@ struct analyzer_ppp_chap_ce_priv {
 enum {
 	analyzer_ppp_chap_common_client = 0,
 	analyzer_ppp_chap_common_server,
+	analyzer_ppp_chap_common_top_proto,
+	analyzer_ppp_chap_common_vlan,
 	analyzer_ppp_chap_common_identifier,
 	analyzer_ppp_chap_common_username,
 	analyzer_ppp_chap_common_success

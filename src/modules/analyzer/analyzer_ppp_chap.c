@@ -24,6 +24,7 @@
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/proto_ppp_chap.h>
+#include <pom-ng/proto_vlan.h>
 
 #include "analyzer_ppp_chap.h"
 
@@ -85,6 +86,12 @@ int analyzer_ppp_chap_init(struct analyzer *analyzer) {
 	evt_mschapv2_data_items[analyzer_ppp_chap_common_server].name = "server";
 	evt_mschapv2_data_items[analyzer_ppp_chap_common_server].flags = DATA_REG_FLAG_NO_ALLOC;
 
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_top_proto].name = "top_proto";
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_top_proto].value_type = ptype_get_type("string");
+
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_vlan].name = "vlan";
+	evt_mschapv2_data_items[analyzer_ppp_chap_common_vlan].flags = DATA_REG_FLAG_NO_ALLOC;
+
 	evt_mschapv2_data_items[analyzer_ppp_chap_common_identifier].name = "identifier";
 	evt_mschapv2_data_items[analyzer_ppp_chap_common_identifier].value_type = ptype_get_type("uint8");
 
@@ -128,6 +135,12 @@ int analyzer_ppp_chap_init(struct analyzer *analyzer) {
 
 	evt_md5_data_items[analyzer_ppp_chap_common_server].name = "server";
 	evt_md5_data_items[analyzer_ppp_chap_common_server].flags = DATA_REG_FLAG_NO_ALLOC;
+
+	evt_md5_data_items[analyzer_ppp_chap_common_top_proto].name = "top_proto";
+	evt_md5_data_items[analyzer_ppp_chap_common_top_proto].value_type = ptype_get_type("string");
+
+	evt_md5_data_items[analyzer_ppp_chap_common_vlan].name = "vlan";
+	evt_md5_data_items[analyzer_ppp_chap_common_vlan].flags = DATA_REG_FLAG_NO_ALLOC;
 
 	evt_md5_data_items[analyzer_ppp_chap_common_identifier].name = "identifier";
 	evt_md5_data_items[analyzer_ppp_chap_common_identifier].value_type = ptype_get_type("uint8");
@@ -193,7 +206,7 @@ int analyzer_ppp_chap_event_listeners_notify(void *obj, struct event_reg *evt_re
 	struct analyzer *analyzer = obj;
 	struct analyzer_ppp_chap_priv *priv = analyzer->priv;
 
-	if (has_listeners) {
+	if (event_has_listener(priv->evt_mschapv2) || event_has_listener(priv->evt_md5)) {
 		if (event_listener_register(priv->evt_challenge_response, analyzer, analyzer_ppp_chap_event_process_begin, NULL) != POM_OK) {
 			return POM_ERR;
 		} else if (event_listener_register(priv->evt_success_failure, analyzer, analyzer_ppp_chap_event_process_begin, NULL) != POM_OK) {
@@ -248,6 +261,13 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 			if (!prev_stack->proto)
 				break;
 
+			struct proto_reg_info *info = proto_get_info(prev_stack->proto);
+			if (!strcmp(info->name, "vlan")) {
+				cpriv->vlan = ptype_alloc_from(prev_stack->pkt_info->fields_value[proto_vlan_field_vid]);
+				if (!cpriv->vlan)
+					return POM_ERR;
+			}
+
 			unsigned int j;
 			for (j = 0; !src || !dst; j++) {
 				struct proto_reg_info *prev_info = proto_get_info(prev_stack->proto);
@@ -265,6 +285,12 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 
 			if (src || dst)
 				break;
+		}
+
+		struct proto_process_stack *prev_stack = &stack[stack_index - 2];
+		if (prev_stack->proto) {
+			struct proto_reg_info *info = proto_get_info(prev_stack->proto);
+			cpriv->top_proto = info->name;
 		}
 	}
 
@@ -292,18 +318,9 @@ int analyzer_ppp_chap_event_process_begin(struct event *evt, void *obj, struct p
 
 
 	} else {
-		uint8_t code = *PTYPE_UINT8_GETVAL(evt_data[evt_ppp_chap_success_failure_code].value);
-		
-		if (code == 3) {
-			if (!cpriv->evt_result) {
-				event_refcount_inc(evt);
-				cpriv->evt_result = evt;
-			}
-		} else if (code == 4) {
-			if (!cpriv->evt_result) {
-				event_refcount_inc(evt);
-				cpriv->evt_result = evt;
-			}
+		if (!cpriv->evt_result) {
+			event_refcount_inc(evt);
+			cpriv->evt_result = evt;
 		}
 		dir = POM_DIR_REV;
 	}
@@ -344,9 +361,9 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 	struct data *evt_chl_data = event_get_data(cpriv->evt_challenge);
 	struct data *evt_rsp_data = event_get_data(cpriv->evt_response);
 
-	enum analyzer_ppp_chap_auth_type auth_type = analyzer_ppp_chap_auth_unknown;
-
 	if (!data_is_set(evt_rsp_data[evt_ppp_chap_challenge_response_value]))
+		return POM_OK;
+	if (!data_is_set(evt_chl_data[evt_ppp_chap_challenge_response_value]))
 		return POM_OK;
 
 	size_t len = PTYPE_BYTES_GETLEN(evt_rsp_data[evt_ppp_chap_challenge_response_value].value);
@@ -360,12 +377,11 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 
 		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
 			return POM_ERR;
+		data_set(evt_data[analyzer_ppp_chap_md5_challenge]);
 		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_response].value, evt_rsp_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
 			return POM_ERR;
 		data_set(evt_data[analyzer_ppp_chap_md5_response]);
 		
-		auth_type = analyzer_ppp_chap_auth_md5;
-
 	} else if (len == 49 && !value[16] && !value[17] && !value[18] && !value[19] &&
 		!value[20] && !value[21] && !value[22] && !value[23] &&
 		!value[48]) {
@@ -375,6 +391,11 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 			return POM_ERR;
 
 		evt_data = event_get_data(evt);
+
+		if (ptype_copy(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+			return POM_ERR;
+		data_set(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge]);
+
 		PTYPE_BYTES_SETLEN(evt_data[analyzer_ppp_chap_mschapv2_response].value, 24);
 		PTYPE_BYTES_SETVAL(evt_data[analyzer_ppp_chap_mschapv2_response].value, value + 24);
 		data_set(evt_data[analyzer_ppp_chap_mschapv2_response]);
@@ -382,7 +403,6 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 		PTYPE_BYTES_SETVAL(evt_data[analyzer_ppp_chap_mschapv2_peer_challenge].value, value);
 		data_set(evt_data[analyzer_ppp_chap_mschapv2_peer_challenge]);
 
-		auth_type = analyzer_ppp_chap_auth_mschapv2;
 	} else {
 		// Unknown auth mechanism
 		return POM_OK;
@@ -403,6 +423,18 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 		cpriv->server = NULL;
 	}
 
+	if (cpriv->vlan) {
+		evt_data[analyzer_ppp_chap_common_vlan].value = cpriv->vlan;
+		data_set(evt_data[analyzer_ppp_chap_common_vlan]);
+		data_do_clean(evt_data[analyzer_ppp_chap_common_vlan]);
+		cpriv->vlan = NULL;
+	}
+
+	if (cpriv->top_proto) {
+		PTYPE_STRING_SETVAL(evt_data[analyzer_ppp_chap_common_top_proto].value, cpriv->top_proto);
+		data_set(evt_data[analyzer_ppp_chap_common_top_proto]);
+	}
+
 	if (ptype_copy(evt_data[analyzer_ppp_chap_common_identifier].value, evt_chl_data[evt_ppp_chap_challenge_response_identifier].value) != POM_OK)
 		return POM_ERR;
 	data_set(evt_data[analyzer_ppp_chap_common_identifier]);
@@ -413,25 +445,6 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 	if (ptype_copy(evt_data[analyzer_ppp_chap_common_username].value, evt_rsp_data[evt_ppp_chap_challenge_response_name].value) != POM_OK)
 		return POM_ERR;
 	data_set(evt_data[analyzer_ppp_chap_common_username]);
-
-	switch (auth_type) {
-		case analyzer_ppp_chap_auth_mschapv2:
-			if (!data_is_set(evt_chl_data[evt_ppp_chap_challenge_response_value]))
-				return POM_OK;
-			if (ptype_copy(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
-				return POM_ERR;
-			data_set(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge]);
-			break;
-		case analyzer_ppp_chap_auth_md5:
-			if (!data_is_set(evt_chl_data[evt_ppp_chap_challenge_response_value]))
-				return POM_OK;
-			if (ptype_copy(evt_data[analyzer_ppp_chap_md5_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
-				return POM_ERR;
-			data_set(evt_data[analyzer_ppp_chap_md5_challenge]);
-			break;
-		default:
-			return POM_OK;
-	}
 
 	if (cpriv->evt_result) {
 		struct data *evt_res_data = event_get_data(cpriv->evt_result);
@@ -478,6 +491,8 @@ int analyzer_ppp_chap_ce_priv_cleanup(void *obj, void *priv) {
 		ptype_cleanup(cpriv->client);
 	if (cpriv->server)
 		ptype_cleanup(cpriv->server);
+	if (cpriv->vlan)
+		ptype_cleanup(cpriv->vlan);
 
 
 	free(priv);
