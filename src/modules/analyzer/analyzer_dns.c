@@ -238,6 +238,12 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 			}
 			// We have a pointer
 			uint16_t offset = ((data_tmp[0] & 0x3f) << 8) | data_tmp[1];
+			if (offset < 12) {
+				debug_dns("Offset too small : %u < 12", offset);
+				return POM_ERR;
+			}
+			// Remove the 12 bytes of the DNS header which is not part of the payload
+			offset -= 12;
 			if (offset > msg_len) {
 				debug_dns("Offset too big : %u > %zu", offset, msg_len);
 				return POM_ERR;
@@ -279,7 +285,7 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 	while (len) {
 	
 		if (len > 63) {
-			uint16_t offset = ((data_tmp[0] & 0x3f) << 8) | data_tmp[1];
+			uint16_t offset = (((data_tmp[0] & 0x3f) << 8) | data_tmp[1]) - 12;
 			data_tmp = msg + offset;
 			len = *data_tmp;
 
@@ -596,7 +602,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 
 	for (i = 0; i < rr_count; i++) {
 		struct analyzer_dns_rr rr = { 0 };
-		if (analyzer_dns_parse_rr(s_dns->pload, &data_start, &data_remaining, &rr) != POM_OK)
+		if (analyzer_dns_parse_rr(s->pload, &data_start, &data_remaining, &rr) != POM_OK)
 			return POM_OK;
 
 		if (rr.rdlen > data_remaining) {
@@ -673,7 +679,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *cname = NULL;
 				void *tmp_data_start = data_start;
 				size_t tmp_data_remaining = data_remaining;
-				if (analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &cname) != POM_OK) {
+				if (analyzer_dns_parse_name(s->pload, &tmp_data_start, &tmp_data_remaining, &cname) != POM_OK) {
 					debug_dns("Could not parse CNAME");
 					event_cleanup(evt_record);
 					return POM_OK;
@@ -697,7 +703,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *ptr = NULL;
 				void *tmp_data_start = data_start;
 				size_t tmp_data_remaining = data_remaining;
-				if (analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &ptr) != POM_OK) {
+				if (analyzer_dns_parse_name(s->pload, &tmp_data_start, &tmp_data_remaining, &ptr) != POM_OK) {
 					debug_dns("Could not parse PTR");
 					event_cleanup(evt_record);
 					return POM_OK;
@@ -739,7 +745,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				char *mx = NULL;
 				void *tmp_data_start = data_start + sizeof(uint16_t);
 				size_t tmp_data_remaining = data_remaining - sizeof(uint16_t);
-				if (analyzer_dns_parse_name(s_dns->pload, &tmp_data_start, &tmp_data_remaining, &mx) != POM_OK) {
+				if (analyzer_dns_parse_name(s->pload, &tmp_data_start, &tmp_data_remaining, &mx) != POM_OK) {
 					debug_dns("Could not parse MX");
 					event_cleanup(evt_record);
 					return POM_OK;
@@ -755,6 +761,30 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 					ptype_cleanup(val);
 					break;
 				}
+				process_event = 1;
+				break;
+			}
+			case ns_t_txt: {
+				char *txt = NULL;
+				void *tmp_data_start = data_start;
+				size_t tmp_data_remaining = data_remaining;
+				if (analyzer_dns_parse_name(s->pload, &tmp_data_start, &tmp_data_remaining, &txt) != POM_OK) {
+					debug_dns("Could not parse TXT");
+					event_cleanup(evt_record);
+					return POM_OK;
+				}
+
+				struct ptype *val = ptype_alloc("string");
+				if (!val) {
+					free(txt);
+					break;
+				}
+				PTYPE_STRING_SETVAL_P(val, txt);
+				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("txt"), val) != POM_OK) {
+					ptype_cleanup(val);
+					break;
+				}
+
 				process_event = 1;
 				break;
 			}
