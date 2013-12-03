@@ -55,11 +55,21 @@ struct dns_header {
 	uint16_t arcount;
 };
 
+struct proto_dns_priv {
+
+	struct proto *proto_tcp;
+};
+
+struct proto_dns_conntrack_priv {
+	struct packet_stream_parser *buff[POM_DIR_TOT];
+};
 
 struct mod_reg_info* proto_dns_reg_info();
 static int proto_dns_mod_register(struct mod_reg *mod);
 static int proto_dns_init(struct proto *proto, struct registry_instance *i);
+static int proto_dns_cleanup(void *proto_priv);
 static int proto_dns_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_dns_conntrack_cleanup(void *ce_priv);
 static int proto_dns_mod_unregister();
 
 #endif

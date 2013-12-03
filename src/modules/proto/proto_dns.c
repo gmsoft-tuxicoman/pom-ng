@@ -38,7 +38,7 @@ struct mod_reg_info* proto_dns_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_dns_mod_register;
 	reg_info.unregister_func = proto_dns_mod_unregister;
-	reg_info.dependencies = "ptype_bool, ptype_uint8, ptype_uint16";
+	reg_info.dependencies = "proto_tcp, ptype_bool, ptype_uint8, ptype_uint16";
 
 	return &reg_info;
 }
@@ -68,16 +68,19 @@ static int proto_dns_mod_register(struct mod_reg *mod) {
 	fields[6].value_type = ptype_get_type("uint16");
 	fields[6].description = "Additional records count";
 
-
 	static struct proto_reg_info proto_dns = { 0 };
 	proto_dns.name = "dns";
 	proto_dns.api_ver = PROTO_API_VER;
 	proto_dns.mod = mod;
 	proto_dns.pkt_fields = fields;
 
-	// No contrack here
+	static struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 1; // No hashing done here
+	ct_info.cleanup_handler = proto_dns_conntrack_cleanup;
+	proto_dns.ct_info = &ct_info;
 
 	proto_dns.init = proto_dns_init;
+	proto_dns.cleanup = proto_dns_cleanup;
 	proto_dns.process = proto_dns_process;
 
 	if (proto_register(&proto_dns) == POM_OK)
@@ -89,19 +92,107 @@ static int proto_dns_mod_register(struct mod_reg *mod) {
 
 static int proto_dns_init(struct proto *proto, struct registry_instance *i) {
 
-	// TODO Add TCP support
-	return proto_number_register("udp", 53, proto);
+	if (proto_number_register("udp", 53, proto) != POM_OK ||
+		proto_number_register("tcp", 53, proto) != POM_OK)
+		return POM_ERR;
+
+	struct proto_dns_priv *priv = malloc(sizeof(struct proto_dns_priv));
+	if (!priv) {
+		pom_oom(sizeof(struct proto_dns_priv));
+		return POM_ERR;
+	}
+	memset(priv, 0, sizeof(struct proto_dns_priv));
+
+	priv->proto_tcp = proto_get("tcp");
+	if (!priv->proto_tcp) {
+		pomlog(POMLOG_ERR "Unable to find proto tcp !");
+		free(priv);
+		return POM_ERR;
+	}
+
+	proto_set_priv(proto, priv);
+	
+	return POM_OK;
+}
+
+static int proto_dns_cleanup(void *proto_priv) {
+
+	if (!proto_priv)
+		return POM_OK;
+	free(proto_priv);
+	return POM_OK;
 }
 
 static int proto_dns_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 
-	if (s->plen < sizeof(struct dns_header))
+	struct proto_dns_priv *priv = proto_priv;
+	void *pload = s->pload;
+	size_t len = s->plen;
+
+	// We need to do some buffering for TCP
+	if (s_prev->proto == priv->proto_tcp) {
+		
+		if (!len)
+			return PROTO_OK;
+
+		if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK)
+			return PROTO_ERR;
+		
+		// There should be no need to keep the lock here since we are in the packet_stream lock from proto_tcp
+		conntrack_unlock(s->ce);
+
+		struct proto_dns_conntrack_priv *cpriv = s->ce->priv;
+		if (!cpriv) {
+			cpriv = malloc(sizeof(struct proto_dns_conntrack_priv));
+			if (!cpriv) {
+				pom_oom(sizeof(struct proto_dns_conntrack_priv));
+				return PROTO_ERR;
+			}
+			memset(cpriv, 0, sizeof(struct proto_dns_conntrack_priv));
+
+			s->ce->priv = cpriv;
+		}
+
+		if (!cpriv->buff[s->direction]) {
+			cpriv->buff[s->direction] = packet_stream_parser_alloc(0, 0);
+			if (!cpriv->buff[s->direction])
+				return PROTO_ERR;
+		}
+
+		struct packet_stream_parser *buff = cpriv->buff[s->direction];
+		if (packet_stream_parser_add_payload(buff, s->pload, s->plen) != POM_OK)
+			return PROTO_ERR;
+
+		size_t avail_len = 0;
+		if (packet_stream_parser_get_remaining(buff, &pload, &avail_len) != POM_OK)
+			return PROTO_ERR;
+
+		if (avail_len < sizeof(uint16_t))
+			return PROTO_STOP;
+
+		uint16_t pkt_len = ntohs(*(uint16_t*)pload);
+
+		if (packet_stream_parser_get_bytes(buff, pkt_len + sizeof(uint16_t), &pload) != POM_OK)
+			return PROTO_ERR;
+
+		if (!pload)
+			return PROTO_STOP;
+
+		pload += sizeof(uint16_t);
+		len = pkt_len;
+
+	}
+
+	if (len < sizeof(struct dns_header))
 		return PROTO_INVALID;
 
-	struct dns_header *dhdr = s->pload;
+
+
+	struct dns_header *dhdr = pload;
 
 	uint16_t qdcount = 0, ancount = 0, nscount = 0, arcount = 0;
 	qdcount = ntohs(dhdr->qdcount);
@@ -121,11 +212,29 @@ static int proto_dns_process(void *proto_priv, struct packet *p, struct proto_pr
 	if (qdcount != 1)
 		return PROTO_INVALID;
 
-	s_next->plen = s->plen - sizeof(struct dns_header);
-	s_next->pload = s->pload + sizeof(struct dns_header);
+	s_next->plen = len - sizeof(struct dns_header);
+	s_next->pload = pload + sizeof(struct dns_header);
 
 	return PROTO_OK;
 
+}
+
+static int proto_dns_conntrack_cleanup(void *ce_priv) {
+
+	struct proto_dns_conntrack_priv *priv = ce_priv;
+
+	if (!priv)
+		return POM_OK;
+
+	int i;
+	for (i = 0; i < POM_DIR_TOT; i++) {
+		if (priv->buff[i])
+			packet_stream_parser_cleanup(priv->buff[i]);
+	}
+
+	free(priv);
+
+	return POM_OK;
 }
 
 static int proto_dns_mod_unregister() {
