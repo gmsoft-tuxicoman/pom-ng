@@ -78,11 +78,12 @@ int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);
 
-struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size, unsigned int flags);
-int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len);
-int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len);
-int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, unsigned int *len);
-int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, unsigned int len);
+struct packet_stream_parser *packet_stream_parser_alloc(size_t max_line_size, unsigned int flags);
+int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, size_t len);
+int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, size_t *len);
+int packet_stream_parser_get_bytes(struct packet_stream_parser *p, size_t len, void **pload);
+int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, size_t *len);
+int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, size_t len);
 int packet_stream_parser_empty(struct packet_stream_parser *sp);
 int packet_stream_parser_cleanup(struct packet_stream_parser *sp);
 #endif

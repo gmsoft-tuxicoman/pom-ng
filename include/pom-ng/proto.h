@@ -47,7 +47,7 @@ struct proto;
 struct proto_process_stack {
 	struct proto *proto;
 	void *pload;
-	uint32_t plen;
+	size_t plen;
 	int direction; // Used to pass direction to the next proto if he can't find out
 
 	struct packet_info *pkt_info;

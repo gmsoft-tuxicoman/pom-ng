@@ -39,12 +39,12 @@ struct packet_buffer {
 };
 
 struct packet_stream_parser {
-	unsigned int max_line_size;
+	size_t max_line_size;
 	char *buff;
-	unsigned int buff_len;
-	unsigned int buff_pos;
+	size_t buff_len;
+	size_t buff_pos;
 	char *pload;
-	unsigned int plen;
+	size_t plen;
 	unsigned int flags;
 };
 

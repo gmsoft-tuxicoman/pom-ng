@@ -484,7 +484,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	return res;
 }
 
-struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_size, unsigned int flags) {
+struct packet_stream_parser *packet_stream_parser_alloc(size_t max_line_size, unsigned int flags) {
 	
 	struct packet_stream_parser *res = malloc(sizeof(struct packet_stream_parser));
 	if (!res) {
@@ -503,7 +503,7 @@ struct packet_stream_parser *packet_stream_parser_alloc(unsigned int max_line_si
 }
 
 
-int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, unsigned int len) {
+int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, size_t len) {
 
 	if (!sp->pload && sp->buff) {
 		// Payload was fully used, we can discard the buffer
@@ -539,7 +539,7 @@ int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *ploa
 	return POM_OK;
 }
 
-int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, unsigned int len) {
+int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, size_t len) {
 
 	if (sp->plen < len)
 		return POM_ERR;
@@ -550,7 +550,7 @@ int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, unsigned in
 	return POM_OK;
 }
 
-int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, unsigned int *len) {
+int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, size_t *len) {
 
 	debug_stream_parser("entry %p, providing remaining pload %p with len %u", sp, sp->pload, sp->plen);
 	*pload = sp->pload;
@@ -567,7 +567,7 @@ int packet_stream_parser_empty(struct packet_stream_parser *sp) {
 	return POM_OK;
 };
 
-int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, unsigned int *len) {
+int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, size_t *len) {
 
 	if (!line || !len)
 		return POM_ERR;
@@ -576,7 +576,7 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 	
 	char *pload = sp->pload;
 	
-	int str_len = sp->plen, tmp_len = 0;
+	size_t str_len = sp->plen, tmp_len = 0;
 	
 	char *lf = memchr(pload, '\n', sp->plen);
 	if (!lf) {
@@ -637,6 +637,37 @@ int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, 
 	return POM_OK;
 }
 
+int packet_stream_parser_get_bytes(struct packet_stream_parser *sp, size_t len, void **pload) {
+
+	if (len > sp->plen) {
+		*pload = NULL;
+
+		// Buffer remaining if needed
+		if (!sp->buff) {
+			sp->buff = malloc(sp->plen);
+			if (!sp->buff) {
+				pom_oom(sp->plen);
+				return POM_ERR;
+			}
+			memcpy(sp->buff, sp->pload, sp->plen);
+			sp->buff_len = sp->plen;
+			sp->buff_pos = sp->plen;
+
+		}
+
+		return POM_OK;
+	}
+
+	*pload = sp->pload;
+	sp->plen -= len;
+
+	if (sp->plen) {
+		sp->pload += len;
+		sp->buff_pos += len;
+	}
+
+	return POM_OK;
+}
 
 
 int packet_stream_parser_cleanup(struct packet_stream_parser *sp) {

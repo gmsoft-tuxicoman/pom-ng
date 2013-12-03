@@ -200,7 +200,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 		return PROTO_ERR;
 
 	char *line = NULL;
-	unsigned int len = 0;
+	size_t len = 0;
 	while (1) {
 
 		// Some check to do prior to parse the payload
@@ -216,7 +216,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 
 				// We are receiving payload data, check where the end is
 				void *pload;
-				uint32_t plen;
+				size_t plen;
 				packet_stream_parser_get_remaining(parser, &pload, &plen);
 
 				if (!plen)

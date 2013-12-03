@@ -225,7 +225,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 		return PROTO_ERR;
 
 	char *line = NULL;
-	unsigned int len = 0;
+	size_t len = 0;
 
 	while (1) {
 
@@ -361,7 +361,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 					// If it was a HEAD request, we might think there is some payload
 					// while there actually isn't any. Check for that
 					// It might also be the next reply in the stream
-					unsigned int remaining_size = 0;
+					size_t remaining_size = 0;
 					void *pload = NULL;
 					packet_stream_parser_get_remaining(parser, &pload, &remaining_size);
 					if (remaining_size >= strlen("HTTP/") && !strncasecmp(pload, "HTTP/", strlen("HTTP/"))) {
@@ -375,7 +375,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 				}
 
 				if (priv->info[s->direction].flags & HTTP_FLAG_CHUNKED) {
-					unsigned int remaining_size = 0;
+					size_t remaining_size = 0;
 					void *pload = NULL;
 					if (!priv->info[s->direction].chunk_len) {
 
