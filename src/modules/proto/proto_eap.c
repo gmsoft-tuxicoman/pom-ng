@@ -21,6 +21,7 @@
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/event.h>
+#include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_bytes.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint8.h>
@@ -36,7 +37,7 @@ struct mod_reg_info* proto_eap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_eap_mod_register;
 	reg_info.unregister_func = proto_eap_mod_unregister;
-	reg_info.dependencies = "ptype_bytes, ptype_string, ptype_uint8, ptype_uint32";
+	reg_info.dependencies = "ptype_bool, ptype_bytes, ptype_string, ptype_uint8, ptype_uint32";
 
 	return &reg_info;
 }
@@ -151,6 +152,28 @@ static int proto_eap_init(struct proto *proto, struct registry_instance *i) {
 	if (!priv->evt_md5_challenge)
 		goto err;
 
+	static struct data_item_reg evt_success_failure_data_items[PROTO_EAP_EVT_SUCCESS_FAILURE_DATA_COUNT] = { { 0 } };
+	evt_success_failure_data_items[evt_eap_common_identifier].name = "identifier";
+	evt_success_failure_data_items[evt_eap_common_identifier].value_type = ptype_get_type("uint8");
+	evt_success_failure_data_items[evt_eap_success_failure_success].name = "success";
+	evt_success_failure_data_items[evt_eap_success_failure_success].value_type = ptype_get_type("bool");
+
+	static struct data_reg evt_eap_success_failure_data = {
+		.items = evt_success_failure_data_items,
+		.data_count = PROTO_EAP_EVT_SUCCESS_FAILURE_DATA_COUNT
+	};
+
+	static struct event_reg_info proto_eap_success_failure = { 0 };
+	proto_eap_success_failure.source_name = "proto_eap";
+	proto_eap_success_failure.source_obj = priv;
+	proto_eap_success_failure.name = "eap_success_failure";
+	proto_eap_success_failure.description = "EAP Success/Failure";
+	proto_eap_success_failure.data_reg = &evt_eap_success_failure_data;
+
+	priv->evt_success_failure = event_register(&proto_eap_success_failure);
+	if (!priv->evt_success_failure)
+		goto err;
+
 	return POM_OK;
 	
 err:
@@ -207,10 +230,19 @@ static int proto_eap_process(void *proto_priv, struct packet *p, struct proto_pr
 			return PROTO_INVALID;
 		len = 0;
 
-		
-		// TODO generate success/failure event
+		if (!event_has_listener(priv->evt_success_failure))
+			return PROTO_OK;
 
-		return PROTO_OK;
+		struct event *evt = event_alloc(priv->evt_success_failure);
+		if (!evt)
+			return PROTO_ERR;
+		struct data *evt_data = event_get_data(evt);
+		PTYPE_UINT8_SETVAL(evt_data[evt_eap_common_identifier].value, hdr->identifier);
+		data_set(evt_data[evt_eap_common_identifier]);
+		PTYPE_BOOL_SETVAL(evt_data[evt_eap_success_failure_success].value, (hdr->code == 3 ? 1 : 0));
+		data_set(evt_data[evt_eap_success_failure_success]);
+
+		return event_process(evt, stack, stack_index, p->ts);
 	}
 
 	// At this point, code is either 1 or 2 (request/response)

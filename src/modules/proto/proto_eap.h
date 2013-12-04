@@ -30,14 +30,14 @@ struct eap_header
 
 #define PROTO_EAP_FIELD_NUM 2
 
-#define PROTO_EAP_EVT_IDENTITY_DATA_COUNT	3
-#define PROTO_EAP_EVT_MD5_CHALLENGE_DATA_COUNT	4
+#define PROTO_EAP_EVT_IDENTITY_DATA_COUNT		3
+#define PROTO_EAP_EVT_MD5_CHALLENGE_DATA_COUNT		4
+#define PROTO_EAP_EVT_SUCCESS_FAILURE_DATA_COUNT	2
 
 enum proto_eap_fields {
 	proto_eap_field_code = 0,
 	proto_eap_field_identifier
 };
-
 
 enum {
 	evt_eap_common_identifier = 0,
@@ -53,11 +53,16 @@ enum {
 	evt_eap_md5_challenge_name
 };
 
+enum {
+	evt_eap_success_failure_success = evt_eap_common_identifier + 1
+};
+
 struct proto_eap_priv {
 
 	struct ptype *p_timeout;
 	struct event_reg *evt_identity;
 	struct event_reg *evt_md5_challenge;
+	struct event_reg *evt_success_failure;
 
 };
 
