@@ -77,12 +77,20 @@ static int proto_8021x_init(struct proto *proto, struct registry_instance *i) {
 static int proto_8021x_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
+	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 
 	if (sizeof(struct ieee8021x_header) > s->plen)
 		return PROTO_INVALID;
 
-	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK)
-		return POM_ERR;
+	if (s_prev->ce) {
+		if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK)
+			return POM_ERR;
+	} else {
+		// No conntrack is possible over ethernet since the destination mac address is a broadcast one for requests
+		if (conntrack_get_unique(stack, stack_index) != POM_OK)
+			return POM_ERR;
+	}
+	
 	conntrack_unlock(s->ce);
 
 	struct ieee8021x_header *hdr = s->pload;
