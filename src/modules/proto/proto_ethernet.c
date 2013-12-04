@@ -60,7 +60,7 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	proto_ethernet.number_class = "ethernet";
 
 	// Conntracks are only used for 802.1X
-	struct conntrack_info ct_info = { 0 };
+	static struct conntrack_info ct_info = { 0 };
 	ct_info.default_table_size = 16;
 	ct_info.fwd_pkt_field_id = proto_ethernet_field_src;
 	ct_info.rev_pkt_field_id = proto_ethernet_field_dst;
