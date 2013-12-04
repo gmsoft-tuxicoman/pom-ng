@@ -213,7 +213,7 @@ int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_i
 
 	struct proto_process_stack *s = &stack[stack_index];
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
-	if (s_prev->proto) {
+	if (s_prev->ce) {
 		pomlog(POMLOG_ERR "conntrack_get_unique() can only be used for link protocols");
 		return POM_ERR;
 	}
