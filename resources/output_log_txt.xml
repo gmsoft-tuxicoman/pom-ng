@@ -28,6 +28,7 @@
 
 			<!-- hashcat_md5chap -->
 			<item><template>hashcat_md5chap</template><event>ppp_chap_md5_auth</event><format>$response:$challenge:$identifier</format><file>hashcat_md5chap_log</file></item>
+			<item><template>hashcat_md5chap</template><event>eap_md5_auth</event><format>$response:$challenge:$identifier</format><file>hashcat_md5chap_log</file></item>
 
 		</dataset>
 
