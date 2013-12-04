@@ -68,7 +68,8 @@ static int proto_smtp_mod_register(struct mod_reg *mod) {
 
 static int proto_smtp_init(struct proto *proto, struct registry_instance *i) {
 
-	if (proto_number_register("tcp", 25, proto) != POM_OK)
+	if (proto_number_register("tcp", 25, proto) != POM_OK ||
+		proto_number_register("tcp", 587, proto) != POM_OK)
 		return POM_ERR;
 
 	struct proto_smtp_priv *priv = malloc(sizeof(struct proto_smtp_priv));
