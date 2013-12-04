@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 DECODER_SRC = decoder_base64.la decoder_gzip.la decoder_percent.la decoder_quoted_printable.la
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
@@ -40,6 +40,9 @@ analyzer_dns_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_docsis_la_SOURCES = analyzer/analyzer_docsis.c analyzer/analyzer_docsis.h
 analyzer_docsis_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_docsis_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_eap_la_SOURCES = analyzer/analyzer_eap.c analyzer/analyzer_eap.h
+analyzer_eap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_eap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_gif_la_SOURCES = analyzer/analyzer_gif.c analyzer/analyzer_gif.h
 analyzer_gif_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_gif_la_LIBADD = $(top_builddir)/src/libpom-ng.la
