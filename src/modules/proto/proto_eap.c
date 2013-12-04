@@ -26,6 +26,7 @@
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint32.h>
+#include <pom-ng/proto_eap.h>
 
 #include "proto_eap.h"
 

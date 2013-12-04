@@ -39,24 +39,6 @@ enum proto_eap_fields {
 	proto_eap_field_identifier
 };
 
-enum {
-	evt_eap_common_identifier = 0,
-	evt_eap_common_code
-};
-
-enum {
-	evt_eap_identity_identity = evt_eap_common_code + 1
-};
-
-enum {
-	evt_eap_md5_challenge_value = evt_eap_common_code + 1,
-	evt_eap_md5_challenge_name
-};
-
-enum {
-	evt_eap_success_failure_success = evt_eap_common_identifier + 1
-};
-
 struct proto_eap_priv {
 
 	struct ptype *p_timeout;
