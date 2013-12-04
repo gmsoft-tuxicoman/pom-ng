@@ -59,12 +59,7 @@ static int proto_ethernet_mod_register(struct mod_reg *mod) {
 	proto_ethernet.pkt_fields = fields;
 	proto_ethernet.number_class = "ethernet";
 
-	// Conntracks are only used for 802.1X
-	static struct conntrack_info ct_info = { 0 };
-	ct_info.default_table_size = 16;
-	ct_info.fwd_pkt_field_id = proto_ethernet_field_src;
-	ct_info.rev_pkt_field_id = proto_ethernet_field_dst;
-	proto_ethernet.ct_info = &ct_info;
+	// No conntrack here
 
 	proto_ethernet.process = proto_ethernet_process;
 
@@ -90,12 +85,6 @@ static int proto_ethernet_process(void *proto_priv, struct packet *p, struct pro
 	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_src], ehdr->ether_shost);
 	PTYPE_MAC_SETADDR(s->pkt_info->fields_value[proto_ethernet_field_dst], ehdr->ether_dhost);
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_ethernet_field_type], eth_type);
-
-	if (eth_type == 0x888e) {
-		if (conntrack_get(stack, stack_index) != POM_OK)
-			return PROTO_ERR;
-		conntrack_unlock(s->ce);
-	}
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
