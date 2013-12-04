@@ -210,7 +210,10 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 
 		case tftp_error:
 			// An error occured, cleanup this conntrack soon
-			conntrack_delayed_cleanup(s->ce, 1, p->ts);
+			if (conntrack_delayed_cleanup(s->ce, 1, p->ts) != POM_OK) {
+				conntrack_unlock(s->ce);
+				return PROTO_ERR;
+			}
 			break;
 
 		default:

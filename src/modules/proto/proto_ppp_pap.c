@@ -202,7 +202,7 @@ static int proto_ppp_pap_process(void *proto_priv, struct packet *p, struct prot
 
 	if (conntrack_get(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
-	if (conntrack_delayed_cleanup(s->ce, *PTYPE_UINT32_GETVAL(priv->p_auth_timeout), p->ts)) {
+	if (conntrack_delayed_cleanup(s->ce, *PTYPE_UINT32_GETVAL(priv->p_auth_timeout), p->ts) != POM_OK) {
 		conntrack_unlock(s->ce);
 		return PROTO_ERR;
 	}
