@@ -20,7 +20,6 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
-#include <pom-ng/conntrack.h>
 #include <pom-ng/ptype_mac.h>
 #include <pom-ng/ptype_uint16.h>
 
