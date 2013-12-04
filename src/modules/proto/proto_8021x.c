@@ -53,7 +53,10 @@ static int proto_8021x_mod_register(struct mod_reg *mod) {
 	proto_8021x.pkt_fields = fields;
 	proto_8021x.number_class = "8021x";
 
-	// No contrack here
+
+	struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 1; // No hashing done here
+	proto_8021x.ct_info = &ct_info;
 
 	proto_8021x.init = proto_8021x_init;
 	proto_8021x.process = proto_8021x_process;
@@ -77,6 +80,10 @@ static int proto_8021x_process(void *proto_priv, struct packet *p, struct proto_
 
 	if (sizeof(struct ieee8021x_header) > s->plen)
 		return PROTO_INVALID;
+
+	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK)
+		return POM_ERR;
+	conntrack_unlock(s->ce);
 
 	struct ieee8021x_header *hdr = s->pload;
 

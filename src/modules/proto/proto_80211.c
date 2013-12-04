@@ -23,6 +23,7 @@
 
 #include <pom-ng/ptype.h>
 #include <pom-ng/proto.h>
+#include <pom-ng/conntrack.h>
 #include <pom-ng/ptype_mac.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint8.h>
@@ -72,7 +73,12 @@ static int proto_80211_mod_register(struct mod_reg *mod) {
 	proto_80211.pkt_fields = fields;
 	proto_80211.number_class = "ethernet";
 
-	// No contrack here
+	// Conntracks are only used for 802.1X
+	struct conntrack_info ct_info = { 0 };
+	ct_info.default_table_size = 16;
+	ct_info.fwd_pkt_field_id = proto_80211_field_src;
+	ct_info.rev_pkt_field_id = proto_80211_field_dst;
+	proto_80211.ct_info = &ct_info;
 
 	proto_80211.process = proto_80211_process;
 
@@ -242,7 +248,15 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 
 			offt += sizeof(struct ieee80211_llc);
 
-			s_next->proto = proto_get_by_number(s->proto, ntohs(llc->ethertype));
+			uint16_t proto_type = ntohs(llc->ethertype);
+
+			if (proto_type == 0x888e) {
+				if (conntrack_get(stack, stack_index) != POM_OK)
+					return PROTO_ERR;
+				conntrack_unlock(s->ce);
+			}
+			s_next->proto = proto_get_by_number(s->proto, proto_type);
+
 			break;
 
 		default:
