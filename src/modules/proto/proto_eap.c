@@ -187,6 +187,20 @@ static int proto_eap_cleanup(void *proto_priv) {
 	if (!proto_priv)
 		return POM_OK;
 
+	struct proto_eap_priv *priv = proto_priv;
+
+	if (priv->p_timeout)
+		ptype_cleanup(priv->p_timeout);
+
+	if (priv->evt_identity)
+		event_unregister(priv->evt_identity);
+	if (priv->evt_md5_challenge)
+		event_unregister(priv->evt_md5_challenge);
+	if (priv->evt_success_failure)
+		event_unregister(priv->evt_success_failure);
+
+	free(priv);
+
 	return POM_OK;
 }
 
