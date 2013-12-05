@@ -105,9 +105,10 @@ struct ptype_reg_info {
 	 * @param pt Ptype to display value from
 	 * @param val Buffer to store value to
 	 * @param size Size of the buffer
+	 * @param format Format in which to print the value
 	 * @return Number of bytes stored in the buffer
 	 */
-	int (*print_val) (struct ptype *pt, char *val, size_t size);
+	int (*print_val) (struct ptype *pt, char *val, size_t size, char *format);
 
 	/// Pointer to the compare function
 	/**
@@ -181,10 +182,10 @@ struct ptype *ptype_alloc_from_type(struct ptype_reg *type);
 int ptype_parse_val(struct ptype *pt, char *val);
 
 /// Print the value of the ptype in a string.
-int ptype_print_val(struct ptype *pt, char *val, size_t size);
+int ptype_print_val(struct ptype *pt, char *val, size_t size, char *format);
 
 /// Allocate a new string and save it's value
-char *ptype_print_val_alloc(struct ptype *pt);
+char *ptype_print_val_alloc(struct ptype *pt, char *format);
 
 /// Give the ptype operation identifier from it's string representation.
 int ptype_get_op(struct ptype *pt, char *op);

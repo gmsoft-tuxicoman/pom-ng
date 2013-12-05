@@ -20,10 +20,8 @@
 
 
 #include <pom-ng/ptype.h>
-#include <string.h>
-
-#include <stdint.h>
 #include <stdio.h>
+#include <printf.h>
 
 #include "ptype_uint32.h"
 #include <pom-ng/ptype_uint32.h>
@@ -125,45 +123,20 @@ int ptype_uint32_parse(struct ptype *p, char *val) {
 
 };
 
-int ptype_uint32_print(struct ptype *p, char *val, size_t size) {
+int ptype_uint32_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	uint32_t *v = p->value;
 
-	switch (p->flags & PTYPE_FLAG_RESERVED) {
-		case PTYPE_UINT32_PRINT_HEX:
-			return snprintf(val, size, "0x%X", *v);
-		case PTYPE_UINT32_PRINT_HUMAN: {
-			uint32_t value = *v;
-			if (value > 99999) {
-				value = (value + 500) / 1000;
-				if (value > 9999) {
-					value = (value + 500) / 1000;
-					return snprintf(val, size, "%um", value);
-				} else
-					return snprintf(val, size, "%uk", value);
-			} else
-				return snprintf(val, size, "%u", value);
-			break;
+	if (format) {
+		int argtypes[1];
+
+		int tot = parse_printf_format(format, 1, argtypes);
+		if (tot > 1 || (argtypes[0] & ~PA_FLAG_MASK) != PA_INT) {
+			format = "%u";
 		}
-		case PTYPE_UINT32_PRINT_HUMAN_1024: {
-			uint32_t value = *v;
-			if (value > 99999) {
-				value = (value + 512) / 1024;
-				if (value > 9999) {
-					value = (value + 512) / 1024;
-					return snprintf(val, size, "%uM", value);
-				} else
-					return snprintf(val, size, "%uK", value);
-			} else
-				return snprintf(val, size, "%u", value);
-			break;
-		}
-		default:
-		case PTYPE_UINT32_PRINT_DECIMAL:
-			return snprintf(val, size, "%u", *v);
 	}
 
-	return 0;
+	return snprintf(val, size, format, (unsigned int)*v);
 
 }
 

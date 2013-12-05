@@ -54,7 +54,7 @@ int ptype_mac_mod_register(struct mod_reg *mod) {
 	pt_mac.parse_val = ptype_mac_parse;
 	pt_mac.print_val = ptype_mac_print;
 	pt_mac.compare_val = ptype_mac_compare;
-	pt_mac.serialize = ptype_mac_print;
+	pt_mac.serialize = ptype_mac_serialize;
 	pt_mac.unserialize = ptype_mac_parse;
 	pt_mac.copy = ptype_mac_copy;
 	pt_mac.value_size = ptype_mac_value_size;
@@ -109,7 +109,12 @@ int ptype_mac_parse(struct ptype *p, char *val) {
 
 }
 
-int ptype_mac_print(struct ptype *p, char *val, size_t size) {
+int ptype_mac_serialize(struct ptype *p, char *val, size_t size) {
+
+	return ptype_mac_print(p, val, size, NULL);
+}
+
+int ptype_mac_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	// TODO : HANDLE MASK
 

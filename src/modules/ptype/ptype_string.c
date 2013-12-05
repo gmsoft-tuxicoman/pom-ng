@@ -49,7 +49,7 @@ int ptype_string_mod_register(struct mod_reg *mod) {
 	pt_string.print_val = ptype_string_print;
 	pt_string.compare_val = ptype_string_compare;
 
-	pt_string.serialize = ptype_string_print;
+	pt_string.serialize = ptype_string_serialize;
 	pt_string.unserialize = ptype_string_parse;
 
 	pt_string.copy = ptype_string_copy;
@@ -88,7 +88,12 @@ int ptype_string_parse(struct ptype *p, char *val) {
 
 }
 
-int ptype_string_print(struct ptype *p, char *val, size_t size) {
+int ptype_string_serialize(struct ptype *p, char *val, size_t size) {
+
+	return ptype_string_print(p, val, size, NULL);
+}
+
+int ptype_string_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	char *str = p->value;
 	return snprintf(val, size, "%s", str);

@@ -20,9 +20,7 @@
 
 
 #include <pom-ng/ptype.h>
-#include <string.h>
-
-#include <stdint.h>
+#include <printf.h>
 #include <stdio.h>
 
 #include "ptype_uint8.h"
@@ -54,7 +52,7 @@ int ptype_uint8_mod_register(struct mod_reg *mod) {
 	pt_u8.parse_val = ptype_uint8_parse;
 	pt_u8.print_val = ptype_uint8_print;
 	pt_u8.compare_val = ptype_uint8_compare;
-	pt_u8.serialize = ptype_uint8_print;
+	pt_u8.serialize = ptype_uint8_serialize;
 	pt_u8.unserialize = ptype_uint8_parse;
 	pt_u8.copy = ptype_uint8_copy;
 	pt_u8.value_size = ptype_uint8_value_size;
@@ -103,21 +101,22 @@ int ptype_uint8_parse(struct ptype *p, char *val) {
 
 	return POM_ERR;
 
-};
+}
 
-int ptype_uint8_print(struct ptype *p, char *val, size_t size) {
+int ptype_uint8_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	uint8_t *v = p->value;
 
-	switch (p->flags & PTYPE_FLAG_RESERVED) {
-		case PTYPE_UINT8_PRINT_HEX:
-			return snprintf(val, size, "0x%X", *v);
-		default:
-		case PTYPE_UINT8_PRINT_DECIMAL:
-			return snprintf(val, size, "%u", *v);
+	if (format) {
+		int argtypes[1];
+
+		int tot = parse_printf_format(format, 1, argtypes);
+		if (tot > 1 || (argtypes[0] & ~PA_FLAG_MASK) != PA_INT) {
+			format = "%u";
+		}
 	}
 
-	return 0;
+	return snprintf(val, size, format, (unsigned int)*v);
 
 }
 

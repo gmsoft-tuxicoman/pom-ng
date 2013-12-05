@@ -1193,7 +1193,7 @@ static int datastore_postgres_dataset_write(struct dataset_query *dsq) {
 				}
 
 				default: {
-					qpriv->write_query_param_val[i] = ptype_print_val_alloc(dv[i].value);
+					qpriv->write_query_param_val[i] = ptype_print_val_alloc(dv[i].value, NULL);
 					if (qpriv->write_query_param_val[i])
 						qpriv->write_query_param_len[i] = strlen(qpriv->write_query_param_val[i]);
 					break;

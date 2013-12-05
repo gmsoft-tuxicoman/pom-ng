@@ -20,10 +20,8 @@
 
 
 #include <pom-ng/ptype.h>
-#include <string.h>
-
-#include <stdint.h>
 #include <stdio.h>
+#include <printf.h>
 
 #include "ptype_uint16.h"
 #include <pom-ng/ptype_uint16.h>
@@ -125,19 +123,20 @@ int ptype_uint16_parse(struct ptype *p, char *val) {
 
 };
 
-int ptype_uint16_print(struct ptype *p, char *val, size_t size) {
+int ptype_uint16_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	uint16_t *v = p->value;
 
-	switch (p->flags & PTYPE_FLAG_RESERVED) {
-		case PTYPE_UINT16_PRINT_HEX:
-			return snprintf(val, size, "0x%X", *v);
-		default:
-			return snprintf(val, size, "%u", *v);
+	if (format) {
+		int argtypes[1];
+
+		int tot = parse_printf_format(format, 1, argtypes);
+		if (tot > 1 || (argtypes[0] & ~PA_FLAG_MASK) != PA_INT) {
+			format = "%u";
+		}
 	}
 
-	return 0;
-
+	return snprintf(val, size, format, (unsigned int)*v);
 }
 
 int ptype_uint16_compare(int op, void *val_a, void* val_b) {

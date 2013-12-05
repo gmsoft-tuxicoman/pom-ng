@@ -1018,7 +1018,7 @@ int registry_config_save(char *config_name) {
 				strcat(buff, param->name);
 				PTYPE_STRING_SETVAL_P(dsq_config->values[1].value, buff);
 
-				char *value = ptype_print_val_alloc(param->value);
+				char *value = ptype_print_val_alloc(param->value, NULL);
 				if (!value)
 					goto err_locked;
 				

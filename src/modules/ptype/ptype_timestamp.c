@@ -91,30 +91,17 @@ int ptype_timestamp_cleanup(struct ptype *p) {
 	return POM_OK;
 }
 
-int ptype_timestamp_print(struct ptype *p, char *val, size_t size) {
+int ptype_timestamp_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	ptime *v = p->value;
 
-	// TODO handle multiple format
+	if (!format)
+		format = "%Y-%m-%d %H:%M:%S";
 
-	char *format = "%Y-%m-%d %H:%M:%S";
 	struct tm tmp;
 	time_t sec = pom_ptime_sec(*v);
 	localtime_r(&sec, &tmp);
-	char buff[4 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + 1];
-	memset(buff, 0, sizeof(buff));
-	strftime(buff, sizeof(buff), format, &tmp);
-
-	// We must return what would have been written
-	size_t len = strlen(buff);
-	if (len > size - 1) {
-		strncpy(val, buff, size - 1);
-		val[size] = 0;
-	} else {
-		strcpy(val, buff);
-	}
-
-	return len;
+	return strftime(val, size, format, &tmp);
 }
 
 int ptype_timestamp_compare(int op, void *val_a, void *val_b) {

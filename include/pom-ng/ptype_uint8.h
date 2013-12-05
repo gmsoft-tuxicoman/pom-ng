@@ -23,9 +23,6 @@
 
 #include <pom-ng/ptype.h>
 
-#define PTYPE_UINT8_PRINT_DECIMAL	0x1
-#define PTYPE_UINT8_PRINT_HEX		0x2
-
 /// x is the struct ptype
 #define PTYPE_UINT8_GETVAL(x) \
 	(uint8_t*) (x)->value

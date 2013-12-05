@@ -23,11 +23,6 @@
 
 #include <pom-ng/ptype.h>
 
-#define PTYPE_UINT16_PRINT_DECIMAL	0x1
-#define PTYPE_UINT16_PRINT_HEX		0x2
-#define PTYPE_UINT16_PRINT_HUMAN	0x3
-#define PTYPE_UINT16_PRINT_HUMAN_1024	0x4
-
 /// x is the struct ptype
 #define PTYPE_UINT16_GETVAL(x) \
 	(uint16_t*) (x)->value

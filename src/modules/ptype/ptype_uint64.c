@@ -20,11 +20,9 @@
 
 
 #include <pom-ng/ptype.h>
-#include <string.h>
-
-#include <stdint.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <printf.h>
 
 #include "ptype_uint64.h"
 #include <pom-ng/ptype_uint64.h>
@@ -126,46 +124,20 @@ int ptype_uint64_parse(struct ptype *p, char *val) {
 
 };
 
-int ptype_uint64_print(struct ptype *p, char *val, size_t size) {
+int ptype_uint64_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	uint64_t *v = p->value;
 
-	switch (p->flags & PTYPE_FLAG_RESERVED) {
-		case PTYPE_UINT64_PRINT_HEX:
-			return snprintf(val, size, "0x%"PRIX64, *v);
-		case PTYPE_UINT64_PRINT_HUMAN: {
-			uint64_t value = *v;
-			if (value > 99999) {
-				value = (value + 500) / 1000;
-				if (value > 9999) {
-					value = (value + 500) / 1000;
-					return snprintf(val, size, "%"PRIu64"m", value);
-				} else
-					return snprintf(val, size, "%"PRIu64"k", value);
-			} else
-				return snprintf(val, size, "%"PRIu64, value);
-			break;
+	if (format) {
+		int argtypes[1];
+
+		int tot = parse_printf_format(format, 1, argtypes);
+		if (tot > 1 || (argtypes[0] & ~PA_FLAG_MASK) != PA_INT) {
+			format = "%PRIu64";
 		}
-		case PTYPE_UINT64_PRINT_HUMAN_1024: {
-			uint64_t value = *v;
-			if (value > 99999) {
-				value = (value + 512) / 1024;
-				if (value > 9999) {
-					value = (value + 512) / 1024;
-					return snprintf(val, size, "%"PRIu64"M", value);
-				} else
-					return snprintf(val, size, "%"PRIu64"K", value);
-			} else
-				return snprintf(val, size, "%"PRIu64, value);
-			break;
-		}
-		default:
-		case PTYPE_UINT64_PRINT_DECIMAL:
-			return snprintf(val, size, "%"PRIu64, *v);
 	}
 
-	return 0;
-
+	return snprintf(val, size, format, (uint64_t)*v);
 }
 
 int ptype_uint64_compare(int op, void *val_a, void* val_b) {

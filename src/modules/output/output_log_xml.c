@@ -299,7 +299,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 					xmlTextWriterWriteAttribute(writer, BAD_CAST "key", BAD_CAST itm->key) < 0)
 					goto err;
 
-				char *value = ptype_print_val_alloc(itm->value);
+				char *value = ptype_print_val_alloc(itm->value, NULL);
 				if (!value)
 					goto err;
 
@@ -338,7 +338,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 				goto err;
 
 			if (evt_data[i].value) {
-				char *value = ptype_print_val_alloc(evt_data[i].value);
+				char *value = ptype_print_val_alloc(evt_data[i].value, NULL);
 				if (!value)
 					goto err;
 

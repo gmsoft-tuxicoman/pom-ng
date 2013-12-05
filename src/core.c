@@ -511,7 +511,7 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 			if (s[i].proto->info->pkt_fields) {
 				int j;
 				for (j = 0; s[i].proto->info->pkt_fields[j].name; j++) {
-					ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1);
+					ptype_print_val(s[i].pkt_info->fields_value[j], buff, sizeof(buff) - 1, NULL);
 					printf("%s: %s; ", s[i].proto->info->pkt_fields[j].name, buff);
 				}
 			}

@@ -29,7 +29,8 @@ int ptype_string_mod_unregister();
 
 int ptype_string_cleanup(struct ptype *p);
 int ptype_string_parse(struct ptype *p, char *val);
-int ptype_string_print(struct ptype *pt, char *val, size_t size);
+int ptype_string_serialize(struct ptype *pt, char *val, size_t size);
+int ptype_string_print(struct ptype *pt, char *val, size_t size, char *format);
 int ptype_string_compare(int op, void *val_a, void *val_b);
 int ptype_string_copy(struct ptype *dst, struct ptype *src);
 size_t ptype_string_value_size(struct ptype *pt);

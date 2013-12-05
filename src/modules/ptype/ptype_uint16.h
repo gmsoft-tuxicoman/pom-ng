@@ -30,7 +30,7 @@ int ptype_uint16_mod_unregister();
 int ptype_uint16_alloc(struct ptype *p);
 int ptype_uint16_cleanup(struct ptype *p);
 int ptype_uint16_parse(struct ptype *p, char *val);
-int ptype_uint16_print(struct ptype *p, char *val, size_t size);
+int ptype_uint16_print(struct ptype *p, char *val, size_t size, char *format);
 int ptype_uint16_compare(int op, void *val_a, void* val_b);
 int ptype_uint16_serialize(struct ptype *p, char *val, size_t size);
 int ptype_uint16_copy(struct ptype *dst, struct ptype *src);

@@ -333,7 +333,7 @@ struct dns_entry *dns_find_or_add_entry(struct ptype *record_pt) {
 		record = PTYPE_STRING_GETVAL(record_pt);
 	} else {
 		// 40 is the max size of an ipv6 address
-		ptype_print_val(record_pt, buff, sizeof(buff));
+		ptype_print_val(record_pt, buff, sizeof(buff), NULL);
 		record = buff;
 	}
 	uint32_t hash = dns_record_hash(record);
@@ -653,7 +653,7 @@ char *dns_forward_lookup_ptype(struct ptype *record_pt) {
 	if (record_pt->type == ptype_string) {
 		record = PTYPE_STRING_GETVAL(record_pt);
 	} else {
-		ptype_print_val(record_pt, buff, sizeof(buff));
+		ptype_print_val(record_pt, buff, sizeof(buff), NULL);
 		record = buff;
 	}
 	return dns_forward_lookup(record);
@@ -670,7 +670,7 @@ char *dns_reverse_lookup_ptype(struct ptype *record_pt) {
 	if (record_pt->type == ptype_string) {
 		record = PTYPE_STRING_GETVAL(record_pt);
 	} else {
-		ptype_print_val(record_pt, buff, sizeof(buff));
+		ptype_print_val(record_pt, buff, sizeof(buff), NULL);
 		record = buff;
 	}
 	return dns_reverse_lookup(record);

@@ -74,7 +74,7 @@ int addon_ptype_push(lua_State *L, struct ptype *p) {
 		uint64_t *val = PTYPE_UINT64_GETVAL(p);
 		lua_pushinteger(L, *val);
 	} else {
-		char *val = ptype_print_val_alloc(p);
+		char *val = ptype_print_val_alloc(p, NULL);
 		if (!val) {
 			lua_pushnil(L);
 		} else {

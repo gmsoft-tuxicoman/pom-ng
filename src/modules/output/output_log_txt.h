@@ -42,6 +42,7 @@ struct output_log_txt_field {
 	int id;
 	unsigned int start_off, end_off;
 	char *key;
+	char *ptype_format;
 };
 
 struct output_log_txt_file {

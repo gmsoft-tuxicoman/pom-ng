@@ -51,7 +51,7 @@ int ptype_ipv6_mod_register(struct mod_reg *mod) {
 	pt_ipv6.parse_val = ptype_ipv6_parse;
 	pt_ipv6.print_val = ptype_ipv6_print;
 	pt_ipv6.compare_val = ptype_ipv6_compare;
-	pt_ipv6.serialize = ptype_ipv6_print;
+	pt_ipv6.serialize = ptype_ipv6_serialize;
 	pt_ipv6.unserialize = ptype_ipv6_parse;
 	pt_ipv6.copy = ptype_ipv6_copy;
 	pt_ipv6.value_size = ptype_ipv6_value_size;
@@ -124,7 +124,12 @@ int ptype_ipv6_parse(struct ptype *p, char *val) {
 
 }
 
-int ptype_ipv6_print(struct ptype *p, char *val, size_t size) {
+int ptype_ipv6_serialize(struct ptype *p, char *val, size_t size) {
+
+	return ptype_ipv6_print(p, val, size, NULL);
+}
+
+int ptype_ipv6_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	struct ptype_ipv6_val *v = p->value;
 	char buff[INET6_ADDRSTRLEN + 1];

@@ -154,7 +154,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 
 	struct registry_param *p;
 	for (p = param_head; p; p = p->next) {
-		char *value = ptype_print_val_alloc(p->value);
+		char *value = ptype_print_val_alloc(p->value, NULL);
 		if (!value) {
 			xmlrpc_faultf(envP, "Error while getting parameter value of parameter %s", p->name);
 			continue;

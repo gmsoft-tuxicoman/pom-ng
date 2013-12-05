@@ -54,7 +54,7 @@ int ptype_bool_mod_register(struct mod_reg *mod) {
 	pt_bool.parse_val = ptype_bool_parse;
 	pt_bool.print_val = ptype_bool_print;
 	pt_bool.compare_val = ptype_bool_compare;
-	pt_bool.serialize = ptype_bool_print;
+	pt_bool.serialize = ptype_bool_serialize;
 	pt_bool.unserialize = ptype_bool_parse;
 	pt_bool.copy = ptype_bool_copy;
 	pt_bool.value_size = ptype_bool_value_size;
@@ -112,17 +112,35 @@ int ptype_bool_parse(struct ptype *p, char *val) {
 
 };
 
-int ptype_bool_print(struct ptype *p, char *val, size_t size) {
+int ptype_bool_serialize(struct ptype *p, char *val, size_t size) {
+	return ptype_bool_print(p, val, size, NULL);
+}
+
+int ptype_bool_print(struct ptype *p, char *val, size_t size, char *format) {
+
+	char *yes = "yes", *no = "no";
+
+	if (format) {
+		if (!strcmp(format, "binary")) {
+			yes = "1";
+			no = "0";
+		} else if (!strcmp(format, "true_false")) {
+			yes = "true";
+			no = "false";
+		} else if (strcmp(format, "yes_no")) {
+			pomlog(POMLOG_WARN "Invalid format for ptype_bool : %s", format);
+		}
+	}
 
 	char *v = p->value;
 
 	if (*v) {
-		strncpy(val, "yes", size);
-		return strlen("yes");
+		strncpy(val, yes, size);
+		return strlen(yes);
 	}
 
-	strncpy(val, "no", size);
-	return strlen("no");
+	strncpy(val, no, size);
+	return strlen(no);
 
 }
 

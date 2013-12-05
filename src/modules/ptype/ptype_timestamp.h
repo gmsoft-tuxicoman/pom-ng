@@ -31,7 +31,7 @@ int ptype_timestamp_register(struct ptype_reg *r);
 int ptype_timestamp_alloc(struct ptype *p);
 int ptype_timestamp_cleanup(struct ptype *p);
 int ptype_timestamp_parse(struct ptype *p, char *val);
-int ptype_timestamp_print(struct ptype *pt, char *val, size_t size);
+int ptype_timestamp_print(struct ptype *pt, char *val, size_t size, char *format);
 int ptype_timestamp_serialize(struct ptype *pt, char *val, size_t size);
 int ptype_timestamp_unserialize(struct ptype *p, char *val);
 int ptype_timestamp_compare(int op, void *val_a, void* val_b);

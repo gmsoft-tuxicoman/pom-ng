@@ -48,7 +48,7 @@ int ptype_bytes_mod_register(struct mod_reg *mod) {
 	pt_bytes.parse_val = ptype_bytes_parse;
 	pt_bytes.print_val = ptype_bytes_print;
 	pt_bytes.compare_val = ptype_bytes_compare;
-	pt_bytes.serialize = ptype_bytes_print;
+	pt_bytes.serialize = ptype_bytes_serialize;
 	pt_bytes.unserialize = ptype_bytes_parse;
 	pt_bytes.copy = ptype_bytes_copy;
 	pt_bytes.value_size = ptype_bytes_value_size;
@@ -145,26 +145,58 @@ int ptype_bytes_parse(struct ptype *p, char *val) {
 
 };
 
-int ptype_bytes_print(struct ptype *p, char *val, size_t size) {
+int ptype_bytes_serialize(struct ptype *p, char *val, size_t size) {
+
+	return ptype_bytes_print(p, val, size, NULL);
+}
+
+int ptype_bytes_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	struct ptype_bytes_val *v = p->value;
 
 	unsigned char *tmp = v->value;
 
+	// Format is 'x' lowercase or 'X' for uppercase
+	// follower by a optional character as byte delimiter
+
+	char a = 'A';
+	char *sep = NULL;
+
+	size_t byte_len = 2;
+
+	if (format) {
+		if (*format == 'x') {
+			a = 'a';
+		} else if (*format != 'X') {
+			pomlog(POMLOG_WARN "Invalid format specifier for ptype_bytes : %s", format);
+		}
+
+		if (*format && *(format + 1)) {
+			sep = format + 1;
+			byte_len = 3;
+		}
+			
+	}
+
 	size_t i;
-	for (i = 0; i < ((size - 1) / 2) && i < v->length; i++) {
+	for (i = 0; i < ((size - 1) / byte_len) && i < v->length; i++) {
 		char h = *tmp >> 4;
 		if (h < 0xa)
 			val[0] = h + '0';
 		else
-			val[0] = h + 'A' - 10;
+			val[0] = h + a - 10;
 		h = *tmp & 0xF;
 		if (h < 0xa)
 			val[1] = h + '0';
 		else
-			val[1] = h + 'A' - 10;
+			val[1] = h + a - 10;
 		val += 2;
 		tmp++;
+
+		if (sep) {
+			*val = *sep;
+			val++;
+		}
 	}
 
 	*val = 0;

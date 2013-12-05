@@ -124,15 +124,13 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 
 		// Copy the name in a temp variable
 		unsigned int name_len = end_off - start_off - 1;
-		char *field_name = malloc(name_len + 1);
+		char *field_name = strndup(sep, name_len);
 		if (!field_name) {
 			if (fields)
 				free(fields);
 			pom_oom(name_len + 1);
 			return NULL;
 		}
-		strncpy(field_name, sep, name_len);
-		field_name[name_len] = 0;
 
 		enum output_log_txt_field_type field_type = output_log_txt_event_field;
 		int field_id;
@@ -211,21 +209,49 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 					continue;
 				}
 				unsigned int key_len = cur - key;
-				field->key = malloc(key_len + 1);
+				field->key = strndup(key, key_len);
 				if (!field->key) {
 					pom_oom(key_len + 1);
 					free(field_name);
 					free(fields);
 					return NULL;
 				}
-				strncpy(field->key, key, key_len);
-				field->key[key_len] = 0;
 
 				end_off = cur - format + 1;
 
 			}
 		}
 		free(field_name);
+
+		// Parse the ptype print format
+
+		if (*cur == '{') {
+			cur++;
+			const char *ptype_format = cur;
+			while (*cur && *cur != '}')
+				cur++;
+
+			if (*cur != '}') {
+				pomlog(POMLOG_WARN "Unmatched '}' for field %s", field_name);
+				free(field_name);
+				sep = cur + 1;
+				field_count--;
+				continue;
+			}
+
+			unsigned int ptype_format_len = cur - ptype_format;
+			field->ptype_format = strndup(ptype_format, ptype_format_len);
+			if (!field->ptype_format) {
+				pom_oom(ptype_format_len + 1);
+				free(field_name);
+				if (field->key)
+					free(fields->key);
+				free(fields);
+				return NULL;
+			}
+			end_off = cur - format + 1;
+
+		}
 
 		field->id = field_id;
 		field->start_off = start_off;
@@ -459,6 +485,8 @@ int output_log_txt_close(void *output_priv) {
 			for (i = 0; evt->fields[i].id != -1; i++) {
 				if (evt->fields[i].key)
 					free(evt->fields[i].key);
+				if (evt->fields[i].ptype_format)
+					free(evt->fields[i].ptype_format);
 			}
 
 			free(evt->fields);
@@ -583,7 +611,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 				struct data_item *item;
 				for (item = evt_data[field->id].items; item; item = item->next) {
 					if (!strcasecmp(item->key, field->key)) {
-						value = ptype_print_val_alloc(item->value);
+						value = ptype_print_val_alloc(item->value, field->ptype_format);
 						if (!value) {
 							pom_mutex_unlock(&file->lock);
 							return POM_ERR;
@@ -593,7 +621,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 				}
 			} else if (data_is_set(evt_data[field->id]) && evt_data[field->id].value) {
 				// Find the value of the field
-				value = ptype_print_val_alloc(evt_data[field->id].value);
+				value = ptype_print_val_alloc(evt_data[field->id].value, field->ptype_format);
 				if (!value) {
 					pom_mutex_unlock(&file->lock);
 					return POM_ERR;

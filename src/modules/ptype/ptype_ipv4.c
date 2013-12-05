@@ -54,7 +54,7 @@ int ptype_ipv4_mod_register(struct mod_reg *mod) {
 	pt_ipv4.parse_val = ptype_ipv4_parse;
 	pt_ipv4.print_val = ptype_ipv4_print;
 	pt_ipv4.compare_val = ptype_ipv4_compare;
-	pt_ipv4.serialize = ptype_ipv4_print;
+	pt_ipv4.serialize = ptype_ipv4_serialize;
 	pt_ipv4.unserialize = ptype_ipv4_parse;
 	pt_ipv4.copy = ptype_ipv4_copy;
 	pt_ipv4.value_size = ptype_ipv4_value_size;
@@ -130,7 +130,12 @@ int ptype_ipv4_parse(struct ptype *p, char *val) {
 
 }
 
-int ptype_ipv4_print(struct ptype *p, char *val, size_t size) {
+int ptype_ipv4_serialize(struct ptype *p, char *val, size_t size) {
+
+	return ptype_ipv4_print(p, val, size, NULL);
+}
+
+int ptype_ipv4_print(struct ptype *p, char *val, size_t size, char *format) {
 
 	struct ptype_ipv4_val *v = p->value;
 	if (v->mask < 32)

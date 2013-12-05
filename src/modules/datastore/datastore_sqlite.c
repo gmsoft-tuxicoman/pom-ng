@@ -675,7 +675,7 @@ static int datastore_sqlite_dataset_write(struct dataset_query *dsq) {
 					break;
 				}
 				default: {
-					char *value = ptype_print_val_alloc(dv[i].value);
+					char *value = ptype_print_val_alloc(dv[i].value, NULL);
 					res = sqlite3_bind_text(qpriv->write_stmt, i + 1, value, -1, free);
 					break;
 				}

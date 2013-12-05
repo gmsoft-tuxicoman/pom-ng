@@ -152,7 +152,7 @@ static int input_kismet_drone_open(struct input *i) {
 
 	char *host = PTYPE_STRING_GETVAL(priv->p_host);
 
-	char *port = ptype_print_val_alloc(priv->p_port);
+	char *port = ptype_print_val_alloc(priv->p_port, NULL);
 	if (!port)
 		return POM_ERR;
 

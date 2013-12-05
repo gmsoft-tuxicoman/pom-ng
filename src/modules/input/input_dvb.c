@@ -387,12 +387,12 @@ static int input_dvb_open(struct input *i) {
 	char adapter[FILENAME_MAX];
 	memset(adapter, 0, FILENAME_MAX);
 	strcpy(adapter, "/dev/dvb/adapter");
-	ptype_print_val(priv->adapter, adapter + strlen(adapter), FILENAME_MAX - strlen(adapter));
+	ptype_print_val(priv->adapter, adapter + strlen(adapter), FILENAME_MAX - strlen(adapter), NULL);
 
 	char frontend[FILENAME_MAX];
 	strcpy(frontend, adapter);
 	strcat(frontend, "/frontend");
-	ptype_print_val(priv->frontend, frontend + strlen(frontend), FILENAME_MAX - strlen(frontend));
+	ptype_print_val(priv->frontend, frontend + strlen(frontend), FILENAME_MAX - strlen(frontend), NULL);
 	
 	priv->frontend_fd = open(frontend, O_RDWR);
 	if (priv->frontend_fd == -1) {

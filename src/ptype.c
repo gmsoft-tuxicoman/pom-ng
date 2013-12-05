@@ -193,12 +193,12 @@ int ptype_parse_val(struct ptype *pt, char *val) {
 	return res;
 }
 
-int ptype_print_val(struct ptype *pt, char *val, size_t size) {
+int ptype_print_val(struct ptype *pt, char *val, size_t size, char *format) {
 	
-	return pt->type->info->print_val(pt, val, size);
+	return pt->type->info->print_val(pt, val, size, format);
 }
 
-char *ptype_print_val_alloc(struct ptype *pt) {
+char *ptype_print_val_alloc(struct ptype *pt, char *format) {
 
 	char *res = NULL;
 
@@ -210,7 +210,7 @@ char *ptype_print_val_alloc(struct ptype *pt) {
 			pom_oom(size + 1);
 			return NULL;
 		}
-		new_size = ptype_print_val(pt, res, size);
+		new_size = ptype_print_val(pt, res, size, format);
 		new_size = (new_size < 1) ? new_size * 2 : new_size + 1;
 	} while (new_size > size);
 
