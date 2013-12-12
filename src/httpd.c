@@ -177,6 +177,8 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 					mime_type = "image/jpeg";
 				else if (!strcasecmp(ext, "js"))
 					mime_type = "application/javascript";
+				else if (!strcasecmp(ext, "css"))
+					mime_type = "text/css";
 			}
 
 
