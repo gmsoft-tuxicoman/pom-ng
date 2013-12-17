@@ -1043,22 +1043,22 @@ static int datastore_postgres_dataset_read(struct dataset_query *dsq) {
 					break;
 				}
 				case DATASTORE_POSTGRES_PTYPE_TIMESTAMP: {
-					time_t t = 0;
+					ptime t = 0;
 					if (dpriv->integer_datetimes) {
 						int64_t *my_time = (int64_t*) PQgetvalue(qpriv->read_res, qpriv->read_query_cur, i + 1);
-						t = (ntohll(*my_time) / 1000000L) + ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
+						t = ntohll(*my_time) + pom_sec_ptime((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
 					} else {
 						double *my_time = (double*) PQgetvalue(qpriv->read_res, qpriv->read_query_cur, i + 1);
 						double swp_time = ntohll(*my_time);
 
-						t = swp_time + ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY);
+						t = pom_sec_ptime(swp_time + ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * SECS_PER_DAY));
 					}
 					// Adjust for timezone and daylight
 					// Assume that stored values are localtime
-					t += timezone;
-					if (daylight)
-						t -= 3600;
-
+					t += pom_sec_ptime(timezone);
+/*					if (daylight)
+						t -= pom_sec_ptime(3600);
+*/
 					PTYPE_TIMESTAMP_SETVAL(dv[i].value, t);
 					break;
 				}
