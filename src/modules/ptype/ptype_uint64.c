@@ -133,8 +133,10 @@ int ptype_uint64_print(struct ptype *p, char *val, size_t size, char *format) {
 
 		int tot = parse_printf_format(format, 1, argtypes);
 		if (tot > 1 || (argtypes[0] & ~PA_FLAG_MASK) != PA_INT) {
-			format = "%PRIu64";
+			format = "%"PRIu64;
 		}
+	} else {
+		format = "%"PRIu64;
 	}
 
 	return snprintf(val, size, format, (uint64_t)*v);

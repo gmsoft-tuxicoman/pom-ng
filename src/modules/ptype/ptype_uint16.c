@@ -134,6 +134,8 @@ int ptype_uint16_print(struct ptype *p, char *val, size_t size, char *format) {
 		if (tot > 1 || (argtypes[0] & ~PA_FLAG_MASK) != PA_INT) {
 			format = "%u";
 		}
+	} else {
+		format = "%u";
 	}
 
 	return snprintf(val, size, format, (unsigned int)*v);
