@@ -34,7 +34,7 @@ struct mod_reg_info *output_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = output_pcap_mod_register;
 	reg_info.unregister_func = output_pcap_mod_unregister;
-	reg_info.dependencies = "proto_docsis, proto_ethernet, proto_ipv4, ptype_string, ptype_bool, ptype_uint16";
+	reg_info.dependencies = "ptype_string, ptype_bool, ptype_uint16";
 
 	return &reg_info;
 }
