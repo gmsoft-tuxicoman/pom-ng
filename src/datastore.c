@@ -23,6 +23,7 @@
 #include "registry.h"
 #include "datastore.h"
 #include "mod.h"
+#include "main.h"
 
 #include <pom-ng/datastore.h>
 #include <pom-ng/ptype_bool.h>
@@ -251,6 +252,11 @@ int datastore_instance_remove(struct registry_instance *ri) {
 
 	if (!d)
 		return POM_OK;
+
+	if (d == system_datastore()) {
+		system_datastore_close();
+		pomlog(POMLOG_WARN "The system datastore is being removed");
+	}
 
 	if (d->reg->info->cleanup) {
 		if (d->reg->info->cleanup(d) != POM_OK) {

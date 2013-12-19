@@ -27,7 +27,8 @@
 #define POMNG_SYSTEM_DATASTORE "sqlite:system?dbfile=~/.pom-ng/sys_datastore.db"
 
 void signal_handler(int signal);
-struct datastore *open_system_datastore(char *dstore_uri);
+struct datastore *system_datastore_open(char *dstore_uri);
+int system_datastore_close();
 int main(int argc, char *argv[]);
 int halt(char *reason, int error);
 int halt_signal(char *reason);

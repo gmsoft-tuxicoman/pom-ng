@@ -1157,8 +1157,10 @@ int registry_config_load(char *config_name) {
 	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
 	
 	struct datastore *sys_dstore = system_datastore();
-	if (!sys_dstore)
+	if (!sys_dstore) {
+		pomlog(POMLOG_ERR "No system datastore declared");
 		return POM_ERR;
+	}
 
 
 	// Find what is the id corresponding to the name given if any
@@ -1348,8 +1350,10 @@ int registry_config_delete(char *config_name) {
 	struct dataset_query *dsq_config_list = NULL, *dsq_config = NULL;
 	
 	struct datastore *sys_dstore = system_datastore();
-	if (!sys_dstore)
+	if (!sys_dstore) {
+		pomlog(POMLOG_ERR "No system datastore declared");
 		return POM_ERR;
+	}
 
 	registry_lock();
 

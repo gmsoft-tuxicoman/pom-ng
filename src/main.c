@@ -79,7 +79,7 @@ void print_usage() {
 		);
 }
 
-struct datastore *open_system_datastore(char *dstore_uri) {
+struct datastore *system_datastore_open(char *dstore_uri) {
 
 	// Parse the URI
 	// Format of the URI : type:datastore_name?param1_name=param1_value&param2_name=param2_value&..."
@@ -141,6 +141,11 @@ struct datastore *open_system_datastore(char *dstore_uri) {
 
 	return dstore;
 
+}
+
+int system_datastore_close() {
+	system_store = NULL;
+	return POM_OK;
 }
 
 
@@ -329,7 +334,7 @@ int main(int argc, char *argv[]) {
 		goto err_packet;
 	}
 
-	system_store = open_system_datastore(system_store_uri);
+	system_store = system_datastore_open(system_store_uri);
 	if (!system_store) {
 		pomlog(POMLOG_ERR "Unable to open the system datastore");
 		goto err_dstore;
