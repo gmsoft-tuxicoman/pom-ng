@@ -162,6 +162,14 @@ static int output_pcap_file_open(void *output_priv) {
 #endif
 	} else if (!strcasecmp("80211", proto)) {
 		linktype = DLT_IEEE802_11;
+	} else if (!strcasecmp("radiotap", proto)){
+		linktype = DLT_IEEE802_11_RADIO;
+#ifdef DLT_MPEGTS
+	} else if (!strcasecmp("mpeg_ts", proto)) {
+		linktype = DLT_MPEGTS;
+#endif
+	} else if (!strcasecmp("ppi", proto)) {
+		linktype = DLT_PPI;
 	} else {
 		pomlog(POMLOG_ERR "Protocol %s is not supported", proto);
 		return POM_ERR;
