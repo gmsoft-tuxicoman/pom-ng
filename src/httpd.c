@@ -30,13 +30,17 @@
 #include <fcntl.h>
 
 static char *httpd_www_data = NULL;
-struct httpd_daemon_list *http_daemons = NULL;
+static struct httpd_daemon_list *http_daemons = NULL;
+static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
 
-
-int httpd_init(char *addresses, int port, char *www_data) {
+int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *ssl_key) {
 
 	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION;
 
+	if ((ssl_cert || ssl_key) && (!ssl_cert || !ssl_key)) {
+		pomlog(POMLOG_ERR "Both SSL certificate and key must be provided.");
+		return POM_ERR;
+	}
 
 	httpd_www_data = strdup(www_data);
 	if (!httpd_www_data) {
@@ -44,12 +48,65 @@ int httpd_init(char *addresses, int port, char *www_data) {
 		return POM_ERR;
 	}
 
+	if (ssl_cert) {
+		int fd = open(ssl_cert, O_RDONLY);
+		if (fd == -1) {
+			pomlog(POMLOG_ERR "Unable to open the SSL cert : %s", pom_strerror(errno));
+			goto err;
+		}
+		
+		struct stat s;
+		if (fstat(fd, &s) != 0) {
+			pomlog(POMLOG_ERR "Could not get stats for SSL cert : %s", pom_strerror(errno));
+			close(fd);
+			goto err;
+		}
+
+		httpd_ssl_cert = malloc(s.st_size);
+		if (!httpd_ssl_cert) {
+			pom_oom(s.st_size);
+			goto err;
+		}
+		
+		if (pom_read(fd, httpd_ssl_cert, s.st_size) != POM_OK)
+			goto err;
+
+		close(fd);
+
+	}
+
+	if (ssl_key) {
+		int fd = open(ssl_key, O_RDONLY);
+		if (fd == -1) {
+			pomlog(POMLOG_ERR "Unable to open the SSL key : %s", pom_strerror(errno));
+			goto err;
+		}
+		
+		struct stat s;
+		if (fstat(fd, &s) != 0) {
+			pomlog(POMLOG_ERR "Could not get stats for SSL key : %s", pom_strerror(errno));
+			close(fd);
+			goto err;
+		}
+
+		httpd_ssl_key = malloc(s.st_size);
+		if (!httpd_ssl_key) {
+			pom_oom(s.st_size);
+			goto err;
+		}
+		
+		if (pom_read(fd, httpd_ssl_key, s.st_size) != POM_OK)
+			goto err;
+
+		close(fd);
+
+	}
+
+
 	char *addr_tmp = strdup(addresses);
 	if (!addr_tmp) {
-		free(httpd_www_data);
-		httpd_www_data = NULL;
 		pom_oom(strlen(addresses) + 1);
-		return POM_ERR;
+		goto err;
 	}
 
 #ifdef MHD_USE_POLL
@@ -95,12 +152,22 @@ int httpd_init(char *addresses, int port, char *www_data) {
 				continue;
 			}
 
-			lst->daemon = MHD_start_daemon(flags, 0, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_END);
+			if (httpd_ssl_cert && httpd_ssl_key) {
+				flags |= MHD_USE_SSL;
+				lst->daemon = MHD_start_daemon(flags, 0, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_END);
+
+			} else {
+				lst->daemon = MHD_start_daemon(flags, 0, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_END);
+			}
 
 			if (lst->daemon) {
 				lst->next = http_daemons;
 				http_daemons = lst;
-				pomlog(POMLOG_INFO "HTTP daemon started on %s, port %s", token, port_str);
+				if (httpd_ssl_cert && httpd_ssl_key) {
+					pomlog(POMLOG_INFO "HTTPS daemon started on %s, port %s", token, port_str);
+				} else {
+					pomlog(POMLOG_INFO "HTTP daemon started on %s, port %s", token, port_str);
+				}
 			} else {
 				free(lst);
 				pomlog(POMLOG_ERR "Error while starting daemon on address \"%s\"", token);
@@ -113,7 +180,28 @@ int httpd_init(char *addresses, int port, char *www_data) {
 
 	free(addr_tmp);
 
+	if (!http_daemons) {
+		pomlog(POMLOG_ERR "No HTTP daemon could be started");
+		goto err;
+	}
+
 	return POM_OK;
+
+err:
+	free(httpd_www_data);
+	httpd_www_data = NULL;
+
+	if (httpd_ssl_cert) {
+		free(httpd_ssl_cert);
+		httpd_ssl_cert = NULL;
+	}
+
+	if (httpd_ssl_key) {
+		free(httpd_ssl_key);
+		httpd_ssl_key = NULL;
+	}
+
+	return POM_ERR;
 }
 
 int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
@@ -321,5 +409,14 @@ int httpd_cleanup() {
 
 	free(httpd_www_data);
 
+	if (httpd_ssl_cert) {
+		free(httpd_ssl_cert);
+		httpd_ssl_cert = NULL;
+	}
+
+	if (httpd_ssl_key) {
+		free(httpd_ssl_key);
+		httpd_ssl_key = NULL;
+	}
 	return POM_OK;
 }

@@ -52,6 +52,7 @@ static struct datastore *system_store = NULL;
 static pthread_t main_thread = 0;
 static int httpd_port = POMNG_HTTPD_PORT;
 static char *httpd_addresses = POMNG_HTTPD_ADDRESSES;
+static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
 
 void signal_handler(int signal) {
 
@@ -79,6 +80,8 @@ void print_usage() {
 		" -t, --threads=num		number of processing threads to start (default: number of cpu - 1)\n"
 		" -b, --bind=addresses		comma separated list of ip address to bind to (v4 or v6) (default : '0.0.0.0;::')\n"
 		" -p, --port=num		port fo the HTTP interface (default: %u)\n"
+		" -c, --ssl-certificate=file	cerficate file for HTTPS (default: none)\n"
+		" -k, --ssl-key=file		key file for HTTPS (default: none)\n"
 		"\n"
 		, POMNG_HTTPD_PORT);
 }
@@ -179,7 +182,7 @@ int main(int argc, char *argv[]) {
 		};
 
 		
-		char *args = "u:d:t:s:b:p:h";
+		char *args = "u:d:t:s:b:p:c:k:h";
 
 		c = getopt_long(argc, argv, args, long_options, NULL);
 
@@ -245,6 +248,14 @@ int main(int argc, char *argv[]) {
 					print_usage();
 					return -1;
 				}
+				break;
+			}
+			case 'c': {
+				httpd_ssl_cert = optarg;
+				break;
+			}
+			case 'k': {
+				httpd_ssl_key = optarg;
 				break;
 			}
 			case 'h':
@@ -332,7 +343,7 @@ int main(int argc, char *argv[]) {
 		goto err_xmlrpcsrv;
 	}
 
-	if (httpd_init(httpd_addresses, httpd_port, POMNG_HTTPD_WWW_DATA) != POM_OK) {
+	if (httpd_init(httpd_addresses, httpd_port, POMNG_HTTPD_WWW_DATA, httpd_ssl_cert, httpd_ssl_key) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting HTTP server");
 		goto err_httpd;
 	}
