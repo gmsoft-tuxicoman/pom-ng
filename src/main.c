@@ -343,14 +343,14 @@ int main(int argc, char *argv[]) {
 		goto err_xmlrpcsrv;
 	}
 
-	if (httpd_init(httpd_addresses, httpd_port, POMNG_HTTPD_WWW_DATA, httpd_ssl_cert, httpd_ssl_key) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while starting HTTP server");
-		goto err_httpd;
-	}
-
 	if (core_init(num_threads) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing core");
 		goto err_core;
+	}
+
+	if (httpd_init(httpd_addresses, httpd_port, POMNG_HTTPD_WWW_DATA, httpd_ssl_cert, httpd_ssl_key) != POM_OK) {
+		pomlog(POMLOG_ERR "Error while starting HTTP server");
+		goto err_httpd;
 	}
 
 	if (timers_init() != POM_OK) {
@@ -426,10 +426,10 @@ err_addon:
 err_dstore:
 err_timer:
 err_packet:
-	core_cleanup(1);
-err_core:
-	httpd_cleanup();
 err_httpd:
+	httpd_cleanup();
+err_core:
+	core_cleanup(1);
 	xmlrpcsrv_cleanup();
 err_xmlrpcsrv:
 	datastore_cleanup();

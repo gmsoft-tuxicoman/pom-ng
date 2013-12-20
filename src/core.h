@@ -85,4 +85,6 @@ struct registry_perf *core_add_perf(const char *name, enum registry_perf_type ty
 
 unsigned int core_get_num_threads();
 
+char *core_get_http_admin_password();
+
 #endif

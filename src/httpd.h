@@ -35,6 +35,13 @@
 #define HTTPD_STATUS_URL	"/status.html"
 #define HTTPD_INDEX_PAGE	"index.html"
 
+#define HTTPD_ADMIN_USER	"admin"
+#define HTTPD_REALM		"POM-NG Authentication"
+
+#define HTTPD_AUTH_NONE		0
+#define HTTPD_AUTH_OK		1
+#define HTTPD_AUTH_FAILED	2
+
 struct httpd_daemon_list {
 	struct MHD_Daemon *daemon;
 	struct httpd_daemon_list *next;
@@ -52,6 +59,7 @@ struct httpd_conn_info {
 	char *buff;
 	size_t buffsize;
 	size_t buffpos;
+	unsigned int auth;
 
 };
 

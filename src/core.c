@@ -31,6 +31,7 @@
 #include "dns.h"
 
 #include <pom-ng/ptype_bool.h>
+#include <pom-ng/ptype_string.h>
 
 #if 0
 #define debug_core(x ...) pomlog(POMLOG_DEBUG x)
@@ -56,7 +57,7 @@ static pthread_cond_t core_pkt_queue_wait_cond = PTHREAD_COND_INITIALIZER;
 static volatile ptime core_clock[CORE_PROCESS_THREAD_MAX] = { 0 };
 
 static struct registry_class *core_registry_class = NULL;
-static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL, *core_param_reset_perf_on_restart = NULL;
+static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL, *core_param_reset_perf_on_restart = NULL, *core_param_http_admin_password = NULL;
 
 // Perf objects
 struct registry_perf *perf_pkt_queue = NULL;
@@ -64,6 +65,8 @@ struct registry_perf *perf_thread_active = NULL;
 
 
 int core_init(unsigned int num_threads) {
+
+	struct registry_param *param = NULL;
 
 	core_registry_class = registry_add_class(CORE_REGISTRY);
 	if (!core_registry_class)
@@ -73,29 +76,25 @@ int core_init(unsigned int num_threads) {
 	perf_thread_active = registry_class_add_perf(core_registry_class, "active_thread", registry_perf_type_gauge, "Number of active threads", "threads");
 
 	if (!perf_pkt_queue || !perf_thread_active)
-		return POM_OK;
+		return POM_ERR;
 
 	core_param_dump_pkt = ptype_alloc("bool");
 	if (!core_param_dump_pkt)
-		return POM_ERR;
+		goto err;
 
 	core_param_offline_dns = ptype_alloc("bool");
-	if (!core_param_offline_dns) {
-		ptype_cleanup(core_param_dump_pkt);
-		core_param_dump_pkt = NULL;
-		return POM_ERR;
-	}
+	if (!core_param_offline_dns)
+		goto err;
 
 	core_param_reset_perf_on_restart = ptype_alloc("bool");
-	if (!core_param_reset_perf_on_restart) {
-		ptype_cleanup(core_param_dump_pkt);
-		core_param_dump_pkt = NULL;
-		ptype_cleanup(core_param_offline_dns);
-		core_param_offline_dns = NULL;
-		return POM_ERR;
-	}
+	if (!core_param_reset_perf_on_restart)
+		goto err;
 
-	struct registry_param *param = registry_new_param("dump_pkt", "no", core_param_dump_pkt, "Dump packets to logs", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	core_param_http_admin_password = ptype_alloc("string");
+	if (!core_param_http_admin_password)
+		goto err;
+
+	param = registry_new_param("dump_pkt", "no", core_param_dump_pkt, "Dump packets to logs", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
 	if (registry_class_add_param(core_registry_class, param) != POM_OK)
 		goto err;
 
@@ -104,6 +103,10 @@ int core_init(unsigned int num_threads) {
 		goto err;
 
 	param = registry_new_param("reset_perf_on_restart", "no", core_param_reset_perf_on_restart, "Reset performances when core restarts", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(core_registry_class, param) != POM_OK)
+		goto err;
+
+	param = registry_new_param("http_admin_password", "", core_param_http_admin_password, "HTTP password for the user admin", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
 	if (registry_class_add_param(core_registry_class, param) != POM_OK)
 		goto err;
 	
@@ -810,4 +813,12 @@ struct registry_perf *core_add_perf(const char *name, enum registry_perf_type ty
 
 unsigned int core_get_num_threads() {
 	return core_num_threads;
+}
+
+char *core_get_http_admin_password() {
+	char *passwd = PTYPE_STRING_GETVAL(core_param_http_admin_password);
+	if (!strlen(passwd))
+		return NULL;
+
+	return passwd;
 }

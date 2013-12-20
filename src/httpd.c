@@ -22,6 +22,7 @@
 #include "common.h"
 #include "httpd.h"
 #include "xmlrpcsrv.h"
+#include "core.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -227,8 +228,48 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		return MHD_YES;
 	}
 
+	// Check credential if any
+	char *admin_passwd = core_get_http_admin_password();
 
-	if (!strcmp(method, MHD_HTTP_METHOD_POST) && !strcmp(url, XMLRPCSRV_URI)) {
+	if (admin_passwd && info->auth == HTTPD_AUTH_NONE) {
+
+		char *password = NULL;
+		char *username = NULL;
+		
+		username = MHD_basic_auth_get_username_password(connection, &password);
+
+		if (!username || !password || strcmp(username, HTTPD_ADMIN_USER) || strcmp(password, admin_passwd)) {
+			info->auth = HTTPD_AUTH_FAILED;
+		} else {
+			info->auth = HTTPD_AUTH_OK;
+		}
+
+		if (username)
+			free(username);
+		if (password)
+			free(password);
+	}
+
+	if (info->auth == HTTPD_AUTH_FAILED) {
+
+		// Only answer until we have the whole packet
+		if (*upload_data_size) {
+			*upload_data_size = 0;
+			return MHD_YES;
+		}
+
+		static char *page = "<html><body>Invalid username or password</body></html>";
+		response = MHD_create_response_from_data(strlen(page), (void *) page, MHD_NO, MHD_NO);
+
+		if (MHD_add_response_header(response, MHD_HTTP_HEADER_WWW_AUTHENTICATE, "Basic realm=\"" HTTPD_REALM "\"") == MHD_NO) {
+			pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_WWW_AUTHENTICATE " header to the response");
+			goto err;
+		}
+
+		status_code = MHD_HTTP_UNAUTHORIZED;
+		mime_type = "text/html";
+
+	} else if (!strcmp(method, MHD_HTTP_METHOD_POST) && !strcmp(url, XMLRPCSRV_URI)) {
 
 		// Process XML-RPC command
 		
