@@ -35,6 +35,11 @@
 #define HTTPD_STATUS_URL	"/status.html"
 #define HTTPD_INDEX_PAGE	"index.html"
 
+struct httpd_daemon_list {
+	struct MHD_Daemon *daemon;
+	struct httpd_daemon_list *next;
+};
+
 struct httpd_server_info {
 
 	int input_ipc_queue;
@@ -50,7 +55,7 @@ struct httpd_conn_info {
 
 };
 
-int httpd_init(int port, char* www_data);
+int httpd_init(char *addresses, int port, char* www_data);
 int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls);
 void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
 int httpd_cleanup();

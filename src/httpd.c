@@ -25,16 +25,18 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include <fcntl.h>
 
-static struct MHD_Daemon *httpd_daemon_v4 = NULL;
-static struct MHD_Daemon *httpd_daemon_v6 = NULL;
 static char *httpd_www_data = NULL;
+struct httpd_daemon_list *http_daemons = NULL;
 
 
-int httpd_init(int port, char *www_data) {
+int httpd_init(char *addresses, int port, char *www_data) {
 
 	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION;
+
 
 	httpd_www_data = strdup(www_data);
 	if (!httpd_www_data) {
@@ -42,20 +44,74 @@ int httpd_init(int port, char *www_data) {
 		return POM_ERR;
 	}
 
+	char *addr_tmp = strdup(addresses);
+	if (!addr_tmp) {
+		free(httpd_www_data);
+		httpd_www_data = NULL;
+		pom_oom(strlen(addresses) + 1);
+		return POM_ERR;
+	}
+
 #ifdef MHD_USE_POLL
 	mhd_flags |= MHD_USE_POLL;
 #endif
 
-	// Start the IPv4 daemon
-	httpd_daemon_v4 = MHD_start_daemon(mhd_flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_END);
+	char *str, *token, *saveptr = NULL;
+	for (str = addr_tmp; ; str = NULL) {
+		token = strtok_r(str, "; ", &saveptr);
+		if (!token)
+			break;
 
-	if (!httpd_daemon_v4)
-		return POM_ERR;
 
 
-	// Start the IPv6 daemon (don't check for failure here)
-	mhd_flags |= MHD_USE_IPv6;
-	httpd_daemon_v6 = MHD_start_daemon(mhd_flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_END);
+		// Get the address
+		struct addrinfo hints, *res;memset(&hints, 0, sizeof(struct addrinfo));
+		hints.ai_flags = AI_PASSIVE;hints.ai_family = AF_UNSPEC;
+		hints.ai_socktype = SOCK_STREAM;
+
+		char port_str[16];
+		snprintf(port_str, 16, "%u", port);
+		
+		if (getaddrinfo(token, port_str, &hints, &res) < 0) {
+			pomlog(POMLOG_ERR "Cannot get info for address %s : %s. Ignoring.", token, pom_strerror(errno));
+			continue;
+		}
+
+		struct addrinfo *tmpres;
+		for (tmpres = res; tmpres; tmpres = tmpres->ai_next) {
+
+			// Try to bind each result
+			struct httpd_daemon_list *lst = malloc(sizeof(struct httpd_daemon_list));
+			if (!lst) {
+				pom_oom(sizeof(struct httpd_daemon_list));
+				break;
+			}
+			memset(lst, 0, sizeof(struct httpd_daemon_list));
+
+			unsigned int flags = mhd_flags;
+			if (tmpres->ai_family == AF_INET6) {
+				flags |= MHD_USE_IPv6;
+			} else if (tmpres->ai_family != AF_INET) {
+				continue;
+			}
+
+			lst->daemon = MHD_start_daemon(flags, 0, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_END);
+
+			if (lst->daemon) {
+				lst->next = http_daemons;
+				http_daemons = lst;
+				pomlog(POMLOG_INFO "HTTP daemon started on %s, port %s", token, port_str);
+			} else {
+				free(lst);
+				pomlog(POMLOG_ERR "Error while starting daemon on address \"%s\"", token);
+			}
+
+		}
+
+
+	}
+
+	free(addr_tmp);
 
 	return POM_OK;
 }
@@ -256,14 +312,11 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 
 int httpd_cleanup() {
 
-	if (httpd_daemon_v4) {
-		MHD_stop_daemon(httpd_daemon_v4);
-		httpd_daemon_v4 = NULL;
-	}
-
-	if (httpd_daemon_v6) {
-		MHD_stop_daemon(httpd_daemon_v6);
-		httpd_daemon_v6 = NULL;
+	while (http_daemons) {
+		struct httpd_daemon_list *tmp = http_daemons;
+		http_daemons = tmp->next;
+		MHD_stop_daemon(tmp->daemon);
+		free(tmp);
 	}
 
 	free(httpd_www_data);
