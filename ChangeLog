@@ -1,3 +1,18 @@
+v0.0.15
+	Add proto_8021x, proto_eap, proto_ppp_pap.
+	Add analyzer_eap, analyzer_ppp_pap.
+	Add support for DNS over TCP.
+	Add format support for ptypes.
+	Add ptype format support to output_log_txt.
+	Add vlan and proto info to ppp_chap events.
+	Add conntrack info to proto_80211 for 8021x.
+	Add tcp port 587 to proto_smtp.
+	Allow system datastore removal.
+	Add HTTP authentication support.
+	Add HTTPS support.
+	Add custom address and port binding for HTTP.
+	Various small fix.
+
 v0.0.14
 	Move the default system datastore (sqlite) to '~/.pom-ng/sys_datastore.db'.
 	Add datastore postgres.
