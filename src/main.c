@@ -50,6 +50,7 @@ static char* shutdown_reason = NULL;
 static int running = 1, shutdown_in_error = 0;
 static struct datastore *system_store = NULL;
 static pthread_t main_thread = 0;
+static int http_port = POMNG_HTTPD_PORT;
 
 void signal_handler(int signal) {
 
@@ -75,8 +76,9 @@ void print_usage() {
 		" -u, --user=USER		drop privilege to this user\n"
 		" -s, --system-store=STORE	URI to use for the system datastore (default: '" POMNG_SYSTEM_DATASTORE "')\n"
 		" -t, --threads=num		number of processing threads to start (default: number of cpu - 1)\n"
+		" -p, --port=num		port fo the HTTP interface (default: %u)\n"
 		"\n"
-		);
+		, POMNG_HTTPD_PORT);
 }
 
 struct datastore *system_datastore_open(char *dstore_uri) {
@@ -168,12 +170,13 @@ int main(int argc, char *argv[]) {
 			{ "debug", 1, 0, 'd' },
 			{ "threads", 1, 0, 't' },
 			{ "system-store", 1, 0, 's' },
+			{ "port", 1, 0, 'p' },
 			{ "help", 0, 0, 'h' },
 			{ 0 }
 		};
 
 		
-		char *args = "u:d:t:s:h";
+		char *args = "u:d:t:s:p:h";
 
 		c = getopt_long(argc, argv, args, long_options, NULL);
 
@@ -224,6 +227,14 @@ int main(int argc, char *argv[]) {
 			case 't': {
 				if (sscanf(optarg, "%u", &num_threads) != 1) {
 					printf("Invalid number of threads : \"%s\"\n", optarg);
+					print_usage();
+					return -1;
+				}
+				break;
+			}
+			case 'p': {
+				if (sscanf(optarg, "%u", &http_port) != 1) {
+					printf("Invalid port number : \"%s\"\n", optarg);
 					print_usage();
 					return -1;
 				}
@@ -314,7 +325,7 @@ int main(int argc, char *argv[]) {
 		goto err_xmlrpcsrv;
 	}
 
-	if (httpd_init(POMNG_HTTPD_PORT, POMNG_HTTPD_WWW_DATA) != POM_OK) {
+	if (httpd_init(http_port, POMNG_HTTPD_WWW_DATA) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while starting HTTP server");
 		goto err_httpd;
 	}
