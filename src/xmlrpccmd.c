@@ -22,6 +22,7 @@
 #include "xmlrpccmd.h"
 #include "xmlrpcsrv.h"
 
+#include "xmlrpccmd_evtmon.h"
 #include "xmlrpccmd_registry.h"
 
 #include "registry.h"
@@ -78,6 +79,7 @@ int xmlrpccmd_register_all() {
 
 	int res = POM_OK;
 	res += xmlrpccmd_registry_register_all();
+	res += xmlrpccmd_evtmon_register_all();
 
 	return res;
 
