@@ -109,7 +109,7 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 	{
 		.name = "registry.getPerfs",
 		.callback_func = xmlrpccmd_registry_get_perfs,
-		.signature = "A:A",
+		.signature = "S:A",
 		.help = "Fetch a set of performance objects"
 	},
 
@@ -863,7 +863,12 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 
 	free(perf_array);
 
-	return res;
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+
+	return xmlrpc_build_value(envP, "{s:t,s:A}",
+					"sys_time", (time_t) tv.tv_sec,
+					"perfs", res);
 err:
 
 	for (i = 0; i < perf_array_count; i++) {
