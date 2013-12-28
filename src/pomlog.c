@@ -91,6 +91,8 @@ void pomlog_internal(const char *file, const char *format, ...) {
 	strcpy(entry->file, filename);
 	entry->data = strdup(buff);
 
+	gettimeofday(&entry->ts, NULL);
+
 	if (!entry->data) {
 		pom_oom(strlen(buff));
 		free(entry);

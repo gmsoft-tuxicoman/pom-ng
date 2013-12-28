@@ -32,6 +32,8 @@ struct pomlog_entry {
 	char file[64];
 	char *data;
 	char level;
+	struct timeval ts;
+
 
 	struct pomlog_entry *prev;
 	struct pomlog_entry *next;

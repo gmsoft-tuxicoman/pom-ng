@@ -165,11 +165,12 @@ xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * con
 		log = log->prev;
 
 	while (log) {
-		xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:i,s:i,s:s,s:s}",
+		xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:i,s:i,s:s,s:s,s:t}",
 								"id", log->id,
 								"level", log->level,
 								"file", log->file,
-								"data", log->data);
+								"data", log->data,
+								"timestamp", (time_t)log->ts.tv_sec);
 		xmlrpc_array_append_item(envP, res, entry);
 		xmlrpc_DECREF(entry);
 		log = log->next;
