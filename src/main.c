@@ -54,6 +54,9 @@ static int httpd_port = POMNG_HTTPD_PORT;
 static char *httpd_addresses = POMNG_HTTPD_ADDRESSES;
 static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
 
+static struct main_timer *main_timer_head = NULL, *main_timer_tail = NULL;
+static pthread_mutex_t main_timer_lock = PTHREAD_MUTEX_INITIALIZER;
+
 void signal_handler(int signal) {
 
 	switch (signal) {
@@ -378,8 +381,25 @@ int main(int argc, char *argv[]) {
 	
 	pomlog(PACKAGE_NAME " started ! You can now connect using pom-ng-console.");
 
-	while (running)
-		sleep(10);
+	while (running) {
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		pom_mutex_lock(&main_timer_lock);
+		while (main_timer_head && main_timer_head->expiry <= tv.tv_sec) {
+			struct main_timer *t = main_timer_head;
+			main_timer_head = main_timer_head->next;
+			if (!main_timer_head) {
+				main_timer_tail = NULL;
+			} else {
+				main_timer_head->prev = NULL;
+			}
+
+			if (t->handler(t->priv) != POM_OK)
+				pomlog(POMLOG_ERR "Error while running main_timer handler");
+		}
+		pom_mutex_unlock(&main_timer_lock);
+		sleep(MAIN_TIMER_DELAY);
+	}
 
 	pomlog(POMLOG_INFO "Shutting down : %s", shutdown_reason);
 	free(shutdown_reason);
@@ -478,4 +498,88 @@ int halt_signal(char *reason) {
 
 struct datastore *system_datastore() {
 	return system_store;
+}
+
+
+struct main_timer* main_timer_alloc(void *priv, int (*handler) (void*)) {
+	struct main_timer *res = malloc(sizeof(struct main_timer));
+	if (!res) {
+		pom_oom(sizeof(struct main_timer));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct main_timer));
+	res->priv = priv;
+	res->handler = handler;
+
+	return res;
+}
+
+int main_timer_queue(struct main_timer *t, time_t timeout) {
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	t->expiry = tv.tv_sec + timeout;
+
+	pom_mutex_lock(&main_timer_lock);
+	struct main_timer *tmp = main_timer_head;
+	while (tmp && tmp->expiry < t->expiry)
+		tmp = tmp->next;
+
+	if (!tmp) {
+		t->prev = main_timer_tail;
+	} else {
+		t->next = tmp;
+		t->prev = tmp->prev;
+	}
+
+	if (t->prev) {
+		t->prev->next = t;
+	} else {
+		main_timer_head = t;	
+	}
+
+	if (t->next) {
+		t->next->prev = t;
+	} else {
+		main_timer_tail = t;
+	}
+	pom_mutex_unlock(&main_timer_lock);
+	
+	return POM_OK;
+}
+
+int main_timer_dequeue(struct main_timer *t) {
+
+	pom_mutex_lock(&main_timer_lock);
+	if (t->prev || t->next || main_timer_head == t) {
+		if (t->prev)
+			t->prev->next = t->next;
+		else
+			main_timer_head = t->next;
+		if (t->next)
+			t->next->prev = t->prev;
+		else
+			main_timer_tail = t->prev;
+	}
+	pom_mutex_unlock(&main_timer_lock);
+	return POM_OK;
+}
+
+int main_timer_cleanup(struct main_timer *t) {
+
+	pom_mutex_lock(&main_timer_lock);
+	if (t->prev || t->next || main_timer_head == t) {
+		if (t->prev)
+			t->prev->next = t->next;
+		else
+			main_timer_head = t->next;
+		if (t->next)
+			t->next->prev = t->prev;
+		else
+			main_timer_tail = t->prev;
+	}
+	pom_mutex_unlock(&main_timer_lock);
+
+	free(t);
+	return POM_OK;
 }
