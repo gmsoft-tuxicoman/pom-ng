@@ -24,6 +24,7 @@
 #include <pom-ng/ptype.h>
 
 #include "registry.h"
+#include "core.h"
 
 #define XMLRPCCMD_REGISTRY_NUM 15
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
@@ -832,21 +833,31 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 			}
 		}
 
+		// Fetch the perf value and the time as close as possible
+		uint64_t value = registry_perf_getval(perf_array[i].perf);
+		struct timeval time_sys;
+		gettimeofday(&time_sys, NULL);
+		ptime time_pkt = core_get_clock();
+
+		xmlrpc_value *sys_time = xmlrpc_build_value(envP, "{s:i,s:i}", "sec", time_sys.tv_sec, "usec", time_sys.tv_usec);
+
 		// Add the value to the result
-		
 		xmlrpc_value *item = NULL;
+		item = xmlrpc_build_value(envP, "{s:s,s:s,s:I,s:S}",
+						"class", perf_array[i].cls_name,
+						"perf", perf_array[i].perf_name,
+						"value", value,
+						"sys_time", sys_time);
 		if (perf_array[i].inst_name) {
-			item = xmlrpc_build_value(envP, "{s:s,s:s,s:s,s:I}",
-							"class", perf_array[i].cls_name,
-							"instance", perf_array[i].inst_name,
-							"perf", perf_array[i].perf_name,
-							"value", registry_perf_getval(perf_array[i].perf));
-		} else {
-			item = xmlrpc_build_value(envP, "{s:s,s:s,s:I}",
-							"class", perf_array[i].cls_name,
-							"perf", perf_array[i].perf_name,
-							"value", registry_perf_getval(perf_array[i].perf));
+			xmlrpc_value *inst_name = xmlrpc_string_new(envP, perf_array[i].inst_name);
+			xmlrpc_struct_set_value(envP, item, "instance", inst_name);
 		}
+
+		if (time_pkt > 0) {
+			xmlrpc_value *pkt_time = xmlrpc_build_value(envP, "{s:i, s:i}", "sec", pom_ptime_sec(time_pkt), "usec", pom_ptime_usec(time_pkt));
+			xmlrpc_struct_set_value(envP, item, "pkt_time", pkt_time);
+		}
+			
 		xmlrpc_array_append_item(envP, res, item);
 		xmlrpc_DECREF(item);
 	}
@@ -866,9 +877,8 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 
-	return xmlrpc_build_value(envP, "{s:t,s:A}",
-					"sys_time", (time_t) tv.tv_sec,
-					"perfs", res);
+	return res;
+
 err:
 
 	for (i = 0; i < perf_array_count; i++) {
