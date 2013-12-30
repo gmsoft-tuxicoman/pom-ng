@@ -848,14 +848,18 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 						"perf", perf_array[i].perf_name,
 						"value", value,
 						"sys_time", sys_time);
+		xmlrpc_DECREF(sys_time);
+
 		if (perf_array[i].inst_name) {
 			xmlrpc_value *inst_name = xmlrpc_string_new(envP, perf_array[i].inst_name);
 			xmlrpc_struct_set_value(envP, item, "instance", inst_name);
+			xmlrpc_DECREF(inst_name);
 		}
 
 		if (time_pkt > 0) {
 			xmlrpc_value *pkt_time = xmlrpc_build_value(envP, "{s:i, s:i}", "sec", pom_ptime_sec(time_pkt), "usec", pom_ptime_usec(time_pkt));
 			xmlrpc_struct_set_value(envP, item, "pkt_time", pkt_time);
+			xmlrpc_DECREF(pkt_time);
 		}
 			
 		xmlrpc_array_append_item(envP, res, item);
