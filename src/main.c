@@ -55,7 +55,7 @@ static char *httpd_addresses = POMNG_HTTPD_ADDRESSES;
 static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
 
 static struct main_timer *main_timer_head = NULL, *main_timer_tail = NULL;
-static pthread_mutex_t main_timer_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t main_timer_lock;
 
 void signal_handler(int signal) {
 
@@ -394,8 +394,10 @@ int main(int argc, char *argv[]) {
 				main_timer_head->prev = NULL;
 			}
 
+			pom_mutex_unlock(&main_timer_lock);
 			if (t->handler(t->priv) != POM_OK)
 				pomlog(POMLOG_ERR "Error while running main_timer handler");
+			pom_mutex_lock(&main_timer_lock);
 		}
 		pom_mutex_unlock(&main_timer_lock);
 		sleep(MAIN_TIMER_DELAY);
