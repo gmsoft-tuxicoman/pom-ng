@@ -65,6 +65,8 @@ int xmlrpccmd_cleanup() {
 	pthread_cond_broadcast(&xmlrpccmd_serial_cond);
 	pom_mutex_unlock(&xmlrpccmd_serial_lock);
 
+	xmlrpccmd_evtmon_cleanup();
+
 	return POM_OK;
 }
 

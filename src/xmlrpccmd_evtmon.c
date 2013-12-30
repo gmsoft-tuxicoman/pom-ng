@@ -107,22 +107,17 @@ int xmlrpccmd_evtmon_timeout(void *priv) {
 	struct xmlrpccmd_evtmon_session *sess = priv;
 
 	pomlog(POMLOG_INFO "Monitoring session %u timed out", sess->id);
-	xmlrpccmd_evtmon_cleanup(sess->id);
+
+	pom_mutex_lock(&xmlrpccmd_evtmon_session_lock);
+	xmlrpccmd_evtmon_sessions[sess->id] = NULL;
+	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
+
+	xmlrpccmd_evtmon_session_cleanup(sess);
 
 	return POM_OK;
 }
 
-int xmlrpccmd_evtmon_cleanup(unsigned int id) {
-	pom_mutex_lock(&xmlrpccmd_evtmon_session_lock);
-	struct xmlrpccmd_evtmon_session *sess = xmlrpccmd_evtmon_sessions[id];
-	if (!sess) {
-		pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
-		return POM_ERR;
-	}
-
-	xmlrpccmd_evtmon_sessions[id] = NULL;
-	
-	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
+int xmlrpccmd_evtmon_session_cleanup(struct xmlrpccmd_evtmon_session *sess) {
 	
 	while (sess->events_reg) {
 		struct xmlrpccmd_evtmon_reg_list *lst = sess->events_reg;
@@ -138,9 +133,35 @@ int xmlrpccmd_evtmon_cleanup(unsigned int id) {
 		free(lst);
 	}
 
+	main_timer_cleanup(sess->timer);
 	pthread_mutex_destroy(&sess->lock);
 	pthread_cond_destroy(&sess->cond);
 	free(sess);
+
+	return POM_OK;
+}
+
+int xmlrpccmd_evtmon_cleanup() {
+
+	pom_mutex_lock(&xmlrpccmd_evtmon_session_lock);
+
+	int i;
+	for (i = 0; i < XMLRPCCMD_EVTMON_MAX_SESSION; i++) {
+		if (!xmlrpccmd_evtmon_sessions[i])
+			continue;
+
+		struct xmlrpccmd_evtmon_session *sess = xmlrpccmd_evtmon_sessions[i];
+		xmlrpccmd_evtmon_sessions[i] = NULL;
+
+		pom_mutex_lock(&sess->lock);
+		pthread_cond_broadcast(&sess->cond);
+		pom_mutex_unlock(&sess->lock);
+
+		xmlrpccmd_evtmon_session_cleanup(sess);
+
+	}
+
+	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
 
 	return POM_OK;
 }
@@ -207,7 +228,7 @@ xmlrpc_value *xmlrpccmd_evtmon_start(xmlrpc_env * const envP, xmlrpc_value * con
 
 	main_timer_queue(sess->timer, sess->timeout);
 
-	pomlog(POMLOG_INFO "New event monitoring session started with id %u", i);
+	pomlog(POMLOG_INFO "New event monitoring session started with id %u and timeout %u sec", i, timeout);
 
 	return xmlrpc_int_new(envP, i);
 }
@@ -302,9 +323,30 @@ xmlrpc_value *xmlrpccmd_evtmon_poll(xmlrpc_env * const envP, xmlrpc_value * cons
 
 	while (!sess->events) {
 		// There is no event to return, wait for some
-		if (pthread_cond_wait(&sess->cond, &sess->lock)) {
+		
+		int id = sess->id;
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		struct timespec then = { 0 };
+		then.tv_sec = now.tv_sec + sess->timeout;
+
+		int res = pthread_cond_timedwait(&sess->cond, &sess->lock, &then);
+		
+		if (res == ETIMEDOUT) {
+			pom_mutex_unlock(&sess->lock);
+			main_timer_queue(sess->timer, sess->timeout);
+			return xmlrpc_build_value(envP, "{}");
+		} else if (res) {
 			pomlog(POMLOG_ERR "Error while waiting for session condition : %s", pom_strerror(errno));
 			abort();
+		}
+
+		// Check that the session still exists
+		// No need to lock since it only occurs when we cleanup
+		if (!xmlrpccmd_evtmon_sessions[id]) {
+			pom_mutex_unlock(&sess->lock);
+			xmlrpc_faultf(envP, "Cleaning up !");
+			return NULL;
 		}
 	}
 
@@ -346,10 +388,20 @@ xmlrpc_value *xmlrpccmd_evtmon_stop(xmlrpc_env * const envP, xmlrpc_value * cons
 	}
 
 	pomlog(POMLOG_INFO "Monitoring session %u stopped", id);
-	if (xmlrpccmd_evtmon_cleanup(id) != POM_OK) {
+
+	pom_mutex_lock(&xmlrpccmd_evtmon_session_lock);
+	struct xmlrpccmd_evtmon_session *sess = xmlrpccmd_evtmon_sessions[id];
+	if (!sess) {
+		pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
 		xmlrpc_faultf(envP, "Session %u not found", id);
 		return NULL;
 	}
+
+	xmlrpccmd_evtmon_sessions[id] = NULL;
+	
+	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
+
+	xmlrpccmd_evtmon_session_cleanup(sess);
 	
 	return xmlrpc_int_new(envP, 0);
 }

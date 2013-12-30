@@ -37,8 +37,6 @@ struct xmlrpccmd_evtmon_session {
 	struct xmlrpccmd_evtmon_reg_list *events_reg;
 	struct xmlrpccmd_evtmon_list *events;
 
-	struct xmlrpccmd_evtmon_session *prev, *next;
-
 };
 
 struct xmlrpccmd_evtmon_reg_list {
@@ -56,7 +54,8 @@ struct xmlrpccmd_evtmon_list {
 int xmlrpccmd_evtmon_register_all();
 int xmlrpccmd_evtmon_process_end(struct event *evt, void *obj);
 int xmlrpccmd_evtmon_timeout(void *priv);
-int xmlrpccmd_evtmon_cleanup(unsigned int id);
+int xmlrpccmd_evtmon_session_cleanup(struct xmlrpccmd_evtmon_session *sess);
+int xmlrpccmd_evtmon_cleanup();
 
 xmlrpc_value *xmlrpccmd_evtmon_start(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_evtmon_add(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
