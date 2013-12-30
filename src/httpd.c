@@ -123,7 +123,8 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 
 		// Get the address
-		struct addrinfo hints, *res;memset(&hints, 0, sizeof(struct addrinfo));
+		struct addrinfo hints, *res;
+		memset(&hints, 0, sizeof(struct addrinfo));
 		hints.ai_flags = AI_PASSIVE;hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_STREAM;
 
@@ -176,6 +177,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 		}
 
+		freeaddrinfo(res);
 
 	}
 
