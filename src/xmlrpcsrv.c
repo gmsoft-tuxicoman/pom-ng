@@ -46,6 +46,9 @@ int xmlrpcsrv_init() {
 
 	xmlrpc_env_clean(&env);
 
+	if (xmlrpccmd_init() != POM_OK)
+		return POM_ERR;
+
 	xmlrpccmd_register_all();
 
 	xmlrpc_registry_set_shutdown(xmlrpcsrv_registry, xmlrpcsrv_shutdown, NULL);

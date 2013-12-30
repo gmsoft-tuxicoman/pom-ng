@@ -28,9 +28,20 @@
 #include "registry.h"
 
 
+#include <pom-ng/ptype_bool.h>
+#include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_timestamp.h>
+#include <pom-ng/ptype_uint8.h>
+#include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint32.h>
+#include <pom-ng/ptype_uint64.h>
+
+
 static uint32_t xmlrpccmd_serial = 0;
 static pthread_mutex_t xmlrpccmd_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t xmlrpccmd_serial_cond = PTHREAD_COND_INITIALIZER;
+
+static struct ptype_reg *pt_bool = NULL, *pt_string = NULL, *pt_timestamp = NULL, *pt_uint8 = NULL, *pt_uint16 = NULL, *pt_uint32 = NULL, *pt_uint64 = NULL;
 
 #define XMLRPCCMD_NUM 3
 static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
@@ -58,6 +69,23 @@ static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 
 };
 
+
+int xmlrpccmd_init() {
+
+	pt_bool = ptype_get_type("bool");
+	pt_string = ptype_get_type("string");
+	pt_timestamp = ptype_get_type("timestamp");
+	pt_uint8 = ptype_get_type("uint8");
+	pt_uint16 = ptype_get_type("uint16");
+	pt_uint32 = ptype_get_type("uint32");
+	pt_uint64 = ptype_get_type("uint64");
+
+	if (!pt_bool || !pt_string || !pt_timestamp || !pt_uint8 || !pt_uint16 || !pt_uint32 || !pt_uint64) {
+		pomlog(POMLOG_ERR "Some ptype where not loaded correctly");
+		return POM_ERR;
+	}
+	return POM_OK;
+}
 
 int xmlrpccmd_cleanup() {
 
@@ -99,8 +127,42 @@ void xmlrcpcmd_serial_inc() {
 
 }
 
-xmlrpc_value *xmlrpccmd_core_get_version(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
+xmlrpc_value *xmlrpccmd_ptype_to_val(xmlrpc_env* const envP, struct ptype* p) {
+
+	if (p->type == pt_bool) {
+		return xmlrpc_bool_new(envP, *PTYPE_BOOL_GETVAL(p));
+	} else if (p->type == pt_string) {
+		return xmlrpc_string_new(envP, PTYPE_STRING_GETVAL(p));
+	} else if (p->type == pt_timestamp) {
+		// Don't use the time version of xmlrpc as it's not precise enough
+		ptime t = *PTYPE_TIMESTAMP_GETVAL(p);
+		return xmlrpc_build_value(envP, "{s:i,s:i}", "sec", pom_ptime_sec(t), "usec", pom_ptime_usec(t));
+	} else if (p->type == pt_uint8) {
+		return xmlrpc_int_new(envP, *PTYPE_UINT8_GETVAL(p));
+	} else if (p->type == pt_uint16) {
+		return xmlrpc_int_new(envP, *PTYPE_UINT16_GETVAL(p));
+	} else if (p->type == pt_uint32) {
+		return xmlrpc_int_new(envP, *PTYPE_UINT32_GETVAL(p));
+	} else if (p->type == pt_uint64) {
+		return xmlrpc_i8_new(envP, *PTYPE_UINT64_GETVAL(p));
+	}
+
+	// The type is not handled, return a string
+	
+	char *value = ptype_print_val_alloc(p, NULL);
+	if (!value) {
+		xmlrpc_faultf(envP, "Error while getting ptype value");
+		return NULL;
+	}
+
+	xmlrpc_value *retval = xmlrpc_string_new(envP, value);
+	free(value);
+	return retval;
+}
+
+xmlrpc_value *xmlrpccmd_core_get_version(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+	
 	return xmlrpc_string_new(envP, VERSION);
 }
 
