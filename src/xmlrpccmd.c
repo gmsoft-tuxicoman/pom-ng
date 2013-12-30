@@ -114,9 +114,19 @@ xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value *
 	
 
 	pom_mutex_lock(&xmlrpccmd_serial_lock);
-	if (last_serial == xmlrpccmd_serial) {
+	while (last_serial == xmlrpccmd_serial) {
 		// Wait for update
-		if (pthread_cond_wait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock)) {
+
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		struct timespec then = { 0 };
+		then.tv_sec = now.tv_sec + XMLRPCCMD_POLL_TIMEOUT;
+
+		int res = pthread_cond_timedwait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock, &then);
+
+		if (res == ETIMEDOUT) {
+			break; // Return current values
+		} else if (res) {
 			xmlrpc_faultf(envP, "Error while waiting for serial condition : %s", pom_strerror(errno));
 			abort();
 			return NULL;

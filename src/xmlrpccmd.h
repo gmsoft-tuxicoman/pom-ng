@@ -25,6 +25,7 @@
 #include <xmlrpc-c/base.h>
 #include <xmlrpc-c/server.h>
 
+#define XMLRPCCMD_POLL_TIMEOUT 180
 
 int xmlrpccmd_cleanup();
 
