@@ -328,7 +328,7 @@ xmlrpc_value *xmlrpccmd_evtmon_poll(xmlrpc_env * const envP, xmlrpc_value * cons
 		struct timeval now;
 		gettimeofday(&now, NULL);
 		struct timespec then = { 0 };
-		then.tv_sec = now.tv_sec + sess->timeout;
+		then.tv_sec = now.tv_sec + XMLRPCCMD_EVTMON_POLL_TIMEOUT;
 
 		int res = pthread_cond_timedwait(&sess->cond, &sess->lock, &then);
 		
