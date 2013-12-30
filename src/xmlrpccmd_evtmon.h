@@ -26,6 +26,7 @@
 
 #define XMLRPCCMD_EVTMON_MAX_SESSION	32
 #define XMLRPCCMD_EVTMON_TIMEOUT_MAX	3600
+#define XMLRPCCMD_EVTMON_POLL_TIMEOUT	180
 
 struct xmlrpccmd_evtmon_session {
 

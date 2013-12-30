@@ -22,6 +22,7 @@
 #include "xmlrpcsrv.h"
 #include <pom-ng/event.h>
 
+#include "xmlrpccmd.h"
 #include "xmlrpccmd_evtmon.h"
 
 static pthread_mutex_t xmlrpccmd_evtmon_session_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -363,11 +364,57 @@ xmlrpc_value *xmlrpccmd_evtmon_poll(xmlrpc_env * const envP, xmlrpc_value * cons
 		lst = lst->next;
 		free(tmp);
 
+
 		struct event_reg *evt_reg = event_get_reg(evt);
 		struct event_reg_info *evt_reg_info = event_reg_get_info(evt_reg);
-		xmlrpc_value *item = xmlrpc_build_value(envP, "{s:s,s:t}",
+
+		struct data_reg *dreg = evt_reg_info->data_reg;
+		struct data *evt_data = event_get_data(evt);
+
+		xmlrpc_value *data = xmlrpc_struct_new(envP);
+
+		int i;
+		for (i = 0; i < dreg->data_count; i++) {
+			
+			struct data_item_reg *direg = &dreg->items[i];
+
+			if (!data_is_set(evt_data[i]) && !(direg->flags & DATA_REG_FLAG_LIST))
+				continue;
+	
+			xmlrpc_value *value = NULL;
+			if (direg->flags & DATA_REG_FLAG_LIST) {
+				
+				value = xmlrpc_array_new(envP);
+
+				struct data_item *itm = evt_data[i].items;
+				while (itm) {
+					xmlrpc_value *itm_val = xmlrpccmd_ptype_to_val(envP, itm->value);
+					xmlrpc_value *itm_entry = xmlrpc_build_value(envP, "{s:s,s:V}", "key", itm->key, "value", itm_val);
+					xmlrpc_DECREF(itm_val);
+					xmlrpc_array_append_item(envP, value, itm_entry);
+					xmlrpc_DECREF(itm_entry);
+				}
+
+
+			} else {
+				value = xmlrpccmd_ptype_to_val(envP, evt_data[i].value);
+			}
+			
+			xmlrpc_struct_set_value(envP, data, direg->name, value);
+			xmlrpc_DECREF(value);
+		
+		}
+
+
+		ptime evt_timestamp = event_get_timestamp(evt);
+		xmlrpc_value *timestamp = xmlrpc_build_value(envP, "{s:i,s:i}", "sec", pom_ptime_sec(evt_timestamp), "usec", pom_ptime_usec(evt_timestamp));
+
+		xmlrpc_value *item = xmlrpc_build_value(envP, "{s:s,s:S,s:S}",
 						"event", evt_reg_info->name,
-						"timestamp", (time_t)pom_ptime_sec(event_get_timestamp(evt)));
+						"timestamp", timestamp,
+						"data", data);
+		xmlrpc_DECREF(timestamp);
+		xmlrpc_DECREF(data);
 		event_refcount_dec(evt);
 		xmlrpc_array_append_item(envP, res, item);
 		xmlrpc_DECREF(item);
