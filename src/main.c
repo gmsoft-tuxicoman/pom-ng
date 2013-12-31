@@ -562,6 +562,8 @@ int main_timer_dequeue(struct main_timer *t) {
 			t->next->prev = t->prev;
 		else
 			main_timer_tail = t->prev;
+		t->prev = NULL;
+		t->next = NULL;
 	}
 	pom_mutex_unlock(&main_timer_lock);
 	return POM_OK;
