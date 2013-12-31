@@ -28,7 +28,7 @@
 static pthread_mutex_t xmlrpccmd_evtmon_session_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct xmlrpccmd_evtmon_session *xmlrpccmd_evtmon_sessions[XMLRPCCMD_EVTMON_MAX_SESSION] = { 0 };
 
-#define XMLRPCCMD_EVTMON_NUM 4
+#define XMLRPCCMD_EVTMON_NUM 5
 static struct xmlrpcsrv_command xmlrpccmd_evtmon_commands[XMLRPCCMD_EVTMON_NUM] = {
 
 	{
@@ -43,6 +43,13 @@ static struct xmlrpcsrv_command xmlrpccmd_evtmon_commands[XMLRPCCMD_EVTMON_NUM] 
 		.callback_func = xmlrpccmd_evtmon_add,
 		.signature = "i:s",
 		.help = "Add an event to a monitoring session",
+	},
+
+	{
+		.name = "evtmon.remove",
+		.callback_func = xmlrpccmd_evtmon_remove,
+		.signature = "i:s",
+		.help = "Remove an event from a monitoring session",
 	},
 
 	{
@@ -298,6 +305,68 @@ xmlrpc_value *xmlrpccmd_evtmon_add(xmlrpc_env * const envP, xmlrpc_value * const
 	return xmlrpc_int_new(envP, 0);
 }
 
+xmlrpc_value *xmlrpccmd_evtmon_remove(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+
+	xmlrpc_int id = -1;
+	char *evt_name = NULL;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(is)", &id, &evt_name);
+	if (envP->fault_occurred || id < 0) {
+		free(evt_name);
+		return NULL;
+	}
+
+	struct event_reg *evt = event_find(evt_name);
+	if (!evt) {
+		xmlrpc_faultf(envP, "Event %s does not exists", evt_name);
+		free(evt_name);
+		return NULL;
+	}
+	pomlog(POMLOG_DEBUG "Removing event %s from session %u", evt_name, id);
+	free(evt_name);
+
+	// Find the right session and lock it
+
+	pom_mutex_lock(&xmlrpccmd_evtmon_session_lock);
+	struct xmlrpccmd_evtmon_session *sess = xmlrpccmd_evtmon_sessions[id];
+	if (!sess) {
+		pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
+		xmlrpc_faultf(envP, "Session %u not found", id);
+		return NULL;
+	}
+	
+	pom_mutex_lock(&sess->lock);
+	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
+
+	struct xmlrpccmd_evtmon_reg_list *lst;
+	for (lst = sess->events_reg; lst && lst->evt != evt; lst = lst->next);
+
+	if (!lst) {
+		pom_mutex_unlock(&sess->lock);
+		xmlrpc_faultf(envP, "The event wasn't monitored by session %u", id);
+		return NULL;
+	}
+	
+	if (event_listener_unregister(evt, sess) != POM_OK) {
+		pom_mutex_unlock(&sess->lock);
+		free(lst);
+		xmlrpc_faultf(envP, "Error while stopping to listen to the event.");
+		return NULL;
+
+	}
+
+	if (lst->next) {
+		lst->next->prev = lst->prev;
+	} 
+	if (lst->prev) {
+		lst->prev->next = lst->next;
+	} else {
+		sess->events_reg = lst->next;
+	}
+	pom_mutex_unlock(&sess->lock);
+	return xmlrpc_int_new(envP, 0);
+}
 
 xmlrpc_value *xmlrpccmd_evtmon_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
@@ -346,8 +415,7 @@ xmlrpc_value *xmlrpccmd_evtmon_poll(xmlrpc_env * const envP, xmlrpc_value * cons
 		// No need to lock since it only occurs when we cleanup
 		if (!xmlrpccmd_evtmon_sessions[id]) {
 			pom_mutex_unlock(&sess->lock);
-			xmlrpc_faultf(envP, "Cleaning up !");
-			return NULL;
+			return xmlrpc_build_value(envP, "{}");
 		}
 	}
 
@@ -444,10 +512,19 @@ xmlrpc_value *xmlrpccmd_evtmon_stop(xmlrpc_env * const envP, xmlrpc_value * cons
 		return NULL;
 	}
 
-	xmlrpccmd_evtmon_sessions[id] = NULL;
-	
-	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
 
+	xmlrpccmd_evtmon_sessions[id] = NULL;
+
+	pom_mutex_lock(&sess->lock);
+
+	pom_mutex_unlock(&xmlrpccmd_evtmon_session_lock);
+	
+	if (pthread_cond_broadcast(&sess->cond)) {
+		pomlog("Error while signaling the session condition : %s", pom_strerror(errno));
+		abort();
+	}
+
+	pom_mutex_unlock(&sess->lock);
 	xmlrpccmd_evtmon_session_cleanup(sess);
 	
 	return xmlrpc_int_new(envP, 0);

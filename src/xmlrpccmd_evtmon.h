@@ -60,6 +60,7 @@ int xmlrpccmd_evtmon_cleanup();
 
 xmlrpc_value *xmlrpccmd_evtmon_start(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_evtmon_add(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_evtmon_remove(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_evtmon_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_evtmon_stop(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
