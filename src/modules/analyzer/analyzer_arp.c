@@ -263,8 +263,10 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 			data_set(evt_data[analyzer_arp_new_sta_mac_addr]);
 			ptype_copy(evt_data[analyzer_arp_new_sta_ip_addr].value, s->pkt_info->fields_value[proto_arp_field_sender_proto_addr]);
 			data_set(evt_data[analyzer_arp_new_sta_ip_addr]);
-			PTYPE_UINT16_SETVAL(evt_data[analyzer_arp_new_sta_vlan].value, vlan);
-			data_set(evt_data[analyzer_arp_new_sta_vlan]);
+			if (vlan) {
+				PTYPE_UINT16_SETVAL(evt_data[analyzer_arp_new_sta_vlan].value, vlan);
+				data_set(evt_data[analyzer_arp_new_sta_vlan]);
+			}
 			PTYPE_STRING_SETVAL(evt_data[analyzer_arp_new_sta_input].value, p->input->name);
 			data_set(evt_data[analyzer_arp_new_sta_input]);
 			if (event_process(evt, stack, stack_index, p->ts) != POM_OK)
