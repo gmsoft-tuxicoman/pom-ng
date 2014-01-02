@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -51,7 +51,6 @@ static struct dns_entry **dns_table;
 
 static struct timer *dns_gc_run = NULL;
 
-static unsigned int dns_entry_count = 0;
 static int dns_enabled = 0;
 
 #define DNS_CACHE_QUEUE_COUNT	10
@@ -75,6 +74,7 @@ static uint32_t dns_cache_queues_time[DNS_CACHE_QUEUE_COUNT] = {
 
 static struct dns_entry *dns_cache_queues_head[DNS_CACHE_QUEUE_COUNT] = { 0 };
 static struct dns_entry *dns_cache_queues_tail[DNS_CACHE_QUEUE_COUNT] = { 0 };
+static struct registry_perf *dns_perf_cached_records = NULL;
 
 
 #ifdef DEBUG_DNS
@@ -109,11 +109,6 @@ static int dns_check_cache() {
 		debug_dns("Queue %u size is %u", i, queue_count);
 	}
 
-	if (count != dns_entry_count) {
-		pomlog(POMLOG_ERR "COUNT INVALID");
-		goto err;
-	}
-
 	return POM_OK;
 err:
 	return POM_ERR;
@@ -122,6 +117,13 @@ err:
 #endif
 
 int dns_init() {
+	dns_perf_cached_records = core_add_perf("dns_cached_records", registry_perf_type_gauge, "Number of cached DNS records", "records");
+	if (!dns_perf_cached_records)
+		return POM_ERR;
+	return POM_OK;
+}
+
+int dns_core_init() {
 
 	if (!ptype_string)
 		ptype_string = ptype_get_type("string");
@@ -168,7 +170,7 @@ err:
 }
 
 
-int dns_cleanup() {
+int dns_core_cleanup() {
 
 	event_listener_unregister(dns_record_evt, dns_table);
 
@@ -192,7 +194,7 @@ int dns_cleanup() {
 			dns_table[i] = tmp->next;
 			free(tmp->record);
 			free(tmp);
-			dns_entry_count--;
+			registry_perf_dec(dns_perf_cached_records, 1);
 		}
 	}
 
@@ -205,8 +207,6 @@ int dns_cleanup() {
 	timer_cleanup(dns_gc_run);
 
 	dns_enabled = 0;
-
-	debug_dns("Final DNS entry count is %u", dns_entry_count);
 
 	return POM_OK;
 }
@@ -309,8 +309,7 @@ int dns_gc(void *priv, ptime now) {
 			free(entry->record);
 			free(entry);
 
-			dns_entry_count--;
-			debug_dns("Entry count decreased to %u", dns_entry_count);
+			registry_perf_dec(dns_perf_cached_records, 1);
 		}
 
 	}
@@ -366,8 +365,7 @@ struct dns_entry *dns_find_or_add_entry(struct ptype *record_pt) {
 		entry->next->prev = entry;
 	dns_table[hash] = entry;
 
-	dns_entry_count++;
-	debug_dns("Entry count increased to %u", dns_entry_count);
+	registry_perf_inc(dns_perf_cached_records, 1);
 
 	return entry;
 }

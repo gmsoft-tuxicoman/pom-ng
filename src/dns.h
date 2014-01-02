@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -63,7 +63,8 @@ struct dns_entry {
 };
 
 int dns_init();
-int dns_cleanup();
+int dns_core_init();
+int dns_core_cleanup();
 
 int dns_gc(void *priv, ptime now);
 int dns_process_event(struct event *evt, void *obj);

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -111,6 +111,9 @@ int core_init(unsigned int num_threads) {
 		goto err;
 	
 	param = NULL;
+
+	if (dns_init() != POM_OK)
+		goto err;
 
 	// Start the processing threads
 	unsigned int num_cpu = sysconf(_SC_NPROCESSORS_ONLN) - 1;
@@ -714,7 +717,7 @@ enum core_state core_get_state() {
 // Placeholder for all the stuff to do when processing starts
 static int core_processing_start() {
 
-	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns) && dns_init() != POM_OK)
+	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns) && dns_core_init() != POM_OK)
 		return POM_ERR;
 
 	if (*PTYPE_BOOL_GETVAL(core_param_reset_perf_on_restart))
@@ -727,7 +730,7 @@ static int core_processing_start() {
 static int core_processing_stop() {
 
 	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns))
-		dns_cleanup();
+		dns_core_cleanup();
 
 	// Free all the conntracks
 	proto_finish();
