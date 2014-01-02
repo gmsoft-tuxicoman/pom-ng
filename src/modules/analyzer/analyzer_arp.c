@@ -46,6 +46,7 @@ static int analyzer_arp_mod_register(struct mod_reg *mod) {
 	analyzer_arp.mod = mod;
 	analyzer_arp.init = analyzer_arp_init;
 	analyzer_arp.cleanup = analyzer_arp_cleanup;
+	analyzer_arp.finish = analyzer_arp_finish;
 
 	return analyzer_register(&analyzer_arp);
 
@@ -136,7 +137,7 @@ static int analyzer_arp_init(struct analyzer *analyzer) {
 	if (!priv->evt_sta_changed)
 		goto err;
 
-	priv->perf_known_sta = registry_instance_add_perf(analyzer->reg_instance, "known_stations", registry_perf_type_gauge, "Number of known station", "stations");
+	priv->perf_known_sta = registry_instance_add_perf(analyzer->reg_instance, "known_stations", registry_perf_type_counter, "Number of known station", "stations");
 	if (!priv->perf_known_sta)
 		goto err;
 
@@ -160,6 +161,15 @@ static int analyzer_arp_cleanup(struct analyzer *analyzer) {
 	if (priv->evt_sta_changed)
 		event_unregister(priv->evt_sta_changed);
 
+	free(priv);
+
+	return POM_OK;
+}
+
+static int analyzer_arp_finish(struct analyzer *analyzer) {
+
+	struct analyzer_arp_priv *priv = analyzer->priv;
+
 	int i;
 	for (i = 0; i < ANALYZER_ARP_HOST_TABLE_SIZE; i++) {
 		while (priv->hosts[i]) {
@@ -169,8 +179,7 @@ static int analyzer_arp_cleanup(struct analyzer *analyzer) {
 		}
 	}
 
-
-	free(priv);
+	registry_perf_reset(priv->perf_known_sta);
 
 	return POM_OK;
 }

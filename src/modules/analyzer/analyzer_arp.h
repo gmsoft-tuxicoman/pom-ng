@@ -74,6 +74,7 @@ static int analyzer_arp_mod_register(struct mod_reg *mod);
 static int analyzer_arp_mod_unregister();
 static int analyzer_arp_init(struct analyzer *analyzer);
 static int analyzer_arp_cleanup(struct analyzer *analyzer);
+static int analyzer_arp_finish(struct analyzer *analyzer);
 static int analyzer_arp_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
