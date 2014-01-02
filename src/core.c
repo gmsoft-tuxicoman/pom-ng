@@ -28,6 +28,7 @@
 #include "timer.h"
 #include "main.h"
 #include "proto.h"
+#include "analyzer.h"
 #include "dns.h"
 
 #include <pom-ng/ptype_bool.h>
@@ -734,6 +735,9 @@ static int core_processing_stop() {
 
 	// Free all the conntracks
 	proto_finish();
+
+	// Give the analyzers the chance to clear their state
+	analyzer_finish();
 
 	return POM_OK;
 }

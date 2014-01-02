@@ -57,6 +57,7 @@ struct analyzer_reg {
 
 	int (*init) (struct analyzer *analyzer);
 	int (*cleanup) (struct analyzer *analyzer);
+	int (*finish) (struct analyzer *analyzer);
 
 };
 

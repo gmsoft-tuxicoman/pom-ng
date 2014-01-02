@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -368,6 +368,17 @@ int analyzer_cleanup() {
 
 	return POM_OK;
 
+}
+
+int analyzer_finish() {
+
+	struct analyzer *tmp;
+	for (tmp = analyzer_head; tmp; tmp = tmp->next) {
+		if (tmp->info->finish && tmp->info->finish(tmp) != POM_OK)
+			pomlog(POMLOG_WARN "Error while running the finish() function of analyzer %s", tmp->info->name);
+	}
+
+	return POM_OK;
 }
 
 
