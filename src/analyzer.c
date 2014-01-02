@@ -257,11 +257,6 @@ err:
 
 int analyzer_register(struct analyzer_reg *reg_info) {
 
-	if (reg_info->api_ver != ANALYZER_API_VER) {
-		pomlog(POMLOG_ERR "Cannot register analyzer as API version differ : expected %u got %u", ANALYZER_API_VER, reg_info->api_ver);
-		return POM_ERR;
-	}
-
 	// Allocate the analyzer
 	struct analyzer *analyzer = malloc(sizeof(struct analyzer));
 	if (!analyzer) {

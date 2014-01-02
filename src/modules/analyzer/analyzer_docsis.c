@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,7 +44,6 @@ static int analyzer_docsis_mod_register(struct mod_reg *mod) {
 	
 	static struct analyzer_reg analyzer_docsis = { 0 };
 	analyzer_docsis.name = "docsis";
-	analyzer_docsis.api_ver = ANALYZER_API_VER;
 	analyzer_docsis.mod = mod;
 	analyzer_docsis.init = analyzer_docsis_init;
 	analyzer_docsis.cleanup = analyzer_docsis_cleanup;

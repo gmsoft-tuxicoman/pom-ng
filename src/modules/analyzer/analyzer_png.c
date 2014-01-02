@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -46,7 +46,6 @@ static int analyzer_png_mod_register(struct mod_reg *mod) {
 	static struct analyzer_reg analyzer_png;
 	memset(&analyzer_png, 0, sizeof(struct analyzer_reg));
 	analyzer_png.name = "png";
-	analyzer_png.api_ver = ANALYZER_API_VER;
 	analyzer_png.mod = mod;
 	analyzer_png.init = analyzer_png_init;
 

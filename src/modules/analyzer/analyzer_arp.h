@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-14 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -62,6 +62,8 @@ struct analyzer_arp_priv {
 	struct event_reg *evt_sta_changed;
 	struct proto_packet_listener *pkt_listener;
 	struct proto *proto_vlan;
+
+	struct registry_perf *perf_known_sta;
 
 	pthread_mutex_t lock;
 	struct analyzer_arp_host *hosts[ANALYZER_ARP_HOST_TABLE_SIZE];

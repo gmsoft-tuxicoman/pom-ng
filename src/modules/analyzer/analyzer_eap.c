@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -46,7 +46,6 @@ int analyzer_eap_mod_register(struct mod_reg *mod) {
 	static struct analyzer_reg analyzer_eap;
 	memset(&analyzer_eap, 0, sizeof(struct analyzer_reg));
 	analyzer_eap.name = "eap";
-	analyzer_eap.api_ver = ANALYZER_API_VER;
 	analyzer_eap.mod = mod;
 	analyzer_eap.init = analyzer_eap_init;
 	analyzer_eap.cleanup = analyzer_eap_cleanup;

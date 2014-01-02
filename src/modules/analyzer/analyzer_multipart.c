@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -40,7 +40,6 @@ static int analyzer_multipart_mod_register(struct mod_reg *mod) {
 	static struct analyzer_reg analyzer_multipart;
 	memset(&analyzer_multipart, 0, sizeof(struct analyzer_reg));
 	analyzer_multipart.name = "multipart";
-	analyzer_multipart.api_ver = ANALYZER_API_VER;
 	analyzer_multipart.mod = mod;
 	analyzer_multipart.init = analyzer_multipart_init;
 

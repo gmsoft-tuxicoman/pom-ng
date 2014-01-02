@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,10 +31,6 @@
 #include <zlib.h>
 #endif
 
-// Current analyzer API version
-#define ANALYZER_API_VER 1
-
-
 // Data flags
 #define ANALYZER_DATA_FLAG_LIST 1
 
@@ -56,7 +52,6 @@ struct analyzer {
 
 struct analyzer_reg {
 
-	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
 

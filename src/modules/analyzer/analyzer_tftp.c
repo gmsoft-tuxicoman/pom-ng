@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -42,7 +42,6 @@ static int analyzer_tftp_mod_register(struct mod_reg *mod) {
 
 	static struct analyzer_reg analyzer_tftp = { 0 };
 	analyzer_tftp.name = "tftp";
-	analyzer_tftp.api_ver = ANALYZER_API_VER;
 	analyzer_tftp.mod = mod;
 	analyzer_tftp.init = analyzer_tftp_init;
 	analyzer_tftp.cleanup = analyzer_tftp_cleanup;

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,7 +43,6 @@ static int analyzer_arp_mod_register(struct mod_reg *mod) {
 	
 	static struct analyzer_reg analyzer_arp = { 0 };
 	analyzer_arp.name = "arp";
-	analyzer_arp.api_ver = ANALYZER_API_VER;
 	analyzer_arp.mod = mod;
 	analyzer_arp.init = analyzer_arp_init;
 	analyzer_arp.cleanup = analyzer_arp_cleanup;
@@ -135,6 +134,10 @@ static int analyzer_arp_init(struct analyzer *analyzer) {
 
 	priv->evt_sta_changed = event_register(&analyzer_arp_evt_sta_changed);
 	if (!priv->evt_sta_changed)
+		goto err;
+
+	priv->perf_known_sta = registry_instance_add_perf(analyzer->reg_instance, "known_stations", registry_perf_type_gauge, "Number of known station", "stations");
+	if (!priv->perf_known_sta)
 		goto err;
 
 	return POM_OK;
@@ -252,6 +255,8 @@ static int analyzer_arp_pkt_process(void *obj, struct packet *p, struct proto_pr
 		pom_mutex_unlock(&priv->lock);
 
 		// Announce the new station
+
+		registry_perf_inc(priv->perf_known_sta, 1);
 	
 		if (event_has_listener(priv->evt_new_sta)) {
 			struct event *evt = event_alloc(priv->evt_new_sta);

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,7 +41,6 @@ static int analyzer_smtp_mod_register(struct mod_reg *mod) {
 	
 	static struct analyzer_reg analyzer_smtp = { 0 };
 	analyzer_smtp.name = "smtp";
-	analyzer_smtp.api_ver = ANALYZER_API_VER;
 	analyzer_smtp.mod = mod;
 	analyzer_smtp.init = analyzer_smtp_init;
 	analyzer_smtp.cleanup = analyzer_smtp_cleanup;

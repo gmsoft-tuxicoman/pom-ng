@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -40,7 +40,6 @@ static int analyzer_rfc822_mod_register(struct mod_reg *mod) {
 	static struct analyzer_reg analyzer_rfc822;
 	memset(&analyzer_rfc822, 0, sizeof(struct analyzer_reg));
 	analyzer_rfc822.name = "rfc822";
-	analyzer_rfc822.api_ver = ANALYZER_API_VER;
 	analyzer_rfc822.mod = mod;
 	analyzer_rfc822.init = analyzer_rfc822_init;
 

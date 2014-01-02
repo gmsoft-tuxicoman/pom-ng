@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -56,7 +56,6 @@ static int analyzer_dns_mod_register(struct mod_reg *mod) {
 	
 	static struct analyzer_reg analyzer_dns = { 0 };
 	analyzer_dns.name = "dns";
-	analyzer_dns.api_ver = ANALYZER_API_VER;
 	analyzer_dns.mod = mod;
 	analyzer_dns.init = analyzer_dns_init;
 	analyzer_dns.cleanup = analyzer_dns_cleanup;
