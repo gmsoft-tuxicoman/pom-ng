@@ -857,7 +857,7 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 		}
 
 		if (time_pkt > 0) {
-			xmlrpc_value *pkt_time = xmlrpc_build_value(envP, "{s:i, s:i}", "sec", pom_ptime_sec(time_pkt), "usec", pom_ptime_usec(time_pkt));
+			xmlrpc_value *pkt_time = xmlrpc_build_value(envP, "{s:i,s:i}", "sec", pom_ptime_sec(time_pkt), "usec", pom_ptime_usec(time_pkt));
 			xmlrpc_struct_set_value(envP, item, "pkt_time", pkt_time);
 			xmlrpc_DECREF(pkt_time);
 		}
