@@ -420,15 +420,13 @@ int event_process_end(struct event *evt) {
 
 int event_refcount_inc(struct event *evt) {
 
-	evt->refcount++;
+	__sync_add_and_fetch(&evt->refcount, 1);
 	return POM_OK;
 }
 
 int event_refcount_dec(struct event *evt) {
 
-	evt->refcount--;
-
-	if (!evt->refcount)
+	if (!__sync_sub_and_fetch(&evt->refcount, 1))
 		return event_cleanup(evt);
 	
 	return POM_OK;
