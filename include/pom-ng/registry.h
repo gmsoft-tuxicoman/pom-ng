@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -53,5 +53,6 @@ void registry_perf_dec(struct registry_perf *p, uint64_t val);
 void registry_perf_timeticks_stop(struct registry_perf *p);
 void registry_perf_timeticks_restart(struct registry_perf *p);
 uint64_t registry_perf_getval(struct registry_perf *p);
+void registry_perf_reset(struct registry_perf *p);
 
 #endif

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -149,7 +149,6 @@ int registry_config_reset();
 int registry_config_load(char *config_name);
 int registry_config_delete(char *config_name);
 
-void registry_perf_reset(struct registry_perf *p);
 void registry_perf_reset_all();
 
 #endif
