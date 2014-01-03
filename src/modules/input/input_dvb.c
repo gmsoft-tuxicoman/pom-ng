@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -78,7 +78,6 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_dvb_device;
 	memset(&in_dvb_device, 0, sizeof(struct input_reg_info));
 	in_dvb_device.name = "dvb_device";
-	in_dvb_device.api_ver = INPUT_API_VER;
 	in_dvb_device.flags = INPUT_REG_FLAG_LIVE;
 	in_dvb_device.mod = mod;
 	in_dvb_device.init = input_dvb_device_init;
@@ -92,7 +91,6 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_dvb_c;
 	memset(&in_dvb_c, 0, sizeof(struct input_reg_info));
 	in_dvb_c.name = "dvb_c";
-	in_dvb_c.api_ver = INPUT_API_VER;
 	in_dvb_c.flags = INPUT_REG_FLAG_LIVE;
 	in_dvb_c.mod = mod;
 	in_dvb_c.init = input_dvb_c_init;
@@ -106,7 +104,6 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_dvb_s;
 	memset(&in_dvb_s, 0, sizeof(struct input_reg_info));
 	in_dvb_s.name = "dvb_s";
-	in_dvb_s.api_ver = INPUT_API_VER;
 	in_dvb_s.flags = INPUT_REG_FLAG_LIVE;
 	in_dvb_s.mod = mod;
 	in_dvb_s.init = input_dvb_s_init;

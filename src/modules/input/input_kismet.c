@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -57,7 +57,6 @@ static int input_kismet_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_kismet_drone;
 	memset(&in_kismet_drone, 0, sizeof(struct input_reg_info));
 	in_kismet_drone.name = "kismet_drone";
-	in_kismet_drone.api_ver = INPUT_API_VER;
 	in_kismet_drone.flags = INPUT_REG_FLAG_LIVE;
 	in_kismet_drone.mod = mod;
 	in_kismet_drone.init = input_kismet_drone_init;

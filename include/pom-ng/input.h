@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,10 +28,6 @@
 #include <pthread.h>
 #include <sys/time.h>
 
-// Current input API version
-#define INPUT_API_VER	1
-
-
 // Define that the input is capturing live packets
 #define INPUT_REG_FLAG_LIVE	0x1
 
@@ -58,7 +54,6 @@ struct input {
 
 struct input_reg_info {
 
-	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
 	unsigned int flags;

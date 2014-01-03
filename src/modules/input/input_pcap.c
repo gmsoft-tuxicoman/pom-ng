@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -58,7 +58,6 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_pcap_interface;
 	memset(&in_pcap_interface, 0, sizeof(struct input_reg_info));
 	in_pcap_interface.name = "pcap_interface";
-	in_pcap_interface.api_ver = INPUT_API_VER;
 	in_pcap_interface.flags = INPUT_REG_FLAG_LIVE;
 	in_pcap_interface.mod = mod;
 	in_pcap_interface.init = input_pcap_interface_init;
@@ -73,7 +72,6 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_pcap_file;
 	memset(&in_pcap_file, 0, sizeof(struct input_reg_info));
 	in_pcap_file.name = "pcap_file";
-	in_pcap_file.api_ver = INPUT_API_VER;
 	in_pcap_file.mod = mod;
 	in_pcap_file.init = input_pcap_file_init;
 	in_pcap_file.open = input_pcap_file_open;
@@ -86,7 +84,6 @@ static int input_pcap_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_pcap_dir;
 	memset(&in_pcap_dir, 0, sizeof(struct input_reg_info));
 	in_pcap_dir.name = "pcap_dir";
-	in_pcap_dir.api_ver = INPUT_API_VER;
 	in_pcap_dir.mod = mod;
 	in_pcap_dir.init = input_pcap_dir_init;
 	// Do the open at read() time because scanning can take quite some time

@@ -75,11 +75,6 @@ int input_register(struct input_reg_info *reg_info) {
 
 	pomlog(POMLOG_DEBUG "Registering input %s", reg_info->name);
 
-	if (reg_info->api_ver != INPUT_API_VER) {
-		pomlog(POMLOG_ERR "API version of input %s does not match : expected %s got %s", reg_info->name, INPUT_API_VER, reg_info->api_ver);
-		return POM_ERR;
-	}
-
 	struct input_reg *tmp;
 	for (tmp = input_reg_head; tmp && strcmp(tmp->info->name, reg_info->name); tmp = tmp->next);
 	if (tmp) {
