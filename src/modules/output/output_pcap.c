@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -45,7 +45,6 @@ static int output_pcap_mod_register(struct mod_reg *mod) {
 	static struct output_reg_info output_pcap_file;
 	memset(&output_pcap_file, 0, sizeof(struct output_reg_info));
 	output_pcap_file.name = "pcap_file";
-	output_pcap_file.api_ver = OUTPUT_API_VER;
 	output_pcap_file.mod = mod;
 
 	output_pcap_file.init = output_pcap_file_init;

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,7 +52,6 @@ int output_tap_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_tap = { 0 };
 	output_tap.name = "tap";
-	output_tap.api_ver = OUTPUT_API_VER;
 	output_tap.mod = mod;
 
 	output_tap.init = output_tap_init;

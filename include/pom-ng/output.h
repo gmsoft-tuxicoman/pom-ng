@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,13 +25,9 @@
 #include <pom-ng/base.h>
 #include <pom-ng/registry.h>
 
-// Current output API version
-#define OUTPUT_API_VER 1
-
 struct output;
 
 struct output_reg_info {
-	unsigned int api_ver;
 	char *name;
 	struct mod_reg *mod;
 

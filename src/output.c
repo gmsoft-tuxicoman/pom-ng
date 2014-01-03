@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -68,11 +68,6 @@ int output_cleanup() {
 int output_register(struct output_reg_info *reg_info) {
 
 	pomlog(POMLOG_DEBUG "Registering output %s", reg_info->name);
-
-	if (reg_info->api_ver != OUTPUT_API_VER) {
-		pomlog(POMLOG_ERR "Cannot register output as API version differ : expected %u got %u", OUTPUT_API_VER, reg_info->api_ver);
-		return POM_ERR;
-	}
 
 	pom_mutex_lock(&output_lock);
 	struct output_reg *output = malloc(sizeof(struct output_reg));

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,7 +43,6 @@ int output_log_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_log_txt = { 0 };
 	output_log_txt.name = "log_txt";
-	output_log_txt.api_ver = OUTPUT_API_VER;
 	output_log_txt.mod = mod;
 
 	output_log_txt.init = output_log_txt_init;
@@ -64,7 +63,6 @@ int output_log_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_log_xml = { 0 };
 	output_log_xml.name = "log_xml";
-	output_log_xml.api_ver = OUTPUT_API_VER;
 	output_log_xml.mod = mod;
 
 	output_log_xml.init = output_log_xml_init;

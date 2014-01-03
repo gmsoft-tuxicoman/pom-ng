@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -49,7 +49,6 @@ int output_file_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_file = { 0 };
 	output_file.name = "file";
-	output_file.api_ver = OUTPUT_API_VER;
 	output_file.mod = mod;
 
 	output_file.init = output_file_init;
