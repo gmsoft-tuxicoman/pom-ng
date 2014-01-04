@@ -90,6 +90,7 @@ struct registry_function {
 // Available types for instances
 struct registry_instance_type {
 	char *name;
+	char *description;
 	struct registry_instance_type *prev, *next;
 	
 };
@@ -124,7 +125,7 @@ int registry_remove_class(struct registry_class *c);
 
 struct registry_perf *registry_class_add_perf(struct registry_class *c, const char *name, enum registry_perf_type type, const char *description, const char *unit);
 
-int registry_add_instance_type(struct registry_class *c, char *name);
+int registry_add_instance_type(struct registry_class *c, char *name, char *description);
 int registry_remove_instance_type(struct registry_class *c, char *name);
 
 struct registry_instance *registry_add_instance(struct registry_class *c, char *name);

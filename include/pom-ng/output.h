@@ -29,6 +29,7 @@ struct output;
 
 struct output_reg_info {
 	char *name;
+	char *description;
 	struct mod_reg *mod;
 
 	int (*init) (struct output *o);

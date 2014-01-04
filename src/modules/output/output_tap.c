@@ -52,6 +52,7 @@ int output_tap_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_tap = { 0 };
 	output_tap.name = "tap";
+	output_tap.description = "Send packets to a virtual tap interface";
 	output_tap.mod = mod;
 
 	output_tap.init = output_tap_init;

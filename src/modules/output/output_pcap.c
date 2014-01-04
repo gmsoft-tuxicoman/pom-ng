@@ -45,6 +45,7 @@ static int output_pcap_mod_register(struct mod_reg *mod) {
 	static struct output_reg_info output_pcap_file;
 	memset(&output_pcap_file, 0, sizeof(struct output_reg_info));
 	output_pcap_file.name = "pcap_file";
+	output_pcap_file.description = "Save specified packets in a pcap file";
 	output_pcap_file.mod = mod;
 
 	output_pcap_file.init = output_pcap_file_init;

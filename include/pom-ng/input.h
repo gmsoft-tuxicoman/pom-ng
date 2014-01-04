@@ -55,6 +55,7 @@ struct input {
 struct input_reg_info {
 
 	char *name;
+	char *description;
 	struct mod_reg *mod;
 	unsigned int flags;
 

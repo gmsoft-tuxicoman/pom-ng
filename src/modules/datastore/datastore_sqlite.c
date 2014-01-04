@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -64,6 +64,7 @@ static int datastore_sqlite_mod_register(struct mod_reg *mod) {
 
 	static struct datastore_reg_info datastore_sqlite = {0};
 	datastore_sqlite.name = "sqlite";
+	datastore_sqlite.description = "Connect to a SQLite3 backend";
 	datastore_sqlite.mod = mod;
 	datastore_sqlite.init = datastore_sqlite_init;
 	datastore_sqlite.cleanup = datastore_sqlite_cleanup;

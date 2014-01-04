@@ -57,6 +57,7 @@ static int input_kismet_mod_register(struct mod_reg *mod) {
 	static struct input_reg_info in_kismet_drone;
 	memset(&in_kismet_drone, 0, sizeof(struct input_reg_info));
 	in_kismet_drone.name = "kismet_drone";
+	in_kismet_drone.description = "Connect to a Kismet drone and read the packets";
 	in_kismet_drone.flags = INPUT_REG_FLAG_LIVE;
 	in_kismet_drone.mod = mod;
 	in_kismet_drone.init = input_kismet_drone_init;

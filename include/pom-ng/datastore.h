@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -144,6 +144,7 @@ struct datastore {
 struct datastore_reg_info {
 
 	char *name; ///< Name of the datastore
+	char *description; ///< Description of the datastore
 	struct mod_reg *mod; ///< Module from which this datastore comes from
 
 	int (*init) (struct datastore *d);

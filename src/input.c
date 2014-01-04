@@ -91,7 +91,7 @@ int input_register(struct input_reg_info *reg_info) {
 	memset(reg, 0, sizeof(struct input_reg));
 	reg->info = reg_info;
 
-	if (registry_add_instance_type(input_registry_class, reg_info->name) != POM_OK) {
+	if (registry_add_instance_type(input_registry_class, reg_info->name, reg_info->description) != POM_OK) {
 		free(reg);
 		return POM_ERR;
 	}

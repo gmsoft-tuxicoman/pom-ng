@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -66,6 +66,7 @@ static int datastore_postgres_mod_register(struct mod_reg *mod) {
 
 	static struct datastore_reg_info datastore_postgres = {0};
 	datastore_postgres.name = "postgres";
+	datastore_postgres.description = "Connect to a PostgreSQL server";
 	datastore_postgres.mod = mod;
 	datastore_postgres.init = datastore_postgres_init;
 	datastore_postgres.cleanup = datastore_postgres_cleanup;

@@ -79,7 +79,7 @@ int output_register(struct output_reg_info *reg_info) {
 	memset(output, 0, sizeof(struct output_reg));
 	output->reg_info = reg_info;
 
-	if (registry_add_instance_type(output_registry_class, reg_info->name) != POM_OK) {
+	if (registry_add_instance_type(output_registry_class, reg_info->name, reg_info->description) != POM_OK) {
 		pom_mutex_unlock(&output_lock);
 		free(output);
 		return POM_ERR;

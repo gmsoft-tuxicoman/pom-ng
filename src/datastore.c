@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -90,7 +90,7 @@ int datastore_register(struct datastore_reg_info *reg_info) {
 	reg->module = reg_info->mod;
 
 
-	if (registry_add_instance_type(datastore_registry_class, reg_info->name) != POM_OK) {
+	if (registry_add_instance_type(datastore_registry_class, reg_info->name, reg_info->description) != POM_OK) {
 		free(reg);
 		return POM_ERR;
 	}

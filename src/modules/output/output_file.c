@@ -49,6 +49,7 @@ int output_file_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_file = { 0 };
 	output_file.name = "file";
+	output_file.description = "Save payloads to files on the disk";
 	output_file.mod = mod;
 
 	output_file.init = output_file_init;

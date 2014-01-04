@@ -43,6 +43,7 @@ int output_log_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_log_txt = { 0 };
 	output_log_txt.name = "log_txt";
+	output_log_txt.description = "Log events in text files based on templates";
 	output_log_txt.mod = mod;
 
 	output_log_txt.init = output_log_txt_init;
@@ -63,6 +64,7 @@ int output_log_mod_register(struct mod_reg *mod) {
 
 	static struct output_reg_info output_log_xml = { 0 };
 	output_log_xml.name = "log_xml";
+	output_log_xml.description = "Log specified events in XML format";
 	output_log_xml.mod = mod;
 
 	output_log_xml.init = output_log_xml_init;

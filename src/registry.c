@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -209,7 +209,7 @@ int registry_remove_class(struct registry_class *c) {
 	return POM_OK;
 }
 
-int registry_add_instance_type(struct registry_class *c, char *name) {
+int registry_add_instance_type(struct registry_class *c, char *name, char *description) {
 
 	struct registry_instance_type *type = malloc(sizeof(struct registry_instance_type));
 	if (!type) {
@@ -222,6 +222,14 @@ int registry_add_instance_type(struct registry_class *c, char *name) {
 	if (!type->name) {
 		free(type);
 		pom_oom(strlen(name) + 1);
+		return POM_ERR;
+	}
+
+	type->description = strdup(description);
+	if (!type->description) {
+		free(type->name);
+		free(type);
+		pom_oom(strlen(description) + 1);
 		return POM_ERR;
 	}
 
@@ -262,6 +270,7 @@ int registry_remove_instance_type(struct registry_class *c, char *name) {
 	registry_unlock();
 
 	free(type->name);
+	free(type->description);
 	free(type);
 
 	return POM_OK;

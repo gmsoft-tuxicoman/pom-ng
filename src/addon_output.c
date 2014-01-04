@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -35,22 +35,28 @@ static int addon_output_new(lua_State *L) {
 
 	// Args should be :
 	// 1) name
-	// 2) parameter table
+	// 2) output description
+	// 3) parameter table
 
 	// Stack : name, params
 
 	luaL_checkstring(L, 1);
 
 	// Create a new addon class
-	lua_newtable(L); // Stack : name, params, class
+	lua_newtable(L); // Stack : name, descr, params, class
 
 	// Assign the metatable
-	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE); // Stack : name, params, class, metatable
-	lua_setmetatable(L, -2); // Stack : name, params, class
+	luaL_getmetatable(L, ADDON_OUTPUT_METATABLE); // Stack : name, descr, params, class, metatable
+	lua_setmetatable(L, -2); // Stack : name, descr, params, class
 
 	// Save the parameter table
-	lua_pushvalue(L, -2); // Stack : name, params, class, params
-	lua_setfield(L, -2, "__params"); // Stack : name, params, class
+	lua_pushvalue(L, -2); // Stack : name, descr, params, class, params
+	lua_setfield(L, -2, "__params"); // Stack : name, descr, params, class
+	lua_remove(L, -2); // Stack : name, descr, class
+
+	// Save the description
+	lua_pushvalue(L, -2); // Stack : name, descr, class, descr
+	lua_setfield(L, -2, "__descr"); // Stack : name, descr, class
 	lua_remove(L, -2); // Stack : name, class
 
 	// Add the output to the outputs table
@@ -575,6 +581,10 @@ int addon_output_register_all(struct addon *addon) {
 		
 		pomlog(POMLOG_DEBUG "Registering addon output %s ...", name);
 
+		lua_getfield(addon->L, -1, "__descr"); // Stack : outputs, name, output, __descr
+		const char *descr = lua_tostring(addon->L, -1);
+		lua_pop(addon->L, 1);
+
 		struct output_reg_info *output_info = lua_newuserdata(addon->L, sizeof(struct output_reg_info)); // Stack : outputs, name, output, output_info
 		memset(output_info, 0, sizeof(struct output_reg_info));
 
@@ -586,7 +596,12 @@ int addon_output_register_all(struct addon *addon) {
 		if (!output_info->name)
 			addon_oom(addon->L, strlen(name) + 1);
 
-		output_info->api_ver = OUTPUT_API_VER;
+		output_info->description = strdup(descr);
+		if (!output_info->description) {
+			free(output_info->name);
+			addon_oom(addon->L, strlen(descr) + 1);
+		}
+
 		output_info->mod = addon->mod;
 		output_info->init = addon_output_init;
 		output_info->open = addon_output_open;
