@@ -236,8 +236,9 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 		xmlrpc_value *types = xmlrpc_array_new(envP);
 		struct registry_instance_type *t;
 		for (t = c->types; t; t = t->next) {
-			xmlrpc_value *type = xmlrpc_build_value(envP, "{s:s}",
-								"name", t->name);
+			xmlrpc_value *type = xmlrpc_build_value(envP, "{s:s,s:s}",
+								"name", t->name,
+								"description", t->description);
 			xmlrpc_array_append_item(envP, types, type);
 			xmlrpc_DECREF(type);
 
