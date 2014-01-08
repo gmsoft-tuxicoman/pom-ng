@@ -422,9 +422,6 @@ static int input_dvb_open(struct input *i) {
 				goto err;
 			}
 			break;
-
-		default:
-			goto err;
 	}
 
 	// Open the demux

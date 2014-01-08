@@ -22,7 +22,7 @@
 #include "xmlrpccmd.h"
 #include "xmlrpcsrv.h"
 
-#include "xmlrpccmd_evtmon.h"
+#include "xmlrpccmd_monitor.h"
 #include "xmlrpccmd_registry.h"
 
 #include "registry.h"
@@ -93,7 +93,7 @@ int xmlrpccmd_cleanup() {
 	pthread_cond_broadcast(&xmlrpccmd_serial_cond);
 	pom_mutex_unlock(&xmlrpccmd_serial_lock);
 
-	xmlrpccmd_evtmon_cleanup();
+	xmlrpccmd_monitor_cleanup();
 
 	return POM_OK;
 }
@@ -109,7 +109,7 @@ int xmlrpccmd_register_all() {
 
 	int res = POM_OK;
 	res += xmlrpccmd_registry_register_all();
-	res += xmlrpccmd_evtmon_register_all();
+	res += xmlrpccmd_monitor_register_all();
 
 	return res;
 
