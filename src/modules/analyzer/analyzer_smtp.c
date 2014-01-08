@@ -249,6 +249,7 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 
 	if (!pload_buff) {
 		pload_buff = analyzer_pload_buffer_alloc(0, 0);
+		analyzer_pload_buffer_set_related_event(pload_buff, cpriv->evt_msg);
 		analyzer_pload_buffer_set_type(pload_buff, apriv->rfc822_msg_pload_type);
 		if (!pload_buff)
 			return POM_ERR;

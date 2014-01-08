@@ -322,6 +322,8 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				if (!f->pload)
 					goto err;
 
+				analyzer_pload_buffer_set_related_event(f->pload, f->evt);
+
 				conntrack_add_priv(s_prev->ce, obj, f, analyzer_tftp_conntrack_priv_cleanup);
 			} else {
 				evt_data = event_get_data(f->evt);
