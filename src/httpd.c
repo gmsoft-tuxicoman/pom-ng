@@ -36,7 +36,7 @@ static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
 
 int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *ssl_key) {
 
-	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION;
+	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION | MHD_USE_DEBUG;
 
 	if ((ssl_cert || ssl_key) && (!ssl_cert || !ssl_key)) {
 		pomlog(POMLOG_ERR "Both SSL certificate and key must be provided.");
@@ -156,10 +156,10 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 			if (httpd_ssl_cert && httpd_ssl_key) {
 				flags |= MHD_USE_SSL;
-				lst->daemon = MHD_start_daemon(flags, 0, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_END);
+				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
 
 			} else {
-				lst->daemon = MHD_start_daemon(flags, 0, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_END);
+				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
 			}
 
 			if (lst->daemon) {
@@ -462,4 +462,24 @@ int httpd_cleanup() {
 		httpd_ssl_key = NULL;
 	}
 	return POM_OK;
+}
+
+
+void httpd_logger(void *arg, const char *fmt, va_list ap) {
+
+	char buff[POMLOG_LINE_SIZE] = { 0 };
+
+	vsnprintf(buff, POMLOG_LINE_SIZE - 1, fmt, ap);
+
+	size_t len = strlen(buff);
+	while (len) {
+		if (buff[len - 1] == '\r' || buff[len - 1] == '\n')
+			buff[len - 1] = 0;
+		else
+			break;
+		len--;
+	}
+
+	pomlog(POMLOG_ERR "%s", buff);
+
 }

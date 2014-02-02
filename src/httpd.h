@@ -67,5 +67,6 @@ int httpd_init(char *addresses, int port, char* www_data, char *ssl_cert, char *
 int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls);
 void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
 int httpd_cleanup();
+void httpd_logger(void *arg, const char *fmt, va_list ap);
 
 #endif
