@@ -172,7 +172,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 				}
 			} else {
 				free(lst);
-				pomlog(POMLOG_ERR "Error while starting daemon on address \"%s\"", token);
+				pomlog(POMLOG_ERR "Error while starting daemon on address \"%s\" and port %u", token, port);
 			}
 
 		}
