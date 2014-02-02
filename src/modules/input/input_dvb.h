@@ -78,7 +78,7 @@ struct mod_reg_info* input_dvb_reg_info();
 static int input_dvb_mod_register(struct mod_reg *mod);
 static int input_dvb_mod_unregister();
 
-static int input_dvb_common_init(struct input *i);
+static int input_dvb_common_init(struct input *i, enum input_dvb_type type);
 static int input_dvb_device_init(struct input *i);
 static int input_dvb_c_init(struct input *i);
 static int input_dvb_s_init(struct input *i);

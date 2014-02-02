@@ -131,7 +131,7 @@ static int input_dvb_mod_unregister() {
 }
 
 
-static int input_dvb_common_init(struct input *i) {
+static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 
 	struct input_dvb_priv *priv = malloc(sizeof(struct input_dvb_priv));
 	if (!priv) {
@@ -143,6 +143,7 @@ static int input_dvb_common_init(struct input *i) {
 	priv->frontend_fd = -1;
 	priv->demux_fd = -1;
 	priv->dvr_fd = -1;
+	priv->type = type;
 
 	priv->proto_mpeg_ts = proto_get("mpeg_ts");
 	if (!priv->proto_mpeg_ts) {
@@ -151,6 +152,22 @@ static int input_dvb_common_init(struct input *i) {
 	}
 
 	priv->perf_null_discarded = registry_instance_add_perf(i->reg_instance, "null_discarded", registry_perf_type_counter, "Number of NULL MPEG packets discarded.", "pkts");
+	if (!priv->perf_null_discarded)
+		goto err;
+
+	priv->filter_null_pid = ptype_alloc("bool");
+
+	struct registry_param *p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK) {
+		registry_cleanup_param(p);
+		goto err;
+	}
+
+	i->priv = priv;
+
+	if (type == input_dvb_type_device)
+		return POM_OK;
+
 	priv->perf_signal = registry_instance_add_perf(i->reg_instance, "signal", registry_perf_type_gauge, "Signal", "dB");
 	priv->perf_snr = registry_instance_add_perf(i->reg_instance, "snr", registry_perf_type_gauge, "Signal to Noise ratio (SNR)", "dB");
 	priv->perf_unc = registry_instance_add_perf(i->reg_instance, "unc", registry_perf_type_counter, "Uncorrected blocks", "blocks");
@@ -163,146 +180,14 @@ static int input_dvb_common_init(struct input *i) {
 	registry_perf_set_update_hook(priv->perf_unc, input_dvb_perf_update_unc, priv);
 	registry_perf_set_update_hook(priv->perf_ber, input_dvb_perf_update_ber, priv);
 
-	priv->filter_null_pid = ptype_alloc("bool");
-
-	struct registry_param *p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK) {
-		registry_cleanup_param(p);
-		goto err;
-	}
-
-	i->priv = priv;
-
-	return POM_OK;
-
-err:
-	
-	if (priv->filter_null_pid)
-		ptype_cleanup(priv->filter_null_pid);
-
-	free(priv);
-	return POM_ERR;
-
-}
-
-
-static int input_dvb_device_init(struct input *i) {
-
-
-	if (input_dvb_common_init(i) != POM_OK)
-		return POM_ERR;
-
-	struct input_dvb_priv *priv = i->priv;
-	struct registry_param *p = NULL;
-
-	priv->frontend = ptype_alloc("string");
-	if (!priv->frontend)
-		goto err;
-
-	p = registry_new_param("device", "/dev/dvb/adapterX/dvrY", priv->frontend, "Device to read packets from", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	priv->type = input_dvb_type_device;
-
-	return POM_OK;
-
-err:
-
-	if (p)
-		registry_cleanup_param(p);
-
-	free(priv);
-
-	return POM_ERR;
-}
-
-static int input_dvb_c_init(struct input *i) {
-
-	if (input_dvb_common_init(i) != POM_OK)
-		return POM_ERR;
-
-	struct input_dvb_priv *priv = i->priv;
-
-	struct registry_param *p = NULL;
 
 	priv->adapter = ptype_alloc("uint16");
 	priv->frontend = ptype_alloc("uint16");
 	priv->freq = ptype_alloc_unit("uint32", "Hz");
 	priv->symbol_rate = ptype_alloc_unit("uint32", "symbols/second");
 	priv->tuning_timeout = ptype_alloc_unit("uint16", "seconds");
-	priv->tpriv.c.modulation = ptype_alloc_unit("string", NULL);
-	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout || !priv->tpriv.c.modulation) 
-		goto err;
 
-	p = registry_new_param("adapter", "0", priv->adapter, "Adapter ID : /dev/dvb/adapterX", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("frontend", "0", priv->frontend, "Frontend ID : /dev/dvb/adapterX/frontendY", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("frequency", "0", priv->freq, "Frequency in Hz", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("symbol_rate", "6952000", priv->symbol_rate, "Symbols per seconds", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("tuning_timeout", "3", priv->tuning_timeout, "Timeout while trying to tune in seconds", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("modulation", "QAM256", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	priv->type = input_dvb_type_c;
-
-	return POM_OK;
-
-err:
-
-	if (p)
-		registry_cleanup_param(p);
-
-	if (priv->adapter)
-		ptype_cleanup(priv->adapter);
-	if (priv->frontend)
-		ptype_cleanup(priv->frontend);
-	if (priv->freq)
-		ptype_cleanup(priv->freq);
-	if (priv->symbol_rate)
-		ptype_cleanup(priv->symbol_rate);
-	if (priv->tuning_timeout)
-		ptype_cleanup(priv->tuning_timeout);
-	if (priv->tpriv.c.modulation)
-		ptype_cleanup(priv->tpriv.c.modulation);
-	
-	free(priv);
-
-	return POM_ERR;
-}
-
-static int input_dvb_s_init(struct input *i) {
-
-	if (input_dvb_common_init(i) != POM_OK)
-		return POM_ERR;
-
-	struct input_dvb_priv *priv = i->priv;
-
-	struct registry_param *p = NULL;
-
-	priv->adapter = ptype_alloc("uint16");
-	priv->frontend = ptype_alloc("uint16");
-	priv->freq = ptype_alloc_unit("uint32", "Hz");
-	priv->symbol_rate = ptype_alloc_unit("uint32", "symbols/second");
-	priv->tuning_timeout = ptype_alloc_unit("uint16", "seconds");
-	priv->tpriv.s.polarity = ptype_alloc_unit("string", NULL);
-	priv->tpriv.s.lnb_type = ptype_alloc_unit("string", NULL);
-	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout || !priv->tpriv.s.polarity || !priv->tpriv.s.lnb_type) 
+	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout) 
 		goto err;
 
 	p = registry_new_param("adapter", "0", priv->adapter, "Adapter ID : /dev/dvb/adapterX", 0);
@@ -325,20 +210,10 @@ static int input_dvb_s_init(struct input *i) {
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("polarity", "h" , priv->tpriv.s.polarity, "Polarisation, either 'h' or 'v'", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("lnb_type", "universal", priv->tpriv.s.lnb_type, "LNB type", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	priv->type = input_dvb_type_s;
-
 	return POM_OK;
 
 err:
-
+	
 	if (p)
 		registry_cleanup_param(p);
 
@@ -352,6 +227,102 @@ err:
 		ptype_cleanup(priv->symbol_rate);
 	if (priv->tuning_timeout)
 		ptype_cleanup(priv->tuning_timeout);
+	if (priv->filter_null_pid)
+		ptype_cleanup(priv->filter_null_pid);
+
+	free(priv);
+	return POM_ERR;
+
+}
+
+
+static int input_dvb_device_init(struct input *i) {
+
+
+	if (input_dvb_common_init(i, input_dvb_type_device) != POM_OK)
+		return POM_ERR;
+
+	struct input_dvb_priv *priv = i->priv;
+	struct registry_param *p = NULL;
+
+	priv->frontend = ptype_alloc("string");
+	if (!priv->frontend)
+		goto err;
+
+	p = registry_new_param("device", "/dev/dvb/adapterX/dvrY", priv->frontend, "Device to read packets from", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	return POM_OK;
+
+err:
+
+	if (p)
+		registry_cleanup_param(p);
+
+	free(priv);
+
+	return POM_ERR;
+}
+
+static int input_dvb_c_init(struct input *i) {
+
+	if (input_dvb_common_init(i, input_dvb_type_c) != POM_OK)
+		return POM_ERR;
+
+	struct input_dvb_priv *priv = i->priv;
+
+	struct registry_param *p = NULL;
+
+	priv->tpriv.c.modulation = ptype_alloc_unit("string", NULL);
+	if (!priv->tpriv.c.modulation) 
+		goto err;
+
+
+	p = registry_new_param("modulation", "QAM256", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	return POM_OK;
+
+err:
+
+	if (priv->tpriv.c.modulation)
+		ptype_cleanup(priv->tpriv.c.modulation);
+	
+	free(priv);
+
+	return POM_ERR;
+}
+
+static int input_dvb_s_init(struct input *i) {
+
+	if (input_dvb_common_init(i, input_dvb_type_s) != POM_OK)
+		return POM_ERR;
+
+	struct input_dvb_priv *priv = i->priv;
+
+	struct registry_param *p = NULL;
+
+	priv->tpriv.s.polarity = ptype_alloc_unit("string", NULL);
+	priv->tpriv.s.lnb_type = ptype_alloc_unit("string", NULL);
+	if (!priv->tpriv.s.polarity || !priv->tpriv.s.lnb_type) 
+		goto err;
+
+	p = registry_new_param("polarity", "h" , priv->tpriv.s.polarity, "Polarisation, either 'h' or 'v'", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("lnb_type", "universal", priv->tpriv.s.lnb_type, "LNB type", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	return POM_OK;
+
+err:
+
+	if (p)
+		registry_cleanup_param(p);
 	if (priv->tpriv.s.polarity)
 		ptype_cleanup(priv->tpriv.s.polarity);
 	if (priv->tpriv.s.lnb_type)
@@ -421,6 +392,9 @@ static int input_dvb_open(struct input *i) {
 				pomlog(POMLOG_ERR "The frontend %s is not a DVB-S adapter", frontend);
 				goto err;
 			}
+			break;
+
+		default:
 			break;
 	}
 
@@ -780,7 +754,7 @@ static int input_dvb_cleanup(struct input *i) {
 			break;
 	
 		default:
-			return POM_ERR;
+			break;
 	}
 
 	free(p);
