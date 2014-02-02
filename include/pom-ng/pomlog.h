@@ -31,7 +31,7 @@
 
 /// Size of the log buffer
 #define POMLOG_BUFFER_SIZE	500
-#define POMLOG_LINE_SIZE	2048
+#define POMLOG_LINE_SIZE	1024
 #define POMLOG_FILENAME_SIZE	32
 /// Log entry
 
