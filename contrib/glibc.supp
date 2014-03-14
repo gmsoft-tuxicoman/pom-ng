@@ -1,7 +1,7 @@
 {  
    libdl invalid read
    Memcheck:Addr4
-   obj:/lib/ld-2.*.so
+   obj:/lib*/ld-2.*.so
    ...
 }
 
@@ -9,7 +9,7 @@
 {  
    libdl conditional jump
    Memcheck:Cond
-   obj:/lib/ld-2.*.so
+   obj:/lib*/ld-2.*.so
    ...
 }
 
@@ -17,7 +17,7 @@
   libdl leak
   Memcheck:Leak
   fun:calloc
-  obj:/lib/ld-2.*.so
+  obj:/lib*/ld-2.*.so
   ...
 }
 
