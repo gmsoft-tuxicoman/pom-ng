@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -156,10 +156,10 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 			if (httpd_ssl_cert && httpd_ssl_key) {
 				flags |= MHD_USE_SSL;
-				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
+				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_CONNECTION_TIMEOUT, HTTPD_CONN_TIMEOUT, MHD_OPTION_END);
 
 			} else {
-				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
+				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_CONNECTION_TIMEOUT, HTTPD_CONN_TIMEOUT, MHD_OPTION_END);
 			}
 
 			if (lst->daemon) {
@@ -442,6 +442,9 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 
 
 int httpd_cleanup() {
+
+
+	pomlog(POMLOG_INFO "Waiting for HTTP connections to timeout ...");
 
 	while (http_daemons) {
 		struct httpd_daemon_list *tmp = http_daemons;

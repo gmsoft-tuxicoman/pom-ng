@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,7 +30,9 @@
 #define HTTPD_CONN_GET	1
 #define HTTPD_CONN_POST	2
 
-#define HTTPD_POST_BUFF_SIZE  512
+#define HTTPD_CONN_TIMEOUT	10
+
+#define HTTPD_POST_BUFF_SIZE	512
 
 #define HTTPD_STATUS_URL	"/status.html"
 #define HTTPD_INDEX_PAGE	"index.html"
