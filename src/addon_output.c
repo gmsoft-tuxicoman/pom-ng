@@ -514,8 +514,10 @@ static int addon_output_priv_gc(lua_State *L) {
 // Garbage collector function for output class
 static int addon_output_gc(lua_State *L) {
 	struct output_reg_info *output_reg = luaL_checkudata(L, 1, ADDON_OUTPUT_REG_METATABLE);
-	if (output_reg)
+	if (output_reg) {
 		free(output_reg->name);
+		free(output_reg->description);
+	}
 	return 0;
 }
 
