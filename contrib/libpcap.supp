@@ -1,0 +1,15 @@
+{
+  libpcap conditional jump
+  Memcheck:Cond
+  obj:/usr/lib*/libpcap.so*
+  ...
+}
+
+{
+  libpcap IOCTL
+  Memcheck:Param
+  socketcall.sendto(msg)
+  ...
+  obj:/usr/lib*/libpcap.so*
+  ...
+}
