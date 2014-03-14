@@ -155,6 +155,7 @@ int registry_remove_class(struct registry_class *c) {
 	while (c->types) {
 		struct registry_instance_type *t = c->types;
 		c->types = c->types->next;
+		free(t->description);
 		free(t->name);
 		free(t);
 	}
