@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,25 +31,34 @@
 struct xmlrpccmd_monitor_session {
 
 	unsigned int id;
+	unsigned int polling;
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
 	struct main_timer *timer;
 	time_t timeout;
-	struct xmlrpccmd_monitor_evtreg_list *events_reg;
-	struct xmlrpccmd_monitor_evt_list *events;
-
+	struct xmlrpccmd_monitor_event *events;
+	struct xmlrpccmd_monitor_evtreg *events_reg;
 };
 
-struct xmlrpccmd_monitor_evtreg_list {
-
-	struct event_reg *evt;
-	struct xmlrpccmd_monitor_evtreg_list *prev, *next;
+struct xmlrpccmd_monitor_evt_listener {
+	uint64_t id;
+	void *filter;
+	struct xmlrpccmd_monitor_evt_listener *prev, *next;
 };
 
-struct xmlrpccmd_monitor_evt_list {
+struct xmlrpccmd_monitor_evtreg {
+
+	struct xmlrpccmd_monitor_session *sess;
+	struct event_reg *evt_reg;
+	struct xmlrpccmd_monitor_evt_listener *listeners;
+	struct xmlrpccmd_monitor_evtreg *prev, *next;
+};
+
+struct xmlrpccmd_monitor_event {
 
 	struct event *evt;
-	struct xmlrpccmd_monitor_evt_list *prev, *next;
+	struct xmlrpccmd_monitor_evtreg *event_reg;
+	struct xmlrpccmd_monitor_event *prev, *next;
 };
 
 int xmlrpccmd_monitor_register_all();
@@ -59,8 +68,8 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess);
 int xmlrpccmd_monitor_cleanup();
 
 xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
-xmlrpc_value *xmlrpccmd_monitor_event_add(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
-xmlrpc_value *xmlrpccmd_monitor_event_remove(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_monitor_event_remove_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_stop(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
