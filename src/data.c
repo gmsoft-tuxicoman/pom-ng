@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -109,6 +109,7 @@ int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, s
 
 	item->next = d[data_id].items;
 	d[data_id].items = item;
+	d[data_id].flags |= DATA_FLAG_SET;
 
 	return POM_OK;
 }
