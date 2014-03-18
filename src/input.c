@@ -296,19 +296,32 @@ int input_instance_start_stop_handler(void *priv, struct ptype *run) {
 
 	if (*new_state) {
 
-		if (!(i->reg->info->flags & INPUT_REG_FLAG_LIVE)) {
-			struct input *tmp;
-			for (tmp = input_head; tmp; tmp = tmp->next) {
-				if (tmp != i) {
-					pom_mutex_lock(&tmp->lock);
-					if (i->running) {
+		struct input *tmp;
+		for (tmp = input_head; tmp; tmp = tmp->next) {
+			if (tmp != i) {
+				pom_mutex_lock(&tmp->lock);
+			
+				if (tmp->running) {
+
+					// Don't start any other input if a non-live input is running
+					if (!(tmp->reg->info->flags & INPUT_REG_FLAG_LIVE)) {
+						pomlog(POMLOG_ERR "When using non-live input, only one input can be started at once");
 						pom_mutex_unlock(&tmp->lock);
 						pom_mutex_unlock(&i->lock);
-						pomlog(POMLOG_ERR "When using non-live input, it can only be started alone");
 						return POM_ERR;
 					}
-					pom_mutex_unlock(&tmp->lock);
+
+					// Don't start a non live input if other inputs are running
+					if (!(i->reg->info->flags & INPUT_REG_FLAG_LIVE)) {
+						pomlog(POMLOG_ERR "Non-live input cannot be started while live inputs are running");
+						pom_mutex_unlock(&tmp->lock);
+						pom_mutex_unlock(&i->lock);
+						return POM_ERR;
+
+					}
+
 				}
+				pom_mutex_unlock(&tmp->lock);
 			}
 		}
 
