@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -373,4 +373,485 @@ err:
 		*f = NULL;
 	}
 	return POM_ERR;
+}
+
+
+
+
+
+
+
+
+
+
+int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filter_type type) {
+
+	unsigned int i;
+	int stack_size = 0;
+
+	int branch_found = 0;
+	int branch_op = 0;
+
+	while (len && *expr == ' ') {
+		expr++;
+		len--;
+	}
+
+	while (len && expr[len - 1] == ' ')
+		len--;
+
+	if (!len) {
+		*n = NULL;
+		return POM_OK;
+	}
+
+	*n = malloc(sizeof(struct filter_node));
+	if (!*n) {
+		pom_oom(sizeof(struct filter_node));
+		return POM_ERR;
+	}
+	memset(*n, 0, sizeof(struct filter_node));
+
+	for (i = 0; i < len; i++) {
+		if (stack_size == 0 && expr[i] == '|' && expr[i + 1] == '|')  {
+			branch_found = 1;
+			branch_op = FILTER_OP_OR;
+		} else if (stack_size == 0 && expr[i] == '&' && expr[i + 1] == '&') {
+			branch_found = 1;
+			branch_op = FILTER_OP_AND;
+		}
+
+		if (expr[i] == '(') {
+			stack_size++;
+			continue;
+		}
+		if (expr[i] == ')') {
+			if (stack_size == 0) {
+				pomlog(POMLOG_ERR "Unmatched ')' at pos %u in expression '%s'", i, expr);
+				return POM_ERR;
+			}
+			stack_size--;
+			continue;
+		}
+
+		if (branch_found) {
+			// A branch was found, parse both sides
+			
+			struct filter_branch *branch = &(*n)->branch;
+			branch->op = branch_op;
+
+			(*n)->type = filter_node_type_branch;
+			
+			if (filter_parse(expr, i - 1, &branch->a, type) != POM_OK || filter_parse(expr + i + 2, len - i - 2, &branch->b, type) != POM_OK)
+				return POM_ERR;
+
+			if (!branch->a || !branch->b) {
+				pomlog(POMLOG_ERR "Branch of expression empty in expression '%s'", expr);
+				return POM_ERR;
+			}
+
+			return POM_OK;
+		}
+	}
+
+	if (stack_size > 0) {
+		pomlog(POMLOG_ERR "Unmatched '(' in expression '%s'", expr);
+		return POM_ERR;
+	}
+
+	// There was no branch, process the whole thing then
+	return filter_parse_block(expr, len, n, type);
+	
+}
+
+
+int filter_parse_block(char *expr, unsigned int len, struct filter_node **n, enum filter_type type) {
+
+	if (len < 2)
+		return POM_ERR;
+
+	while (len && *expr == ' ') {
+		expr++;
+		len--;
+	}
+
+	while (len && expr[len - 1] == ' ')
+		len--;
+
+	if (!len) {
+		*n = NULL;
+		return POM_OK;
+	}
+
+	// Find out if there is an inversion
+	int inv = 0;
+	if (expr[0] == '!') {
+		inv = 1;
+		expr++;
+		len--;
+		while (*expr == ' ') {
+			expr++;
+			len--;
+		}
+
+	}
+
+	if (expr[0] == '(' && expr[len - 1] == ')') {
+		expr++;
+		len -= 2;
+		int res = filter_parse(expr, len, n, type);
+		if (inv)
+			(*n)->not = 1;
+		return res;
+	}
+
+	// At this point we should have only 'what op value' i.e. 'event.data.blah = 2'
+
+	switch (type) {
+		case filter_type_payload:
+			return filter_pload_parse_block(expr, len, *n);
+		case filter_type_event:
+			return filter_event_parse_block(expr, len, *n);
+	}
+
+	return POM_ERR;
+}
+
+int filter_event_parse_block(char *expr, unsigned int len, struct filter_node *n) {
+
+	// Example of value passed : "data.width > 400", "data.request_header[cookies]", "name == some_event_name"
+
+	// There are a few things that we can parse
+
+	if (len >= strlen("time ") && !strncmp(expr, "time ", strlen("time "))) {
+		n->type = filter_node_type_event_prop;
+		n->data.field_id = filter_evt_prop_type_time;
+	} else if (len >= strlen("name ") && !strncmp(expr, "name ", strlen("name "))) {
+		n->type = filter_node_type_event_prop;
+		n->data.field_id = filter_evt_prop_type_name;
+	} else if (len >= strlen("source ") && !strncmp(expr, "source ", strlen("source "))) {
+		n->type = filter_node_type_event_prop;
+		n->data.field_id = filter_evt_prop_type_source;
+	} else if (len >= strlen("descr ") && !strncmp(expr, "descr ", strlen("descr "))) {
+		n->type = filter_node_type_event_prop;
+		n->data.field_id = filter_evt_prop_type_descr;
+	} else if (len >= strlen("data.") && !strncmp(expr, "data.", strlen("data."))) {
+		n->type = filter_node_type_event_data;
+		expr += strlen("data.");
+		len -= strlen("data.");
+	} else {
+		pomlog(POMLOG_ERR "Unexpected value for event property !");
+		return POM_ERR;
+	}
+	
+	char* space = memchr(expr, ' ', len);
+
+	if (space) {
+		while (*space == ' ')
+			space++;
+	}
+
+	if (n->type == filter_node_type_event_data) {
+		size_t field_len = len;
+
+		if (space)
+			field_len = space - expr - 1;
+
+	
+		char *key = memchr(expr, '[', field_len);
+		if (key) {
+			if (*(expr + field_len - 1) != ']') {
+				pomlog(POMLOG_ERR "Missing ']'");
+				return POM_ERR;
+			}
+			key++;
+			size_t key_len = expr + field_len - key - 1;
+			n->data.key = strndup(key, key_len);
+			if (!n->data.key) {
+				pom_oom(key_len + 1);
+				return POM_ERR;
+			}
+			field_len = key - expr - 1;
+		}
+
+		n->data.name = strndup(expr, field_len);
+		if (!n->data.name) {
+			pom_oom(field_len + 1);
+			return POM_ERR;
+		}
+
+		if (!space) {
+			// Nothing more to parse
+			return POM_OK;
+		}
+
+		len -= space - expr;
+		expr = space;
+		space = memchr(expr, ' ', len);
+
+		if (!space) {
+			// Nothing more to parse
+			return POM_OK;
+		}
+
+		while (*space == ' ')
+			space++;
+	} else {
+		len -= space - expr;
+		expr = space;
+		space = memchr(expr, ' ', len);
+
+		if (!space) {
+			pomlog(POMLOG_ERR "Mandatory argument missing");
+			return POM_ERR;
+		}
+
+	}
+
+	n->data.op_str = strndup(expr, space - expr - 1);
+	if (!n->data.op_str) {
+		pom_oom(space - expr);
+		return POM_ERR;
+	}
+
+	while (*space == ' ')
+		space++;
+
+	n->data.value_str = strndup(space, len - (space - expr));
+	if (!n->data.value_str) {
+		pom_oom(len - (space - expr));
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+int filter_pload_parse_block(char *expr, unsigned int len, struct filter_node *n) {
+
+	// Example of value passed : "evt.data.width > 400", "data.request_header[cookies]", "name == some_event_name"
+
+	// There are a few things that we can parse
+
+	if (len >= strlen("evt.") && !strncmp(expr, "evt.", strlen("evt."))) {
+		// Parse event related stuff
+		return filter_pload_parse_block(expr + strlen("evt."), len - strlen("evt."), n);
+	} else if (len >= strlen("type.") && !strncmp(expr, "type.", strlen("type."))) {
+		n->type = filter_node_type_pload_type;
+		expr += strlen("type.");
+		len -= strlen("type.");
+	} else if (len >= strlen("data.") && !strncmp(expr, "data.", strlen("data."))) {
+		n->type = filter_node_type_pload_data;
+		expr += strlen("data.");
+		len -= strlen("data.");
+	} else {
+		pomlog(POMLOG_ERR "Unexpected value for pload property !");
+		return POM_ERR;
+	}
+	
+	char *space = memchr(expr, ' ', len);
+
+	size_t field_len = len;
+	if (space) {
+		field_len = space - expr;
+		while (*space == ' ')
+			space++;
+	}
+
+	if (n->type == filter_node_type_pload_data) {
+		char *key = memchr(expr, '[', field_len);
+		if (key) {
+			if (*(expr + field_len - 1) != ']') {
+				pomlog(POMLOG_ERR "Missing ']'");
+				return POM_ERR;
+			}
+			key++;
+			size_t key_len = expr + field_len - key - 1;
+			n->data.key = strndup(key, key_len);
+			if (!n->data.key) {
+				pom_oom(key_len + 1);
+				return POM_ERR;
+			}
+			field_len = key - expr - 1;
+		}
+	}
+
+	n->data.name = strndup(expr, field_len);
+	if (!n->data.name) {
+		pom_oom(field_len + 1);
+		return POM_ERR;
+	}
+
+	while (*space == ' ')
+		space++;
+
+	n->data.op_str = strndup(expr, space - expr);
+	if (!n->data.op_str) {
+		pom_oom(space - expr);
+		return POM_ERR;
+	}
+
+	while (*space == ' ')
+		space++;
+
+	n->data.value_str = strndup(space, len - (space - expr));
+	if (!n->data.value_str) {
+		pom_oom(len - (space - expr));
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+
+void filter_cleanup(struct filter_node *filter) {
+	// TODO
+	return;
+}
+
+
+int filter_event_compile(struct filter_node *filter, struct event_reg *evt) {
+
+	if (filter->type == filter_node_type_branch) {
+		if (filter_event_compile(filter->branch.a, evt) != POM_OK)
+			return POM_ERR;
+
+		if (filter_event_compile(filter->branch.b, evt) != POM_OK)
+			return POM_ERR;
+
+	} else if (filter->type == filter_node_type_event_prop) {
+
+		filter->data.op = ptype_get_op(NULL, filter->data.op_str);
+
+		if (filter->data.op == POM_ERR) {
+			pomlog(POMLOG_ERR "Invalid operation \"%s\" for event property", filter->data.op_str);
+			return POM_ERR;
+		}
+
+		if (filter->data.field_id != filter_evt_prop_type_time && (filter->data.op != PTYPE_OP_EQ && filter->data.op != PTYPE_OP_NEQ)) {
+			pomlog(POMLOG_ERR "Operation \"%s\" not allowed for event property", filter->data.op_str);
+			return POM_ERR;
+		}
+
+	} else if (filter->type == filter_node_type_event_data) {
+		
+		struct event_reg_info *info = event_reg_get_info(evt);
+
+		struct data_reg *data = info->data_reg;
+
+		char *name = filter->data.name;
+
+		// Find the right item
+		int i;
+		struct data_item_reg *item = NULL;
+		for (i = 0; i < data->data_count; i++) {
+			item = &data->items[i];
+			if (!strcmp(item->name, name))
+				break;
+		}
+
+		if (i >= data->data_count) {
+			pomlog(POMLOG_ERR "Item \"%s\" does not exists", name);
+			return POM_ERR;
+		}
+
+		filter->data.field_id = i;
+
+		if (item->flags & DATA_REG_FLAG_LIST) {
+			if (!filter->data.key) {
+				pomlog(POMLOG_ERR "Filter item \"%s\" requires a key as it's a list", name);
+				return POM_ERR;
+			}
+		} else {
+			if (filter->data.key) {
+				pomlog(POMLOG_ERR "Filter item \"%s\" is not a list, no key should be provided", name);
+				return POM_ERR;
+			}
+		}
+
+		if (!filter->data.op_str)
+			return POM_OK;
+
+
+		if (!filter->data.value_str) {
+			pomlog(POMLOG_ERR "No value for item \"%s\"", name);
+			return POM_ERR;
+		}
+
+		filter->data.value = ptype_alloc_from_type(item->value_type);
+		if (!filter->data.value)
+			return POM_ERR;
+
+		if (ptype_parse_val(filter->data.value, filter->data.value_str) != POM_OK) {
+			pomlog(POMLOG_ERR "Could not parse filter value \"%s\" for item \"%s\"", filter->data.value_str, name);
+			return POM_ERR;
+		}
+
+		filter->data.op = ptype_get_op(filter->data.value, filter->data.op_str);
+
+		if (filter->data.op == POM_ERR) {
+			pomlog(POMLOG_ERR "Invalid ptype operation \"%s\" for item \"%s\"", filter->data.op_str, name);
+			return POM_ERR;
+		}
+
+	} else {
+		pomlog(POMLOG_ERR "Unexpected filter node type %u", filter->type);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+
+}
+
+
+int filter_event_match(struct filter_node *filter, struct event *evt) {
+
+	if (filter->type == filter_node_type_branch) {
+
+		int res_a = filter_event_match(filter->branch.a, evt);
+		int res_b = filter_event_match(filter->branch.b, evt);
+
+		if (res_a == POM_ERR || res_b == POM_ERR)
+			return POM_ERR;
+
+		if (filter->branch.op == FILTER_OP_AND)
+			return res_a && res_b;
+		
+		// FILTER_OP_OR
+
+		return res_a || res_b;
+
+	} else if (filter->type == filter_node_type_event_prop) {
+
+	} else if (filter->type == filter_node_type_event_data) {
+
+		struct data *data = event_get_data(evt);
+
+		if (!data_is_set(data[filter->data.field_id]))
+			return FILTER_MATCH_NO;
+
+		if (!filter->data.value)
+			return FILTER_MATCH_YES;
+		
+		return ptype_compare_val(filter->data.op, filter->data.value, data[filter->data.field_id].value);
+
+
+	}
+
+	pomlog(POMLOG_ERR "Unhandled filter node type");
+	return POM_ERR;
+}
+
+
+int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter) {
+
+	if (filter_parse(filter_expr, strlen(filter_expr), filter, filter_type_event) != POM_OK)
+		return POM_ERR;
+
+	if (!*filter)
+		return POM_OK;
+
+	if (filter_event_compile(*filter, evt_reg) != POM_OK)
+		return POM_ERR;
+
+	return POM_OK;
 }

@@ -42,7 +42,7 @@ struct xmlrpccmd_monitor_session {
 
 struct xmlrpccmd_monitor_evt_listener {
 	uint64_t id;
-	void *filter;
+	struct filter_node *filter;
 	struct xmlrpccmd_monitor_evt_listener *prev, *next;
 };
 

@@ -20,6 +20,7 @@
 
 #include "common.h"
 #include "xmlrpcsrv.h"
+#include "filter.h"
 #include <pom-ng/event.h>
 
 #include "xmlrpccmd.h"
@@ -264,14 +265,15 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 
 	xmlrpc_int id = -1;
 	char *evt_name = NULL;
-	char *filter = NULL;
+	char *filter_expr = NULL;
 
-	xmlrpc_decompose_value(envP, paramArrayP, "(iss)", &id, &evt_name, &filter);
+	xmlrpc_decompose_value(envP, paramArrayP, "(iss)", &id, &evt_name, &filter_expr);
 	if (envP->fault_occurred)
 		return NULL;
 
 	if (id < 0 || id >= XMLRPCCMD_MONITOR_MAX_SESSION) {
 		free(evt_name);
+		free(filter_expr);
 		xmlrpc_faultf(envP, "Invalid session id");
 		return NULL;
 	}
@@ -280,11 +282,27 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 	if (!evt) {
 		xmlrpc_faultf(envP, "Event %s does not exists", evt_name);
 		free(evt_name);
+		free(filter_expr);
 		return NULL;
 	}
 
+	struct filter_node *filter = NULL;
+	// Attempt to parse the filter
+	
+	if (filter_event(filter_expr, evt, &filter) != POM_OK) {
+
+		xmlrpc_faultf(envP, "Error while parsing the filter");
+		free(evt_name);
+		free(filter_expr);
+		return NULL;
+	}
+
+
 	struct xmlrpccmd_monitor_evt_listener *l = malloc(sizeof(struct xmlrpccmd_monitor_evt_listener));
 	if (!l) {
+		free(evt_name);
+		free(filter_expr);
+		filter_cleanup(filter);
 		pom_oom(sizeof(struct xmlrpccmd_monitor_evt_listener));
 		xmlrpc_faultf(envP, "Not enough memory");
 		return NULL;
@@ -293,12 +311,17 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 
 	pomlog(POMLOG_DEBUG "Adding event %s to session %u", evt_name, id);
 	free(evt_name);
+	free(filter_expr);
+
+	l->filter = filter;
 
 	// Find the right session and lock it
 
 	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
 	struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[id];
 	if (!sess) {
+		filter_cleanup(filter);
+		free(l);
 		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 		xmlrpc_faultf(envP, "Session %u not found", id);
 		return NULL;
@@ -320,6 +343,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		lst = malloc(sizeof(struct xmlrpccmd_monitor_evtreg));
 		if (!lst) {
 			pom_mutex_unlock(&sess->lock);
+			filter_cleanup(filter);
 			free(l);
 			pom_oom(sizeof(struct xmlrpccmd_monitor_evtreg));
 			xmlrpc_faultf(envP, "Not enough memory");
@@ -333,6 +357,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		
 		if (event_listener_register(evt, lst, NULL, xmlrpccmd_monitor_process_end) != POM_OK) {
 			pom_mutex_unlock(&sess->lock);
+			filter_cleanup(filter);
 			free(l);
 			free(lst);
 			xmlrpc_faultf(envP, "Error while listening to the event.");
@@ -539,10 +564,8 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 		xmlrpc_value *listener_lst = NULL;
 		for (; listeners; listeners = listeners->next) {
 			
-			if (listeners->filter) {
-				// TODO
+			if (listeners->filter && (filter_event_match(listeners->filter, evt) != FILTER_MATCH_YES))
 				continue;
-			}
 			
 			if (!listener_lst)
 				listener_lst = xmlrpc_array_new(envP);
@@ -579,8 +602,8 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 				
 				value = xmlrpc_array_new(envP);
 
-				struct data_item *itm = evt_data[i].items;
-				while (itm) {
+				struct data_item *itm;
+				for (itm = evt_data[i].items; itm; itm = itm->next) {
 					xmlrpc_value *itm_val = xmlrpccmd_ptype_to_val(envP, itm->value);
 					xmlrpc_value *itm_entry = xmlrpc_build_value(envP, "{s:s,s:V}", "key", itm->key, "value", itm_val);
 					xmlrpc_DECREF(itm_val);

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #define __FILTER_H__
 
 #include <pom-ng/filter.h>
+#include <pom-ng/event.h>
 #include "core.h"
 
 struct filter_proto {
@@ -35,7 +36,73 @@ struct filter_proto {
 	struct ptype *value;
 };
 
+
+enum filter_evt_prop_type {
+	filter_evt_prop_type_time,
+	filter_evt_prop_type_name,
+	filter_evt_prop_type_source,
+	filter_evt_prop_type_descr,
+};
+
+struct filter_data {
+
+	int op;
+	char *op_str;
+	char *name;
+	char *key;
+
+	int field_id;
+	char *value_str;
+	struct ptype *value;
+
+};
+
+enum filter_type {
+	filter_type_payload,
+	filter_type_event,
+};
+
+enum filter_node_type {
+	filter_node_type_event_prop,
+	filter_node_type_event_data,
+	filter_node_type_pload_type,
+	filter_node_type_pload_data,
+	filter_node_type_proto,
+	filter_node_type_branch
+};
+
+struct filter_branch {
+	struct filter_node *a;
+	struct filter_node *b;
+	int op;
+};
+
+struct filter_node {
+
+	enum filter_node_type type;
+	union {
+		struct filter_data data;
+		struct filter_branch branch;
+	};
+
+	int not;
+
+};
+
+
 int filter_proto_match(struct proto_process_stack *stack, struct filter_proto *f);
 int filter_proto_parse_block(char *expr, unsigned int len, struct filter_proto **f);
 
+int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filter_type type);
+int filter_parse_block(char *expr, unsigned int len, struct filter_node **n, enum filter_type type);
+int filter_event_parse_block(char *expr, unsigned int len, struct filter_node *n);
+int filter_pload_parse_block(char *expr, unsigned int len, struct filter_node *n);
+
+void filter_cleanup(struct filter_node *filter);
+
+int filter_event_compile(struct filter_node *filter, struct event_reg *evt);
+int filter_event_match(struct filter_node *filter, struct event *evt);
+int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
+
 #endif
+
