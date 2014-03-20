@@ -151,6 +151,18 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		struct xmlrpccmd_monitor_evtreg *evtreg = sess->events_reg;
 		sess->events_reg = evtreg->next;
 		event_listener_unregister(evtreg->evt_reg, evtreg);
+
+
+		while (evtreg->listeners) {
+			struct xmlrpccmd_monitor_evt_listener *tmp = evtreg->listeners;
+			evtreg->listeners = tmp->next;
+
+			if (tmp->filter)
+				filter_cleanup(tmp->filter);
+			free(tmp);
+
+		}
+
 		free(evtreg);
 	}
 
@@ -435,6 +447,9 @@ xmlrpc_value *xmlrpccmd_monitor_event_remove_listener(xmlrpc_env * const envP, x
 		listener_lst->prev->next = listener_lst->next;
 	else
 		evt_lst->listeners = listener_lst->next;
+
+	if (listener_lst->filter)
+		filter_cleanup(listener_lst->filter);
 
 	free(listener_lst);
 

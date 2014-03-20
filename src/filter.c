@@ -405,10 +405,13 @@ int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filt
 		return POM_OK;
 	}
 
-	*n = malloc(sizeof(struct filter_node));
 	if (!*n) {
-		pom_oom(sizeof(struct filter_node));
-		return POM_ERR;
+
+		*n = malloc(sizeof(struct filter_node));
+		if (!*n) {
+			pom_oom(sizeof(struct filter_node));
+			return POM_ERR;
+		}
 	}
 	memset(*n, 0, sizeof(struct filter_node));
 
@@ -704,7 +707,31 @@ int filter_pload_parse_block(char *expr, unsigned int len, struct filter_node *n
 
 
 void filter_cleanup(struct filter_node *filter) {
-	// TODO
+
+
+	if (!filter)
+		return;
+
+	if (filter->type == filter_node_type_branch) {
+		filter_cleanup(filter->branch.a);
+		filter_cleanup(filter->branch.b);
+		free(filter);
+		return;
+	}
+	
+	if (filter->data.op_str)	
+		free(filter->data.op_str);
+	if (filter->data.name)
+		free(filter->data.name);
+	if (filter->data.key)
+		free(filter->data.key);
+	if (filter->data.value_str)
+		free(filter->data.value_str);
+	if (filter->data.value)
+		ptype_cleanup(filter->data.value);
+
+	free(filter);
+
 	return;
 }
 
