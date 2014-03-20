@@ -30,8 +30,6 @@
 #define HTTPD_CONN_GET	1
 #define HTTPD_CONN_POST	2
 
-#define HTTPD_CONN_TIMEOUT	10
-
 #define HTTPD_POST_BUFF_SIZE	512
 
 #define HTTPD_STATUS_URL	"/status.html"
