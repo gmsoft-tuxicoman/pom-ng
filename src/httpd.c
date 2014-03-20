@@ -63,7 +63,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 			goto err;
 		}
 
-		httpd_ssl_cert = malloc(s.st_size);
+		httpd_ssl_cert = malloc(s.st_size + 1);
 		if (!httpd_ssl_cert) {
 			pom_oom(s.st_size);
 			goto err;
@@ -73,6 +73,9 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 			goto err;
 
 		close(fd);
+
+		// Terminate with a NULL
+		httpd_ssl_cert[s.st_size] = 0;
 
 	}
 
@@ -90,7 +93,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 			goto err;
 		}
 
-		httpd_ssl_key = malloc(s.st_size);
+		httpd_ssl_key = malloc(s.st_size + 1);
 		if (!httpd_ssl_key) {
 			pom_oom(s.st_size);
 			goto err;
@@ -100,6 +103,9 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 			goto err;
 
 		close(fd);
+
+		// Terminate with a NULL
+		httpd_ssl_key[s.st_size] = 0;
 
 	}
 
