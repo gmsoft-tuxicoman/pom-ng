@@ -14,7 +14,7 @@ KEYWORDS="~amd64"
 IUSE="magic pcap zlib jpeg sqlite console exif addons"
 
 DEPEND="
-	net-libs/libmicrohttpd
+	net-libs/libmicrohttpd[messages]
 	dev-libs/libxml2
 	dev-libs/xmlrpc-c[threads]
 	=dev-lang/lua-5.1*
