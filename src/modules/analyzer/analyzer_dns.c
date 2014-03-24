@@ -259,7 +259,7 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 
 		len++;
 
-		if (data_tmp + len > msg_end) {
+		if (data_tmp + len >= msg_end) {
 			debug_dns("Label length too big");
 			return POM_ERR;
 		}
@@ -764,21 +764,18 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 				break;
 			}
 			case ns_t_txt: {
-				char *txt = NULL;
-				void *tmp_data_start = data_start;
-				size_t tmp_data_remaining = data_remaining;
-				if (analyzer_dns_parse_name(s->pload, &tmp_data_start, &tmp_data_remaining, &txt) != POM_OK) {
-					debug_dns("Could not parse TXT");
+				uint8_t *str_len = data_start;
+				if (*str_len > data_remaining) {
+					debug_dns("Character string too long.");
 					event_cleanup(evt_record);
 					return POM_OK;
 				}
 
 				struct ptype *val = ptype_alloc("string");
-				if (!val) {
-					free(txt);
+				if (!val)
 					break;
-				}
-				PTYPE_STRING_SETVAL_P(val, txt);
+
+				PTYPE_STRING_SETVAL_N(val, data_start + 1, *str_len);
 				if (data_item_add_ptype(evt_data, analyzer_dns_record_values, strdup("txt"), val) != POM_OK) {
 					ptype_cleanup(val);
 					break;
