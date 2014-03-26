@@ -384,7 +384,7 @@ err:
 
 
 
-int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filter_type type) {
+int filter_raw_parse(char *expr, unsigned int len, struct filter_raw_node **n) {
 
 	unsigned int i;
 	int stack_size = 0;
@@ -400,20 +400,18 @@ int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filt
 	while (len && expr[len - 1] == ' ')
 		len--;
 
-	if (!len) {
-		*n = NULL;
+	if (!len)
 		return POM_OK;
-	}
 
 	if (!*n) {
 
-		*n = malloc(sizeof(struct filter_node));
+		*n = malloc(sizeof(struct filter_raw_node));
 		if (!*n) {
-			pom_oom(sizeof(struct filter_node));
+			pom_oom(sizeof(struct filter_raw_node));
 			return POM_ERR;
 		}
 	}
-	memset(*n, 0, sizeof(struct filter_node));
+	memset(*n, 0, sizeof(struct filter_raw_node));
 
 	for (i = 0; i < len; i++) {
 		if (stack_size == 0 && expr[i] == '|' && expr[i + 1] == '|')  {
@@ -440,12 +438,12 @@ int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filt
 		if (branch_found) {
 			// A branch was found, parse both sides
 			
-			struct filter_branch *branch = &(*n)->branch;
+			struct filter_raw_branch *branch = &(*n)->branch;
 			branch->op = branch_op;
 
-			(*n)->type = filter_node_type_branch;
+			(*n)->isbranch = 1;
 			
-			if (filter_parse(expr, i - 1, &branch->a, type) != POM_OK || filter_parse(expr + i + 2, len - i - 2, &branch->b, type) != POM_OK)
+			if (filter_raw_parse(expr, i - 1, &branch->a) != POM_OK || filter_raw_parse(expr + i + 2, len - i - 2, &branch->b) != POM_OK)
 				return POM_ERR;
 
 			if (!branch->a || !branch->b) {
@@ -463,12 +461,12 @@ int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filt
 	}
 
 	// There was no branch, process the whole thing then
-	return filter_parse_block(expr, len, n, type);
+	return filter_raw_parse_block(expr, len, n);
 	
 }
 
 
-int filter_parse_block(char *expr, unsigned int len, struct filter_node **n, enum filter_type type) {
+int filter_raw_parse_block(char *expr, unsigned int len, struct filter_raw_node **n) {
 
 	if (len < 2)
 		return POM_ERR;
@@ -481,10 +479,8 @@ int filter_parse_block(char *expr, unsigned int len, struct filter_node **n, enu
 	while (len && expr[len - 1] == ' ')
 		len--;
 
-	if (!len) {
-		*n = NULL;
+	if (!len)
 		return POM_OK;
-	}
 
 	// Find out if there is an inversion
 	int inv = 0;
@@ -502,383 +498,442 @@ int filter_parse_block(char *expr, unsigned int len, struct filter_node **n, enu
 	if (expr[0] == '(' && expr[len - 1] == ')') {
 		expr++;
 		len -= 2;
-		int res = filter_parse(expr, len, n, type);
+		int res = filter_raw_parse(expr, len, n);
 		if (inv)
 			(*n)->not = 1;
 		return res;
 	}
 
-	// At this point we should have only 'what op value' i.e. 'event.data.blah = 2'
 
-	switch (type) {
-		case filter_type_payload:
-			return filter_pload_parse_block(expr, len, *n);
-		case filter_type_event:
-			return filter_event_parse_block(expr, len, *n);
-	}
-
-	return POM_ERR;
-}
-
-int filter_event_parse_block(char *expr, unsigned int len, struct filter_node *n) {
-
-	// Example of value passed : "data.width > 400", "data.request_header[cookies]", "name == some_event_name"
-
-	// There are a few things that we can parse
-
-	if (len >= strlen("time ") && !strncmp(expr, "time ", strlen("time "))) {
-		n->type = filter_node_type_event_prop;
-		n->data.field_id = filter_evt_prop_type_time;
-	} else if (len >= strlen("name ") && !strncmp(expr, "name ", strlen("name "))) {
-		n->type = filter_node_type_event_prop;
-		n->data.field_id = filter_evt_prop_type_name;
-	} else if (len >= strlen("source ") && !strncmp(expr, "source ", strlen("source "))) {
-		n->type = filter_node_type_event_prop;
-		n->data.field_id = filter_evt_prop_type_source;
-	} else if (len >= strlen("descr ") && !strncmp(expr, "descr ", strlen("descr "))) {
-		n->type = filter_node_type_event_prop;
-		n->data.field_id = filter_evt_prop_type_descr;
-	} else if (len >= strlen("data.") && !strncmp(expr, "data.", strlen("data."))) {
-		n->type = filter_node_type_event_data;
-		expr += strlen("data.");
-		len -= strlen("data.");
-	} else {
-		pomlog(POMLOG_ERR "Unexpected value for event property !");
-		return POM_ERR;
-	}
-	
-	char* space = memchr(expr, ' ', len);
-
-	if (space) {
-		while (*space == ' ')
-			space++;
-	}
-
-	if (n->type == filter_node_type_event_data) {
-		size_t field_len = len;
-
-		if (space)
-			field_len = space - expr - 1;
-
-	
-		char *key = memchr(expr, '[', field_len);
-		if (key) {
-			if (*(expr + field_len - 1) != ']') {
-				pomlog(POMLOG_ERR "Missing ']'");
-				return POM_ERR;
-			}
-			key++;
-			size_t key_len = expr + field_len - key - 1;
-			n->data.key = strndup(key, key_len);
-			if (!n->data.key) {
-				pom_oom(key_len + 1);
-				return POM_ERR;
-			}
-			field_len = key - expr - 1;
-		}
-
-		n->data.name = strndup(expr, field_len);
-		if (!n->data.name) {
-			pom_oom(field_len + 1);
-			return POM_ERR;
-		}
-
-		if (!space) {
-			// Nothing more to parse
-			return POM_OK;
-		}
-
-		len -= space - expr;
-		expr = space;
-		space = memchr(expr, ' ', len);
-
-		if (!space) {
-			// Nothing more to parse
-			return POM_OK;
-		}
-
-		while (*space == ' ')
-			space++;
-	} else {
-		len -= space - expr;
-		expr = space;
-		space = memchr(expr, ' ', len);
-
-		if (!space) {
-			pomlog(POMLOG_ERR "Mandatory argument missing");
-			return POM_ERR;
-		}
-
-	}
-
-	n->data.op_str = strndup(expr, space - expr - 1);
-	if (!n->data.op_str) {
-		pom_oom(space - expr);
-		return POM_ERR;
-	}
-
-	while (*space == ' ')
-		space++;
-
-	n->data.value_str = strndup(space, len - (space - expr));
-	if (!n->data.value_str) {
-		pom_oom(len - (space - expr));
-		return POM_ERR;
-	}
-
-	return POM_OK;
-}
-
-int filter_pload_parse_block(char *expr, unsigned int len, struct filter_node *n) {
-
-	// Example of value passed : "evt.data.width > 400", "data.request_header[cookies]", "name == some_event_name"
-
-	// There are a few things that we can parse
-
-	if (len >= strlen("evt.") && !strncmp(expr, "evt.", strlen("evt."))) {
-		// Parse event related stuff
-		return filter_pload_parse_block(expr + strlen("evt."), len - strlen("evt."), n);
-	} else if (len >= strlen("type.") && !strncmp(expr, "type.", strlen("type."))) {
-		n->type = filter_node_type_pload_type;
-		expr += strlen("type.");
-		len -= strlen("type.");
-	} else if (len >= strlen("data.") && !strncmp(expr, "data.", strlen("data."))) {
-		n->type = filter_node_type_pload_data;
-		expr += strlen("data.");
-		len -= strlen("data.");
-	} else {
-		pomlog(POMLOG_ERR "Unexpected value for pload property !");
-		return POM_ERR;
-	}
-	
 	char *space = memchr(expr, ' ', len);
 
-	size_t field_len = len;
+	size_t data_len = len;
+
 	if (space) {
-		field_len = space - expr;
-		while (*space == ' ')
-			space++;
+		data_len = space - expr;
 	}
 
-	if (n->type == filter_node_type_pload_data) {
-		char *key = memchr(expr, '[', field_len);
-		if (key) {
-			if (*(expr + field_len - 1) != ']') {
-				pomlog(POMLOG_ERR "Missing ']'");
-				return POM_ERR;
-			}
-			key++;
-			size_t key_len = expr + field_len - key - 1;
-			n->data.key = strndup(key, key_len);
-			if (!n->data.key) {
-				pom_oom(key_len + 1);
-				return POM_ERR;
-			}
-			field_len = key - expr - 1;
+	(*n)->data.value[0] = strndup(expr, data_len);
+	if (!(*n)->data.value[0]) {
+		pom_oom(data_len + 1);
+		return POM_ERR;
+	}
+
+	if (!space)
+		return POM_OK;
+
+	len -= data_len;
+
+	expr = space;
+	while (*expr == ' ') {
+		expr++;
+		len--;
+	}
+
+	space = memchr(expr, ' ', len);
+	if (!space) {
+		pomlog(POMLOG_ERR "Incomplete filter expression");
+		return POM_ERR;
+	}
+
+	data_len = space - expr;
+	(*n)->data.op = strndup(expr, data_len);
+	if (!(*n)->data.op) {
+		pom_oom(data_len + 1);
+		return POM_ERR;
+	}
+	
+	expr = space;
+	len -= data_len;
+
+	while (*expr == ' ') {
+		expr++;
+		len--;
+	}
+
+	(*n)->data.value[1] = strndup(expr, len);
+	if (!((*n)->data.value[1])) {
+		pom_oom(len + 1);
+		return POM_ERR;
+	}
+		
+	return POM_ERR;
+}
+
+void filter_raw_cleanup(struct filter_raw_node *fr) {
+
+	if (!fr)
+		return;
+
+	if (fr->isbranch) {
+		filter_raw_cleanup(fr->branch.a);
+		filter_raw_cleanup(fr->branch.b);
+		free(fr);
+		return;
+	}
+
+	if (fr->data.value[0])
+		free(fr->data.value[0]);
+	if (fr->data.value[1])
+		free(fr->data.value[1]);
+	if (fr->data.op)
+		free(fr->data.op);
+	free(fr);
+
+}
+
+
+int filter_event_compile(struct filter_node **filter, struct event_reg *evt, struct filter_raw_node *filter_raw) {
+
+	if (!*filter) {
+		*filter = malloc(sizeof(struct filter_node));
+		if (!*filter) {
+			pom_oom(sizeof(struct filter_node));
+			return POM_ERR;
 		}
+		memset(*filter, 0, sizeof(struct filter_node));
 	}
 
-	n->data.name = strndup(expr, field_len);
-	if (!n->data.name) {
-		pom_oom(field_len + 1);
+	struct filter_node *n = *filter;
+	int i;
+
+	if (filter_raw->isbranch) {
+		n->type[0] = filter_value_type_node;
+		n->type[1] = filter_value_type_node;
+
+		if (filter_event_compile(&n->value[0].node, evt, filter_raw->branch.a) != POM_OK)
+			return POM_ERR;
+
+		if (filter_event_compile(&n->value[1].node, evt, filter_raw->branch.b) != POM_OK)
+			return POM_ERR;
+
+		n->op = filter_raw->branch.op;
+
+		return POM_OK;
+
+	}
+
+
+
+	struct event_reg_info *info = event_reg_get_info(evt);
+
+	for (i = 0; i < 2; i++) {
+
+		char *value = filter_raw->data.value[i];
+
+		if (!value)
+			return POM_OK;
+
+		if (!strncmp(value, "data.", strlen("data."))) {
+			value += strlen("data.");
+			n->type[i] = filter_value_type_data;
+			if (filter_data_compile(&n->value[i].data, info->data_reg, value) == POM_ERR)
+				return POM_ERR;
+		} else if (!strcmp(value, "time")) {
+			n->type[i] = filter_value_type_evt_prop;
+			n->value[i].integer = filter_evt_prop_time;
+		} else if (!strcmp(value, "name")) {
+			n->type[i] = filter_value_type_evt_prop;
+			n->value[i].integer = filter_evt_prop_name;
+		} else if (!strcmp(value, "source")) {
+			n->type[i] = filter_value_type_evt_prop;
+			n->value[i].integer = filter_evt_prop_source;
+		} else {
+			n->type[i] = filter_value_type_string;
+			n->value[i].string = value;
+			
+			// Prevent the string from being freed
+			filter_raw->data.value[i] = NULL;
+		}
+
+	}
+
+
+	if (filter_op_compile(n, filter_raw) != POM_OK)
+		return POM_ERR;
+
+
+	// Do our specialized compilation
+	if (n->type[0] == filter_value_type_evt_prop || n->type[1] == filter_value_type_evt_prop) {
+		
+		int prop = 0, value = 1;
+
+		if (n->type[0] == filter_value_type_evt_prop && n->type[1] == filter_value_type_evt_prop) {
+			pomlog(POMLOG_ERR "Cannot match even property against another one");
+			return POM_ERR;
+		}
+		
+		if (n->type[1] == filter_value_type_evt_prop) {
+			prop = 1;
+			value = 0;
+		}
+
+		if (n->value[prop].integer == filter_evt_prop_time) {
+			// FIXME
+			pomlog(POMLOG_WARN "Timestamp parsing not implemented yet");
+			return POM_ERR;
+		} else if (n->type[value] != filter_value_type_string) {
+
+			pomlog(POMLOG_WARN "Unexpected combination of value type with even property");
+			return POM_ERR;
+		}
+
+	}
+
+	return filter_node_compile(n);
+
+}
+
+
+int filter_data_compile(struct filter_data *d, struct data_reg *dr, char *value) {
+
+	char *key = strchr(value, '[');
+	if (key) {
+		*key = 0;
+		key++;
+		char *key_end = strchr(key, ']');
+		if (!key_end) {
+			pomlog(POMLOG_ERR "Missing ] for data key in filter for item %s", value);
+			return POM_ERR;
+		}
+		*key_end = 0;
+	}
+
+	
+	int i;
+	for (i = 0; strcmp(dr->items[i].name, value) && i < dr->data_count; i ++);
+
+	if (i >= dr->data_count) {
+		pomlog(POMLOG_ERR "Data item %s not found", value);
 		return POM_ERR;
 	}
 
-	while (*space == ' ')
-		space++;
+	struct data_item_reg *item = &dr->items[i];
 
-	n->data.op_str = strndup(expr, space - expr);
-	if (!n->data.op_str) {
-		pom_oom(space - expr);
-		return POM_ERR;
-	}
+	d->field_id = i;
+	d->pt_reg = item->value_type;
 
-	while (*space == ' ')
-		space++;
-
-	n->data.value_str = strndup(space, len - (space - expr));
-	if (!n->data.value_str) {
-		pom_oom(len - (space - expr));
+	if (key) {
+		if (!(item->flags & DATA_REG_FLAG_LIST)) {
+			pomlog(POMLOG_ERR "Key provided for item %s while it's not a list", value);
+			return POM_ERR;
+		}
+		d->key = strdup(key);
+		if (!d->key) {
+			pom_oom(strlen(key) + 1);
+			return POM_ERR;
+		}
+	} else if (item->flags & DATA_REG_FLAG_LIST) {
+		pomlog(POMLOG_ERR "Key not provided for filter value %s", value);
 		return POM_ERR;
 	}
 
 	return POM_OK;
 }
 
+int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr) {
 
-void filter_cleanup(struct filter_node *filter) {
+	char *op = fr->data.op;
 
+	n->op = FILTER_OP_NOP;
 
-	if (!filter)
-		return;
-
-	if (filter->type == filter_node_type_branch) {
-		filter_cleanup(filter->branch.a);
-		filter_cleanup(filter->branch.b);
-		free(filter);
-		return;
+	if (!strcmp(op, "eq") || !strcmp(op, "==") || !strcmp(op, "equals")) {
+		n->op = FILTER_OP_EQ;
+	} else if (!strcmp(op, "gt") || !strcmp(op, ">")) {
+		n->op = FILTER_OP_GT;
+	} else if (!strcmp(op, "ge") || !strcmp(op, ">=")) {
+		n->op = FILTER_OP_GE;
+	} else if (!strcmp(op, "lt") || !strcmp(op, "<")) {
+		n->op = FILTER_OP_LT;
+	} else if (!strcmp(op, "le") || !strcmp(op, "<=")) {
+		n->op = FILTER_OP_LE;
+	} else if (!strcmp(op, "neq") || !strcmp(op, "!=")) {
+		n->op = FILTER_OP_NEQ;
 	}
-	
-	if (filter->data.op_str)	
-		free(filter->data.op_str);
-	if (filter->data.name)
-		free(filter->data.name);
-	if (filter->data.key)
-		free(filter->data.key);
-	if (filter->data.value_str)
-		free(filter->data.value_str);
-	if (filter->data.value)
-		ptype_cleanup(filter->data.value);
 
-	free(filter);
+	if (n->op == FILTER_OP_NOP)
+		return POM_ERR;
 
-	return;
+	return POM_OK;
 }
 
 
-int filter_event_compile(struct filter_node *filter, struct event_reg *evt) {
+int filter_node_compile(struct filter_node *n) {
 
-	if (filter->type == filter_node_type_branch) {
-		if (filter_event_compile(filter->branch.a, evt) != POM_OK)
-			return POM_ERR;
-
-		if (filter_event_compile(filter->branch.b, evt) != POM_OK)
-			return POM_ERR;
-
-	} else if (filter->type == filter_node_type_event_prop) {
-
-		filter->data.op = ptype_get_op(NULL, filter->data.op_str);
-
-		if (filter->data.op == POM_ERR) {
-			pomlog(POMLOG_ERR "Invalid operation \"%s\" for event property", filter->data.op_str);
+	if (n->type[0] == filter_value_type_data && n->type[1] == filter_value_type_data) {
+		if (n->value[0].data.pt_reg != n->value[1].data.pt_reg) {
+			pomlog(POMLOG_ERR "Cannot compare different types of ptype");
 			return POM_ERR;
 		}
-
-		if (filter->data.field_id != filter_evt_prop_type_time && (filter->data.op != PTYPE_OP_EQ && filter->data.op != PTYPE_OP_NEQ)) {
-			pomlog(POMLOG_ERR "Operation \"%s\" not allowed for event property", filter->data.op_str);
-			return POM_ERR;
+	} else if (n->type[0] == filter_value_type_data || n->type[1] == filter_value_type_data) {
+		int data = 0, value = 1;
+		if (n->type[0] != filter_value_type_data) {
+			data = 1;
+			value = 0;
 		}
 
-	} else if (filter->type == filter_node_type_event_data) {
-		
-		struct event_reg_info *info = event_reg_get_info(evt);
+		if (n->type[value] == filter_value_type_string) {
 
-		struct data_reg *data = info->data_reg;
-
-		char *name = filter->data.name;
-
-		// Find the right item
-		int i;
-		struct data_item_reg *item = NULL;
-		for (i = 0; i < data->data_count; i++) {
-			item = &data->items[i];
-			if (!strcmp(item->name, name))
-				break;
-		}
-
-		if (i >= data->data_count) {
-			pomlog(POMLOG_ERR "Item \"%s\" does not exists", name);
-			return POM_ERR;
-		}
-
-		filter->data.field_id = i;
-
-		if (item->flags & DATA_REG_FLAG_LIST) {
-			if (!filter->data.key) {
-				pomlog(POMLOG_ERR "Filter item \"%s\" requires a key as it's a list", name);
+			struct ptype *v = ptype_alloc_from_type(n->value[data].data.pt_reg);
+			if (!v)
 				return POM_ERR;
+			if (ptype_parse_val(v, n->value[value].string) != POM_OK)
+				return POM_ERR;
+
+			free(n->value[value].string);
+			n->type[value] = filter_value_type_ptype;
+			n->value[value].ptype = v;
+		} else if (n->type[value] != filter_value_type_ptype) {
+			pomlog(POMLOG_ERR "Unhandled value type %u when the other one is of type 'data'", n->type[value]);
+			return POM_ERR;
+		}
+
+	}
+
+	pomlog(POMLOG_ERR "Unhandled combination of data types");
+	return POM_ERR;
+
+}
+
+int filter_event_match(struct filter_node *n, struct event *evt) {
+
+	int res = FILTER_MATCH_NO;
+
+	if (n->type[0] == filter_value_type_node && n->type[1] == filter_value_type_node) {
+		int res_a, res_b;
+
+		res_a = filter_event_match(n->value[0].node, evt);
+		if (res_a == POM_ERR)
+			return POM_ERR;
+
+		res_b = filter_event_match(n->value[1].node, evt);
+		if (res_b == POM_ERR)
+			return POM_ERR;
+
+
+		if (n->op == FILTER_OP_AND) {
+			res = res_a && res_b;
+		} else if (n->op == FILTER_OP_OR) {
+			res = res_a || res_b;
+		} else {
+			pomlog(POMLOG_ERR "Invalid operation for nodes");
+			return POM_ERR;
+		}
+
+		if (n->not)
+			return !res;
+
+		return res;
+	}
+
+	if (n->type[0] == filter_value_type_evt_prop || n->type[1] == filter_value_type_evt_prop) {
+		pomlog(POMLOG_WARN "Event property matching not implemented yet");
+		return POM_ERR;
+	} else if (n->type[0] == filter_value_type_data || n->type[1] == filter_value_type_data) {
+
+		struct ptype *v[2] = { 0 };
+
+		int i;
+		for (i = 0; i < 2; i++) {
+			if (n->type[i] == filter_value_type_data) {
+				int id = n->value[i].data.field_id;
+				struct data *d = event_get_data(evt);
+
+				if (!data_is_set(d[id]))
+					continue;
+
+				if (n->value[i].data.key) {
+					struct data_item *itm;
+					for (itm = d[id].items; itm && strcmp(itm->key, n->value[i].data.key); itm = itm->next);
+					if (!itm) {
+						res = FILTER_MATCH_NO;
+						break;
+					}
+					v[i] = itm->value;
+				} else {
+					v[i] = d[id].value;
+				}
+
+			} else if (n->type[i] == filter_value_type_ptype) {
+				v[i] = n->value[i].ptype;
+			} else if (n->type[i] != filter_value_type_none) {
+				pomlog(POMLOG_WARN "Unexpected filter value");
+				return POM_ERR;
+			}
+
+		}
+
+		if (n->op == FILTER_OP_NOP) {
+			if (v[0] || v[1]) { // Only v[0] should be set but for safety we match both
+				res = FILTER_MATCH_YES;
 			}
 		} else {
-			if (filter->data.key) {
-				pomlog(POMLOG_ERR "Filter item \"%s\" is not a list, no key should be provided", name);
+
+			if (!v[0] || !v[1]) {
+				pomlog(POMLOG_ERR "Missing value for comparison");
 				return POM_ERR;
 			}
-		}
 
-		if (!filter->data.op_str)
-			return POM_OK;
+			res = ptype_compare_val(n->op, v[0], v[1]);
 
-
-		if (!filter->data.value_str) {
-			pomlog(POMLOG_ERR "No value for item \"%s\"", name);
-			return POM_ERR;
-		}
-
-		filter->data.value = ptype_alloc_from_type(item->value_type);
-		if (!filter->data.value)
-			return POM_ERR;
-
-		if (ptype_parse_val(filter->data.value, filter->data.value_str) != POM_OK) {
-			pomlog(POMLOG_ERR "Could not parse filter value \"%s\" for item \"%s\"", filter->data.value_str, name);
-			return POM_ERR;
-		}
-
-		filter->data.op = ptype_get_op(filter->data.value, filter->data.op_str);
-
-		if (filter->data.op == POM_ERR) {
-			pomlog(POMLOG_ERR "Invalid ptype operation \"%s\" for item \"%s\"", filter->data.op_str, name);
-			return POM_ERR;
 		}
 
 	} else {
-		pomlog(POMLOG_ERR "Unexpected filter node type %u", filter->type);
+		pomlog(POMLOG_ERR "Unhandled combination of data types");
 		return POM_ERR;
 	}
 
-	return POM_OK;
 
-}
+	if (n->not)
+		return !res;
 
-
-int filter_event_match(struct filter_node *filter, struct event *evt) {
-
-	if (filter->type == filter_node_type_branch) {
-
-		int res_a = filter_event_match(filter->branch.a, evt);
-		int res_b = filter_event_match(filter->branch.b, evt);
-
-		if (res_a == POM_ERR || res_b == POM_ERR)
-			return POM_ERR;
-
-		if (filter->branch.op == FILTER_OP_AND)
-			return res_a && res_b;
-		
-		// FILTER_OP_OR
-
-		return res_a || res_b;
-
-	} else if (filter->type == filter_node_type_event_prop) {
-
-	} else if (filter->type == filter_node_type_event_data) {
-
-		struct data *data = event_get_data(evt);
-
-		if (!data_is_set(data[filter->data.field_id]))
-			return FILTER_MATCH_NO;
-
-		if (!filter->data.value)
-			return FILTER_MATCH_YES;
-		
-		return ptype_compare_val(filter->data.op, filter->data.value, data[filter->data.field_id].value);
-
-
-	}
-
-	pomlog(POMLOG_ERR "Unhandled filter node type");
-	return POM_ERR;
+	return res;
 }
 
 
 int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter) {
 
-	if (filter_parse(filter_expr, strlen(filter_expr), filter, filter_type_event) != POM_OK)
-		return POM_ERR;
+	struct filter_raw_node *fr = NULL;
 
-	if (!*filter)
+	if (filter_raw_parse(filter_expr, strlen(filter_expr), &fr) != POM_OK) {
+		free(fr);
+		return POM_ERR;
+	}
+
+	if (!fr)
 		return POM_OK;
 
-	if (filter_event_compile(*filter, evt_reg) != POM_OK)
-		return POM_ERR;
 
+	if (filter_event_compile(filter, evt_reg, fr) != POM_OK) {
+		free(fr);
+		return POM_ERR;
+	}
+
+	free(fr);
 	return POM_OK;
+}
+
+void filter_cleanup(struct filter_node *n) {
+
+	if (!n)
+		return;
+
+	int i;
+	for (i = 0; i < 2; i++) {
+		if (n->type[i] == filter_value_type_node) {
+			filter_cleanup(n->value[i].node);
+		} else if (n->type[i] == filter_value_type_data) {
+			if (n->value[i].data.key)
+				free(n->value[i].data.key);
+		} else if (n->type[i] == filter_value_type_ptype) {
+			if (n->value[i].ptype)
+				ptype_cleanup(n->value[i].ptype);
+		} else if (n->type[i] == filter_value_type_string) {
+			if (n->value[i].string)
+				free(n->value[i].string);
+		}
+	}
+	
+	free(n);
+
 }

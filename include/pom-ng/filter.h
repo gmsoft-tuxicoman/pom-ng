@@ -22,13 +22,6 @@
 #ifndef __POM_NG_FILTER_H__
 #define __POM_NG_FILTER_H__
 
-#include <pom-ng/proto.h>
-#include <pom-ng/ptype.h>
-
-#define FILTER_OP_AND	0
-#define FILTER_OP_OR	1
-#define FILTER_OP_NOT	(PTYPE_OP_ALL + 1)
-
 #define FILTER_MATCH_NO		0
 #define FILTER_MATCH_YES	1
 

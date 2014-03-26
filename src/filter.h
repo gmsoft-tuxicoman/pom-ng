@@ -22,6 +22,23 @@
 #ifndef __FILTER_H__
 #define __FILTER_H__
 
+#include <pom-ng/ptype.h>
+
+#define FILTER_OP_NOP	PTYPE_OP_RSVD
+#define FILTER_OP_EQ	PTYPE_OP_EQ
+#define FILTER_OP_GT	PTYPE_OP_GT
+#define FILTER_OP_GE	PTYPE_OP_GE
+#define FILTER_OP_LT	PTYPE_OP_LT
+#define FILTER_OP_LE	PTYPE_OP_LE
+#define FILTER_OP_NEQ	PTYPE_OP_NEQ
+
+#define FILTER_OP_AND	(PTYPE_OP_ALL + 1)
+#define FILTER_OP_OR	(PTYPE_OP_ALL + 2)
+
+// Remove this one when merge complete
+#define FILTER_OP_NOT	(PTYPE_OP_ALL + 3)
+
+#include <pom-ng/proto.h>
 #include <pom-ng/filter.h>
 #include <pom-ng/event.h>
 #include "core.h"
@@ -36,55 +53,70 @@ struct filter_proto {
 	struct ptype *value;
 };
 
+enum filter_evt_prop {
+	filter_evt_prop_time,
+	filter_evt_prop_name,
+	filter_evt_prop_source,
+};
 
-enum filter_evt_prop_type {
-	filter_evt_prop_type_time,
-	filter_evt_prop_type_name,
-	filter_evt_prop_type_source,
-	filter_evt_prop_type_descr,
+enum filter_value_type {
+	filter_value_type_none = 0,
+	filter_value_type_node,
+	filter_value_type_data,
+	filter_value_type_ptype,
+	filter_value_type_string,
+	filter_value_type_integer,
+	filter_value_type_evt_prop,
 };
 
 struct filter_data {
-
-	int op;
-	char *op_str;
-	char *name;
+	unsigned int field_id;
 	char *key;
-
-	int field_id;
-	char *value_str;
-	struct ptype *value;
-
+	struct ptype_reg *pt_reg;
 };
 
-enum filter_type {
-	filter_type_payload,
-	filter_type_event,
-};
 
-enum filter_node_type {
-	filter_node_type_event_prop,
-	filter_node_type_event_data,
-	filter_node_type_pload_type,
-	filter_node_type_pload_data,
-	filter_node_type_proto,
-	filter_node_type_branch
-};
+union filter_value {
+	struct filter_node *node;
+	struct filter_data data;
+	struct ptype *ptype;
+	char *string;
+	uint64_t integer;
 
-struct filter_branch {
-	struct filter_node *a;
-	struct filter_node *b;
-	int op;
 };
 
 struct filter_node {
 
-	enum filter_node_type type;
-	union {
-		struct filter_data data;
-		struct filter_branch branch;
-	};
+	int op;
+	int not;
 
+	enum filter_value_type type[2];
+	union filter_value value[2];
+
+};
+
+
+// Raw filter structure used to parse strings
+struct filter_raw_data {
+	char *op;
+	char *value[2];
+};
+
+struct filter_raw_branch {
+
+	struct filter_raw_node *a;
+	struct filter_raw_node *b;
+	int op;
+
+};
+
+struct filter_raw_node {
+
+	int isbranch;
+	union {
+		struct filter_raw_data data;
+		struct filter_raw_branch branch;
+	};
 	int not;
 
 };
@@ -93,16 +125,19 @@ struct filter_node {
 int filter_proto_match(struct proto_process_stack *stack, struct filter_proto *f);
 int filter_proto_parse_block(char *expr, unsigned int len, struct filter_proto **f);
 
-int filter_parse(char *expr, unsigned int len, struct filter_node **n, enum filter_type type);
-int filter_parse_block(char *expr, unsigned int len, struct filter_node **n, enum filter_type type);
-int filter_event_parse_block(char *expr, unsigned int len, struct filter_node *n);
-int filter_pload_parse_block(char *expr, unsigned int len, struct filter_node *n);
+int filter_raw_parse(char *expr, unsigned int len, struct filter_raw_node **n);
+int filter_raw_parse_block(char *expr, unsigned int len, struct filter_raw_node **n);
+void filter_raw_cleanup(struct filter_raw_node *fr);
 
-void filter_cleanup(struct filter_node *filter);
+int filter_data_compile(struct filter_data *d, struct data_reg *dr, char *value);
+int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr);
+int filter_node_compile(struct filter_node *n);
 
-int filter_event_compile(struct filter_node *filter, struct event_reg *evt);
-int filter_event_match(struct filter_node *filter, struct event *evt);
+int filter_event_compile(struct filter_node **filter, struct event_reg *evt, struct filter_raw_node *filter_raw);
+int filter_event_match(struct filter_node *n, struct event *evt);
 int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
+
+void filter_cleanup(struct filter_node *n);
 
 #endif
 
