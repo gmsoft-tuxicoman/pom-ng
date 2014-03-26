@@ -445,9 +445,6 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 
 int httpd_cleanup() {
 
-
-	pomlog(POMLOG_INFO "Waiting for HTTP connections to timeout ...");
-
 	while (http_daemons) {
 		struct httpd_daemon_list *tmp = http_daemons;
 		http_daemons = tmp->next;
