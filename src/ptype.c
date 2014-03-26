@@ -235,15 +235,11 @@ int ptype_get_op(struct ptype *pt, char *op) {
 		o = PTYPE_OP_NEQ;
 
 
-	if (pt) {
-		if (pt->type->info->ops & o)
-			return o;
+	if (pt->type->info->ops & o)
+		return o;
 
-		pomlog(POMLOG_ERR "Invalid operation %s for ptype %s", op, pt->type->info->name);
-		return POM_ERR;
-	}
-
-	return o;
+	pomlog(POMLOG_ERR "Invalid operation %s for ptype %s", op, pt->type->info->name);
+	return POM_ERR;
 }
 
 char *ptype_get_op_sign(int op) {
