@@ -23,6 +23,7 @@
 
 
 #include <pom-ng/output.h>
+#include <pom-ng/proto.h>
 #include <pom-ng/filter.h>
 
 #include <pcap.h>
