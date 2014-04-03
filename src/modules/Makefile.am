@@ -28,7 +28,7 @@ PTYPE_SRC = ptype_bool.la ptype_bytes.la ptype_mac.la ptype_ipv4.la ptype_ipv6.l
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(DECODER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la datastore_postgres.la input_pcap.la input_dvb.la output_pcap.la output_tap.la
+EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la datastore_postgres.la input_pcap.la input_dvb.la output_inject.la output_pcap.la output_tap.la
 
 
 analyzer_arp_la_SOURCES = analyzer/analyzer_arp.c analyzer/analyzer_arp.h
@@ -108,6 +108,9 @@ input_pcap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_file_la_SOURCES = output/output_file.c output/output_file.h
 output_file_la_LDFLAGS = -module -avoid-version
 output_file_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+output_inject_la_SOURCES = output/output_inject.c output/output_inject.h
+output_inject_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' -lpcap
+output_inject_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 output_log_la_SOURCES = output/output_log.c output/output_log.h output/output_log_txt.c output/output_log_txt.h output/output_log_xml.c output/output_log_xml.h
 output_log_la_CFLAGS = @libxml2_CFLAGS@
 output_log_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)' @libxml2_LIBS@

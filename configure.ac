@@ -154,7 +154,7 @@ AC_CHECK_LIB([pcap], [pcap_open_offline, pcap_open_dead, pcap_close, pcap_breakl
 if test "x$pcap_headers" = "xyes" -a "x$want_pcap" = "xyes"
 then
 	INPUT_OBJS="$INPUT_OBJS input_pcap.la"
-	OUTPUT_OBJS="$OUTPUT_OBJS output_pcap.la"
+	OUTPUT_OBJS="$OUTPUT_OBJS output_inject.la output_pcap.la"
 fi
 
 # Check for Linux' raw socket iface
