@@ -35,6 +35,7 @@ enum input_pcap_type {
 struct input_pcap_interface_priv {
 	struct ptype *p_interface;
 	struct ptype *p_promisc;
+	struct registry_perf *perf_dropped;
 };
 
 struct input_pcap_file_priv {
@@ -80,6 +81,7 @@ static int input_pcap_mod_unregister();
 
 static int input_pcap_common_open(struct input *i);
 
+static int input_pcap_interface_perf_dropped(uint64_t *value, void *priv);
 static int input_pcap_interface_init(struct input *i);
 static int input_pcap_interface_open(struct input *i);
 

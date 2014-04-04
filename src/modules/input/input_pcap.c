@@ -244,6 +244,17 @@ static int input_pcap_common_open(struct input *i) {
  * input pcap type interface
  */
 
+static int input_pcap_interface_perf_dropped(uint64_t *value, void *priv) {
+
+	struct input_pcap_priv *p = priv;
+
+	struct pcap_stat ps;
+	if (!pcap_stats(p->p, &ps))
+		*value = ps.ps_drop;
+
+	return POM_OK;
+}
+
 static int input_pcap_interface_init(struct input *i) {
 
 	if (input_pcap_common_init(i) != POM_OK)
@@ -257,6 +268,12 @@ static int input_pcap_interface_init(struct input *i) {
 	priv->tpriv.iface.p_promisc = ptype_alloc("bool");
 	if (!priv->tpriv.iface.p_interface || !priv->tpriv.iface.p_promisc)
 		goto err;
+
+	priv->tpriv.iface.perf_dropped = registry_instance_add_perf(i->reg_instance, "dropped_pkt", registry_perf_type_counter, "Dropped packets", "pkts");
+	if (!priv->tpriv.iface.perf_dropped)
+		goto err;
+
+	registry_perf_set_update_hook(priv->tpriv.iface.perf_dropped, input_pcap_interface_perf_dropped, priv);
 
 	char err[PCAP_ERRBUF_SIZE] = { 0 };
 	char *dev = pcap_lookupdev(err);
