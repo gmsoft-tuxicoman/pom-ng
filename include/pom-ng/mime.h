@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,26 +44,26 @@ enum mime_top_type {
 	mime_top_type_message
 };
 
-struct mime_parameter {
+struct mime_type_parameter {
 	char *name;
 	char *value;
 };
 
-struct mime {
+struct mime_type {
 	
 	enum mime_top_type top_type;
-	char *type_str;
-	struct mime_parameter params[MIME_MAX_PARAMETERS];
+	char *name;
+	struct mime_type_parameter params[MIME_MAX_PARAMETERS];
 
 };
 
 
-struct mime *mime_parse(char *content_type);
-void mime_cleanup(struct mime *mime);
+struct mime_type *mime_type_parse(char *content_type);
+void mime_type_cleanup(struct mime_type *mime);
 
-char *mime_get_param(struct mime *mime, char *param_name);
+char *mime_type_get_param(struct mime_type *mime, char *param_name);
 
-int mime_parse_header(struct data *data, char *line, size_t line_len);
+int mime_header_parse(struct data *data, char *line, size_t line_len);
 
 
 #endif

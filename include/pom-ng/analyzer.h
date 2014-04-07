@@ -78,8 +78,19 @@ enum analyzer_pload_class_id {
 	analyzer_pload_class_document,
 };
 
+struct analyzer_pload_type {
+
+	enum analyzer_pload_class_id cls;
+	char *name;
+	char *description;
+	char *extension;
+	struct analyzer_pload_reg *analyzer;
+
+	struct analyzer_pload_type *prev, *next;
+
+};
+
 struct analyzer_pload_instance;
-struct analyzer_pload_type;
 struct analyzer_pload_buffer;
 
 enum analyzer_pload_buffer_state {
@@ -126,6 +137,7 @@ struct analyzer_pload_type* analyzer_pload_type_get_by_name(char *name);
 int analyzer_pload_buffer_set_type_by_content_type(struct analyzer_pload_buffer *pload, char *content_type);
 int analyzer_pload_buffer_set_type(struct analyzer_pload_buffer *pload, struct analyzer_pload_type *type);
 int analyzer_pload_buffer_set_encoding(struct analyzer_pload_buffer *pload, char *encoding);
+struct analyzer_pload_type* analyzer_pload_buffer_get_type(struct analyzer_pload_buffer *pload);
 
 int analyzer_pload_output_register(void *output_priv, struct analyzer_pload_output_reg *reg_info);
 int analyzer_pload_output_unregister(void *output_priv);
@@ -139,7 +151,7 @@ struct event *analyzer_pload_buffer_get_related_event(struct analyzer_pload_buff
 void analyzer_pload_buffer_set_related_event(struct analyzer_pload_buffer *pload, struct event *evt);
 void *analyzer_pload_buffer_get_priv(struct analyzer_pload_buffer *pload);
 void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *priv);
-struct mime *analyzer_pload_buffer_get_mime(struct analyzer_pload_buffer *pload);
+struct mime_type *analyzer_pload_buffer_get_mime_type(struct analyzer_pload_buffer *pload);
 void analyzer_pload_buffer_set_container(struct analyzer_pload_buffer *pload, struct analyzer_pload_buffer *container);
 
 #endif

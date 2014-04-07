@@ -114,7 +114,7 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 			return POM_OK;
 		}
 
-		if (mime_parse_header(&priv->pload_data, my_line, my_len) != POM_OK) {
+		if (mime_header_parse(&priv->pload_data, my_line, my_len) != POM_OK) {
 			priv->state = analyzer_multipart_pload_state_error;
 			return POM_OK;
 		}
@@ -177,16 +177,16 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 		}
 		memset(priv, 0, sizeof(struct analyzer_multipart_pload_priv));
 
-		struct mime *mime = analyzer_pload_buffer_get_mime(pload);
-		if (!mime) {
+		struct mime_type *mime_type = analyzer_pload_buffer_get_mime_type(pload);
+		if (!mime_type) {
 			priv->state = analyzer_multipart_pload_state_error;
 			free(priv);
 			return POM_ERR;
 		}
 
-		char *boundary = mime_get_param(mime, "boundary");
+		char *boundary = mime_type_get_param(mime_type, "boundary");
 		if (!boundary) {
-			pomlog(POMLOG_DEBUG "Multipart boundary not found in mime informations !");
+			pomlog(POMLOG_DEBUG "Multipart boundary not found in mime type informations !");
 			priv->state = analyzer_multipart_pload_state_error;
 			free(priv);
 			return POM_ERR;

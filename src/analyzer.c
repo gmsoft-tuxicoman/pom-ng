@@ -30,8 +30,6 @@
 #include <pom-ng/mime.h>
 #include <pom-ng/decoder.h>
 
-#include <libxml/parser.h>
-
 #if 0
 #define debug_analyzer(x ...) pomlog(POMLOG_DEBUG x)
 #else
@@ -567,43 +565,43 @@ int analyzer_pload_buffer_append(struct analyzer_pload_buffer *pload, void *data
 			static pthread_mutex_t magic_lock = PTHREAD_MUTEX_INITIALIZER;
 			pom_mutex_lock(&magic_lock);
 
-			char *magic_mime_type = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
+			char *magic_mime_type_name = (char*) magic_buffer(magic_cookie, pload->buff, pload->buff_pos);
 
-			if (!magic_mime_type) {
+			if (!magic_mime_type_name) {
 				pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
 				pload->state = analyzer_pload_buffer_state_error;
 				pom_mutex_unlock(&magic_lock);
 				return POM_ERR;
 			}
-			struct mime *magic_mime = mime_parse(magic_mime_type);
+			struct mime_type *magic_mime_type = mime_type_parse(magic_mime_type_name);
 			pom_mutex_unlock(&magic_lock);
 
-			if (!magic_mime) {
+			if (!magic_mime_type) {
 				pload->state = analyzer_pload_buffer_state_error;
 				return POM_ERR;
 			}
 			
 			// Drop the magic mime if it's the same as the original one or if it's a useless one
-			if ((pload->mime && !strcmp(magic_mime->type_str, pload->mime->type_str)) || !strcmp(magic_mime->type_str, "application/octet-stream") || !strcmp(magic_mime->type_str, "plain/text")) {
+			if ((pload->mime_type && !strcmp(magic_mime_type->name, pload->mime_type->name)) || !strcmp(magic_mime_type->name, "application/octet-stream") || !strcmp(magic_mime_type->name, "plain/text")) {
 				// Discard this
-				if (!pload->mime) {
-					pload->mime = magic_mime;
+				if (!pload->mime_type) {
+					pload->mime_type = magic_mime_type;
 					struct analyzer_pload_mime_type *tmp;
-					for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, magic_mime->type_str); tmp = tmp->next);
+					for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, magic_mime_type->name); tmp = tmp->next);
 					if (tmp)
 						pload->type = tmp->type;
 					else
 						pload->type = NULL;
 				} else {
-					mime_cleanup(magic_mime);
+					mime_type_cleanup(magic_mime_type);
 				}
 			} else {
-				if (pload->mime) {
-					mime_cleanup(pload->mime);
+				if (pload->mime_type) {
+					mime_type_cleanup(pload->mime_type);
 				}
-				pload->mime = magic_mime;
+				pload->mime_type = magic_mime_type;
 				struct analyzer_pload_mime_type *tmp;
-				for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, magic_mime->type_str); tmp = tmp->next);
+				for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, magic_mime_type->name); tmp = tmp->next);
 
 				if (tmp)
 					pload->type = tmp->type;
@@ -851,8 +849,8 @@ int analyzer_pload_buffer_cleanup(struct analyzer_pload_buffer *pload) {
 	if (pload->buff_size && pload->buff)
 		free(pload->buff);
 
-	if (pload->mime)
-		mime_cleanup(pload->mime);
+	if (pload->mime_type)
+		mime_type_cleanup(pload->mime_type);
 
 	free(pload);
 
@@ -875,12 +873,12 @@ int analyzer_pload_buffer_set_type_by_content_type(struct analyzer_pload_buffer 
 	if (pload->state != analyzer_pload_buffer_state_empty)
 		return POM_ERR;
 
-	pload->mime = mime_parse(content_type);
-	if (!pload->mime)
+	pload->mime_type = mime_type_parse(content_type);
+	if (!pload->mime_type)
 		return POM_ERR;
 
 	struct analyzer_pload_mime_type *tmp;
-	for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, pload->mime->type_str); tmp = tmp->next);
+	for (tmp = analyzer_pload_mime_types; tmp && strcmp(tmp->name, pload->mime_type->name); tmp = tmp->next);
 
 	if (tmp)
 		pload->type = tmp->type;
@@ -899,6 +897,11 @@ int analyzer_pload_buffer_set_type(struct analyzer_pload_buffer *pload, struct a
 	pload->type = type;
 
 	return POM_OK;
+}
+
+struct analyzer_pload_type* analyzer_pload_buffer_get_type(struct analyzer_pload_buffer *pload) {
+
+	return pload->type;
 }
 
 int analyzer_pload_buffer_set_encoding(struct analyzer_pload_buffer *pload, char *encoding) {
@@ -1014,8 +1017,8 @@ void analyzer_pload_buffer_set_priv(struct analyzer_pload_buffer *pload, void *p
 	pload->analyzer_priv = priv;
 }
 
-struct mime *analyzer_pload_buffer_get_mime(struct analyzer_pload_buffer *pload) {
-	return pload->mime;
+struct mime_type *analyzer_pload_buffer_get_mime_type(struct analyzer_pload_buffer *pload) {
+	return pload->mime_type;
 }
 
 void analyzer_pload_buffer_set_container(struct analyzer_pload_buffer *pload, struct analyzer_pload_buffer *container) {

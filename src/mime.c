@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -42,7 +42,7 @@ static struct mime_top_type_str mime_top_types_str[] = {
 	{ mime_top_type_unknown, NULL },
 };
 
-struct mime *mime_parse(char *content_type) {
+struct mime_type *mime_type_parse(char *content_type) {
 
 	if (!content_type)
 		return NULL;
@@ -51,12 +51,12 @@ struct mime *mime_parse(char *content_type) {
 		content_type++;
 
 
-	struct mime *mime = malloc(sizeof(struct mime));
-	if (!mime) {
-		pom_oom(sizeof(struct mime));
+	struct mime_type *mime_type = malloc(sizeof(struct mime_type));
+	if (!mime_type) {
+		pom_oom(sizeof(struct mime_type));
 		return NULL;
 	}
-	memset(mime, 0, sizeof(struct mime));
+	memset(mime_type, 0, sizeof(struct mime_type));
 
 	// First, copy the filtered content_type
 	
@@ -71,24 +71,24 @@ struct mime *mime_parse(char *content_type) {
 	while (type_len > 0 && content_type[type_len - 1] == ' ')
 		type_len--;
 
-	mime->type_str = strndup(content_type, type_len);
-	if (!mime->type_str) {
+	mime_type->name = strndup(content_type, type_len);
+	if (!mime_type->name) {
 		pom_oom(type_len);
-		free(mime);
+		free(mime_type);
 		return NULL;
 	}
 
 	// Find the top type
 	int i;
 	for (i = 0; mime_top_types_str[i].str; i++) {
-		if (!strncasecmp(mime_top_types_str[i].str, mime->type_str, strlen(mime_top_types_str[i].str))) {
-			mime->top_type = mime_top_types_str[i].top_type;
+		if (!strncasecmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
+			mime_type->top_type = mime_top_types_str[i].top_type;
 			break;
 		}
 	}
 
 	if (!sc) // No parameters
-		return mime;
+		return mime_type;
 
 	// Parse parameters
 	char *p = sc + 1;
@@ -102,12 +102,12 @@ struct mime *mime_parse(char *content_type) {
 		char *eq = strchr(p, '=');
 		if (!eq) {
 			// Parameter without value, abort parsing
-			return mime;
+			return mime_type;
 		}
 
 		char *param_name = strndup(p, eq - p);
 		if (!param_name) {
-			mime_cleanup(mime);
+			mime_type_cleanup(mime_type);
 			pom_oom(eq - p);
 			return NULL;
 		}
@@ -129,47 +129,47 @@ struct mime *mime_parse(char *content_type) {
 		}
 
 		if (!param_value) {
-			mime_cleanup(mime);
+			mime_type_cleanup(mime_type);
 			pom_oom(strlen(pv));
 			return NULL;
 		}
 
-		mime->params[param_num].name = param_name;
-		mime->params[param_num].value = param_value;
+		mime_type->params[param_num].name = param_name;
+		mime_type->params[param_num].value = param_value;
 
 		p = next_p;
 	}
 	
 
-	return mime;
+	return mime_type;
 }
 
-void mime_cleanup(struct mime *mime) {
+void mime_type_cleanup(struct mime_type *mime_type) {
 
-	if (mime->type_str)
-		free(mime->type_str);
+	if (mime_type->name)
+		free(mime_type->name);
 	int i;
-	for (i = 0; i < MIME_MAX_PARAMETERS && mime->params[i].name; i++) {
-		if (mime->params[i].value)
-			free(mime->params[i].value);
-		free(mime->params[i].name);
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
+		if (mime_type->params[i].value)
+			free(mime_type->params[i].value);
+		free(mime_type->params[i].name);
 	}
 
-	free(mime);
+	free(mime_type);
 }
 
-char *mime_get_param(struct mime *mime, char *param_name) {
+char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
 
 	int i;
-	for (i = 0; i < MIME_MAX_PARAMETERS && mime->params[i].name; i++) {
-		if (!strcmp(mime->params[i].name, param_name))
-			return mime->params[i].value;
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
+		if (!strcmp(mime_type->params[i].name, param_name))
+			return mime_type->params[i].value;
 	}
 	return NULL;
 }
 
 
-static int mime_parse_header_value_token(char *buff, size_t in_len, size_t *out_len) {
+static int mime_header_parse_value_token(char *buff, size_t in_len, size_t *out_len) {
 	
 	// Parse =?charset?encoding?encoded_text?= where encoding is either B or Q
 	// See RFC 2047 for details
@@ -250,7 +250,7 @@ static int mime_parse_header_value_token(char *buff, size_t in_len, size_t *out_
 	return POM_OK;
 }
 
-static char *mime_parse_header_value(char *data, size_t len) {
+static char *mime_header_parse_value(char *data, size_t len) {
 	
 	if (!data)
 		return NULL;
@@ -279,7 +279,7 @@ static char *mime_parse_header_value(char *data, size_t len) {
 			in_len = end - eq;
 		
 		size_t out_len = 0;
-		if (mime_parse_header_value_token(eq, in_len, &out_len) == POM_OK) {
+		if (mime_header_parse_value_token(eq, in_len, &out_len) == POM_OK) {
 			output += out_len;
 		} else {
 			output += in_len;
@@ -294,7 +294,7 @@ static char *mime_parse_header_value(char *data, size_t len) {
 
 }
 
-int mime_parse_header(struct data *data, char *line, size_t line_len) {
+int mime_header_parse(struct data *data, char *line, size_t line_len) {
 
 	if (!line_len)
 		return POM_OK;
@@ -329,7 +329,7 @@ int mime_parse_header(struct data *data, char *line, size_t line_len) {
 			return POM_ERR;
 		}
 
-		char *param_tail = mime_parse_header_value(line, line_len);
+		char *param_tail = mime_header_parse_value(line, line_len);
 		if (!param_tail) {
 			free(new_value);
 			return POM_ERR;
@@ -364,7 +364,7 @@ int mime_parse_header(struct data *data, char *line, size_t line_len) {
 			value_len--;
 		}
 
-		char *hdr_value = mime_parse_header_value(colon, value_len);
+		char *hdr_value = mime_header_parse_value(colon, value_len);
 		if (!hdr_value) {
 			free(hdr_name);
 			return POM_ERR;

@@ -36,18 +36,6 @@ struct analyzer_event_listener_list {
 
 };
 
-struct analyzer_pload_type {
-
-	enum analyzer_pload_class_id cls;
-	char *name;
-	char *description;
-	char *extension;
-	struct analyzer_pload_reg *analyzer;
-
-	struct analyzer_pload_type *prev, *next;
-
-};
-
 
 struct analyzer_pload_mime_type {
 
@@ -81,7 +69,7 @@ struct analyzer_pload_instance {
 struct analyzer_pload_buffer {
 
 	struct analyzer_pload_type *type;
-	struct mime *mime;
+	struct mime_type *mime_type;
 	size_t expected_size, buff_size;
 	size_t buff_pos;
 	struct analyzer_pload_buffer *container;

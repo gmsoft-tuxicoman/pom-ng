@@ -124,7 +124,7 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 			// Last line of headers, the body is now
 			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
 			break;
-		} else if (mime_parse_header(&data[analyzer_rfc822_pload_headers], line, line_len) != POM_OK) {
+		} else if (mime_header_parse(&data[analyzer_rfc822_pload_headers], line, line_len) != POM_OK) {
 			return POM_ERR;
 		}
 
