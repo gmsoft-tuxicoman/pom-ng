@@ -133,6 +133,7 @@ static int input_dvb_mod_unregister() {
 
 static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 
+	struct registry_param *p = NULL;
 	struct input_dvb_priv *priv = malloc(sizeof(struct input_dvb_priv));
 	if (!priv) {
 		pom_oom(sizeof(struct input_dvb_priv));
@@ -157,7 +158,7 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 
 	priv->filter_null_pid = ptype_alloc("bool");
 
-	struct registry_param *p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
+	p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", 0);
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
