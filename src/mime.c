@@ -79,12 +79,18 @@ struct mime_type *mime_type_parse(char *content_type) {
 	}
 
 	// Find the top type
-	int i;
+	int i, found = 0;
 	for (i = 0; mime_top_types_str[i].str; i++) {
 		if (!strncasecmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
 			mime_type->top_type = mime_top_types_str[i].top_type;
+			found = 1;
 			break;
 		}
+	}
+
+	if (!found) {
+		mime_type->top_type = mime_top_type_unknown;
+		pomlog(POMLOG_DEBUG "Top type of '%s' now known", mime_type->name);
 	}
 
 	if (!sc) // No parameters
