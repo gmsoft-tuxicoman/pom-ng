@@ -78,10 +78,18 @@ struct mime_type *mime_type_parse(char *content_type) {
 		return NULL;
 	}
 
+	// Lowercase the name
+	int i;
+	for (i = 0; i < type_len; i++) {
+		if (mime_type->name[i] >= 'A' && mime_type->name[i] <= 'Z')
+			mime_type->name[i] += 'a' - 'A';
+	}
+	
+
 	// Find the top type
-	int i, found = 0;
+	int found = 0;
 	for (i = 0; mime_top_types_str[i].str; i++) {
-		if (!strncasecmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
+		if (!strncmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
 			mime_type->top_type = mime_top_types_str[i].top_type;
 			found = 1;
 			break;
