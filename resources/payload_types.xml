@@ -47,7 +47,7 @@
 			<item><name>png</name><mime>image/png</mime></item>
 			<item><name>flv</name><mime>video/x-flv</mime></item>
 			<item><name>webm</name><mime>video/webm</mime></item>
-			<item><name>m2ts</name><mime>video/MP2T</mime></item>
+			<item><name>m2ts</name><mime>video/mp2t</mime></item>
 			<item><name>rfc822</name><mime>message/rfc822</mime></item>
 			<item><name>text</name><mime>text/plain</mime></item>
 			<item><name>multipart</name><mime>multipart/mixed</mime></item>
