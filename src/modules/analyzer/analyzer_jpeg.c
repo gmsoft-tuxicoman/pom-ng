@@ -67,35 +67,25 @@ static int analyzer_jpeg_mod_unregister() {
 
 static int analyzer_jpeg_init(struct analyzer *analyzer) {
 
-	struct analyzer_pload_type *pload_type = analyzer_pload_type_get_by_name(ANALYZER_JPEG_PLOAD_TYPE);
-	
-	if (!pload_type) {
-		pomlog(POMLOG_ERR "Payload type " ANALYZER_JPEG_PLOAD_TYPE " not found");
-		return POM_ERR;
-	}
-
 	static struct data_item_reg pload_jpeg_data_items[ANALYZER_JPEG_PLOAD_DATA_COUNT] = { { 0 } };
 	pload_jpeg_data_items[analyzer_jpeg_pload_width].name = "width";
 	pload_jpeg_data_items[analyzer_jpeg_pload_width].value_type = ptype_get_type("uint16");
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].name = "height";
 	pload_jpeg_data_items[analyzer_jpeg_pload_height].value_type = ptype_get_type("uint16");
 	pload_jpeg_data_items[analyzer_jpeg_pload_exif].name = "exif";
-	pload_jpeg_data_items[analyzer_jpeg_pload_exif].flags = ANALYZER_DATA_FLAG_LIST;
+	pload_jpeg_data_items[analyzer_jpeg_pload_exif].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_reg pload_jpeg_data = {
 		.items = pload_jpeg_data_items,
 		.data_count = ANALYZER_JPEG_PLOAD_DATA_COUNT
 	};
 
-	static struct analyzer_pload_reg pload_reg;
-	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
-	pload_reg.analyzer = analyzer;
-	pload_reg.analyze = analyzer_jpeg_pload_analyze;
-	pload_reg.cleanup = analyzer_jpeg_pload_cleanup;
-	pload_reg.data_reg = &pload_jpeg_data;
-	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
+	static struct pload_analyzer pload_analyzer_reg = { 0 };
+	pload_analyzer_reg.analyze = analyzer_jpeg_pload_analyze;
+	pload_analyzer_reg.cleanup = analyzer_jpeg_pload_cleanup;
+	pload_analyzer_reg.data_reg = &pload_jpeg_data;
 
-	return analyzer_pload_register(pload_type, &pload_reg);
+	return pload_set_analyzer(ANALYZER_JPEG_PLOAD_TYPE, &pload_analyzer_reg);
 }
 
 #ifdef HAVE_LIBEXIF
@@ -168,7 +158,7 @@ static void analyzer_jpeg_exif_entry_analyze(ExifEntry *entry, void *pload) {
 		return;
 	}
 
-	struct data *data = analyzer_pload_buffer_get_data(pload);
+	struct data *data = pload_get_data(pload);
 	data_item_add_ptype(data, analyzer_jpeg_pload_exif, key, value);
 
 }
@@ -185,28 +175,28 @@ static void analyzer_jpeg_exif_content_process(ExifContent *content, void *pload
 }
 #endif
 
-static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buffer, size_t buff_len) {
+static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb, void *apriv) {
 
 
-	struct analyzer_jpeg_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
+	struct analyzer_jpeg_pload_priv *priv = pload_get_priv(p);
 
 	if (!priv) {
 		priv = malloc(sizeof(struct analyzer_jpeg_pload_priv));
 		if (!priv) {
 			pom_oom(sizeof(struct analyzer_jpeg_pload_priv));
-			return POM_ERR;
+			return PLOAD_ANALYSIS_ERR;
 		}
 		memset(priv, 0, sizeof(struct analyzer_jpeg_pload_priv));
 
-		priv->pload_buff = buffer;
-		priv->pload_buff_len = buff_len;
+		priv->pload_buff = pb->data;
+		priv->pload_buff_len = pb->data_len;
 		
 		// Setup error handler
 		struct jpeg_error_mgr *jerr = malloc(sizeof(struct jpeg_error_mgr));
 		if (!jerr) {
 			free(priv);
 			pom_oom(sizeof(struct jpeg_error_mgr));
-			return POM_ERR;
+			return PLOAD_ANALYSIS_ERR;
 		}
 		memset(jerr, 0, sizeof(struct jpeg_error_mgr));
 		priv->cinfo.err = jpeg_std_error(jerr);
@@ -231,7 +221,7 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 			pom_oom(sizeof(struct jpeg_source_mgr));
 			jpeg_destroy_decompress(&priv->cinfo);
 			free(priv);
-			return POM_ERR;
+			return PLOAD_ANALYSIS_ERR;
 		}
 		memset(src, 0, sizeof(struct jpeg_source_mgr));
 
@@ -243,31 +233,31 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 		priv->cinfo.src = src;
 
 
-		analyzer_pload_buffer_set_priv(pload, priv);
+		pload_set_priv(p, priv);
 
 	} else {
-		priv->pload_buff = buffer;
-		priv->pload_buff_len = buff_len;
+		priv->pload_buff = pb->data;
+		priv->pload_buff_len = pb->data_len;
 	}
 
 
-	if (priv->jpeg_lib_pos >= buff_len)
+	if (priv->jpeg_lib_pos >= pb->data_len)
 		// Nothing more to process
-		return POM_OK;
+		return PLOAD_ANALYSIS_MORE;
 
-	int res = POM_OK;
+	int res = PLOAD_ANALYSIS_MORE;
 	if (!setjmp(priv->jmp_buff)) {
 
 		if (priv->jpeg_lib_pos) {
 			// It's not garanteed that buffer points to the
 			// same memory area after each call, so we reset it here
-			priv->cinfo.src->next_input_byte = buffer + priv->jpeg_lib_pos;
+			priv->cinfo.src->next_input_byte = pb->data + priv->jpeg_lib_pos;
 		}
 
 		if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
-			return POM_OK; // Headers are incomplete
+			return PLOAD_ANALYSIS_MORE; // Headers are incomplete
 
-		struct data *data = analyzer_pload_buffer_get_data(pload);
+		struct data *data = pload_get_data(p);
 
 		PTYPE_UINT16_SETVAL(data[analyzer_jpeg_pload_width].value, priv->cinfo.image_width);
 		data_set(data[analyzer_jpeg_pload_width]);
@@ -284,33 +274,32 @@ static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyze
 			ExifData *exif_data = exif_data_new_from_data(marker->data, marker->data_length);
 			if (!exif_data) {
 				pomlog(POMLOG_DEBUG "Unable to parse EXIF data");
+			} else {
+				exif_data_foreach_content(exif_data, analyzer_jpeg_exif_content_process, p);
+				exif_data_free(exif_data);
 			}
-
-			exif_data_foreach_content(exif_data, analyzer_jpeg_exif_content_process, pload);
-
-			exif_data_free(exif_data);
 		}
 #endif
 
-		analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
+		res = PLOAD_ANALYSIS_OK;
 
 	} else {
 		pomlog(POMLOG_DEBUG "Error while parsing JPEG headers");
-		res = POM_ERR;
+		res = PLOAD_ANALYSIS_ERR;
 	}
 
 	free(priv->cinfo.err);
 	free(priv->cinfo.src);
 	jpeg_destroy_decompress(&priv->cinfo);
 	free(priv);
-	analyzer_pload_buffer_set_priv(pload, NULL);
+	pload_set_priv(p, NULL);
 
 	return res;
 }
 
-static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_jpeg_pload_cleanup(struct pload *p, void *apriv) {
 
-	struct analyzer_jpeg_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
+	struct analyzer_jpeg_pload_priv *priv = pload_get_priv(p);
 
 	if (!priv)
 		return POM_OK;

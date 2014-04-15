@@ -24,16 +24,18 @@
 
 #include <pom-ng/analyzer.h>
 #include <pom-ng/packet.h>
+#include <pom-ng/pload.h>
 
 #define ANALYZER_RFC822_PLOAD_TYPE		"rfc822"
 
-#define ANALYZER_RFC822_PLOAD_DATA_COUNT	1
+#define ANALYZER_RFC822_PLOAD_DATA_COUNT	2
 
 // RFC 5233 actually specifies 1000 char including CRLF
 #define ANALYZER_RFC822_MAX_LINE_LEN		2048
 
 enum analyzer_rfc822_pload_data {
 	analyzer_rfc822_pload_headers,
+	analyzer_rfc822_pload_headers_len,
 };
 
 enum analyzer_rfc822_pload_state {
@@ -43,10 +45,10 @@ enum analyzer_rfc822_pload_state {
 };
 
 struct analyzer_rfc822_pload_priv {
-	size_t pload_pos;
-
+	uint32_t pload_pos;
+	struct pload *pload;
 	enum analyzer_rfc822_pload_state state;
-	struct analyzer_pload_buffer *sub_pload;
+	struct pload *sub_pload;
 };
 
 struct mod_reg_info* analyzer_rfc822_reg_info();
@@ -54,8 +56,12 @@ static int analyzer_rfc822_mod_register(struct mod_reg *mod);
 static int analyzer_rfc822_mod_unregister();
 
 static int analyzer_rfc822_init(struct analyzer *analyzer);
-static int analyzer_rfc822_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
-static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len);
-static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len);
+static int analyzer_rfc822_cleanup(struct analyzer *analyzer);
+static int analyzer_rfc822_pload_analyze(struct pload *pload, struct pload_buffer *pb, void *priv);
+static int analyzer_rfc822_pload_analyze_cleanup(struct pload *p, void *priv);
+
+static int analyzer_rfc822_pload_open(void *obj, void **priv, struct pload *pload);
+static int analyzer_rfc822_pload_write(void *obj, void *priv, void *data, size_t len);
+static int analyzer_rfc822_pload_close(void *obj, void *priv);
 
 #endif

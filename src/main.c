@@ -43,6 +43,7 @@
 #include "datastore.h"
 #include "addon.h"
 #include "event.h"
+#include "pload.h"
 
 #include <pom-ng/ptype.h>
 
@@ -315,6 +316,11 @@ int main(int argc, char *argv[]) {
 		goto err_proto;
 	}
 
+	if (pload_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initialize the payloads");
+		goto err_pload;
+	}
+
 	if (analyzer_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initializing the analyzers");
 		goto err_analyzer;
@@ -422,6 +428,7 @@ int main(int argc, char *argv[]) {
 	xmlrpcsrv_cleanup();
 	output_cleanup();
 	analyzer_cleanup();
+	pload_cleanup();
 	proto_cleanup();
 	addon_cleanup();
 	datastore_close(system_store);
@@ -462,6 +469,8 @@ err_output:
 err_input:
 	analyzer_cleanup();
 err_analyzer:
+	pload_cleanup();
+err_pload:
 	proto_cleanup();
 err_proto:
 	event_finish();

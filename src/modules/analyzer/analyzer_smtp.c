@@ -25,6 +25,7 @@
 #include <pom-ng/proto_smtp.h>
 #include <pom-ng/decoder.h>
 #include <pom-ng/dns.h>
+#include <pom-ng/pload.h>
 
 struct mod_reg_info *analyzer_smtp_reg_info() {
 	
@@ -63,10 +64,6 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 	memset(priv, 0, sizeof(struct analyzer_smtp_priv));
 
 	analyzer->priv = priv;
-
-	priv->rfc822_msg_pload_type = analyzer_pload_type_get_by_name("rfc822");
-	if (!priv->rfc822_msg_pload_type)
-		goto err;
 
 	priv->evt_cmd = event_find("smtp_cmd");
 	priv->evt_reply = event_find("smtp_reply");
@@ -244,13 +241,11 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 		return POM_OK;
 	}
 
-	struct analyzer_pload_buffer *pload_buff = event_get_priv(cpriv->evt_msg);
-	struct analyzer_smtp_priv *apriv = analyzer->priv;
+	struct pload *pload_buff = event_get_priv(cpriv->evt_msg);
 
 	if (!pload_buff) {
-		pload_buff = analyzer_pload_buffer_alloc(0, 0);
-		analyzer_pload_buffer_set_related_event(pload_buff, cpriv->evt_msg);
-		analyzer_pload_buffer_set_type(pload_buff, apriv->rfc822_msg_pload_type);
+		pload_buff = pload_alloc(cpriv->evt_msg, 0);
+		pload_set_type(pload_buff, ANALYZER_SMTP_RFC822_PLOAD_TYPE);
 		if (!pload_buff)
 			return POM_ERR;
 
@@ -276,7 +271,7 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 			if (found && (i >= ANALYZER_SMTP_DOTDOT_LEN - cpriv->dotdot_pos)) {
 				// Process up to the last dot
 				size_t len = ANALYZER_SMTP_DOTDOT_LEN - cpriv->dotdot_pos;
-				if (analyzer_pload_buffer_append(pload_buff, pload, len - 1) != POM_OK)
+				if (pload_append(pload_buff, pload, len - 1) != POM_OK)
 					return POM_ERR;
 				pload += len;
 				plen -= len;
@@ -295,7 +290,7 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 			break;
 
 		size_t dotdot_len = dotdot - pload + ANALYZER_SMTP_DOTDOT_LEN;
-		if (analyzer_pload_buffer_append(pload_buff, pload, dotdot_len - 1) != POM_OK)
+		if (pload_append(pload_buff, pload, dotdot_len - 1) != POM_OK)
 			return POM_ERR;
 		pload = dotdot + ANALYZER_SMTP_DOTDOT_LEN;
 		plen -= dotdot_len;
@@ -314,7 +309,7 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 		cpriv->dotdot_pos = i;
 
 	// Add whatever remains
-	if (plen && analyzer_pload_buffer_append(pload_buff, pload, plen) != POM_OK)
+	if (plen && pload_append(pload_buff, pload, plen) != POM_OK)
 		return POM_ERR;
 
 	return POM_OK;
@@ -943,10 +938,10 @@ static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv) {
 
 static int analyzer_smtp_evt_msg_cleanup(struct event *evt) {
 
-	struct analyzer_pload_buffer *pload = event_get_priv(evt);
+	struct pload *pload = event_get_priv(evt);
 	if (!pload)
 		return POM_OK;
 
-	analyzer_pload_buffer_cleanup(pload);
+	pload_end(pload);
 	return POM_OK;
 }

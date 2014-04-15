@@ -135,7 +135,7 @@ static int analyzer_tftp_conntrack_priv_cleanup(void *obj, void *priv) {
 
 	int res = POM_OK;
 	if (f->pload)
-		res += analyzer_pload_buffer_cleanup(f->pload);
+		res += pload_end(f->pload);
 
 	if (f->evt)
 		res += event_process_end(f->evt);
@@ -318,11 +318,9 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				f->next = NULL;
 
 				// Create the payload buffer
-				f->pload = analyzer_pload_buffer_alloc(0, ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
+				f->pload = pload_alloc(f->evt, PLOAD_FLAG_NEED_MAGIC);
 				if (!f->pload)
 					goto err;
-
-				analyzer_pload_buffer_set_related_event(f->pload, f->evt);
 
 				conntrack_add_priv(s_prev->ce, obj, f, analyzer_tftp_conntrack_priv_cleanup);
 			} else {
@@ -339,7 +337,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 			pload += sizeof(uint16_t);
 			plen -= sizeof(uint16_t);
 
-			if (analyzer_pload_buffer_append(f->pload, pload, plen) != POM_OK)
+			if (pload_append(f->pload, pload, plen) != POM_OK)
 				goto err;
 
 			uint32_t *size = PTYPE_UINT32_GETVAL(evt_data[analyzer_tftp_file_size].value);
@@ -349,7 +347,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				// Got last packet !
 				data_set(evt_data[analyzer_tftp_file_size]);
 				
-				int res = analyzer_pload_buffer_cleanup(f->pload);
+				int res = pload_end(f->pload);
 				res += event_process_end(f->evt);
 				f->evt = NULL;	
 				f->pload = NULL;
@@ -365,7 +363,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 
 			struct analyzer_tftp_file *f = conntrack_get_priv(s_prev->ce, obj);
 			if (f && f->pload) {
-				int res = analyzer_pload_buffer_cleanup(f->pload);
+				int res = pload_end(f->pload);
 				res += event_process_end(f->evt);
 				f->pload = NULL;
 				f->evt = NULL;

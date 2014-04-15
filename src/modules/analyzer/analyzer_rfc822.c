@@ -21,6 +21,7 @@
 #include "analyzer_rfc822.h"
 
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint32.h>
 #include <pom-ng/mime.h>
 
 struct mod_reg_info* analyzer_rfc822_reg_info() {
@@ -30,7 +31,7 @@ struct mod_reg_info* analyzer_rfc822_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_rfc822_mod_register;
 	reg_info.unregister_func = analyzer_rfc822_mod_unregister;
-	reg_info.dependencies = "ptype_string";
+	reg_info.dependencies = "ptype_string, ptype_uint32";
 
 	return &reg_info;
 }
@@ -42,6 +43,7 @@ static int analyzer_rfc822_mod_register(struct mod_reg *mod) {
 	analyzer_rfc822.name = "rfc822";
 	analyzer_rfc822.mod = mod;
 	analyzer_rfc822.init = analyzer_rfc822_init;
+	analyzer_rfc822.cleanup = analyzer_rfc822_cleanup;
 
 	return analyzer_register(&analyzer_rfc822);
 
@@ -54,58 +56,56 @@ static int analyzer_rfc822_mod_unregister() {
 
 static int analyzer_rfc822_init(struct analyzer *analyzer) {
 
-	struct analyzer_pload_type *pload_type = analyzer_pload_type_get_by_name(ANALYZER_RFC822_PLOAD_TYPE);
-	
-	if (!pload_type) {
-		pomlog(POMLOG_ERR "Payload type " ANALYZER_RFC822_PLOAD_TYPE " not found");
-		return POM_ERR;
-	}
-
 	static struct data_item_reg pload_rfc822_data_items[ANALYZER_RFC822_PLOAD_DATA_COUNT] = { { 0 } };
 	pload_rfc822_data_items[analyzer_rfc822_pload_headers].name = "headers";
 	pload_rfc822_data_items[analyzer_rfc822_pload_headers].flags = DATA_REG_FLAG_LIST;
+	pload_rfc822_data_items[analyzer_rfc822_pload_headers_len].name = "header_len";
+	pload_rfc822_data_items[analyzer_rfc822_pload_headers_len].value_type = ptype_get_type("uint32");
 
 	static struct data_reg pload_rfc822_data = {
 		.items = pload_rfc822_data_items,
 		.data_count = ANALYZER_RFC822_PLOAD_DATA_COUNT
 	};
 
-	static struct analyzer_pload_reg pload_reg;
-	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
-	pload_reg.analyzer = analyzer;
-	pload_reg.analyze = analyzer_rfc822_pload_analyze;
-	pload_reg.process = analyzer_rfc822_pload_process;
-	pload_reg.cleanup = analyzer_rfc822_pload_cleanup;
-	pload_reg.data_reg = &pload_rfc822_data;
-	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
+	static struct pload_analyzer pload_analyzer_reg = { 0 };
+	pload_analyzer_reg.analyze = analyzer_rfc822_pload_analyze;
+	pload_analyzer_reg.cleanup = analyzer_rfc822_pload_analyze_cleanup;
+	pload_analyzer_reg.data_reg = &pload_rfc822_data;
 
-
-	if (analyzer_pload_register(pload_type, &pload_reg) != POM_OK)
+	if (pload_set_analyzer(ANALYZER_RFC822_PLOAD_TYPE, &pload_analyzer_reg))
 		return POM_ERR;
+
+	if (pload_listen_start(analyzer, ANALYZER_RFC822_PLOAD_TYPE, NULL, analyzer_rfc822_pload_open, analyzer_rfc822_pload_write, analyzer_rfc822_pload_close) != POM_OK)
+		return POM_ERR;
+	
 
 	return POM_OK;
 
 }
 
-static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len) {
+static int analyzer_rfc822_cleanup(struct analyzer *analyzer) {
+
+	return pload_listen_stop(analyzer, ANALYZER_RFC822_PLOAD_TYPE);
+}
+
+static int analyzer_rfc822_pload_analyze(struct pload *pload, struct pload_buffer *pb, void *priv) {
 
 
-	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
-
-	if (!priv) {
-		priv = malloc(sizeof(struct analyzer_rfc822_pload_priv));
-		if (!priv) {
-			pom_oom(sizeof(struct analyzer_rfc822_pload_priv));
+	size_t *pload_pos = pload_get_priv(pload);
+	if (!pload_pos) {
+		pload_pos = malloc(sizeof(size_t));
+		if (!pload_pos) {
+			pom_oom(sizeof(size_t));
 			return POM_ERR;
 		}
-		memset(priv, 0, sizeof(struct analyzer_rfc822_pload_priv));
-		analyzer_pload_buffer_set_priv(pload, priv);
+		pload_set_priv(pload, pload_pos);
 	}
+	*pload_pos = 0;
 
 	// We are parsing the header
 	
-	char *hdr = buff + priv->pload_pos;
-	size_t hdrlen = buff_len - priv->pload_pos;
+	char *hdr = pb->data + *pload_pos;
+	size_t hdrlen = pb->data_len - *pload_pos;
 
 	while (hdrlen) {
 		// CR and LF are not supposed to appear independently
@@ -113,81 +113,113 @@ static int analyzer_rfc822_pload_analyze(struct analyzer *analyzer, struct analy
 		char *crlf = memchr(hdr, '\n', hdrlen);
 		size_t line_len = crlf - hdr;
 		char *line = hdr;
-		if (crlf != buff && *(crlf - 1) == '\r')
+		if (crlf != pb->data && *(crlf - 1) == '\r')
 			line_len--;
 		crlf++;
 		hdrlen -= crlf - hdr;
 		hdr = crlf;
 
-		struct data *data = analyzer_pload_buffer_get_data(pload);
+		*pload_pos = (void*)crlf - pb->data;
+
+		struct data *data = pload_get_data(pload);
 		if (!line_len) {
 			// Last line of headers, the body is now
-			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
-			break;
+			PTYPE_UINT32_SETVAL(data[analyzer_rfc822_pload_headers_len].value, *pload_pos);
+			data_set(data[analyzer_rfc822_pload_headers_len]);
+			return PLOAD_ANALYSIS_OK;
 		} else if (mime_header_parse(&data[analyzer_rfc822_pload_headers], line, line_len) != POM_OK) {
 			return POM_ERR;
 		}
-
-
-		priv->pload_pos = (void*)crlf - buff;
 	}
 
+	return PLOAD_ANALYSIS_MORE;
+}
+
+static int analyzer_rfc822_pload_analyze_cleanup(struct pload *p, void *priv) {
+	if (priv)
+		free(priv);
 	return POM_OK;
 }
 
-static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len) {
+
+static int analyzer_rfc822_pload_open(void *obj, void **priv, struct pload *pload) {
+
+	// We should only receive rfc822 payloads here
+	
+	struct data *data = pload_get_data(pload);
+
+	if (!data_is_set(data[analyzer_rfc822_pload_headers_len]))
+		return PLOAD_OPEN_STOP;
+
+	struct analyzer_rfc822_pload_priv *p = malloc(sizeof(struct analyzer_rfc822_pload_priv));
+	if (!p) {
+		pom_oom(sizeof(struct analyzer_rfc822_pload_priv));
+		return PLOAD_OPEN_ERR;
+	}
+	memset(p, 0, sizeof(struct analyzer_rfc822_pload_priv));
+
+	p->pload_pos = *PTYPE_UINT32_GETVAL(data[analyzer_rfc822_pload_headers_len].value);
+	p->pload = pload;
+
+	*priv = p;
+
+	return PLOAD_OPEN_CONTINUE;
+}
+
+static int analyzer_rfc822_pload_write(void *obj, void *priv, void *data, size_t len) {
 
 	
-	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
+	struct analyzer_rfc822_pload_priv *p = priv;
 
-	if (priv->state == analyzer_rfc822_pload_state_initial) {
+	if (p->state == analyzer_rfc822_pload_state_initial) {
 
-		if (priv->pload_pos > 0) {
-			if (priv->pload_pos > len) {
-				priv->pload_pos -= len;
+		if (p->pload_pos > 0) {
+			if (p->pload_pos > len) {
+				p->pload_pos -= len;
 				return POM_OK;
 			}
-			len -= priv->pload_pos;
-			data += priv->pload_pos;
-			priv->pload_pos = 0;
+			len -= p->pload_pos;
+			data += p->pload_pos;
+			p->pload_pos = 0;
 			if (!len)
 				return POM_OK;
 		}
 
-		priv->sub_pload = analyzer_pload_buffer_alloc(0, 0);
-		if (!priv->sub_pload) {
-			priv->state = analyzer_rfc822_pload_state_done;
+		struct event *rel_evt = pload_get_related_event(p->pload);
+		p->sub_pload = pload_alloc(rel_evt, 0);
+		if (!p->sub_pload) {
+			p->state = analyzer_rfc822_pload_state_done;
 			return POM_ERR;
 		}
 
-		analyzer_pload_buffer_set_container(priv->sub_pload, pload);
+		pload_set_parent(p->sub_pload, p->pload);
 
 		// Parse the headers
 		unsigned int content_type_found = 0, content_encoding_found = 0;
-		struct data *data = analyzer_pload_buffer_get_data(pload);
-		struct data_item *itm = data[analyzer_rfc822_pload_headers].items;
+		struct data *pload_data = pload_get_data(p->pload);
+		struct data_item *itm = pload_data[analyzer_rfc822_pload_headers].items;
 		while (itm && (!content_type_found && !content_encoding_found)) {
 			if (!strcasecmp(itm->key, "Content-Type")) {
 				content_type_found = 1;
-				analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, PTYPE_STRING_GETVAL(itm->value));
+				pload_set_mime_type(p->sub_pload, PTYPE_STRING_GETVAL(itm->value));
 			} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
 				content_encoding_found = 1;
-				analyzer_pload_buffer_set_encoding(priv->sub_pload, PTYPE_STRING_GETVAL(itm->value));
+				pload_set_encoding(p->sub_pload, PTYPE_STRING_GETVAL(itm->value));
 			}
 
 			itm = itm->next;
 		}
 
 		if (!content_type_found) // Set the default according to the RFC
-			analyzer_pload_buffer_set_type_by_content_type(priv->sub_pload, "text/plain; charset=US-ASCII");
+			pload_set_mime_type(p->sub_pload, "text/plain; charset=US-ASCII");
 
-		priv->state = analyzer_rfc822_pload_state_processing;
+		p->state = analyzer_rfc822_pload_state_processing;
 
 	}
 	
-	if (priv->state == analyzer_rfc822_pload_state_processing) {
-		if (analyzer_pload_buffer_append(priv->sub_pload, data, len) != POM_OK) {
-			priv->state = analyzer_rfc822_pload_state_done;
+	if (p->state == analyzer_rfc822_pload_state_processing) {
+		if (pload_append(p->sub_pload, data, len) != POM_OK) {
+			p->state = analyzer_rfc822_pload_state_done;
 			return POM_ERR;
 		}
 	}
@@ -195,16 +227,16 @@ static int analyzer_rfc822_pload_process(struct analyzer *analyzer, struct analy
 	return POM_OK;
 }
 
-static int analyzer_rfc822_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_rfc822_pload_close(void *obj, void *priv) {
 
-	struct analyzer_rfc822_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
-	if (!priv)
+	struct analyzer_rfc822_pload_priv *p = priv;
+	if (!p)
 		return POM_OK;
 
-	if (priv->sub_pload)
-		analyzer_pload_buffer_cleanup(priv->sub_pload);
+	if (p->sub_pload)
+		pload_end(p->sub_pload);
 
-	free(priv);
+	free(p);
 
 	return POM_OK;
 }

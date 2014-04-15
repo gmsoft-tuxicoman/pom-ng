@@ -22,6 +22,7 @@
 #define __ANALYZER_TFTP_H__
 
 #include <pom-ng/analyzer.h>
+#include <pom-ng/pload.h>
 
 #define ANALYZER_TFTP_BLK_SIZE 512
 
@@ -57,7 +58,7 @@ struct analyzer_tftp_priv {
 struct analyzer_tftp_file {
 	struct event *evt;
 	uint16_t port;
-	struct analyzer_pload_buffer *pload;
+	struct pload *pload;
 	struct analyzer_tftp_file *prev, *next;
 };
 

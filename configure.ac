@@ -139,6 +139,9 @@ AC_CONFIG_FILES([Makefile
 PKG_CHECK_MODULES(libmicrohttpd, [libmicrohttpd >= 0.9.25], [], [AC_MSG_ERROR([libmicrohttpd >= 0.9.25 is required to build this program])])
 AC_SUBST(libmicrohttpd_LIBS)
 
+# Check for uthash
+AC_CHECK_HEADERS(uthash.h, [], [AC_MSG_ERROR([uthash is required])])
+
 # Check for libmagic
 AC_CHECK_HEADERS([magic.h], [want_magic=yes], [want_magic=no])
 if test "x$want_magic" = "xyes"

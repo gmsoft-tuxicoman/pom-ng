@@ -125,10 +125,6 @@ int output_file_init(struct output *o) {
 	if (registry_instance_add_param(inst, p) != POM_OK)
 		goto err;
 	
-	priv->output_reg.open = output_file_pload_open;
-	priv->output_reg.write = output_file_pload_write;
-	priv->output_reg.close = output_file_pload_close;
-
 	return POM_OK;
 err:
 	output_file_cleanup(priv);
@@ -160,13 +156,13 @@ int output_file_open(void *output_priv) {
 		return POM_ERR;
 		
 
-	return analyzer_pload_output_register(priv, &priv->output_reg);
+	return pload_listen_start(output_priv, NULL, NULL, output_file_pload_open, output_file_pload_write, output_file_pload_close);
 
 }
 
 int output_file_close(void *output_priv) {
 
-	if (analyzer_pload_output_unregister(output_priv) != POM_OK)
+	if (pload_listen_stop(output_priv, NULL) != POM_OK)
 		return POM_ERR;
 
 	struct output_file_priv *priv = output_priv;
@@ -178,7 +174,7 @@ int output_file_close(void *output_priv) {
 	return POM_OK;
 }
 
-static int file_pload_open(struct analyzer_pload_instance *pi, const char *filename, struct output_file_priv *priv) {
+static int file_pload_open(struct output_file_priv *output_priv, const char *filename, void **pload_priv) {
 
 	// Create the private structure for the payload
 	struct output_file_pload_priv *ppriv = malloc(sizeof(struct output_file_pload_priv));
@@ -201,18 +197,21 @@ static int file_pload_open(struct analyzer_pload_instance *pi, const char *filen
 		return POM_ERR;
 	}
 
-	if (priv && priv->perf_files_open)
-		registry_perf_inc(priv->perf_files_open, 1);
-
-	analyzer_pload_instance_set_priv(pi, ppriv);
+	if (output_priv && output_priv->perf_files_open)
+		registry_perf_inc(output_priv->perf_files_open, 1);
+		
 
 	pomlog(POMLOG_DEBUG "File %s open", ppriv->filename);
+
+	*pload_priv = ppriv;
+
 	return POM_OK;
 }
 
-int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
 
-	struct output_file_priv *priv = output_priv;
+int output_file_pload_open(void *obj, void **ppriv, struct pload *pload) {
+
+	struct output_file_priv *priv = obj;
 
 	// Open the file
 	char filename[FILENAME_MAX + 1];
@@ -228,14 +227,14 @@ int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv
 	strftime(buff, sizeof(buff), format, &tmp);
 	snprintf(filename + strlen(filename), FILENAME_MAX - strlen(filename), "%s-%u.bin", buff, (unsigned int)tv.tv_usec);
 
-	return file_pload_open(pi, filename, output_priv);
+	return file_pload_open(obj, filename, ppriv);
 
 }
 
-int addon_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]) {
+int addon_file_pload_open(void *output_priv, void **priv, struct pload *pload, struct ptype *params[]) {
 
 	char *filename = PTYPE_STRING_GETVAL(params[0]);
-	return file_pload_open(pi, filename, output_priv);
+	return file_pload_open(output_priv, filename, priv);
 }
 
 

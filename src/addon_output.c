@@ -166,9 +166,9 @@ static int addon_output_event_listen_stop(lua_State *L) {
 }
 
 // Called from C to open a pload
-static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *output_priv) {
+static int addon_output_pload_open(void *obj, void **priv, struct pload *pload) {
 
-	struct addon_instance_priv *p = output_priv;
+	struct addon_instance_priv *p = obj;
 
 	// Lock the output
 	pom_mutex_lock(&p->lock);
@@ -183,7 +183,7 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	}
 	memset(ppriv, 0, sizeof(struct addon_output_pload_priv));
 
-	analyzer_pload_instance_set_priv(pi, ppriv);
+	*priv = ppriv;
 
 	// Get the __pload_listener table
 	lua_getfield(p->L, -1, "__pload_listener"); // Stack : self, __pload_listener
@@ -214,7 +214,7 @@ static int addon_output_pload_open(struct analyzer_pload_instance *pi, void *out
 	lua_settable(p->L, -6); // Stack : self, __pload_listener, open_func, self, pload_priv_table
 
 	// Add the pload to the args
-	addon_pload_push(p->L, pi->pload, pi); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
+	addon_pload_push(p->L, pload, ppriv); // Stack : self, __pload_listener, open_func, self, pload_priv_table, pload
 
 
 	// Call the open function
@@ -256,8 +256,8 @@ static int addon_output_pload_write(void *output_priv, void *pload_instance_priv
 		if (tmp->is_err)
 			continue;
 
-		if (addon_plugin_pload_write(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv, data, len) != POM_OK) {
-			addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv);
+		if (addon_plugin_pload_write(tmp->addon_reg, ppriv->plugin_priv, tmp->pload_priv, data, len) != POM_OK) {
+			addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pload_priv);
 			tmp->is_err = 1;
 		}
 	}
@@ -335,7 +335,7 @@ static int addon_output_pload_close(void *output_priv, void *pload_instance_priv
 	for (tmp = ppriv->plugins; tmp; tmp = tmp->next) {
 		if (tmp->is_err)
 			continue;
-		addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pi.priv);
+		addon_plugin_pload_close(tmp->addon_reg, ppriv->plugin_priv, tmp->pload_priv);
 	}
 
 	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
@@ -417,12 +417,7 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	if (!lua_isnil(L, -1))
 		luaL_error(L, "The output is already listening for payloads");
 
-	static struct analyzer_pload_output_reg reg_info = { 0 };
-	reg_info.open = addon_output_pload_open;
-	reg_info.write = addon_output_pload_write;
-	reg_info.close = addon_output_pload_close;
-
-	if (analyzer_pload_output_register(p, &reg_info) != POM_OK)
+	if (pload_listen_start(p, NULL, NULL, addon_output_pload_open, addon_output_pload_write, addon_output_pload_close) != POM_OK)
 		luaL_error(L, "Error while registering the payload listener");
 
 
@@ -466,7 +461,7 @@ static int addon_output_pload_listen_stop(lua_State *L) {
 	if (lua_isnil(L, 1))
 		luaL_error(L, "The output is not listening for payloads");
 
-	if (analyzer_pload_output_unregister(p) != POM_OK)
+	if (pload_listen_stop(p, NULL) != POM_OK)
 		luaL_error(L, "Error while stopping payload listening");
 	
 	lua_pushnil(L); // Stack : instance, nil
@@ -811,7 +806,7 @@ int addon_output_close(void *output_priv) {
 	return res;
 }
 
-struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_plugin_reg *addon_reg, struct analyzer_pload_output *o, struct analyzer_pload_buffer *pload) {
+struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_plugin_reg *addon_reg) {
 	struct addon_output_pload_plugin *plugin = malloc(sizeof(struct addon_output_pload_plugin));
 	if (!plugin) {
 		pom_oom(sizeof(struct addon_output_pload_plugin));
@@ -819,8 +814,6 @@ struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_p
 	}
 	memset(plugin, 0, sizeof(struct addon_output_pload_plugin));
 	plugin->addon_reg = addon_reg;
-	plugin->pi.o = o;
-	plugin->pi.pload = pload;
 
 	return plugin;
 }

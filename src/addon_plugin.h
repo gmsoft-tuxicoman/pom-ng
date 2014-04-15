@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -47,7 +47,7 @@ struct addon_plugin_reg {
 	int (*event_end) (struct event *evt, void *obj);
 
 	// For payload plugins
-	int (*pload_open) (struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
+	int (*pload_open) (void *addon_priv, void **priv, struct pload *pload, struct ptype *params[]);
 	int (*pload_write) (void *addon_priv, void *pload_instance_priv, void *data, size_t len);
 	int (*pload_close) (void *addon_priv, void *pload_instance_priv);
 

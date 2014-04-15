@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -30,8 +30,6 @@ struct output_file_priv {
 	struct ptype *p_listen_pload_evt;
 	struct ptype *p_path;
 	
-	struct analyzer_pload_output_reg output_reg;
-
 	struct registry_perf *perf_files_closed;
 	struct registry_perf *perf_files_open;
 	struct registry_perf *perf_bytes_written;
@@ -52,11 +50,10 @@ int output_file_cleanup(void *output_priv);
 int output_file_open(void *output_priv);
 int output_file_close(void *output_priv);
 
-int output_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv);
-int addon_file_pload_open(struct analyzer_pload_instance *pi, void *output_priv, struct ptype *params[]);
+int output_file_pload_open(void *obj, void **priv, struct pload *pload);
+int addon_file_pload_open(void *output_priv, void **priv, struct pload *pload, struct ptype *params[]);
 int output_file_pload_write(void *output_priv, void *pload_instance_priv, void *data, size_t len);
 int output_file_pload_close(void *output_priv, void *pload_instance_priv);
-
 
 
 #endif

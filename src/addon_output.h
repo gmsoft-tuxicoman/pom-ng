@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,8 +39,8 @@ struct addon_output {
 
 struct addon_output_pload_plugin {
 
-	struct analyzer_pload_instance pi;
 	struct addon_plugin_reg *addon_reg;
+	void *pload_priv;
 
 	int is_err;
 
@@ -64,7 +64,7 @@ int addon_output_cleanup(void *output_priv);
 int addon_output_open(void *output_priv);
 int addon_output_close(void *output_priv);
 
-struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_plugin_reg *addon_reg, struct analyzer_pload_output *o, struct analyzer_pload_buffer *pload);
+struct addon_output_pload_plugin *addon_output_pload_plugin_alloc(struct addon_plugin_reg *addon_reg);
 
 #endif
 

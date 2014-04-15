@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <pom-ng/event.h>
 #include <pom-ng/analyzer.h>
 #include <pom-ng/analyzer_http.h>
+#include <pom-ng/pload.h>
 
 struct analyzer_http_priv {
 
@@ -59,7 +60,7 @@ struct analyzer_http_request_event_priv {
 	struct event *response_event;
 
 	// Payload information
-	struct analyzer_pload_buffer *pload[POM_DIR_TOT];
+	struct pload *pload[POM_DIR_TOT];
 	char *content_type[POM_DIR_TOT];
 	size_t content_len[POM_DIR_TOT];
 	char *content_encoding[POM_DIR_TOT];

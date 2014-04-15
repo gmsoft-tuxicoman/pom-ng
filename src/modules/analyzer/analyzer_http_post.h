@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,10 +26,17 @@
 
 #define ANALYZER_HTTP_POST_PLOAD_TYPE "form-urlencoded"
 
+struct analyzer_http_post_pload_priv {
+
+	struct event *evt;
+	char *buff;
+
+};
+
 int analyzer_http_post_init(struct analyzer *analyzer);
+int analyzer_http_post_cleanup(struct analyzer *analyzer);
 
-int analyzer_http_post_pload_analyze_full(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len);
-
-size_t analyzer_http_post_percent_decode(char *dst, char *src, size_t length);
-
+int analyzer_http_post_pload_open(void *obj, void **priv, struct pload *pload);
+int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len);
+int analyzer_http_post_pload_close(void *obj, void *p);
 #endif

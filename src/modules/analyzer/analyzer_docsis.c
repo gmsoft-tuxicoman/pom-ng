@@ -24,6 +24,7 @@
 #include <pom-ng/ptype_uint8.h>
 #include <pom-ng/input.h>
 #include <pom-ng/proto_docsis.h>
+#include <pom-ng/event.h>
 #include <docsis.h>
 #include <arpa/inet.h>
 

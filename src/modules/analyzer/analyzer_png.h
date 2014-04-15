@@ -23,7 +23,7 @@
 #define __ANALYZER_PNG_H__
 
 #include <pom-ng/analyzer.h>
-#include <stdio.h>
+#include <pom-ng/pload.h>
 
 #define ANALYZER_PNG_PLOAD_TYPE "png"
 
@@ -44,6 +44,6 @@ static int analyzer_png_mod_register(struct mod_reg *mod);
 static int analyzer_png_mod_unregister();
 
 static int analyzer_png_init(struct analyzer *analyzer);
-static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len);
+static int analyzer_png_pload_analyze(struct pload *p, struct pload_buffer *pb, void *priv);
 
 #endif

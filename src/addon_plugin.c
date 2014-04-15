@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -207,17 +207,17 @@ static int addon_plugin_pload_process(lua_State *L) {
 	if (a->reg->type != addon_plugin_type_pload)
 		luaL_error(L, "Plugin %s cannot process payloads", a->reg->name);
 
-	// Get the output pload_instance
-	struct analyzer_pload_instance* output_pi = addon_pload_get_instance(L, 2);
+	struct addon_output_pload_priv *priv = addon_pload_get_priv(L, 2);
+	struct pload *pload = addon_pload_get(L, 2);
 
-	if (!output_pi)
+	if (!priv || !pload)
 		return 0;
 
 	if (!lua_istable(L, 3))
 		luaL_error(L, "Third argument must be parameter table");
 
 	// Create a new instance for our pload plugin
-	struct addon_output_pload_plugin *pload_plugin = addon_output_pload_plugin_alloc(a->reg, output_pi->o, output_pi->pload);
+	struct addon_output_pload_plugin *pload_plugin = addon_output_pload_plugin_alloc(a->reg);
 	if (!pload_plugin)
 		return 0;
 
@@ -253,19 +253,18 @@ static int addon_plugin_pload_process(lua_State *L) {
 
 	}
 
-	if (a->reg->pload_open(&pload_plugin->pi , a->priv, params) != POM_OK) {
+	if (a->reg->pload_open(a->priv, &pload_plugin->pload_priv, pload, params) != POM_OK) {
 		pomlog(POMLOG_WARN "Error while opening pload for plugin %s", a->reg->name);
 		free(pload_plugin);
 		goto err;
 	}
 
 	// Add the pload_instance to the output
-	struct addon_output_pload_priv *output_pi_priv = output_pi->priv;
-	output_pi_priv->plugin_priv = a->priv;
-	pload_plugin->next = output_pi_priv->plugins;
+	priv->plugin_priv = a->priv;
+	pload_plugin->next = priv->plugins;
 	if (pload_plugin->next)
 		pload_plugin->next->prev = pload_plugin->prev;
-	output_pi_priv->plugins = pload_plugin;
+	priv->plugins = pload_plugin;
 
 err:
 

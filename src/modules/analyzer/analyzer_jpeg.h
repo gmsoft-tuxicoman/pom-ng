@@ -23,6 +23,7 @@
 #define __ANALYZER_JPEG_H__
 
 #include <pom-ng/analyzer.h>
+#include <pom-ng/pload.h>
 #include <stdio.h>
 #include <jpeglib.h>
 #include <setjmp.h>
@@ -53,8 +54,8 @@ static int analyzer_jpeg_mod_register(struct mod_reg *mod);
 static int analyzer_jpeg_mod_unregister();
 
 static int analyzer_jpeg_init(struct analyzer *analyzer);
-static int analyzer_jpeg_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buffer, size_t buff_len);
-static int analyzer_jpeg_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb, void *apriv);
+static int analyzer_jpeg_pload_cleanup(struct pload *p, void *apriv);
 
 static void analyzer_jpeg_lib_init_source(j_decompress_ptr cinfo);
 static void analyzer_jpeg_lib_skip_input_data(j_decompress_ptr cinfo, long num_bytes);

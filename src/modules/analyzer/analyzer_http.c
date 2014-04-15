@@ -125,7 +125,7 @@ int analyzer_http_init(struct analyzer *analyzer) {
 	evt_request_data_items[analyzer_http_request_query_headers].flags = DATA_REG_FLAG_LIST;
 
 	evt_request_data_items[analyzer_http_request_response_headers].name = "response_headers";
-	evt_request_data_items[analyzer_http_request_response_headers].flags = ANALYZER_DATA_FLAG_LIST;
+	evt_request_data_items[analyzer_http_request_response_headers].flags = DATA_REG_FLAG_LIST;
 
 	evt_request_data_items[analyzer_http_request_post_data].name = "post_data";
 	evt_request_data_items[analyzer_http_request_post_data].flags = DATA_REG_FLAG_LIST;
@@ -178,7 +178,7 @@ int analyzer_http_cleanup(struct analyzer *analyzer) {
 
 	free(priv);
 
-	return POM_OK;
+	return analyzer_http_post_cleanup(analyzer);
 }
 
 int analyzer_http_ce_priv_cleanup(void *obj, void *priv) {
@@ -666,7 +666,7 @@ int analyzer_http_request_event_cleanup(struct event *evt) {
 	int i;
 	for (i = 0; i < 2; i++) {
 		if (priv->pload[i]) {
-			analyzer_pload_buffer_cleanup(priv->pload[i]);
+			pload_end(priv->pload[i]);
 			priv->pload[i] = NULL;
 		}
 		priv->content_len[i] = 0;
@@ -717,21 +717,19 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 
 
 	if (!epriv->pload[dir]) {
-		epriv->pload[dir] = analyzer_pload_buffer_alloc(epriv->content_len[dir], ANALYZER_PLOAD_BUFFER_NEED_MAGIC);
+		epriv->pload[dir] = pload_alloc(evt, PLOAD_FLAG_NEED_MAGIC);
+		pload_set_expected_size(epriv->pload[dir], epriv->content_len[dir]);
 		if (!epriv->pload[dir])
 			return POM_ERR;
 
 		if (epriv->content_type[dir])
-			analyzer_pload_buffer_set_type_by_content_type(epriv->pload[dir], epriv->content_type[dir]);
+			pload_set_mime_type(epriv->pload[dir], epriv->content_type[dir]);
 
 		if (epriv->content_encoding[dir])
-			analyzer_pload_buffer_set_encoding(epriv->pload[dir], epriv->content_encoding[dir]);
-
-		analyzer_pload_buffer_set_related_event(epriv->pload[dir], evt);
-
+			pload_set_encoding(epriv->pload[dir], epriv->content_encoding[dir]);
 	}
 
-	if (analyzer_pload_buffer_append(epriv->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
+	if (pload_append(epriv->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
 		return POM_ERR;
 
 	return POM_OK;

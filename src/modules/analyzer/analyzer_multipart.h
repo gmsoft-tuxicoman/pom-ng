@@ -24,6 +24,7 @@
 
 #include <pom-ng/analyzer.h>
 #include <pom-ng/packet.h>
+#include <pom-ng/pload.h>
 
 #define ANALYZER_MULTIPART_PLOAD_TYPE		"multipart"
 
@@ -45,7 +46,8 @@ struct analyzer_multipart_pload_priv {
 	enum analyzer_multipart_pload_state state;
 	size_t last_line_len;
 
-	struct analyzer_pload_buffer *pload; // One of the part
+	struct pload *parent_pload;
+	struct pload *pload; // One of the part
 	struct data pload_data; // Header of the current part
 	void *pload_start, *pload_end;
 
@@ -58,7 +60,10 @@ static int analyzer_multipart_mod_register(struct mod_reg *mod);
 static int analyzer_multipart_mod_unregister();
 
 static int analyzer_multipart_init(struct analyzer *analyzer);
-static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len);
-static int analyzer_multipart_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload);
+static int analyzer_multipart_cleanup(struct analyzer *analyzer);
+static int analyzer_multipart_pload_open(void *obj, void **priv, struct pload *pload);
+static int analyzer_multipart_pload_process_line(struct analyzer_multipart_pload_priv *priv, char *line, size_t len);
+static int analyzer_multipart_pload_write(void *obj, void *p, void *data, size_t len);
+static int analyzer_multipart_pload_close(void *obj, void *p);
 
 #endif

@@ -21,8 +21,8 @@
 #ifndef __POM_NG_MIME_H__
 #define __POM_NG_MIME_H__
 
+#include <pom-ng/data.h>
 #include <pom-ng/base.h>
-#include <pom-ng/analyzer.h>
 
 #define MIME_MAX_PARAMETERS	5
 

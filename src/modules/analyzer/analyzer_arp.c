@@ -25,6 +25,7 @@
 #include <pom-ng/proto_arp.h>
 #include <pom-ng/proto_vlan.h>
 #include <pom-ng/input.h>
+#include <pom-ng/event.h>
 
 #include "analyzer_arp.h"
 

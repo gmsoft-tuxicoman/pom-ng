@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #define __ANALYZER_SMTP_H__
 
 #include <pom-ng/analyzer.h>
+#include <pom-ng/proto.h>
 
 
 #define ANALYZER_SMTP_EVT_COMMON_DATA_COUNT	6
@@ -34,6 +35,8 @@
 
 #define ANALYZER_SMTP_FLAGS_LISTENING	0x1
 #define ANALYZER_SMTP_FLAGS_COMMON_DATA	0x2
+
+#define ANALYZER_SMTP_RFC822_PLOAD_TYPE	"rfc822"
 
 enum {
 	analyzer_smtp_common_client_addr = 0,
@@ -74,7 +77,6 @@ struct analyzer_smtp_priv {
 	struct event_reg *evt_cmd, *evt_reply;
 	struct event_reg *evt_msg, *evt_auth;
 	struct proto_packet_listener *pkt_listener;
-	struct analyzer_pload_type *rfc822_msg_pload_type;
 	int listening;
 };
 

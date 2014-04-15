@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 #include "addon_pload.h"
 #include "addon_event.h"
 #include "addon_data.h"
-#include <pom-ng/analyzer.h>
+#include "pload.h"
 
 // Called from lua to get the metatable
 static int addon_pload_metatable(lua_State *L) {
@@ -30,7 +30,7 @@ static int addon_pload_metatable(lua_State *L) {
 	const char *key = luaL_checkstring(L, 2);
 
 	struct addon_pload *ap = luaL_checkudata(L, 1, ADDON_PLOAD_METATABLE);
-	struct analyzer_pload_buffer *p = ap->pload;
+	struct pload *p = ap->pload;
 
 	if (!strcmp(key, "event")) {
 		// Return the corresponding event
@@ -59,28 +59,28 @@ static int addon_pload_metatable(lua_State *L) {
 		// Add the class
 		lua_pushliteral(L, "class");
 		switch (p->type->cls) {
-			case analyzer_pload_class_unknown:
+			case pload_class_unknown:
 				lua_pushliteral(L, "unknown");
 				break;
-			case analyzer_pload_class_application:
+			case pload_class_application:
 				lua_pushliteral(L, "application");
 				break;
-			case analyzer_pload_class_audio:
+			case pload_class_audio:
 				lua_pushliteral(L, "audio");
 				break;
-			case analyzer_pload_class_image:
+			case pload_class_image:
 				lua_pushliteral(L, "image");
 				break;
-			case analyzer_pload_class_video:
+			case pload_class_video:
 				lua_pushliteral(L, "video");
 				break;
-			case analyzer_pload_class_document:
+			case pload_class_document:
 				lua_pushliteral(L, "document");
 				break;
 		}
 		lua_settable(L, -3);
-	} else if (!strcmp(key, "container") && p->container) {
-		addon_pload_push(L, p->container, NULL);
+	} else if (!strcmp(key, "parent") && p->parent) {
+		addon_pload_push(L, p->parent, NULL);
 	} else {
 		return 0;
 	}
@@ -128,19 +128,25 @@ void addon_pload_data_update(lua_State *L, int n, void *data, size_t len) {
 	p->len = len;
 }
 
-void addon_pload_push(lua_State *L, struct analyzer_pload_buffer *pload, struct analyzer_pload_instance *instance) {
+void addon_pload_push(lua_State *L, struct pload *pload, void *priv) {
 
 	struct addon_pload *p = lua_newuserdata(L, sizeof(struct addon_pload));
 	
 	p->pload = pload;
-	p->instance = instance;
+	p->priv = priv;;
 
 	luaL_getmetatable(L, ADDON_PLOAD_METATABLE);
 	lua_setmetatable(L, -2);
 }
 
-struct analyzer_pload_instance *addon_pload_get_instance(lua_State *L, int n) {
+struct pload *addon_pload_get(lua_State *L, int n) {
 
 	struct addon_pload *p = luaL_checkudata(L, n, ADDON_PLOAD_METATABLE);
-	return p->instance;
+	return p->pload;
+}
+
+void *addon_pload_get_priv(lua_State *L, int n) {
+
+	struct addon_pload *p = luaL_checkudata(L, n, ADDON_PLOAD_METATABLE);
+	return p->priv;
 }

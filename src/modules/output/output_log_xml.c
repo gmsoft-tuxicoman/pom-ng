@@ -279,7 +279,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 
 	int i;
 	for (i = 0; i < evt_info->data_reg->data_count; i++) {
-		if (evt_info->data_reg->items[i].flags & ANALYZER_DATA_FLAG_LIST) {
+		if (evt_info->data_reg->items[i].flags & DATA_REG_FLAG_LIST) {
 			// Got a data_list
 		
 			if (!evt_data[i].items)

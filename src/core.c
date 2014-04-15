@@ -30,6 +30,7 @@
 #include "proto.h"
 #include "analyzer.h"
 #include "dns.h"
+#include "pload.h"
 
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
@@ -479,6 +480,7 @@ void *core_processing_thread_func(void *priv) {
 	halt("Processing thread encountered an error", 1);
 end:
 	packet_info_pool_cleanup();
+	pload_thread_cleanup();
 
 	return NULL;
 }

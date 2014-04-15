@@ -42,6 +42,7 @@ static int analyzer_multipart_mod_register(struct mod_reg *mod) {
 	analyzer_multipart.name = "multipart";
 	analyzer_multipart.mod = mod;
 	analyzer_multipart.init = analyzer_multipart_init;
+	analyzer_multipart.cleanup = analyzer_multipart_cleanup;
 
 	return analyzer_register(&analyzer_multipart);
 
@@ -54,31 +55,56 @@ static int analyzer_multipart_mod_unregister() {
 
 static int analyzer_multipart_init(struct analyzer *analyzer) {
 
-	struct analyzer_pload_type *pload_type = analyzer_pload_type_get_by_name(ANALYZER_MULTIPART_PLOAD_TYPE);
-	
-	if (!pload_type) {
-		pomlog(POMLOG_ERR "Payload type " ANALYZER_MULTIPART_PLOAD_TYPE " not found");
-		return POM_ERR;
-	}
-
-	static struct analyzer_pload_reg pload_reg;
-	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
-	pload_reg.analyzer = analyzer;
-	pload_reg.process = analyzer_multipart_pload_process;
-	pload_reg.cleanup = analyzer_multipart_pload_cleanup;
-	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
-
-
-	if (analyzer_pload_register(pload_type, &pload_reg) != POM_OK)
-		return POM_ERR;
-
-	return POM_OK;
-
+	return pload_listen_start(analyzer, ANALYZER_MULTIPART_PLOAD_TYPE, NULL, analyzer_multipart_pload_open, analyzer_multipart_pload_write, analyzer_multipart_pload_close);
 }
 
-static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *pload, char *line, size_t len) {
+static int analyzer_multipart_cleanup(struct analyzer *analyzer) {
+	
+	return pload_listen_stop(analyzer, ANALYZER_MULTIPART_PLOAD_TYPE);
+}
 
-	struct analyzer_multipart_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
+static int analyzer_multipart_pload_open(void *obj, void **priv, struct pload *pload) {
+
+	struct mime_type *mime_type = pload_get_mime_type(pload);
+	if (!mime_type) {
+		free(priv);
+		return PLOAD_OPEN_STOP;
+	}
+
+	char *boundary = mime_type_get_param(mime_type, "boundary");
+	if (!boundary) {
+		pomlog(POMLOG_DEBUG "Multipart boundary not found in mime type informations !");
+		free(priv);
+		return PLOAD_OPEN_STOP;
+	}
+
+	struct analyzer_multipart_pload_priv *p = malloc(sizeof(struct analyzer_multipart_pload_priv));
+	if (!p) {
+		pom_oom(sizeof(struct analyzer_multipart_pload_priv));
+		return PLOAD_OPEN_ERR;
+	}
+	memset(p, 0, sizeof(struct analyzer_multipart_pload_priv));
+
+	p->boundary = malloc(strlen(boundary) + 3);
+	if (!p->boundary) {
+		free(p);
+		pom_oom(strlen(boundary) + 3);
+		return PLOAD_OPEN_ERR;
+	}
+
+	p->boundary[0] = '-';
+	p->boundary[1] = '-';
+	strcpy(p->boundary + 2, boundary);
+		
+	p->boundary_len = strlen(p->boundary);
+	p->parent_pload = pload;
+
+	*priv = p;
+
+	return PLOAD_OPEN_CONTINUE;
+}
+
+static int analyzer_multipart_pload_process_line(struct analyzer_multipart_pload_priv *priv, char *line, size_t len) {
 
 	char *my_line = line;
 	size_t my_len = len;
@@ -91,10 +117,10 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 		// Process the rest of the payload
 
 		if (priv->pload) {
-			if (priv->pload_start && analyzer_pload_buffer_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
+			if (priv->pload_start && pload_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
 				return POM_ERR;
 
-			analyzer_pload_buffer_cleanup(priv->pload);
+			pload_end(priv->pload);
 			priv->pload = NULL;
 		}
 		priv->pload_start = NULL;
@@ -109,7 +135,7 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 	} else if (priv->state == analyzer_multipart_pload_state_header) {
 
 		if (!my_len) {
-			// End of the header
+			// End of the headers
 			priv->state = analyzer_multipart_pload_state_content;
 			return POM_OK;
 		}
@@ -123,11 +149,12 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 	} else if (priv->state == analyzer_multipart_pload_state_content) {
 
 		if (!priv->pload) {
-			priv->pload = analyzer_pload_buffer_alloc(0, 0);
+			struct event *rel_event = pload_get_related_event(priv->parent_pload);
+			priv->pload = pload_alloc(rel_event, 0);
 			if (!priv->pload)
 				return POM_ERR;
 			
-			analyzer_pload_buffer_set_container(priv->pload, pload);
+			pload_set_parent(priv->pload, priv->parent_pload);
 
 			// Parse the headers
 			while (priv->pload_data.items) {
@@ -135,9 +162,9 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 				priv->pload_data.items = itm->next;
 
 				if (!strcasecmp(itm->key, "Content-Type")) {
-					analyzer_pload_buffer_set_type_by_content_type(priv->pload, PTYPE_STRING_GETVAL(itm->value));
+					pload_set_mime_type(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
-					analyzer_pload_buffer_set_encoding(priv->pload, PTYPE_STRING_GETVAL(itm->value));
+					pload_set_encoding(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				}
 				free(itm->key);
 				ptype_cleanup(itm->value);
@@ -151,7 +178,7 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 
 		if (priv->pload_end != line) {
 			// Process the payload we had and queue the this one
-			if (priv->pload_start && analyzer_pload_buffer_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
+			if (priv->pload_start && pload_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
 				return POM_ERR;
 			priv->pload_start = line;
 			priv->pload_end = line + len;
@@ -163,51 +190,9 @@ static int analyzer_multipart_pload_process_line(struct analyzer_pload_buffer *p
 	return POM_OK;
 }
 
-static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *data, size_t len) {
+static int analyzer_multipart_pload_write(void *obj, void *p, void *data, size_t len) {
 
-	if (!pload)
-		return POM_ERR;
-
-	struct analyzer_multipart_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
-	if (!priv) {
-		priv = malloc(sizeof(struct analyzer_multipart_pload_priv));
-		if (!priv) {
-			pom_oom(sizeof(struct analyzer_multipart_pload_priv));
-			return POM_ERR;
-		}
-		memset(priv, 0, sizeof(struct analyzer_multipart_pload_priv));
-
-		struct mime_type *mime_type = analyzer_pload_buffer_get_mime_type(pload);
-		if (!mime_type) {
-			priv->state = analyzer_multipart_pload_state_error;
-			free(priv);
-			return POM_ERR;
-		}
-
-		char *boundary = mime_type_get_param(mime_type, "boundary");
-		if (!boundary) {
-			pomlog(POMLOG_DEBUG "Multipart boundary not found in mime type informations !");
-			priv->state = analyzer_multipart_pload_state_error;
-			free(priv);
-			return POM_ERR;
-		}
-
-		priv->boundary = malloc(strlen(boundary) + 3);
-		if (!priv->boundary) {
-			free(priv);
-			priv->state = analyzer_multipart_pload_state_error;
-			pom_oom(strlen(boundary) + 3);
-			goto err;
-		}
-
-		priv->boundary[0] = '-';
-		priv->boundary[1] = '-';
-		strcpy(priv->boundary + 2, boundary);
-			
-		priv->boundary_len = strlen(priv->boundary);
-
-		analyzer_pload_buffer_set_priv(pload, priv);
-	}
+	struct analyzer_multipart_pload_priv *priv = p;
 
 	if (priv->state == analyzer_multipart_pload_state_end)
 		return POM_OK;
@@ -249,12 +234,12 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 				break;
 
 			// Process this line and continue to the next
-			if (analyzer_multipart_pload_process_line(pload, priv->last_line, strlen(priv->last_line)) != POM_OK)
+			if (analyzer_multipart_pload_process_line(priv, priv->last_line, strlen(priv->last_line)) != POM_OK)
 				goto err;
 
 			// We need to process this part of the payload
 			if (priv->state == analyzer_multipart_pload_state_content && priv->pload_start) {
-				if (analyzer_pload_buffer_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
+				if (pload_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
 					goto err;
 			}
 
@@ -272,7 +257,7 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 
 		line_len = cr - data;
 		
-		if (analyzer_multipart_pload_process_line(pload, data, line_len) != POM_OK)
+		if (analyzer_multipart_pload_process_line(priv, data, line_len) != POM_OK)
 			goto err;
 
 		remaining_len -= line_len;
@@ -280,7 +265,7 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 	}
 
 	if (priv->state == analyzer_multipart_pload_state_content && priv->pload_start) {
-		if (analyzer_pload_buffer_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
+		if (pload_append(priv->pload, priv->pload_start, priv->pload_end - priv->pload_start) != POM_OK)
 			goto err;
 	}
 
@@ -291,7 +276,7 @@ static int analyzer_multipart_pload_process(struct analyzer *analyzer, struct an
 
 err:
 	if (priv->pload) {
-		analyzer_pload_buffer_cleanup(priv->pload);
+		pload_end(priv->pload);
 		priv->pload = NULL;
 	}
 
@@ -299,9 +284,10 @@ err:
 	return POM_ERR;
 }
 
-static int analyzer_multipart_pload_cleanup(struct analyzer *analyzer, struct analyzer_pload_buffer *pload) {
+static int analyzer_multipart_pload_close(void *obj, void *p) {
 
-	struct analyzer_multipart_pload_priv *priv = analyzer_pload_buffer_get_priv(pload);
+
+	struct analyzer_multipart_pload_priv *priv = p;
 
 	if (!priv)
 		return POM_OK;
@@ -310,7 +296,7 @@ static int analyzer_multipart_pload_cleanup(struct analyzer *analyzer, struct an
 		free(priv->boundary);
 
 	if (priv->pload)
-		analyzer_pload_buffer_cleanup(priv->pload);
+		pload_end(priv->pload);
 
 	if (priv->last_line)
 		free(priv->last_line);

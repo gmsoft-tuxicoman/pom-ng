@@ -60,12 +60,6 @@ static int analyzer_png_mod_unregister() {
 
 static int analyzer_png_init(struct analyzer *analyzer) {
 
-	struct analyzer_pload_type *pload_type = analyzer_pload_type_get_by_name(ANALYZER_PNG_PLOAD_TYPE);
-	
-	if (!pload_type) {
-		pomlog(POMLOG_ERR "Payload type " ANALYZER_PNG_PLOAD_TYPE " not found");
-		return POM_ERR;
-	}
 
 	static struct data_item_reg pload_png_data_items[ANALYZER_PNG_PLOAD_DATA_COUNT] = { { 0 } };
 	pload_png_data_items[analyzer_png_pload_width].name = "width";
@@ -78,49 +72,43 @@ static int analyzer_png_init(struct analyzer *analyzer) {
 		.data_count = ANALYZER_PNG_PLOAD_DATA_COUNT
 	};
 
-	static struct analyzer_pload_reg pload_reg;
-	memset(&pload_reg, 0, sizeof(struct analyzer_pload_reg));
-	pload_reg.analyzer = analyzer;
-	pload_reg.analyze = analyzer_png_pload_analyze;
-	pload_reg.data_reg = &pload_png_data;
-	pload_reg.flags = ANALYZER_PLOAD_PROCESS_PARTIAL;
+	static struct pload_analyzer pload_analyzer_reg = { 0 };
+	pload_analyzer_reg.analyze = analyzer_png_pload_analyze;
+	pload_analyzer_reg.data_reg = &pload_png_data;
 
-	return analyzer_pload_register(pload_type, &pload_reg);
+	return pload_set_analyzer(ANALYZER_PNG_PLOAD_TYPE, &pload_analyzer_reg);
 }
 
-static int analyzer_png_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buff, size_t buff_len) {
+static int analyzer_png_pload_analyze(struct pload *p, struct pload_buffer *pb, void *priv) {
 
-	if (buff_len < ANALYZER_PNG_HEADER_MIN_SIZE)
-		return POM_OK;
+	if (pb->data_len < ANALYZER_PNG_HEADER_MIN_SIZE)
+		return PLOAD_ANALYSIS_MORE;
 
-	if (!memcmp(buff, ANALYZER_PNG_SIGNATURE, strlen(ANALYZER_PNG_SIGNATURE))) {
-		// We got a PNG file
-		if (!memcmp(buff + 12, ANALYZER_PNG_HEADER_NAME, strlen(ANALYZER_PNG_HEADER_NAME))) {
-			// We got the right header
-			uint16_t height, width;
-			width = ntohl(*(unsigned int*)(buff + 16));
-			height = ntohl(*(unsigned int*)(buff + 20));
-
-			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analyzed);
-
-			struct data *pload_data = analyzer_pload_buffer_get_data(pload);
-			PTYPE_UINT16_SETVAL(pload_data[analyzer_png_pload_width].value, width);
-			data_set(pload_data[analyzer_png_pload_width]);
-			PTYPE_UINT16_SETVAL(pload_data[analyzer_png_pload_height].value, height);
-			data_set(pload_data[analyzer_png_pload_height]);
-			debug_png("Got PNG of %ux%u", width, height);
-
-		} else {
-			pomlog(POMLOG_DEBUG "IHDR not found where it was supposed to be");
-			analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
-		}
-
-	} else {
+	if (memcmp(pb->data, ANALYZER_PNG_SIGNATURE, strlen(ANALYZER_PNG_SIGNATURE))) {
 		pomlog(POMLOG_DEBUG "PNG signature not found");
-		analyzer_pload_buffer_set_state(pload, analyzer_pload_buffer_state_analysis_failed);
+		return PLOAD_ANALYSIS_FAILED;
 	}
 
-	return POM_OK;
+	// We got a PNG file
+	if (memcmp(pb->data + 12, ANALYZER_PNG_HEADER_NAME, strlen(ANALYZER_PNG_HEADER_NAME))) {
+		pomlog(POMLOG_DEBUG "IHDR not found where it was supposed to be");
+		return PLOAD_ANALYSIS_FAILED;
+	}
+
+	// We got the right header
+	uint16_t height, width;
+	width = ntohl(*(unsigned int*)(pb->data + 16));
+	height = ntohl(*(unsigned int*)(pb->data + 20));
+
+
+	struct data *pload_data = pload_get_data(p);
+	PTYPE_UINT16_SETVAL(pload_data[analyzer_png_pload_width].value, width);
+	data_set(pload_data[analyzer_png_pload_width]);
+	PTYPE_UINT16_SETVAL(pload_data[analyzer_png_pload_height].value, height);
+	data_set(pload_data[analyzer_png_pload_height]);
+	debug_png("Got PNG of %ux%u", width, height);
+
+	return PLOAD_ANALYSIS_OK;
 }
 
 

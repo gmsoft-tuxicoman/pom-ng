@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #define __ANALYZER_GIF_H__
 
 #include <pom-ng/analyzer.h>
+#include <pom-ng/pload.h>
 
 #define ANALYZER_GIF_PLOAD_TYPE "gif"
 
@@ -43,6 +44,6 @@ static int analyzer_gif_mod_register(struct mod_reg *mod);
 static int analyzer_gif_mod_unregister();
 
 static int analyzer_gif_init(struct analyzer *analyzer);
-static int analyzer_gif_pload_analyze(struct analyzer *analyzer, struct analyzer_pload_buffer *pload, void *buffer, size_t buff_len);
+static int analyzer_gif_pload_analyze(struct pload *p, struct pload_buffer *pb, void *priv);
 
 #endif

@@ -25,6 +25,9 @@
 #define FILTER_MATCH_NO		0
 #define FILTER_MATCH_YES	1
 
+
+struct filter_node;
+
 struct filter_proto *filter_proto_build(char *proto, char *field, unsigned int op, char *value);
 struct filter_proto *filter_proto_build_branch(struct filter_proto *a, struct filter_proto *b, unsigned int op);
 void filter_proto_cleanup(struct filter_proto *f);

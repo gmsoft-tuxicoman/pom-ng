@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 #define __ADDON_PLOAD_H__
 
 #include "addon.h"
-#include "analyzer.h"
+#include <pom-ng/pload.h>
 
 #define ADDON_PLOAD_METATABLE "addon.pload"
 #define ADDON_PLOAD_DATA_METATABLE "addon.pload_data"
@@ -34,8 +34,8 @@ struct addon_pload_data {
 
 struct addon_pload {
 
-	struct analyzer_pload_buffer *pload;
-	struct analyzer_pload_instance *instance;
+	struct pload *pload;
+	void *priv;
 
 };
 
@@ -43,8 +43,9 @@ int addon_pload_lua_register(lua_State *L);
 
 void addon_pload_data_push(lua_State *L);
 void addon_pload_data_update(lua_State *L, int n, void *data, size_t len);
-void addon_pload_push(lua_State *L, struct analyzer_pload_buffer *pload, struct analyzer_pload_instance *instance);
-struct analyzer_pload_instance *addon_pload_get_instance(lua_State *L, int n);
+void addon_pload_push(lua_State *L, struct pload *pload, void *priv);
+struct pload *addon_pload_get(lua_State *L, int n);
+void *addon_pload_get_priv(lua_State *L, int n);
 
 
 #endif
