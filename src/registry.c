@@ -1156,6 +1156,7 @@ int registry_config_reset() {
 
 err:
 
+	registry_unlock();
 	registry_uid_table_size = old_uid_table_size;
 	return POM_ERR;
 
