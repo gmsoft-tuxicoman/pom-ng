@@ -26,6 +26,8 @@
 #include <pom-ng/mime.h>
 #include <pom-ng/decoder.h>
 
+#define PLOAD_REGISTRY "payload"
+
 struct pload_mime_type {
 	char *name;
 	struct pload_type *type;

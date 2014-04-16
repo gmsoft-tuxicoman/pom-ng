@@ -24,6 +24,7 @@
 #define PLOAD_FLAG_NEED_MAGIC		0x1
 #define PLOAD_FLAG_NEED_ANALYSIS	0x2
 #define PLOAD_FLAG_IS_ERR		0x4
+#define PLOAD_FLAG_DONE			0x8
 
 #define PLOAD_ANALYSIS_ERR	POM_ERR		// Something went wrong
 #define PLOAD_ANALYSIS_OK	POM_OK		// All went ok
@@ -58,6 +59,10 @@ struct pload_type {
 	char *description;
 	struct pload_analyzer *analyzer;
 	struct pload_listener_reg *listeners;
+	struct registry_instance *reg_instance;
+
+	struct registry_perf *perf_analyzed;
+
 
 	UT_hash_handle hh;
 };

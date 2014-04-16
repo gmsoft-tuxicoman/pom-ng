@@ -21,6 +21,7 @@
 
 #include "config.h"
 #include "pload.h"
+#include "registry.h"
 #include <pom-ng/resource.h>
 #include <pom-ng/ptype_string.h>
 
@@ -36,6 +37,8 @@ static __thread magic_t magic_cookie = NULL;
 
 #endif
 
+
+static struct registry_class *pload_registry_class = NULL;
 
 struct pload_listener_reg *pload_listeners = NULL;
 pthread_rwlock_t pload_listeners_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -83,6 +86,14 @@ static char *pload_decoders_noop[] = {
 
 int pload_init() {
 
+	struct registry_param *p = NULL;
+
+	// Add the registry class
+	
+	pload_registry_class = registry_add_class(PLOAD_REGISTRY);
+	if (!pload_registry_class)
+		goto err;
+
 
 	struct resource *r = NULL;
 	struct resource_dataset *pload_types_ds = NULL, *mime_types_ds = NULL;
@@ -122,6 +133,7 @@ int pload_init() {
 			continue;
 		}
 
+
 		def->name = strdup(PTYPE_STRING_GETVAL(v[0].value));
 		def->description = strdup(PTYPE_STRING_GETVAL(v[1].value));
 		def->extension = strdup(PTYPE_STRING_GETVAL(v[2].value));
@@ -131,6 +143,48 @@ int pload_init() {
 			pom_oom(strlen(PTYPE_STRING_GETVAL(v[0].value)));
 			goto err;
 		}
+
+		def->reg_instance = registry_add_instance(pload_registry_class, def->name);
+		if (!def->reg_instance)
+			goto err;
+
+		struct ptype *param = ptype_alloc("string");
+		if (!param)
+			goto err;
+		p = registry_new_param("class", PTYPE_STRING_GETVAL(v[3].value), param, "Payload class", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+		if (!p)
+			goto err;
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
+			registry_cleanup_param(p);
+			goto err;
+		}
+
+		param = ptype_alloc("string");
+		if (!param)
+			goto err;
+		p = registry_new_param("description", def->description, param, "Payload description", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+		if (!p)
+			goto err;
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
+			registry_cleanup_param(p);
+			goto err;
+		}
+
+		param = ptype_alloc("string");
+		if (!param)
+			goto err;
+		p = registry_new_param("extension", def->extension, param, "Payload extension", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+		if (!p)
+			goto err;
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
+			registry_cleanup_param(p);
+			goto err;
+		}
+
+		def->perf_analyzed = registry_instance_add_perf(def->reg_instance, "analyzed", registry_perf_type_counter, "Number of payload analyzed", "ploads");
+
+		if (!def->perf_analyzed)
+			goto err;
 
 		// Add the payload with its name
 		HASH_ADD_KEYPTR(hh, pload_types, def->name, strlen(def->name), def);
@@ -223,7 +277,6 @@ void pload_thread_cleanup() {
 
 void pload_cleanup() {
 
-
 	struct pload_type *cur_type, *tmp;
 	HASH_ITER(hh, pload_types, cur_type, tmp) {
 		HASH_DELETE(hh, pload_types, cur_type);
@@ -247,6 +300,10 @@ void pload_cleanup() {
 		free(tmp->name);
 		free(tmp);
 	}
+
+
+	if (pload_registry_class)
+		registry_remove_class(pload_registry_class);
 }
 
 #ifdef HAVE_LIBMAGIC
@@ -470,7 +527,10 @@ int pload_buffer_append(struct pload *p, void *data, size_t len) {
 }
 
 int pload_append(struct pload *p, void *data, size_t len) {
-	
+
+	if (p->flags & PLOAD_FLAG_DONE)
+		return POM_OK;
+
 	if (p->flags & PLOAD_FLAG_IS_ERR)
 		return POM_ERR;
 
@@ -588,6 +648,8 @@ int pload_append(struct pload *p, void *data, size_t len) {
 			if (a->cleanup)
 				a->cleanup(p, p->priv);
 
+			registry_perf_inc(p->type->perf_analyzed, 1);
+
 		} else if (res == PLOAD_ANALYSIS_MORE) {
 			if (!p->buf.data_len) // The analyzer needs more data
 				return pload_buffer_append(p, data, len);
@@ -613,8 +675,6 @@ int pload_append(struct pload *p, void *data, size_t len) {
 			struct pload_listener_reg *reg;
 			
 			for (reg = listeners[i]; reg; reg = reg->next) {
-
-				// TODO add listeners for each pload type
 
 				void *pload_priv = NULL;
 				int res = reg->open(reg->obj, &pload_priv, p);
@@ -645,6 +705,12 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 		pom_rwlock_unlock(&pload_listeners_lock);
 
+		if (!p->listeners) {
+			// Nobody wants to know about this payload
+			p->flags |= PLOAD_FLAG_DONE;
+			return POM_OK;
+		}
+
 	}
 
 	struct pload_listener *tmp = p->listeners;
@@ -669,6 +735,11 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 		}
 		tmp = tmp->next;
+	}
+
+	if (!p->listeners) {
+		// There is no listener anymore
+		p->flags |= PLOAD_FLAG_DONE;
 	}
 
 	if (p->buf.data) {
