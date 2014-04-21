@@ -24,7 +24,12 @@
 #include "registry.h"
 #include <pom-ng/resource.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint32.h>
 
+#include <stdio.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 #ifdef HAVE_LIBMAGIC
 #include <magic.h>
@@ -39,12 +44,15 @@ static __thread magic_t magic_cookie = NULL;
 
 
 static struct registry_class *pload_registry_class = NULL;
+static struct ptype *pload_store_path = NULL;
+static struct ptype *pload_store_mmap_block_size = NULL;
+static size_t pload_page_size = 0;
 
-struct pload_listener_reg *pload_listeners = NULL;
-pthread_rwlock_t pload_listeners_lock = PTHREAD_RWLOCK_INITIALIZER;
+static struct pload_listener_reg *pload_listeners = NULL;
+static pthread_rwlock_t pload_listeners_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-struct pload_type *pload_types = NULL;
-struct pload_mime_type *pload_mime_types_hash = NULL, *pload_mime_types_head = NULL;
+static struct pload_type *pload_types = NULL;
+static struct pload_mime_type *pload_mime_types_hash = NULL, *pload_mime_types_head = NULL;
 
 static char* pload_class_names[]  = {
 	"other",
@@ -86,13 +94,29 @@ static char *pload_decoders_noop[] = {
 
 int pload_init() {
 
-	struct registry_param *p = NULL;
+	pload_store_path = ptype_alloc("string");
+	pload_store_mmap_block_size = ptype_alloc_unit("uint32", "bytes");
+	if (!pload_store_path || !pload_store_mmap_block_size)
+		return POM_ERR;
 
-	// Add the registry class
 	
+	struct registry_param *p = NULL;
+	// Add the registry class
 	pload_registry_class = registry_add_class(PLOAD_REGISTRY);
 	if (!pload_registry_class)
 		goto err;
+
+
+	p = registry_new_param("store_path", "/tmp/", pload_store_path, "Path for temporary payload storage", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(pload_registry_class, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("mmap_min_block_size", "16777216", pload_store_mmap_block_size, "Mimnum block size mapping for mmap", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(pload_registry_class, p) != POM_OK)
+		goto err;
+
+	p = NULL;
+
 
 
 	struct resource *r = NULL;
@@ -133,7 +157,6 @@ int pload_init() {
 			continue;
 		}
 
-
 		def->name = strdup(PTYPE_STRING_GETVAL(v[0].value));
 		def->description = strdup(PTYPE_STRING_GETVAL(v[1].value));
 		def->extension = strdup(PTYPE_STRING_GETVAL(v[2].value));
@@ -152,34 +175,23 @@ int pload_init() {
 		if (!param)
 			goto err;
 		p = registry_new_param("class", PTYPE_STRING_GETVAL(v[3].value), param, "Payload class", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
-		if (!p)
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK)
 			goto err;
-		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
-			registry_cleanup_param(p);
-			goto err;
-		}
 
 		param = ptype_alloc("string");
 		if (!param)
 			goto err;
 		p = registry_new_param("description", def->description, param, "Payload description", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
-		if (!p)
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) 
 			goto err;
-		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
-			registry_cleanup_param(p);
-			goto err;
-		}
 
 		param = ptype_alloc("string");
 		if (!param)
 			goto err;
 		p = registry_new_param("extension", def->extension, param, "Payload extension", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
-		if (!p)
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK)
 			goto err;
-		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
-			registry_cleanup_param(p);
-			goto err;
-		}
+		p = NULL;
 
 		def->perf_analyzed = registry_instance_add_perf(def->reg_instance, "analyzed", registry_perf_type_counter, "Number of payload analyzed", "ploads");
 
@@ -248,9 +260,17 @@ int pload_init() {
 	resource_dataset_close(mime_types_ds);
 	resource_close(r);
 
+	// Get the page size
+	pload_page_size  = sysconf(_SC_PAGESIZE);
+	if (!pload_page_size)
+		pload_page_size = 4096;
+
 	return POM_OK;
 
 err:
+
+	if (p)
+		registry_cleanup_param(p);
 
 	if (mime_types_ds)
 		resource_dataset_close(mime_types_ds);
@@ -361,22 +381,54 @@ int pload_end(struct pload *pload) {
 		free(tmp);
 	}
 
-	if (pload->data)
-		data_cleanup_table(pload->data, pload->type->analyzer->data_reg);
+	if (pload->store) {
+		pload_store_end(pload->store);
+		pload->store = NULL;
+	}
 
 	if (pload->decoder)
 		decoder_cleanup(pload->decoder);
 	
-	if (pload->mime_type)
-		mime_type_cleanup(pload->mime_type);
-
 	if (pload->buf.data)
 		free(pload->buf.data);
+
+	if (pload->refcount)
+		return POM_OK;
+
+	if (pload->data)
+		data_cleanup_table(pload->data, pload->type->analyzer->data_reg);
+
+	if (pload->mime_type)
+		mime_type_cleanup(pload->mime_type);
 
 	free(pload);
 	
 
 	return POM_OK;
+
+}
+
+
+void pload_refcount_inc(struct pload *pload) {
+	
+	__sync_fetch_and_add(&pload->refcount, 1);
+}
+
+void pload_refcount_dec(struct pload *pload) {
+
+	if (__sync_sub_and_fetch(&pload->refcount, 1))
+		return;
+
+	if (pload->store || pload->listeners || !(pload->flags & PLOAD_FLAG_OPENED))
+		return;
+
+	if (pload->data)
+		data_cleanup_table(pload->data, pload->type->analyzer->data_reg);
+
+	if (pload->mime_type)
+		mime_type_cleanup(pload->mime_type);
+
+	free(pload);
 
 }
 
@@ -448,20 +500,16 @@ void pload_set_expected_size(struct pload *p, size_t size) {
 
 int pload_buffer_grow(struct pload *p, size_t min_size) {
 
-	size_t growsize = sysconf(_SC_PAGESIZE);
-	if (!growsize)
-		growsize = 4096;
-
 	size_t new_size = p->buf.buf_size;
 
 	do {
-		new_size += growsize;
+		new_size += pload_page_size;
 	} while (new_size - p->buf.data_len < min_size);
 
 	void *new_buf = realloc(p->buf.data, new_size);
 
 	if (!new_buf) {
-		pom_oom(growsize);
+		pom_oom(pload_page_size);
 		p->flags |= PLOAD_FLAG_IS_ERR;
 		return POM_ERR;
 	}
@@ -526,18 +574,155 @@ int pload_buffer_append(struct pload *p, void *data, size_t len) {
 	return POM_OK;
 }
 
-int pload_append(struct pload *p, void *data, size_t len) {
+int pload_store_make_space(struct pload *p, size_t min_size) {
 
-	if (p->flags & PLOAD_FLAG_DONE)
+	struct pload_store_map *write_map = p->store->write_map;
+
+	if (min_size < write_map->map_size - write_map->off_cur)
 		return POM_OK;
+
+	// The requested size is bigger than what's available
+	// Let's remap the whole thing to a new offset
+	if (write_map->map && munmap(write_map->map, write_map->map_size)) {
+		pomlog(POMLOG_ERR "Error while unmapping the memory area : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	// Calculate the closest offset we can use
+	off_t offset = write_map->off_cur - (write_map->off_cur % pload_page_size);
+
+	write_map->off_start += offset;
+	write_map->off_cur -= offset;
+
+	size_t block_size = *PTYPE_UINT32_GETVAL(pload_store_mmap_block_size);
+
+	// Round up to the next page aligned size
+	block_size += pload_page_size - (block_size % pload_page_size);
+
+	// Make sure block size is big enough ...
+	if (block_size - write_map->off_cur < min_size) {
+		block_size = write_map->off_cur + min_size;
+		block_size += pload_page_size - (block_size % pload_page_size);
+	}
+
+
+	if (ftruncate(p->store->fd, write_map->off_start + block_size)) {
+		pomlog(POMLOG_ERR "Error while expanding file \"%s\" : %s", p->store->filename, pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	write_map->map = mmap(NULL, block_size, PROT_READ | PROT_WRITE, MAP_SHARED, p->store->fd, write_map->off_start);
+	if (write_map->map == MAP_FAILED) {
+		pomlog(POMLOG_ERR "Error while mapping the file \"%s\" : %s", p->store->filename, pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	write_map->map_size = block_size;
+
+	return POM_OK;
+}
+
+int pload_store_append(struct pload *p, void *data, size_t len) {
+
+	struct pload_store_map *write_map = p->store->write_map;
+
+	if (p->decoder) {
+		struct decoder *d = p->decoder;
+		// First we need to decode the data provided
+
+		size_t estimated_len = decoder_estimate_output_size(d, len);
+
+		d->next_in = data;
+		d->avail_in = len;
+
+		if (write_map->map_size - write_map->off_cur < estimated_len) {
+			if (pload_store_make_space(p, estimated_len) != POM_OK)
+				return POM_ERR;
+		}
+
+		d->avail_out = write_map->map_size - write_map->off_cur;
+
+		while (1) {
+			d->next_out = write_map->map + write_map->off_cur;
+
+			int res = decoder_decode(d);
+
+			if (res == DEC_END) {
+				break;
+			} else if (res == DEC_ERR) {
+				p->flags |= PLOAD_FLAG_IS_ERR;
+				return POM_ERR;
+			} else if (res == DEC_MORE) {
+				write_map->off_cur = write_map->map_size - d->avail_out;
+				if (pload_store_make_space(p, pload_page_size) != POM_OK)
+					return POM_ERR;
+				d->avail_out = write_map->map_size - write_map->off_cur;
+			} else if (!d->avail_in) {
+				// Nothing more to decode
+				break;
+			}
+		}
+
+		write_map->off_cur = write_map->map_size - d->avail_out;
+	} else {
+		// No need to decode this
+	
+		if (write_map->map_size < write_map->off_cur + len) {
+			if (pload_store_make_space(p, len) != POM_OK)
+				return POM_ERR;
+		}
+		memcpy(write_map->map + write_map->off_cur, data, len);
+		write_map->off_cur += len;
+	}
+	p->store->file_size = write_map->off_start + write_map->off_cur;
+
+	return POM_OK;
+}
+int pload_append(struct pload *p, void *data, size_t len) {
 
 	if (p->flags & PLOAD_FLAG_IS_ERR)
 		return POM_ERR;
 
 
-	// If there is already something in the buffer
-	// or if there is a decoder, we need to append to it
-	if (p->buf.data_len || p->decoder) {
+	// Allright, let's see what to do. There a multiple scenario
+	
+
+	// First, do we have a storage attached ? If so process it
+	// Note that a store can only be attached once the analysis
+	// has been performed
+	if (p->store) {
+		struct pload_store_map *write_map = p->store->write_map;
+		// Remember where we left off
+		off_t start_off = write_map->off_start + write_map->off_cur;
+		if (pload_store_append(p, data, len) != POM_OK)
+			return POM_ERR;
+
+		// Use the data from the map
+		data = write_map->map + (start_off - write_map->off_start);
+		if (data < write_map->map || data > write_map->map + write_map->map_size) {
+			pomlog(POMLOG_ERR "Internal error, write_map calculation went wrong");
+			abort();
+		}
+		len = (write_map->off_start + write_map->off_cur) - start_off;
+	}
+
+	// Second, has the payload been processed and if so, is anybody interested ?
+	if ((p->flags & PLOAD_FLAG_OPENED) && !p->listeners) {
+		// Nope nobody is
+		return POM_OK;
+	}
+
+	// Allright, so we need to do something with it
+	if (!(p->flags & PLOAD_FLAG_OPENED)) {
+		// The pload is not yet open so there is no store possible yet
+		if (p->buf.data_len || p->decoder) {
+			if (pload_buffer_append(p, data, len) != POM_OK)
+				return POM_ERR;
+			data = p->buf.data;
+			len = p->buf.data_len;
+		}
+	} else if (!p->store && p->decoder) {
+		// There is no store being used but we still need some space to decode the payload
 		if (pload_buffer_append(p, data, len) != POM_OK)
 			return POM_ERR;
 		data = p->buf.data;
@@ -661,7 +846,7 @@ int pload_append(struct pload *p, void *data, size_t len) {
 	
 	// At this point the payload is ready to be sent to a listener
 
-	if (!p->listeners) {
+	if (!(p->flags & PLOAD_FLAG_OPENED)) {
 		
 		pom_rwlock_rlock(&pload_listeners_lock);
 
@@ -705,10 +890,29 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 		pom_rwlock_unlock(&pload_listeners_lock);
 
-		if (!p->listeners) {
-			// Nobody wants to know about this payload
-			p->flags |= PLOAD_FLAG_DONE;
-			return POM_OK;
+		p->flags |= PLOAD_FLAG_OPENED;
+
+
+		if (p->store) {
+			
+			if (!p->store->refcount) {
+				// Some listener allocated the store but then released it
+				free(p->store);
+				p->store = NULL;
+			} else {
+		
+
+				// Storage was requested
+				if (pload_store_open(p->store) != POM_OK)
+					return POM_ERR;
+
+				if (pload_store_make_space(p, len) != POM_OK)
+					return POM_ERR;
+
+				struct pload_store_map *write_map = p->store->write_map;
+				memcpy(write_map->map + write_map->off_cur, data, len);
+				write_map->off_cur += len;
+			}
 		}
 
 	}
@@ -737,10 +941,6 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		tmp = tmp->next;
 	}
 
-	if (!p->listeners) {
-		// There is no listener anymore
-		p->flags |= PLOAD_FLAG_DONE;
-	}
 
 	if (p->buf.data) {
 		free(p->buf.data);
@@ -889,3 +1089,193 @@ int pload_listen_stop(void *obj, char *pload_type) {
 	return POM_OK;
 }
 
+struct pload_store *pload_store_get(struct pload *pload) {
+
+	if (pload->flags & PLOAD_FLAG_OPENED) {
+		pomlog(POMLOG_ERR "Internal error, trying to get a store for a payload after it has been open.");
+		return NULL;
+	}
+
+	// This function will be called by the listeners' open function
+	// There is no need to protect this by a lock
+	if (!pload->store) {
+		pload->store = malloc(sizeof(struct pload_store));
+		if (!pload->store) {
+			pom_oom(sizeof(struct pload_store));
+			return NULL;
+		}
+		memset(pload->store, 0, sizeof(struct pload_store));
+		pload->store->fd = -1;
+	}
+
+	pload->store->refcount++;
+
+	return pload->store;
+}
+
+int pload_store_open_file(struct pload_store *ps) {
+
+	if (ps->fd != -1)
+		return POM_OK;
+
+	if (!ps->filename) {
+		char *path = PTYPE_STRING_GETVAL(pload_store_path);
+		char filename[17] = { 0 };
+		snprintf(filename, 16, "%"PRIX64, (uint64_t)ps);
+
+		ps->filename = malloc(strlen(path) + strlen(filename) + 1);
+		if (!ps->filename)
+			return POM_ERR;
+		strcpy(ps->filename, path);
+		strcat(ps->filename, filename);
+	}
+
+	ps->fd = pom_open(ps->filename, O_RDWR | O_CREAT, 0666);
+	if (ps->fd == -1)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
+int pload_store_open(struct pload_store *ps) {
+
+	if (ps->write_map) {
+		pomlog(POMLOG_ERR "Write map already exists and shouldn't !");
+		return POM_ERR;
+	}
+
+	ps->write_map = malloc(sizeof(struct pload_store_map));
+	if (!ps->write_map) {
+		pom_oom(sizeof(struct pload_store_map));
+		return POM_ERR;
+	}
+	memset(ps->write_map, 0, sizeof(struct pload_store_map));
+
+	if (ps->fd == -1) {
+		if (pload_store_open_file(ps) != POM_OK) {
+			free(ps->write_map);
+			return POM_ERR;
+		}
+	}
+
+	ps->refcount++;
+
+	return POM_OK;
+}
+
+void pload_store_end(struct pload_store *ps) {
+
+	if (ftruncate(ps->fd, ps->file_size)) {
+		pomlog(POMLOG_ERR "Error while shrinking file \"%s\" : %s", ps->filename, pom_strerror(errno));
+	}
+
+	pload_store_map_cleanup(ps->write_map);
+	ps->write_map = NULL;
+
+	pload_store_release(ps);
+
+}
+
+void pload_store_get_ref(struct pload_store *ps) {
+	__sync_add_and_fetch(&ps->refcount, 1);
+}
+
+void pload_store_release(struct pload_store *ps) {
+
+	if (__sync_sub_and_fetch(&ps->refcount, 1))
+		return;
+
+	// Refcount is 0 !
+
+	if (ps->fd != -1) {
+		if (close(ps->fd)) {
+			pomlog(POMLOG_WARN "Error while closing file \"%s\" : %s", ps->filename, pom_strerror(errno));
+		}
+	}
+		
+	if (ps->filename)
+		free(ps->filename);
+
+	free(ps);
+}
+
+void pload_store_map_cleanup(struct pload_store_map *map) {
+
+	if (map->map) {
+		if (munmap(map->map, map->map_size)) {
+			pomlog(POMLOG_ERR "Error while unmapping file : %s", pom_strerror(errno));
+		}
+	}
+
+	free(map);
+}
+
+struct pload_store_map *pload_store_read_start(struct pload_store *ps) {
+
+	struct pload_store_map *map = malloc(sizeof(struct pload_store_map));
+	if (!map) {
+		pom_oom(sizeof(struct pload_store_map));
+		return NULL;
+	}
+	memset(map, 0, sizeof(struct pload_store_map));
+	map->store = ps;
+
+	return map;
+}
+
+ssize_t pload_store_read(struct pload_store_map *map, void **buff, size_t count) {
+
+	size_t file_remaining = map->store->file_size - map->off_start - map->off_cur;
+	size_t remaining = map->map_size - map->off_cur;
+
+	if (!file_remaining)
+		return 0; // EOF
+
+	if (!remaining) {
+		// Map the next block
+		uint32_t block_size = *PTYPE_UINT32_GETVAL(pload_store_mmap_block_size);
+		if (block_size > file_remaining)
+			block_size = file_remaining - (file_remaining % pload_page_size) + pload_page_size;
+
+		if (map->map && munmap(map->map, map->map_size)) {
+			pomlog(POMLOG_ERR "Error while unmapping file \"%s\" : %s", map->store->filename, pom_strerror(errno));
+			return -1;
+		}
+
+		map->off_start += map->map_size;
+		map->off_cur = 0;
+
+		map->map = mmap(NULL, block_size, PROT_READ, MAP_SHARED, map->store->fd, map->off_start);
+		if (map->map == MAP_FAILED) {
+			map->map = NULL;
+			pomlog(POMLOG_ERR "Error while mapping file \"%s\" : %s", map->store->filename, pom_strerror(errno)); 
+			return -1;
+		}
+		map->map_size = block_size;
+
+		if (block_size > file_remaining)
+			remaining = file_remaining;
+		else
+			remaining = block_size;
+	}
+
+	if (remaining > file_remaining)
+		remaining = file_remaining;
+
+	if (remaining > count)
+		remaining = count;
+
+
+	*buff = map->map + map->off_cur;
+	map->off_cur += remaining;
+
+	return remaining;
+}
+
+void pload_store_read_end(struct pload_store_map *map) {
+
+	if (map->map)
+		munmap(map->map, map->map_size);
+
+	free(map);
+}

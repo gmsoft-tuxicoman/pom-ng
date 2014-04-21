@@ -28,6 +28,9 @@
 
 #define PLOAD_REGISTRY "payload"
 
+#define PLOAD_STORE_FLAG_OPENED		0x1
+#define PLOAD_STORE_FLAG_COMPLETE	0x2
+
 struct pload_mime_type {
 	char *name;
 	struct pload_type *type;
@@ -58,6 +61,30 @@ struct pload_listener {
 
 };
 
+struct pload_store_map {
+	
+	off_t off_start; // Offset from the start of the file
+	off_t off_cur; // Offset from the start of the mapped area
+	size_t map_size; // Size of the mapping
+	void *map;
+
+	struct pload_store *store; // Pload to which it belongs
+//	pthread_mutex_t lock;
+//	pthread_cond_t cond; 
+
+};
+
+struct pload_store {
+	
+	char *filename;
+	int fd;
+	size_t file_size;
+
+	unsigned int refcount;
+	struct pload_store_map *write_map;
+
+	unsigned int flags;
+};
 
 // Hold information about a payload
 struct pload {
@@ -75,11 +102,16 @@ struct pload {
 	struct pload_listener *listeners;
 	struct pload *parent;
 	uint32_t refcount;
+	struct pload_store *store;
 };
 
 int pload_init();
 void pload_cleanup();
 void pload_thread_cleanup();
 
+int pload_store_open_file(struct pload_store *ps);
+int pload_store_open(struct pload_store *ps);
+void pload_store_map_cleanup(struct pload_store_map *map);
+void pload_store_end(struct pload_store *ps);
 
 #endif

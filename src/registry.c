@@ -1139,6 +1139,8 @@ int registry_config_reset() {
 			for (inst = cls->instances; inst; inst = inst->next) {
 				struct registry_param *param;
 				for (param = inst->params; param; param = param->next) {
+					if (param->flags & REGISTRY_PARAM_FLAG_IMMUTABLE)
+						continue;
 					if (registry_set_param_value(param, param->default_value) != POM_OK) {
 						pomlog(POMLOG_ERR "Unable to reset the default value of parameter %s.%s.%s", cls->name, inst->name, param->name);
 						goto err;

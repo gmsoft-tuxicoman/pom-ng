@@ -21,6 +21,7 @@
 #include "common.h"
 #include "xmlrpcsrv.h"
 #include "filter.h"
+#include "httpd.h"
 #include <pom-ng/event.h>
 
 #include "xmlrpccmd.h"
@@ -29,7 +30,10 @@
 static pthread_mutex_t xmlrpccmd_monitor_session_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct xmlrpccmd_monitor_session *xmlrpccmd_monitor_sessions[XMLRPCCMD_MONITOR_MAX_SESSION] = { 0 };
 
-#define XMLRPCCMD_MONITOR_NUM 5
+
+static int xmlrpccmd_monitor_pload_listeners_count = 0;
+
+#define XMLRPCCMD_MONITOR_NUM 7
 static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM] = {
 
 	{
@@ -51,6 +55,20 @@ static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM
 		.callback_func = xmlrpccmd_monitor_event_remove_listener,
 		.signature = "i:iI",
 		.help = "Remove an event listener from a monitoring session",
+	},
+
+	{
+		.name = "monitor.ploadAddListener",
+		.callback_func = xmlrpccmd_monitor_pload_add_listener,
+		.signature = "I:is",
+		.help = "Add a payload listener to a monitoring session",
+	},
+
+	{
+		.name = "monitor.ploadRemoveListener",
+		.callback_func = xmlrpccmd_monitor_pload_remove_listener,
+		.signature = "i:iI",
+		.help = "Remove a payload listener from a monitoring session",
 	},
 
 	{
@@ -80,7 +98,7 @@ int xmlrpccmd_monitor_register_all() {
 	return POM_OK;
 }
 
-int xmlrpccmd_monitor_process_end(struct event *evt, void *obj) {
+int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj) {
 
 	struct xmlrpccmd_monitor_evtreg *evtreg = obj;
 	struct xmlrpccmd_monitor_session *sess = evtreg->sess;
@@ -111,7 +129,111 @@ int xmlrpccmd_monitor_process_end(struct event *evt, void *obj) {
 	pom_mutex_unlock(&sess->lock);
 
 	return POM_OK;
+}
 
+int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload) {
+
+	uint64_t pload_id = -1;
+
+	// Check if we need this payload
+	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
+
+	int i;
+	for (i = 0; i < XMLRPCCMD_MONITOR_MAX_SESSION; i++) {
+
+		struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[i];
+		if (!sess)
+			continue;
+
+		pom_mutex_lock(&sess->lock);
+
+		struct xmlrpccmd_monitor_pload *lst = NULL;
+
+		struct xmlrpccmd_monitor_pload_listener *tmp;
+
+		for (tmp = sess->pload_listeners; tmp; tmp = tmp->next) {
+
+			// Check of this listener wants this payload
+			int matched = 0;
+			if (!tmp->filter)
+				matched = 1;
+			else {
+				int res = filter_pload_match(tmp->filter, pload);
+				if (res == POM_ERR) {
+					pomlog(POMLOG_ERR "Error while matching filter");
+					continue;
+				}
+
+				if (res == FILTER_MATCH_YES)
+					matched = 1;
+			}
+
+			if (!matched)
+				continue;
+
+			// Add the payload to httpd since we need it
+			if (pload_id == -1) {
+				pload_id = httpd_pload_add(pload);
+				if (pload_id == -1) {
+					pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+					pom_mutex_unlock(&sess->lock);
+					return POM_ERR;
+				}
+			}
+
+			// Create the list of matched listeners
+			if (!lst) {
+				lst = malloc(sizeof(struct xmlrpccmd_monitor_pload));
+				if (!lst) {
+					pom_oom(sizeof(struct xmlrpccmd_monitor_pload));
+					break;
+				}
+				memset(lst, 0, sizeof(struct xmlrpccmd_monitor_pload));
+				lst->pload_id = pload_id;
+				lst->pload = pload;
+				pload_refcount_inc(pload);
+			}
+
+			// Add this listener to the list
+			lst->listeners_count++;
+			uint64_t *new_lst = realloc(lst->listeners, sizeof(uint64_t) * lst->listeners_count);
+			if (!new_lst) {
+				pom_oom(sizeof(uint64_t) * lst->listeners_count);
+				// Simply ignore this one
+				continue;
+			}
+			lst->listeners = new_lst;
+			new_lst[lst->listeners_count - 1] = tmp->id;
+
+		}
+
+		if (lst) {
+			lst->next = sess->ploads;
+			sess->ploads = lst;
+
+			if (pthread_cond_broadcast(&sess->cond)) {
+				pomlog("Error while signaling the session condition : %s", pom_strerror(errno));
+				abort();
+			}
+		}
+
+		pom_mutex_unlock(&sess->lock);
+
+	}
+
+	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	return PLOAD_OPEN_STOP;
+}
+
+int xmlrpccmd_monitor_pload_write(void *obj, void *priv, void *data, size_t len) {
+
+	return POM_OK;
+}
+
+int xmlrpccmd_monitor_pload_close(void *obj, void *priv) {
+
+	return POM_OK;
 }
 
 int xmlrpccmd_monitor_timeout(void *priv) {
@@ -126,17 +248,22 @@ int xmlrpccmd_monitor_timeout(void *priv) {
 }
 
 int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
-	
+
+	int sess_id = sess->id;
+
 	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
 
-	if (!xmlrpccmd_monitor_sessions[sess->id]) {
+	if (!xmlrpccmd_monitor_sessions[sess_id]) {
 		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 		return POM_OK;
 	}
 
-	xmlrpccmd_monitor_sessions[sess->id] = NULL;
+	xmlrpccmd_monitor_sessions[sess_id] = NULL;
 	pom_mutex_lock(&sess->lock);
 	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	// Mark that the session is being deleted
+	sess->id = -1;
 
 	while (sess->polling) {
 		pthread_cond_broadcast(&sess->cond);
@@ -174,7 +301,32 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 	}
 
 
+	// Remove the payload listeners
+	while (sess->pload_listeners) {
+
+		struct xmlrpccmd_monitor_pload_listener *tmp = sess->pload_listeners;
+		sess->pload_listeners = tmp->next;
+
+		filter_cleanup(tmp->filter);
+		free(tmp);
+
+
+		if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1));
+			pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
+	}
+
+	while (sess->ploads) {
+		struct xmlrpccmd_monitor_pload *pload = sess->ploads;
+		sess->ploads = pload->next;
+		if (pload->listeners)
+			free(pload->listeners);
+		free(pload);
+
+	}
+
+
 	pom_mutex_unlock(&sess->lock);
+
 	main_timer_cleanup(sess->timer);
 	pthread_cond_destroy(&sess->cond);
 	pthread_mutex_destroy(&sess->lock);
@@ -272,6 +424,135 @@ xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * co
 	return xmlrpc_int_new(envP, i);
 }
 
+xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+	
+	xmlrpc_int id = -1;
+	char *filter_expr = NULL;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(is)", &id, &filter_expr);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	if (id < 0 || id >= XMLRPCCMD_MONITOR_MAX_SESSION) {
+		free(filter_expr);
+		xmlrpc_faultf(envP, "Invalid session id");
+		return NULL;
+	}
+
+	struct filter_node *filter = NULL;
+
+	// Attempt to parse the filter
+	if (filter_pload(filter_expr, &filter) != POM_OK) {
+		free(filter_expr);
+		xmlrpc_faultf(envP, "Error while parsing the filter");
+		return NULL;
+	}
+
+	free(filter_expr);
+
+	struct xmlrpccmd_monitor_pload_listener *l = malloc(sizeof(struct xmlrpccmd_monitor_pload_listener));
+	if (!l) {
+		pom_oom(sizeof(struct xmlrpccmd_monitor_pload_listener));
+		xmlrpc_faultf(envP, "Not enough memory");
+		return NULL;
+	}
+	memset(l, 0, sizeof(struct xmlrpccmd_monitor_pload_listener));
+	
+	l->filter = filter;
+	l->id = (uint64_t) l;
+
+	// Make sure the session is valid
+
+	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
+	struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[id];
+	if (!sess) {
+		filter_cleanup(filter);
+		free(l);
+		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+		xmlrpc_faultf(envP, "Session %u not found", id);
+		return NULL;
+	}
+	pom_mutex_lock(&sess->lock);
+	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	if (!__sync_fetch_and_add(&xmlrpccmd_monitor_pload_listeners_count, 1)) {
+
+		if (pload_listen_start(xmlrpccmd_monitor_pload_open, NULL, NULL, xmlrpccmd_monitor_pload_open, xmlrpccmd_monitor_pload_write, xmlrpccmd_monitor_pload_close) != POM_OK) {
+			pom_mutex_unlock(&sess->lock);
+			filter_cleanup(filter);
+			free(l);
+			xmlrpc_faultf(envP, "Error while listening to payloads");
+			return NULL;
+		}
+	}
+
+	l->next = sess->pload_listeners;
+	if (l->next)
+		l->next->prev = l;
+
+	sess->pload_listeners = l;
+	pom_mutex_unlock(&sess->lock);
+
+
+	return xmlrpc_i8_new(envP, l->id);
+
+}
+
+xmlrpc_value *xmlrpccmd_monitor_pload_remove_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	xmlrpc_int sess_id = -1;
+	uint64_t listener_id = -1;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(iI)", &sess_id, &listener_id);
+
+	if (sess_id < 0 || sess_id >= XMLRPCCMD_MONITOR_MAX_SESSION) {
+		xmlrpc_faultf(envP, "Invalid session id");
+		return NULL;
+	}
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	// Find the right session and lock it
+
+	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
+	struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[sess_id];
+	if (!sess) {
+		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+		xmlrpc_faultf(envP, "Session %u not found", sess_id);
+		return NULL;
+	}
+	
+	pom_mutex_lock(&sess->lock);
+	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	struct xmlrpccmd_monitor_pload_listener *tmp = sess->pload_listeners;
+	for (tmp = sess->pload_listeners; tmp && tmp->id != listener_id; tmp = tmp->next);
+
+	if (!tmp) {
+		pom_mutex_unlock(&sess->lock);
+		xmlrpc_faultf(envP, "Listner %"PRIu64" not found in session %u", listener_id, sess_id);
+		return NULL;
+	}
+
+	if (tmp->next)
+		tmp->next->prev = tmp->prev;
+
+	if (tmp->prev)
+		tmp->prev->next = tmp->next;
+	else
+		sess->pload_listeners = tmp->next;
+
+	pom_mutex_unlock(&sess->lock);
+
+	if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1))
+		pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
+
+	return xmlrpc_int_new(envP, 0);
+
+}
+
 xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
 
@@ -367,7 +648,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		lst->sess = sess;
 
 		
-		if (event_listener_register(evt, lst, NULL, xmlrpccmd_monitor_process_end) != POM_OK) {
+		if (event_listener_register(evt, lst, NULL, xmlrpccmd_monitor_evt_process_end) != POM_OK) {
 			pom_mutex_unlock(&sess->lock);
 			filter_cleanup(filter);
 			free(l);
@@ -526,12 +807,15 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 
 	main_timer_dequeue(sess->timer);
 
-	struct xmlrpccmd_monitor_event *lst = NULL;
-
-	while (xmlrpccmd_monitor_sessions[id]) {
 
 
-		// There is no event to return, wait for some
+	struct xmlrpccmd_monitor_event *lst_evt = NULL;
+	struct xmlrpccmd_monitor_pload *lst_pload = NULL;
+
+	while (!sess->events && !sess->ploads) {
+
+
+		// There is no event or payload to return, wait for some
 		
 		struct timeval now;
 		gettimeofday(&now, NULL);
@@ -551,29 +835,30 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 			abort();
 		}
 
-
-		if (sess->events) {
-			lst = sess->events;
-			sess->events = NULL;
-			break;
+		if (sess->id == -1) {
+			// The session has been removed while polling
+			pom_mutex_unlock(&sess->lock);
+			return xmlrpc_build_value(envP, "{}");
 		}
+		
 	}
+
+
+	lst_evt = sess->events;
+	sess->events = NULL;
+	lst_pload = sess->ploads;
+	sess->ploads = NULL;
 	pom_mutex_unlock(&sess->lock);
 	
-	// Check that the session still exists
-	if (!xmlrpccmd_monitor_sessions[id]) {
-		return xmlrpc_build_value(envP, "{}");
-	}
 
-	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 
-	xmlrpc_value *res = xmlrpc_array_new(envP);
+	xmlrpc_value *xml_evt_lst = xmlrpc_array_new(envP);
 
-	while (lst) {
-		struct event *evt = lst->evt;
-		struct xmlrpccmd_monitor_evt_listener *listeners = lst->event_reg->listeners;
-		struct xmlrpccmd_monitor_event *tmp = lst;
-		lst = lst->next;
+	while (lst_evt) {
+		struct event *evt = lst_evt->evt;
+		struct xmlrpccmd_monitor_evt_listener *listeners = lst_evt->event_reg->listeners;
+		struct xmlrpccmd_monitor_event *tmp = lst_evt;
+		lst_evt = lst_evt->next;
 		free(tmp);
 
 		xmlrpc_value *listener_lst = NULL;
@@ -591,71 +876,152 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 
 		}
 
-		// No listener matched this even
-		if (!listener_lst)
+		// No listener matched this event
+		if (!listener_lst) {
+			event_refcount_dec(evt);
 			continue;
-
-
-		struct event_reg *evt_reg = event_get_reg(evt);
-		struct event_reg_info *evt_reg_info = event_reg_get_info(evt_reg);
-
-		struct data_reg *dreg = evt_reg_info->data_reg;
-		struct data *evt_data = event_get_data(evt);
-
-		xmlrpc_value *data = xmlrpc_struct_new(envP);
-
-		int i;
-		for (i = 0; i < dreg->data_count; i++) {
-			
-			struct data_item_reg *direg = &dreg->items[i];
-
-			if (!data_is_set(evt_data[i]) && !(direg->flags & DATA_REG_FLAG_LIST))
-				continue;
-	
-			xmlrpc_value *value = NULL;
-			if (direg->flags & DATA_REG_FLAG_LIST) {
-				
-				value = xmlrpc_array_new(envP);
-
-				struct data_item *itm;
-				for (itm = evt_data[i].items; itm; itm = itm->next) {
-					xmlrpc_value *itm_val = xmlrpccmd_ptype_to_val(envP, itm->value);
-					xmlrpc_value *itm_entry = xmlrpc_build_value(envP, "{s:s,s:V}", "key", itm->key, "value", itm_val);
-					xmlrpc_DECREF(itm_val);
-					xmlrpc_array_append_item(envP, value, itm_entry);
-					xmlrpc_DECREF(itm_entry);
-				}
-
-
-			} else {
-				value = xmlrpccmd_ptype_to_val(envP, evt_data[i].value);
-			}
-			
-			xmlrpc_struct_set_value(envP, data, direg->name, value);
-			xmlrpc_DECREF(value);
-		
 		}
 
-
-		ptime evt_timestamp = event_get_timestamp(evt);
-		xmlrpc_value *timestamp = xmlrpc_build_value(envP, "{s:i,s:i}", "sec", pom_ptime_sec(evt_timestamp), "usec", pom_ptime_usec(evt_timestamp));
-
-		xmlrpc_value *item = xmlrpc_build_value(envP, "{s:s,s:A,s:S,s:S}",
-						"event", evt_reg_info->name,
-						"listeners", listener_lst,
-						"timestamp", timestamp,
-						"data", data);
-		xmlrpc_DECREF(listener_lst);
-		xmlrpc_DECREF(timestamp);
-		xmlrpc_DECREF(data);
+		xmlrpc_value *xml_evt = xmlrpccmd_monitor_build_event(envP, evt);
 		event_refcount_dec(evt);
-		xmlrpc_array_append_item(envP, res, item);
-		xmlrpc_DECREF(item);
+
+		xmlrpc_struct_set_value(envP, xml_evt, "listeners", listener_lst);
+		xmlrpc_DECREF(listener_lst);
+
+
+		xmlrpc_array_append_item(envP, xml_evt_lst, xml_evt);
+		xmlrpc_DECREF(xml_evt);
 	}
+
+
+	xmlrpc_value *xml_pload_lst = xmlrpc_array_new(envP);
+	while (lst_pload) {
+
+		xmlrpc_value *listener_lst = xmlrpc_array_new(envP);
+		int i;
+		for (i = 0; i < lst_pload->listeners_count; i++) {
+			xmlrpc_value *id = xmlrpc_i8_new(envP, lst_pload->listeners[i]);
+			xmlrpc_array_append_item(envP, listener_lst, id);
+			xmlrpc_DECREF(id);
+		}
+
+		xmlrpc_value *xml_pload = xmlrpccmd_monitor_build_pload(envP, lst_pload->pload);
+		pload_refcount_dec(lst_pload->pload);
+
+		xmlrpc_struct_set_value(envP, xml_pload, "listeners", listener_lst);
+		xmlrpc_DECREF(listener_lst);
+
+		xmlrpc_array_append_item(envP, xml_pload_lst, xml_pload);
+		xmlrpc_DECREF(xml_pload);
+
+		struct xmlrpccmd_monitor_pload *tmp = lst_pload;
+		lst_pload = lst_pload->next;
+		if (tmp->listeners)
+			free(tmp->listeners);
+		free(tmp);
+
+	}
+
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:A,s:A}", "events", xml_evt_lst, "ploads", xml_pload_lst);
+	xmlrpc_DECREF(xml_evt_lst);
+	xmlrpc_DECREF(xml_pload_lst);
+
 
 	main_timer_queue(sess->timer, sess->timeout);
 
 	return res;
+}
+
+xmlrpc_value *xmlrpccmd_monitor_build_pload(xmlrpc_env * const envP, struct pload *pload) {
+
+	xmlrpc_value *xml_pload = xmlrpc_struct_new(envP);
+
+	struct data *data = pload_get_data(pload);
+	if (data) {
+		xmlrpc_value *xml_data = xmlrpccmd_monitor_build_data(envP, pload_get_data_reg(pload), data);
+		xmlrpc_struct_set_value(envP, xml_pload, "data", xml_data);
+		xmlrpc_DECREF(xml_data);
+	}
+
+	struct mime_type *mime_type = pload_get_mime_type(pload);
+	if (mime_type) {
+		struct mime_type *mime_type = pload_get_mime_type(pload);
+		xmlrpc_value *xml_mime_type = xmlrpc_string_new(envP, mime_type->name);
+		xmlrpc_struct_set_value(envP, xml_pload, "mime_type", xml_mime_type);
+		xmlrpc_DECREF(xml_mime_type);
+	}
+
+	struct event *evt = pload_get_related_event(pload);
+	if (evt) {
+		xmlrpc_value *xml_evt = xmlrpccmd_monitor_build_event(envP, evt);
+		xmlrpc_struct_set_value(envP, xml_pload, "rel_event", xml_evt);
+		xmlrpc_DECREF(xml_evt);
+	}
+
+	return xml_pload;
+
+}
+
+xmlrpc_value *xmlrpccmd_monitor_build_event(xmlrpc_env * const envP, struct event *evt) {
+
+	struct event_reg *evt_reg = event_get_reg(evt);
+	struct event_reg_info *evt_reg_info = event_reg_get_info(evt_reg);
+
+	xmlrpc_value *data = xmlrpccmd_monitor_build_data(envP, evt_reg_info->data_reg, event_get_data(evt));
+
+	ptime evt_timestamp = event_get_timestamp(evt);
+	xmlrpc_value *timestamp = xmlrpc_build_value(envP, "{s:i,s:i}", "sec", pom_ptime_sec(evt_timestamp), "usec", pom_ptime_usec(evt_timestamp));
+
+	xmlrpc_value *xml_evt = xmlrpc_build_value(envP, "{s:s,s:S,s:S}",
+					"event", evt_reg_info->name,
+					"timestamp", timestamp,
+					"data", data);
+	xmlrpc_DECREF(timestamp);
+	xmlrpc_DECREF(data);
+
+	return xml_evt;
+}
+
+xmlrpc_value *xmlrpccmd_monitor_build_data(xmlrpc_env * const envP, struct data_reg *dreg, struct data *data) {
+
+
+	xmlrpc_value *xml_data = xmlrpc_struct_new(envP);
+
+	int i;
+	for (i = 0; i < dreg->data_count; i++) {
+		
+		struct data_item_reg *direg = &dreg->items[i];
+
+		if (!data_is_set(data[i]) && !(direg->flags & DATA_REG_FLAG_LIST))
+			continue;
+
+		xmlrpc_value *value = NULL;
+		if (direg->flags & DATA_REG_FLAG_LIST) {
+			
+			value = xmlrpc_array_new(envP);
+
+			struct data_item *itm;
+			for (itm = data[i].items; itm; itm = itm->next) {
+				xmlrpc_value *itm_val = xmlrpccmd_ptype_to_val(envP, itm->value);
+				xmlrpc_value *itm_entry = xmlrpc_build_value(envP, "{s:s,s:V}", "key", itm->key, "value", itm_val);
+				xmlrpc_DECREF(itm_val);
+				xmlrpc_array_append_item(envP, value, itm_entry);
+				xmlrpc_DECREF(itm_entry);
+			}
+
+
+		} else {
+			value = xmlrpccmd_ptype_to_val(envP, data[i].value);
+		}
+		
+		xmlrpc_struct_set_value(envP, xml_data, direg->name, value);
+		xmlrpc_DECREF(value);
+	
+	}
+
+
+	return xml_data;
+
 }
 
 xmlrpc_value *xmlrpccmd_monitor_stop(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {

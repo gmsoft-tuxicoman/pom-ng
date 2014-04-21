@@ -23,6 +23,7 @@
 #include "httpd.h"
 #include "xmlrpcsrv.h"
 #include "core.h"
+#include <pom-ng/mime.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -33,6 +34,9 @@
 static char *httpd_www_data = NULL;
 static struct httpd_daemon_list *http_daemons = NULL;
 static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
+
+static struct httpd_pload *httpd_ploads = NULL;
+static pthread_rwlock_t httpd_ploads_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *ssl_key) {
 
@@ -325,6 +329,44 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
 			mime_type = "text/html";
+		} else if (!strncmp(url, HTTPD_PLOAD_URL, strlen(HTTPD_PLOAD_URL))) {
+			url += strlen(HTTPD_PLOAD_URL);
+			uint64_t pload_id = 0;
+
+			struct httpd_pload *pload = NULL;
+
+			sscanf(url, "%"PRIu64, &pload_id);
+
+			pom_rwlock_rlock(&httpd_ploads_lock);
+			HASH_FIND(hh, httpd_ploads, &pload_id, sizeof(pload_id), pload);
+
+			if (!pload) {
+				char *replystr = "<html><head><title>Not found</title></head><body>payload not found</body></html>";
+				response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+				status_code = MHD_HTTP_NOT_FOUND;
+			} else {
+				struct httpd_pload_response *rsp_priv = malloc(sizeof(struct httpd_pload_response));
+				if (!rsp_priv) {
+					pom_rwlock_unlock(&httpd_ploads_lock);
+					pom_oom(sizeof(struct httpd_pload_response));
+					return MHD_NO;
+				}
+				memset(rsp_priv, 0, sizeof(struct httpd_pload_response));
+				rsp_priv->store = pload->store;
+
+				response = MHD_create_response_from_callback(-1, 1024 * 1024 * 16, httpd_pload_response_callback, rsp_priv, httpd_pload_response_callback_free);
+
+				// Add the mime type here since it may be deleted once we unlock
+				if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE, pload->mime_type) == MHD_NO) {
+					pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_CONTENT_TYPE " header to the response");
+					pom_rwlock_unlock(&httpd_ploads_lock);
+					return MHD_NO;
+				}
+				pload_store_get_ref(pload->store);
+			}
+
+			pom_rwlock_unlock(&httpd_ploads_lock);
+
 		} else if (strstr(url, "..")) {
 			// We're not supposed to have .. in a url
 			status_code = MHD_HTTP_NOT_FOUND;
@@ -445,6 +487,19 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 
 int httpd_cleanup() {
 
+
+	struct httpd_pload *cur_pload, *tmp_pload;
+	HASH_ITER(hh, httpd_ploads, cur_pload, tmp_pload) {
+		HASH_DELETE(hh, httpd_ploads, cur_pload);
+
+		pload_store_release(cur_pload->store);
+
+		free(cur_pload->mime_type);
+		free(cur_pload);
+
+
+	}
+
 	while (http_daemons) {
 		struct httpd_daemon_list *tmp = http_daemons;
 		http_daemons = tmp->next;
@@ -484,4 +539,93 @@ void httpd_logger(void *arg, const char *fmt, va_list ap) {
 
 	pomlog(POMLOG_ERR "%s", buff);
 
+}
+
+
+uint64_t httpd_pload_add(struct pload *pload) {
+
+	struct httpd_pload *p = malloc(sizeof(struct httpd_pload));
+	if (!p) {
+		pom_oom(sizeof(struct httpd_pload));
+		return POM_ERR;
+	}
+	memset(p, 0, sizeof(struct httpd_pload));
+
+	struct mime_type *mime_type = pload_get_mime_type(pload);
+	char *mime_type_str = HTTPD_PLOAD_DEFAULT_MIME_TYPE;
+	if (mime_type)
+		mime_type_str = mime_type->name;
+
+	p->mime_type = strdup(mime_type_str);
+	if (!p->mime_type) {
+		free(p);
+		return POM_ERR;
+	}
+	p->store = pload_store_get(pload);
+	p->id = (uint64_t)p;
+
+	pom_rwlock_wlock(&httpd_ploads_lock);
+	HASH_ADD(hh, httpd_ploads, id, sizeof(p->id), p);
+	pom_rwlock_unlock(&httpd_ploads_lock);
+
+	pomlog(POMLOG_DEBUG "Added pload of type %s with id %"PRIu64, p->mime_type, p->id);
+
+	return p->id;
+}
+
+
+void httpd_pload_remove(uint64_t id) {
+
+	struct httpd_pload *p = NULL;
+
+	pom_rwlock_wlock(&httpd_ploads_lock);
+
+	HASH_FIND(hh, httpd_ploads, &id, sizeof(id), p);
+	if (!p) {
+		pomlog(POMLOG_WARN "Payload %"PRIX64" no found", id);
+		pom_rwlock_unlock(&httpd_ploads_lock);
+		return ;
+	}
+	
+	HASH_DEL(httpd_ploads, p);
+	pom_rwlock_unlock(&httpd_ploads_lock);
+
+	pload_store_release(p->store);
+
+	free(p->mime_type);
+	free(p);
+
+}
+
+ssize_t httpd_pload_response_callback(void *cls, uint64_t pos, char *buf, size_t max) {
+
+	struct httpd_pload_response *priv = cls;
+	if (!priv->map) {
+		priv->map = pload_store_read_start(priv->store);
+		if (!priv->map)
+			return MHD_CONTENT_READER_END_WITH_ERROR;
+	}
+
+	void *read_buf = NULL;
+	ssize_t res = pload_store_read(priv->map, &read_buf, max);
+
+	if (!res)
+		return MHD_CONTENT_READER_END_OF_STREAM;
+
+	if (res < 0)
+		return MHD_CONTENT_READER_END_WITH_ERROR;
+
+	memcpy(buf, read_buf, res);
+
+	return res;
+}
+
+void httpd_pload_response_callback_free(void *cls) {
+
+	struct httpd_pload_response *priv = cls;
+
+	if (priv->map)
+		pload_store_read_end(priv->map);
+
+	free(priv);
 }

@@ -23,6 +23,7 @@
 
 #include "main.h"
 #include <pom-ng/timer.h>
+#include <pom-ng/pload.h>
 
 #define XMLRPCCMD_MONITOR_MAX_SESSION	32
 #define XMLRPCCMD_MONITOR_TIMEOUT_MAX	3600
@@ -37,7 +38,26 @@ struct xmlrpccmd_monitor_session {
 	struct main_timer *timer;
 	time_t timeout;
 	struct xmlrpccmd_monitor_event *events;
+	struct xmlrpccmd_monitor_pload *ploads;
 	struct xmlrpccmd_monitor_evtreg *events_reg;
+	struct xmlrpccmd_monitor_pload_listener *pload_listeners;
+};
+
+struct xmlrpccmd_monitor_pload {
+
+	uint64_t pload_id;
+	struct pload *pload;
+	unsigned int listeners_count;
+	uint64_t *listeners;
+
+	struct xmlrpccmd_monitor_pload *next;
+
+};
+
+struct xmlrpccmd_monitor_pload_listener {
+	uint64_t id;
+	struct filter_node *filter;
+	struct xmlrpccmd_monitor_pload_listener *prev, *next;
 };
 
 struct xmlrpccmd_monitor_evt_listener {
@@ -62,15 +82,23 @@ struct xmlrpccmd_monitor_event {
 };
 
 int xmlrpccmd_monitor_register_all();
-int xmlrpccmd_monitor_process_end(struct event *evt, void *obj);
+int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj);
+int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload);
+int xmlrpccmd_monitor_pload_write(void *obj, void *priv, void *data, size_t len);
+int xmlrpccmd_monitor_pload_close(void *obj, void *priv);
 int xmlrpccmd_monitor_timeout(void *priv);
 int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess);
 int xmlrpccmd_monitor_cleanup();
 
 xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_monitor_pload_remove_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_event_remove_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_monitor_build_pload(xmlrpc_env * const envP, struct pload *pload);
+xmlrpc_value *xmlrpccmd_monitor_build_event(xmlrpc_env * const envP, struct event *evt);
+xmlrpc_value *xmlrpccmd_monitor_build_data(xmlrpc_env * const envP, struct data_reg *dreg, struct data *data);
 xmlrpc_value *xmlrpccmd_monitor_stop(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 
 #endif

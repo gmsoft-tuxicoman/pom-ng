@@ -40,7 +40,9 @@
 
 #include <pom-ng/proto.h>
 #include <pom-ng/filter.h>
+#include "pload.h"
 #include <pom-ng/event.h>
+#include "event.h"
 #include "core.h"
 
 struct filter_proto {
@@ -67,6 +69,13 @@ enum filter_value_type {
 	filter_value_type_string,
 	filter_value_type_integer,
 	filter_value_type_evt_prop,
+	filter_value_type_pload_data,
+	filter_value_type_pload_evt_data,
+};
+
+struct filter_data_raw {
+	char *field_name;
+	char *key;
 };
 
 struct filter_data {
@@ -75,10 +84,10 @@ struct filter_data {
 	struct ptype_reg *pt_reg;
 };
 
-
 union filter_value {
 	struct filter_node *node;
 	struct filter_data data;
+	struct filter_data_raw data_raw;
 	struct ptype *ptype;
 	char *string;
 	uint64_t integer;
@@ -130,12 +139,21 @@ int filter_raw_parse_block(char *expr, unsigned int len, struct filter_raw_node 
 void filter_raw_cleanup(struct filter_raw_node *fr);
 
 int filter_data_compile(struct filter_data *d, struct data_reg *dr, char *value);
+int filter_data_raw_compile(struct filter_data_raw *d, char *value);
 int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr);
 int filter_node_compile(struct filter_node *n);
 
 int filter_event_compile(struct filter_node **filter, struct event_reg *evt, struct filter_raw_node *filter_raw);
+
+int filter_pload_compile(struct filter_node **filter, struct filter_raw_node *filter_raw);
+
+int filter_node_data_match(struct filter_node *n, struct data *d);
+
 int filter_event_match(struct filter_node *n, struct event *evt);
+int filter_pload_match(struct filter_node *n, struct pload *p);
+
 int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
+int filter_pload(char *filter_expr, struct filter_node **filter);
 
 void filter_cleanup(struct filter_node *n);
 

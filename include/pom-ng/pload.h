@@ -21,10 +21,10 @@
 #ifndef __POM_NG_PLOAD_H__
 #define __POM_NG_PLOAD_H__
 
-#define PLOAD_FLAG_NEED_MAGIC		0x1
-#define PLOAD_FLAG_NEED_ANALYSIS	0x2
-#define PLOAD_FLAG_IS_ERR		0x4
-#define PLOAD_FLAG_DONE			0x8
+#define PLOAD_FLAG_NEED_MAGIC		0x01
+#define PLOAD_FLAG_NEED_ANALYSIS	0x02
+#define PLOAD_FLAG_IS_ERR		0x04
+#define PLOAD_FLAG_OPENED		0x08
 
 #define PLOAD_ANALYSIS_ERR	POM_ERR		// Something went wrong
 #define PLOAD_ANALYSIS_OK	POM_OK		// All went ok
@@ -50,6 +50,7 @@ enum pload_class {
 };
 
 struct pload;
+struct pload_store;
 
 struct pload_type {
 
@@ -106,5 +107,16 @@ struct data_reg *pload_get_data_reg(struct pload *p);
 
 int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv));
 int pload_listen_stop(void *obj, char *pload_type);
+
+void pload_refcount_inc(struct pload *pload);
+void pload_refcount_dec(struct pload *pload);
+
+struct pload_store *pload_store_get(struct pload *pload);
+void pload_store_get_ref(struct pload_store *ps);
+void pload_store_release(struct pload_store *ps);
+
+struct pload_store_map *pload_store_read_start(struct pload_store *ps);
+ssize_t pload_store_read(struct pload_store_map *map, void **buff, size_t count);
+void pload_store_read_end(struct pload_store_map *map);
 
 #endif

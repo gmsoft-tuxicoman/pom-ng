@@ -557,7 +557,7 @@ int filter_raw_parse_block(char *expr, unsigned int len, struct filter_raw_node 
 		return POM_ERR;
 	}
 		
-	return POM_ERR;
+	return POM_OK;
 }
 
 void filter_raw_cleanup(struct filter_raw_node *fr) {
@@ -610,7 +610,6 @@ int filter_event_compile(struct filter_node **filter, struct event_reg *evt, str
 		n->op = filter_raw->branch.op;
 
 		return POM_OK;
-
 	}
 
 
@@ -645,7 +644,6 @@ int filter_event_compile(struct filter_node **filter, struct event_reg *evt, str
 			// Prevent the string from being freed
 			filter_raw->data.value[i] = NULL;
 		}
-
 	}
 
 
@@ -682,6 +680,81 @@ int filter_event_compile(struct filter_node **filter, struct event_reg *evt, str
 
 	return filter_node_compile(n);
 
+}
+
+int filter_pload_compile(struct filter_node **filter, struct filter_raw_node *filter_raw) {
+
+	if (!*filter) {
+		*filter = malloc(sizeof(struct filter_node));
+		if (!*filter) {
+			pom_oom(sizeof(struct filter_node));
+			return POM_ERR;
+		}
+		memset(*filter, 0, sizeof(struct filter_node));
+	}
+
+	struct filter_node *n = *filter;
+	int i;
+
+	if (filter_raw->isbranch) {
+		n->type[0] = filter_value_type_node;
+		n->type[1] = filter_value_type_node;
+
+		if (filter_pload_compile(&n->value[0].node, filter_raw->branch.a) != POM_OK)
+			return POM_ERR;
+
+		if (filter_pload_compile(&n->value[1].node, filter_raw->branch.b) != POM_OK)
+			return POM_ERR;
+
+		n->op = filter_raw->branch.op;
+
+		return POM_OK;
+	}
+
+	if (filter_op_compile(n, filter_raw) != POM_OK)
+		return POM_ERR;
+
+	for (i = 0; i < 2; i++) {
+		
+		char *value = filter_raw->data.value[i];
+
+		if (!value)
+			return POM_OK;
+
+		if (!strncmp(value, "data.", strlen("data."))) {
+			value += strlen("data.");
+			n->type[i] = filter_value_type_pload_data;
+			filter_data_raw_compile(&n->value[i].data_raw, value);
+
+		} else if (!strncmp(value, "evt.", strlen("evt."))) {
+			value += strlen("evt.");
+
+			if (!strncmp(value, "data.", strlen("data."))) {
+				value += strlen("data.");
+				n->type[i] = filter_value_type_pload_evt_data;
+				filter_data_raw_compile(&n->value[i].data_raw, value);
+			} else if (!strcmp(value, "time")) {
+				n->type[i] = filter_value_type_evt_prop;
+				n->value[i].integer = filter_evt_prop_time;
+			} else if (!strcmp(value, "name")) {
+				n->type[i] = filter_value_type_evt_prop;
+				n->value[i].integer = filter_evt_prop_name;
+			} else if (!strcmp(value, "source")) {
+				n->type[i] = filter_value_type_evt_prop;
+				n->value[i].integer = filter_evt_prop_source;
+			} else {
+				pomlog(POMLOG_ERR "Invalid value for event filter");
+			}
+		} else {
+			n->type[i] = filter_value_type_string;
+			n->value[i].string = value;
+			
+			// Prevent the string from being freed
+			filter_raw->data.value[i] = NULL;
+		}
+	}
+	
+	return POM_OK;
 }
 
 
@@ -725,6 +798,35 @@ int filter_data_compile(struct filter_data *d, struct data_reg *dr, char *value)
 		}
 	} else if (item->flags & DATA_REG_FLAG_LIST) {
 		pomlog(POMLOG_ERR "Key not provided for filter value %s", value);
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
+
+int filter_data_raw_compile(struct filter_data_raw *d, char *value) {
+
+	char *key = strchr(value, '[');
+
+
+	if (key) {
+		*key = 0;
+		key++;
+		char *key_end = strchr(key, ']');
+		if (!key_end) {
+			pomlog(POMLOG_ERR "Missing ] for data key in filter for item %s", value);
+			return POM_ERR;
+		}
+		d->key = strdup(key);
+		if (!d->key) {
+			pom_oom(strlen(key) + 1);
+			return POM_ERR;
+		}
+	}
+
+	d->field_name = strdup(value);
+	if (!d->field_name) {
+		pom_oom(strlen(value) + 1);
 		return POM_ERR;
 	}
 
@@ -795,6 +897,58 @@ int filter_node_compile(struct filter_node *n) {
 
 }
 
+int filter_node_data_match(struct filter_node *n, struct data *d) {
+
+	int res = FILTER_MATCH_NO;
+
+	struct ptype *v[2] = { 0 };
+
+	int i;
+	for (i = 0; i < 2; i++) {
+		if (n->type[i] == filter_value_type_data) {
+			int id = n->value[i].data.field_id;
+
+			if (!data_is_set(d[id]))
+				continue;
+
+			if (n->value[i].data.key) {
+				struct data_item *itm;
+				for (itm = d[id].items; itm && strcmp(itm->key, n->value[i].data.key); itm = itm->next);
+				if (!itm) {
+					res = FILTER_MATCH_NO;
+					break;
+				}
+				v[i] = itm->value;
+			} else {
+				v[i] = d[id].value;
+			}
+
+		} else if (n->type[i] == filter_value_type_ptype) {
+			v[i] = n->value[i].ptype;
+		} else if (n->type[i] != filter_value_type_none) {
+			pomlog(POMLOG_WARN "Unexpected filter value");
+			return POM_ERR;
+		}
+
+	}
+
+	if (n->op == FILTER_OP_NOP) {
+		if (v[0] || v[1]) { // Only v[0] should be set but for safety we match both
+			res = FILTER_MATCH_YES;
+		}
+	} else {
+
+		if (!v[0] || !v[1]) {
+			pomlog(POMLOG_ERR "Missing value for comparison");
+			return POM_ERR;
+		}
+
+		res = ptype_compare_val(n->op, v[0], v[1]);
+	}
+
+	return res;
+}
+
 int filter_event_match(struct filter_node *n, struct event *evt) {
 
 	int res = FILTER_MATCH_NO;
@@ -830,53 +984,10 @@ int filter_event_match(struct filter_node *n, struct event *evt) {
 		pomlog(POMLOG_WARN "Event property matching not implemented yet");
 		return POM_ERR;
 	} else if (n->type[0] == filter_value_type_data || n->type[1] == filter_value_type_data) {
-
-		struct ptype *v[2] = { 0 };
-
-		int i;
-		for (i = 0; i < 2; i++) {
-			if (n->type[i] == filter_value_type_data) {
-				int id = n->value[i].data.field_id;
-				struct data *d = event_get_data(evt);
-
-				if (!data_is_set(d[id]))
-					continue;
-
-				if (n->value[i].data.key) {
-					struct data_item *itm;
-					for (itm = d[id].items; itm && strcmp(itm->key, n->value[i].data.key); itm = itm->next);
-					if (!itm) {
-						res = FILTER_MATCH_NO;
-						break;
-					}
-					v[i] = itm->value;
-				} else {
-					v[i] = d[id].value;
-				}
-
-			} else if (n->type[i] == filter_value_type_ptype) {
-				v[i] = n->value[i].ptype;
-			} else if (n->type[i] != filter_value_type_none) {
-				pomlog(POMLOG_WARN "Unexpected filter value");
+			struct data *d = event_get_data(evt);
+			res = filter_node_data_match(n, d);
+			if (res == POM_ERR)
 				return POM_ERR;
-			}
-
-		}
-
-		if (n->op == FILTER_OP_NOP) {
-			if (v[0] || v[1]) { // Only v[0] should be set but for safety we match both
-				res = FILTER_MATCH_YES;
-			}
-		} else {
-
-			if (!v[0] || !v[1]) {
-				pomlog(POMLOG_ERR "Missing value for comparison");
-				return POM_ERR;
-			}
-
-			res = ptype_compare_val(n->op, v[0], v[1]);
-
-		}
 
 	} else {
 		pomlog(POMLOG_ERR "Unhandled combination of data types");
@@ -890,13 +1001,143 @@ int filter_event_match(struct filter_node *n, struct event *evt) {
 	return res;
 }
 
+int filter_pload_match(struct filter_node *n, struct pload *p) {
+
+	int res = FILTER_MATCH_NO;
+
+	if (n->type[0] == filter_value_type_node && n->type[1] == filter_value_type_node) {
+
+		int res_a, res_b;
+
+		res_a = filter_pload_match(n->value[0].node, p);
+		if (res_a == POM_ERR)
+			return POM_ERR;
+
+		res_b = filter_pload_match(n->value[1].node, p);
+		if (res_b == POM_ERR)
+			return POM_ERR;
+
+		if (n->op == FILTER_OP_AND) {
+			res = res_a && res_b;
+		} else if (n->op == FILTER_OP_OR) {
+			res = res_a || res_b;
+		} else {
+			pomlog(POMLOG_ERR "Invalid operaiton for nodes");
+			return POM_ERR;
+		}
+
+		if (n->not)
+			return !res;
+
+		return res;
+
+	}
+
+	struct ptype *values[2] = { 0 };
+	int i;
+
+	// Get the value for pload_data or pload_evt_data
+	for (i = 0; i < 2; i++) {
+
+		if (n->type[i] == filter_value_type_pload_data || n->type[i] == filter_value_type_pload_evt_data) {
+
+			struct filter_data_raw *data_raw = &n->value[i].data_raw;
+			struct data *data = NULL;
+			struct data_reg *dr = NULL;
+			
+			if (n->type[i] == filter_value_type_pload_data) {
+				data = pload_get_data(p);
+				dr = pload_get_data_reg(p);
+			} else {
+				struct event *evt = pload_get_related_event(p);
+				data = event_get_data(evt);
+
+				struct event_reg_info *info = event_get_info(evt);
+				dr = info->data_reg;
+			}
+
+			if (!data || !dr)
+				continue;
+
+			int j;
+			for (j = 0; strcmp(dr->items[j].name, data_raw->field_name) && j < dr->data_count; j++);
+
+			if (j >= dr->data_count)
+				continue;
+
+			struct data_item_reg *item = &dr->items[j];
+			if (data_raw->key) {
+				if (!(item->flags & DATA_REG_FLAG_LIST))
+					// Specific item isn't a list
+					continue;
+
+				// Find the right entry
+				
+				struct data_item *itm;
+				for (itm = data[j].items; itm && strcmp(itm->key, n->value[i].data.key); itm = itm->next);
+				if (!itm)
+					continue;
+				values[i] = itm->value;
+
+			} else if (item->flags & DATA_REG_FLAG_LIST) {
+				// Key not provided
+				continue;
+			} else {
+				values[i] = data[j].value;
+			}
+		}
+	}
+
+	if (n->op == FILTER_OP_NOP) {
+		if (values[0] || values[1]) { // Only v[0] should be set but for safety we match both
+			res = FILTER_MATCH_YES;
+		}
+	} else {
+
+		for (i = 0; i < 2; i++) {
+			if (n->type[i] == filter_value_type_string) {
+				// Try to parse this value like the other value
+				int rev = (i == 0 ? 1 : 0);
+				if (!values[rev])
+					break;
+				values[i] = ptype_alloc_from(values[rev]);
+				if (!values[i]) {
+					res = POM_ERR;
+					goto err;
+				}
+
+				if (ptype_parse_val(values[i], n->value[i].string) != POM_OK) {
+					pomlog(POMLOG_ERR "Error while parsing filter value '%s'\n", n->value[i].string);
+					res = POM_ERR;
+					goto err;
+				}
+				break;
+			}
+		}
+
+		if (values[0] && values[1])
+			res = ptype_compare_val(n->op, values[0], values[1]);
+	}
+
+
+	if (n->not)
+		return !res;
+
+err:
+	for (i = 0; i < 2; i++) {
+		if (values[i] && (n->type[i] != filter_value_type_pload_data && n->type[i] != filter_value_type_pload_evt_data))
+			ptype_cleanup(values[i]);
+	}
+
+	return res;
+}
 
 int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter) {
 
 	struct filter_raw_node *fr = NULL;
 
 	if (filter_raw_parse(filter_expr, strlen(filter_expr), &fr) != POM_OK) {
-		free(fr);
+		filter_raw_cleanup(fr);
 		return POM_ERR;
 	}
 
@@ -905,12 +1146,34 @@ int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_nod
 
 
 	if (filter_event_compile(filter, evt_reg, fr) != POM_OK) {
-		free(fr);
+		filter_raw_cleanup(fr);
 		return POM_ERR;
 	}
 
-	free(fr);
+	filter_raw_cleanup(fr);
 	return POM_OK;
+}
+
+int filter_pload(char *filter_expr, struct filter_node **filter) {
+
+	struct filter_raw_node *fr = NULL;
+
+	if (filter_raw_parse(filter_expr, strlen(filter_expr), &fr) != POM_OK) {
+		filter_raw_cleanup(fr);
+		return POM_ERR;
+	}
+
+	if (!fr)
+		return POM_OK;
+
+	if (filter_pload_compile(filter, fr) != POM_OK) {
+		filter_raw_cleanup(fr);
+		return POM_ERR;
+	}
+
+	filter_raw_cleanup(fr);
+	return POM_OK;
+
 }
 
 void filter_cleanup(struct filter_node *n) {
@@ -931,6 +1194,11 @@ void filter_cleanup(struct filter_node *n) {
 		} else if (n->type[i] == filter_value_type_string) {
 			if (n->value[i].string)
 				free(n->value[i].string);
+		} else if (n->type[i] == filter_value_type_pload_data || n->type[i] == filter_value_type_pload_evt_data) {
+			if (n->value[i].data_raw.field_name)
+				free(n->value[i].data_raw.field_name);
+			if (n->value[i].data_raw.key)
+				free(n->value[i].data_raw.key);
 		}
 	}
 	
