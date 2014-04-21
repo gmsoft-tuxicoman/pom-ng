@@ -627,5 +627,7 @@ void httpd_pload_response_callback_free(void *cls) {
 	if (priv->map)
 		pload_store_read_end(priv->map);
 
+	pload_store_release(priv->store);
+
 	free(priv);
 }
