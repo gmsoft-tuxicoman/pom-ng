@@ -674,7 +674,15 @@ int pload_store_append(struct pload *p, void *data, size_t len) {
 		memcpy(write_map->map + write_map->off_cur, data, len);
 		write_map->off_cur += len;
 	}
+
+	pthread_mutex_lock(&p->store->lock);
 	p->store->file_size = write_map->off_start + write_map->off_cur;
+	int res = pthread_cond_broadcast(&p->store->cond);
+	if (res) {
+		pomlog(POMLOG_ERR "Error while signaling pload store condition : %s", pom_strerror(res));
+		abort();
+	}
+	pthread_mutex_unlock(&p->store->lock);
 
 	return POM_OK;
 }
@@ -1106,6 +1114,18 @@ struct pload_store *pload_store_get(struct pload *pload) {
 		}
 		memset(pload->store, 0, sizeof(struct pload_store));
 		pload->store->fd = -1;
+		
+		int res = pthread_mutex_init(&pload->store->lock, NULL);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while initializing the pload store mutex : %s", pom_strerror(res));
+			abort();
+		}
+
+		res = pthread_cond_init(&pload->store->cond, NULL);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while initializing the pload condition : %s", pom_strerror(res));
+			abort();
+		}
 	}
 
 	pload->store->refcount++;
@@ -1170,7 +1190,26 @@ void pload_store_end(struct pload_store *ps) {
 	}
 
 	pload_store_map_cleanup(ps->write_map);
+	
+
+	pom_mutex_lock(&ps->lock);
+
 	ps->write_map = NULL;
+	ps->flags |= PLOAD_STORE_FLAG_COMPLETE;
+
+	if (ps->fd != -1 && !ps->read_maps) {
+		if (close(ps->fd)) {
+			pomlog(POMLOG_WARN "Error while closing file \"%s\" : %s", ps->filename, pom_strerror(errno));
+		}
+		ps->fd = -1;
+	}
+
+	int res = pthread_cond_broadcast(&ps->cond);
+	if (res) {
+		pomlog(POMLOG_ERR "Error while signaling pload store condition : %s", pom_strerror(res));
+		abort();
+	}
+	pom_mutex_unlock(&ps->lock);
 
 	pload_store_release(ps);
 
@@ -1200,6 +1239,18 @@ void pload_store_release(struct pload_store *ps) {
 	if (ps->filename)
 		free(ps->filename);
 
+	int res = pthread_mutex_destroy(&ps->lock);
+	if (res) {
+		pomlog(POMLOG_ERR "Error while destroying the pload_store lock : %s", pom_strerror(res));
+		abort();
+	}
+
+	res = pthread_cond_destroy(&ps->cond);
+	if (res) {
+		pomlog(POMLOG_ERR "Error while destroying the pload_store cond : %s", pom_strerror(res));
+		abort();
+	}
+	
 	free(ps);
 }
 
@@ -1223,18 +1274,49 @@ struct pload_store_map *pload_store_read_start(struct pload_store *ps) {
 	}
 	memset(map, 0, sizeof(struct pload_store_map));
 	map->store = ps;
+	
+	pom_mutex_lock(&ps->lock);
+
+	map->next = ps->read_maps;
+	if (map->next)
+		map->next->prev = map;
+	ps->read_maps = map;
+
+	if (ps->fd == -1) {
+		ps->fd = pom_open(ps->filename, O_RDWR | O_CREAT, 0666);
+		if (ps->fd == -1) {
+			pom_mutex_unlock(&ps->lock);
+			return NULL;
+		}
+	}
+
+	pom_mutex_unlock(&ps->lock);
 
 	return map;
 }
 
 ssize_t pload_store_read(struct pload_store_map *map, void **buff, size_t count) {
 
+	struct pload_store *ps = map->store;
+
+	pom_mutex_lock(&ps->lock);
 	size_t file_remaining = map->store->file_size - map->off_start - map->off_cur;
-	size_t remaining = map->map_size - map->off_cur;
+
+	while (!file_remaining && !(ps->flags & PLOAD_STORE_FLAG_COMPLETE)) {
+		int res = pthread_cond_wait(&ps->cond, &ps->lock);
+		if (res) {
+			pomlog(POMLOG_ERR "Error while waiting for pload_store condition : %s", pom_strerror(errno));
+			abort();
+		}
+		file_remaining = map->store->file_size - map->off_start - map->off_cur;
+	}
+	pom_mutex_unlock(&ps->lock);
 
 	if (!file_remaining)
 		return 0; // EOF
 
+
+	size_t remaining = map->map_size - map->off_cur;
 	if (!remaining) {
 		// Map the next block
 		uint32_t block_size = *PTYPE_UINT32_GETVAL(pload_store_mmap_block_size);
@@ -1278,8 +1360,23 @@ ssize_t pload_store_read(struct pload_store_map *map, void **buff, size_t count)
 
 void pload_store_read_end(struct pload_store_map *map) {
 
-	if (map->map)
-		munmap(map->map, map->map_size);
+	pom_mutex_lock(&map->store->lock);
 
-	free(map);
+	if (map->next)
+		map->next->prev = map->prev;
+	if (map->prev)
+		map->prev->next = map->next;
+	else
+		map->store->read_maps = map->next;
+
+	if (map->store->fd != -1 && !map->store->read_maps && !map->store->write_map) {
+		if (close(map->store->fd)) {
+			pomlog(POMLOG_WARN "Error while closing file \"%s\" : %s", map->store->filename, pom_strerror(errno));
+		}
+		map->store->fd = -1;
+	}
+
+	pom_mutex_unlock(&map->store->lock);
+
+	pload_store_map_cleanup(map);
 }

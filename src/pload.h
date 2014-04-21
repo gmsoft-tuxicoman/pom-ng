@@ -69,8 +69,8 @@ struct pload_store_map {
 	void *map;
 
 	struct pload_store *store; // Pload to which it belongs
-//	pthread_mutex_t lock;
-//	pthread_cond_t cond; 
+
+	struct pload_store_map *prev, *next;
 
 };
 
@@ -82,8 +82,13 @@ struct pload_store {
 
 	unsigned int refcount;
 	struct pload_store_map *write_map;
+	struct pload_store_map *read_maps;
 
 	unsigned int flags;
+
+	pthread_mutex_t lock;
+	pthread_cond_t cond;
+
 };
 
 // Hold information about a payload
