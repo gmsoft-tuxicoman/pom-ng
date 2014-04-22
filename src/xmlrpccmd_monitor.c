@@ -888,7 +888,6 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 		xmlrpc_struct_set_value(envP, xml_evt, "listeners", listener_lst);
 		xmlrpc_DECREF(listener_lst);
 
-
 		xmlrpc_array_append_item(envP, xml_evt_lst, xml_evt);
 		xmlrpc_DECREF(xml_evt);
 	}
@@ -910,6 +909,10 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 
 		xmlrpc_struct_set_value(envP, xml_pload, "listeners", listener_lst);
 		xmlrpc_DECREF(listener_lst);
+
+		xmlrpc_value *xml_pload_id = xmlrpc_i8_new(envP, lst_pload->pload_id);
+		xmlrpc_struct_set_value(envP, xml_pload, "id", xml_pload_id);
+		xmlrpc_DECREF(xml_pload_id);
 
 		xmlrpc_array_append_item(envP, xml_pload_lst, xml_pload);
 		xmlrpc_DECREF(xml_pload);
