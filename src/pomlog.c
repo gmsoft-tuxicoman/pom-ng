@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,16 +29,17 @@
 #include <sys/msg.h>
 
 static struct pomlog_entry *pomlog_head = NULL, *pomlog_tail = NULL;
-static unsigned int pomlog_buffer_size = 0;
+static struct pomlog_entry *pomlog_lvl_head[4] = { 0 }, *pomlog_lvl_tail[4] = { 0 };
+static unsigned int pomlog_buffer_size[4] = { 0 };
 static pthread_rwlock_t pomlog_buffer_lock = PTHREAD_RWLOCK_INITIALIZER;
 static uint32_t pomlog_buffer_entry_id = 0;
+static pthread_mutex_t pomlog_poll_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t pomlog_poll_cond = PTHREAD_COND_INITIALIZER;
 
 
 static unsigned int pomlog_debug_level = 3; // Default to POMLOG_INFO
 
 void pomlog_internal(const char *file, const char *format, ...) {
-
-
 
 	unsigned int level = *POMLOG_INFO;
 	if (format[0] <= *POMLOG_DEBUG) {
@@ -111,32 +112,59 @@ void pomlog_internal(const char *file, const char *format, ...) {
 
 	entry->id = pomlog_buffer_entry_id++;
 
-	if (!pomlog_tail) {
+	entry->main_prev = pomlog_tail;
+	if (entry->main_prev)
+		entry->main_prev->main_next = entry;
+	else
 		pomlog_head = entry;
-		pomlog_tail = entry;
-	} else {
-		entry->prev = pomlog_tail;
-		pomlog_tail->next = entry;
-		pomlog_tail = entry;
-	}
-	pomlog_buffer_size++;
+	pomlog_tail = entry;
 
-	while (pomlog_buffer_size > POMLOG_BUFFER_SIZE) {
-		struct pomlog_entry *tmp = pomlog_head;
-		pomlog_head = pomlog_head->next;
-		pomlog_head->prev = NULL;
+	int queue = level - 1;
+
+	entry->lvl_prev = pomlog_lvl_tail[queue];
+	if (entry->lvl_prev)
+		entry->lvl_prev->lvl_next = entry;
+	else
+		pomlog_lvl_head[queue] = entry;
+	pomlog_lvl_tail[queue] = entry;
+
+	pomlog_buffer_size[queue]++;
+
+	while (pomlog_buffer_size[queue] > POMLOG_BUFFER_SIZE) {
+		struct pomlog_entry *tmp = pomlog_lvl_head[queue];
+
+		pomlog_lvl_head[queue] = tmp->lvl_next;
+		pomlog_lvl_head[queue]->lvl_prev = NULL;
+
+		if (tmp->main_next)
+			tmp->main_next->main_prev = tmp->main_prev;
+		else
+			pomlog_tail = tmp->main_prev;
+
+		if (tmp->main_prev)
+			tmp->main_prev->main_next = tmp->main_next;
+		else
+			pomlog_head = tmp->main_next;
 
 		free(tmp->data);
 		free(tmp);
 
 
-		pomlog_buffer_size--;
+		pomlog_buffer_size[queue]--;
 	}
 
 	if (pthread_rwlock_unlock(&pomlog_buffer_lock)) {
 		printf("Error while unlocking the log lock. Aborting.\r");
 		abort();
 	}
+
+	pom_mutex_lock(&pomlog_poll_lock);
+	result = pthread_cond_broadcast(&pomlog_poll_cond);
+	if (result) {
+		printf("Error while broadcasting the pomlog poll condition : %s\r", pom_strerror(result));
+		abort();
+	}
+	pom_mutex_unlock(&pomlog_poll_lock);
 
 	xmlrcpcmd_serial_inc();
 }
@@ -145,7 +173,7 @@ int pomlog_cleanup() {
 
 	while (pomlog_head) {
 		struct pomlog_entry *tmp = pomlog_head;
-		pomlog_head = pomlog_head->next;
+		pomlog_head = pomlog_head->main_next;
 		free(tmp->data);
 		free(tmp);
 
@@ -185,5 +213,18 @@ struct pomlog_entry *pomlog_get_tail() {
 	return pomlog_tail;
 }
 
+int pomlog_poll(struct timespec *timeout) {
 
+	pom_mutex_lock(&pomlog_poll_lock);
+
+	int res = pthread_cond_timedwait(&pomlog_poll_cond, &pomlog_poll_lock, timeout);
+	pom_mutex_unlock(&pomlog_poll_lock);
+
+	if (res && res != ETIMEDOUT) {
+		pomlog(POMLOG_ERR "Error while waiting for poll condition : %s", pom_strerror(res));
+		abort();
+	}
+
+	return res;
+}
 

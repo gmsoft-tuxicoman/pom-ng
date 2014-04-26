@@ -43,7 +43,7 @@ static pthread_cond_t xmlrpccmd_serial_cond = PTHREAD_COND_INITIALIZER;
 
 static struct ptype_reg *pt_bool = NULL, *pt_string = NULL, *pt_timestamp = NULL, *pt_uint8 = NULL, *pt_uint16 = NULL, *pt_uint32 = NULL, *pt_uint64 = NULL;
 
-#define XMLRPCCMD_NUM 4
+#define XMLRPCCMD_NUM 5
 static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 
 	{
@@ -72,6 +72,13 @@ static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 		.callback_func = xmlrpccmd_core_get_log,
 		.signature = "A:i",
 		.help = "Get the logs",
+	},
+
+	{
+		.name = "core.pollLog",
+		.callback_func = xmlrpccmd_core_poll_log,
+		.signature = "A:ii",
+		.help = "Poll the logs",
 	},
 
 };
@@ -196,7 +203,7 @@ xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value *
 		if (res == ETIMEDOUT) {
 			break; // Return current values
 		} else if (res) {
-			xmlrpc_faultf(envP, "Error while waiting for serial condition : %s", pom_strerror(errno));
+			xmlrpc_faultf(envP, "Error while waiting for serial condition : %s", pom_strerror(res));
 			abort();
 			return NULL;
 		}
@@ -343,7 +350,7 @@ xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * con
 	}
 
 	while (log && log->id > last_id + 1)
-		log = log->prev;
+		log = log->main_prev;
 
 	while (log) {
 		xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:i,s:i,s:s,s:s,s:t}",
@@ -354,7 +361,7 @@ xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * con
 								"timestamp", (time_t)log->ts.tv_sec);
 		xmlrpc_array_append_item(envP, res, entry);
 		xmlrpc_DECREF(entry);
-		log = log->next;
+		log = log->main_next;
 
 	}
 	pomlog_unlock();
@@ -362,3 +369,74 @@ xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * con
 	return res;
 }
 
+xmlrpc_value *xmlrpccmd_core_poll_log(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+	
+	uint32_t last_id;
+	int level, max_results;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(iii)", &last_id, &level, &max_results);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	xmlrpc_value *res = xmlrpc_array_new(envP);
+	if (envP->fault_occurred)
+		return NULL;
+
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	struct timespec then = { 0 };
+	then.tv_sec = now.tv_sec + XMLRPCCMD_POLL_TIMEOUT;
+
+	int count = 0, results = 0;
+
+	while (1) {
+
+
+		pomlog_rlock();
+		struct pomlog_entry *log = pomlog_get_tail();
+
+		// Go to the last entry we were at
+		while (log && log->main_prev && log->id > last_id + 1) {
+			log = log->main_prev;
+
+			if (log->level <= level)
+				count++;
+			if (max_results && count >= max_results - 1)
+				break;
+		}
+		
+		// If we already have the last, don't do anything
+		if (log && log->id <= last_id)
+			log = NULL;
+
+		// Add whatever is after our last entry
+		for (; log; log = log->main_next) {
+			if (log->level > level)
+				continue;
+			xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:i,s:i,s:s,s:s,s:t}",
+									"id", log->id,
+									"level", log->level,
+									"file", log->file,
+									"data", log->data,
+									"timestamp", (time_t)log->ts.tv_sec);
+			xmlrpc_array_append_item(envP, res, entry);
+			xmlrpc_DECREF(entry);
+			results++;
+
+		}
+		pomlog_unlock();
+
+		if (results)
+			break;
+
+		gettimeofday(&now, NULL);
+		if (now.tv_sec > then.tv_sec)
+			break;
+		
+		pomlog_poll(&then);
+	};
+
+	return res;
+
+}

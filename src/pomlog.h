@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -34,9 +34,8 @@ struct pomlog_entry {
 	char level;
 	struct timeval ts;
 
-
-	struct pomlog_entry *prev;
-	struct pomlog_entry *next;
+	struct pomlog_entry *main_prev, *main_next;
+	struct pomlog_entry *lvl_prev, *lvl_next;
 
 };
 
@@ -46,5 +45,6 @@ int pomlog_set_debug_level(unsigned int debug_level);
 void pomlog_rlock();
 void pomlog_unlock();
 struct pomlog_entry *pomlog_get_tail();
+int pomlog_poll(struct timespec *timeout);
 
 #endif
