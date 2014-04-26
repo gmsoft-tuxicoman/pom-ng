@@ -549,6 +549,11 @@ xmlrpc_value *xmlrpccmd_monitor_pload_remove_listener(xmlrpc_env * const envP, x
 	if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1))
 		pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
 
+	if (tmp->filter)
+		filter_cleanup(tmp->filter);
+	
+	free(tmp);
+
 	return xmlrpc_int_new(envP, 0);
 
 }
