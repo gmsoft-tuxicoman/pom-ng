@@ -630,6 +630,18 @@ int analyzer_http_event_finalize_process(struct analyzer_http_ce_priv *cpriv) {
 		cpriv->evt_tail = NULL;
 	
 	free(elist);
+	
+	struct analyzer_http_request_event_priv *priv = event_get_priv(evt);
+	int i;
+	for (i = 0; i < 2; i++) {
+		if (priv->pload[i]) {
+			pload_end(priv->pload[i]);
+			priv->pload[i] = NULL;
+		}
+		priv->content_len[i] = 0;
+		priv->content_type[i] = NULL;
+		priv->content_encoding[i] = NULL;
+	}
 
 	if (event_process_end(evt) != POM_OK)
 		return POM_ERR;
@@ -663,16 +675,6 @@ int analyzer_http_request_event_cleanup(struct event *evt) {
 	if (evt_data[analyzer_http_request_client_port].value)
 		ptype_cleanup(evt_data[analyzer_http_request_client_port].value);
 
-	int i;
-	for (i = 0; i < 2; i++) {
-		if (priv->pload[i]) {
-			pload_end(priv->pload[i]);
-			priv->pload[i] = NULL;
-		}
-		priv->content_len[i] = 0;
-		priv->content_type[i] = NULL;
-		priv->content_encoding[i] = NULL;
-	}
 
 	free(priv);
 
