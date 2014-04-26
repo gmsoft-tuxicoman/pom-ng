@@ -269,9 +269,9 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		pthread_cond_broadcast(&sess->cond);
 		pom_mutex_unlock(&sess->lock);
 		sched_yield();
-
 		pom_mutex_lock(&sess->lock);
 	}
+	pom_mutex_unlock(&sess->lock);
 
 	while (sess->events_reg) {
 
@@ -325,7 +325,6 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 	}
 
 
-	pom_mutex_unlock(&sess->lock);
 
 	main_timer_cleanup(sess->timer);
 	pthread_cond_destroy(&sess->cond);
@@ -476,16 +475,6 @@ xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlr
 	pom_mutex_lock(&sess->lock);
 	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 
-	if (!__sync_fetch_and_add(&xmlrpccmd_monitor_pload_listeners_count, 1)) {
-
-		if (pload_listen_start(xmlrpccmd_monitor_pload_open, NULL, NULL, xmlrpccmd_monitor_pload_open, xmlrpccmd_monitor_pload_write, xmlrpccmd_monitor_pload_close) != POM_OK) {
-			pom_mutex_unlock(&sess->lock);
-			filter_cleanup(filter);
-			free(l);
-			xmlrpc_faultf(envP, "Error while listening to payloads");
-			return NULL;
-		}
-	}
 
 	l->next = sess->pload_listeners;
 	if (l->next)
@@ -494,6 +483,14 @@ xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlr
 	sess->pload_listeners = l;
 	pom_mutex_unlock(&sess->lock);
 
+	// Start listening outside the lock to avoir locking issue
+	if (!__sync_fetch_and_add(&xmlrpccmd_monitor_pload_listeners_count, 1)) {
+
+		if (pload_listen_start(xmlrpccmd_monitor_pload_open, NULL, NULL, xmlrpccmd_monitor_pload_open, xmlrpccmd_monitor_pload_write, xmlrpccmd_monitor_pload_close) != POM_OK) {
+			xmlrpc_faultf(envP, "Error while listening to payloads");
+			return NULL;
+		}
+	}
 
 	return xmlrpc_i8_new(envP, l->id);
 
