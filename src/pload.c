@@ -364,6 +364,8 @@ struct pload *pload_alloc(struct event *rel_event, int flags) {
 	pload->rel_event = rel_event;
 	pload->flags = flags | PLOAD_FLAG_NEED_ANALYSIS;
 
+	event_refcount_inc(rel_event);
+
 	return pload;
 
 }
@@ -401,6 +403,8 @@ int pload_end(struct pload *pload) {
 	if (pload->mime_type)
 		mime_type_cleanup(pload->mime_type);
 
+	event_refcount_dec(pload->rel_event);
+
 	free(pload);
 	
 
@@ -427,6 +431,8 @@ void pload_refcount_dec(struct pload *pload) {
 
 	if (pload->mime_type)
 		mime_type_cleanup(pload->mime_type);
+
+	event_refcount_dec(pload->rel_event);
 
 	free(pload);
 
