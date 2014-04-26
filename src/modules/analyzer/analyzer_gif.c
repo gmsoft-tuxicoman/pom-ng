@@ -84,7 +84,7 @@ static int analyzer_gif_pload_analyze(struct pload *p, struct pload_buffer *pb, 
 
 	unsigned char *buff = pb->data;
 
-	if (memcmp(buff, ANALYZER_GIF_VERSION_87A, strlen(ANALYZER_GIF_VERSION_87A)) || !memcmp(buff, ANALYZER_GIF_VERSION_89A, strlen(ANALYZER_GIF_VERSION_89A))) {
+	if (memcmp(buff, ANALYZER_GIF_VERSION_87A, strlen(ANALYZER_GIF_VERSION_87A)) && memcmp(buff, ANALYZER_GIF_VERSION_89A, strlen(ANALYZER_GIF_VERSION_89A))) {
 
 		pomlog(POMLOG_DEBUG "GIF signature not found");
 		return PLOAD_ANALYSIS_FAILED;
