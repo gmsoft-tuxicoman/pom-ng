@@ -93,8 +93,8 @@ static int analyzer_gif_pload_analyze(struct pload *p, struct pload_buffer *pb, 
 
 	// We got a GIF file
 	uint16_t height, width;
-	width = (buff[7] << 8) + buff[8];
-	height = (buff[9] << 8) + buff[10];
+	width = (buff[7] << 8) + buff[6];
+	height = (buff[9] << 8) + buff[8];
 
 	struct data *pload_data = pload_get_data(p);
 
