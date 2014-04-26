@@ -374,6 +374,16 @@ xmlrpc_value *xmlrpccmd_registry_add_instance(xmlrpc_env * const envP, xmlrpc_va
 	if (envP->fault_occurred)
 		goto err_decompose;
 
+	int i;
+	for (i = 0; i < strlen(name); i++) {
+		char c = name[i];
+		if ( !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && (c != '_') && (c != '-') && (c != '.') ) {
+			xmlrpc_faultf(envP, "Only alpha numeric character and '_' '-' '.' are allowed for instance names");
+			goto err_decompose;
+		}
+			
+	}
+
 	registry_lock();
 
 	if (registry_find_instance(cls, name)) {
