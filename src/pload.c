@@ -1132,7 +1132,7 @@ struct pload_store *pload_store_get(struct pload *pload) {
 		}
 	}
 
-	pload->store->refcount++;
+	pload_store_get_ref(pload->store);
 
 	return pload->store;
 }
@@ -1182,7 +1182,7 @@ int pload_store_open(struct pload_store *ps) {
 		}
 	}
 
-	ps->refcount++;
+	pload_store_get_ref(ps);
 
 	return POM_OK;
 }
