@@ -508,9 +508,7 @@ int pload_buffer_grow(struct pload *p, size_t min_size) {
 
 	size_t new_size = p->buf.buf_size;
 
-	do {
-		new_size += pload_page_size;
-	} while (new_size - p->buf.data_len < min_size);
+	new_size = min_size - (min_size % pload_page_size) + pload_page_size + p->buf.buf_size;
 
 	void *new_buf = realloc(p->buf.data, new_size);
 
@@ -556,7 +554,7 @@ int pload_buffer_append(struct pload *p, void *data, size_t len) {
 				return POM_ERR;
 			} else if (res == DEC_MORE) {
 				p->buf.data_len = p->buf.buf_size - d->avail_out;
-				if (pload_buffer_grow(p, 0) != POM_OK)
+				if (pload_buffer_grow(p, len) != POM_OK)
 					return POM_ERR;
 				d->avail_out = p->buf.buf_size - p->buf.data_len;
 			} else if (!d->avail_in) {
@@ -570,7 +568,7 @@ int pload_buffer_append(struct pload *p, void *data, size_t len) {
 		// No need to decode this
 		
 		if (p->buf.buf_size < p->buf.data_len + len) {
-			if (pload_buffer_grow(p, 0) != POM_OK)
+			if (pload_buffer_grow(p, len) != POM_OK)
 				return POM_ERR;
 		}
 		memcpy(p->buf.data + p->buf.data_len, data, len);
