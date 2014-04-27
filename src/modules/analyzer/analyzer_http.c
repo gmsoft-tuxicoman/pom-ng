@@ -294,10 +294,6 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		if (!elist->evt)
 			return POM_ERR;
 
-		struct data *evt_data = event_get_data(elist->evt);
-
-		data_set(evt_data[analyzer_http_request_query_size]);
-		data_set(evt_data[analyzer_http_request_response_size]);
 
 		start_process = 1;
 
@@ -630,8 +626,15 @@ int analyzer_http_event_finalize_process(struct analyzer_http_ce_priv *cpriv) {
 		cpriv->evt_tail = NULL;
 	
 	free(elist);
+
 	
 	struct analyzer_http_request_event_priv *priv = event_get_priv(evt);
+
+	struct data *evt_data = event_get_data(evt);
+
+	data_set(evt_data[analyzer_http_request_query_size]);
+	data_set(evt_data[analyzer_http_request_response_size]);
+
 	int i;
 	for (i = 0; i < 2; i++) {
 		if (priv->pload[i]) {
