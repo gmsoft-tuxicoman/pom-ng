@@ -300,6 +300,7 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 			if (core_pkt_queue_count >= ((CORE_THREAD_PKT_QUEUE_MAX - 1) * core_num_threads)) {
 				// Queue full
 				if (flags & CORE_QUEUE_DROP_IF_FULL) {
+					packet_release(p);
 					registry_perf_inc(perf_pkt_dropped, 1);
 					debug_core("Dropped packet %p (%u.%06u) to thread %u", p, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts));
 					return POM_OK;
