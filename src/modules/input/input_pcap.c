@@ -21,6 +21,7 @@
 #include <pom-ng/input.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_bool.h>
+#include <pom-ng/ptype_uint32.h>
 
 #include <pom-ng/registry.h>
 
@@ -45,7 +46,7 @@ struct mod_reg_info* input_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_pcap_mod_register;
 	reg_info.unregister_func = input_pcap_mod_unregister;
-	reg_info.dependencies = "proto_80211, proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, proto_ppi, proto_radiotap, ptype_string, ptype_bool";
+	reg_info.dependencies = "proto_80211, proto_docsis, proto_ethernet, proto_ipv4, proto_mpeg, proto_ppi, proto_radiotap, ptype_string, ptype_bool, ptype_uint32";
 
 	return &reg_info;
 }
@@ -248,6 +249,11 @@ static int input_pcap_interface_perf_dropped(uint64_t *value, void *priv) {
 
 	struct input_pcap_priv *p = priv;
 
+	if (!p || !p->p) {
+		*value = 0;
+		return POM_OK;
+	}
+
 	struct pcap_stat ps;
 	if (!pcap_stats(p->p, &ps))
 		*value = ps.ps_drop;
@@ -266,7 +272,8 @@ static int input_pcap_interface_init(struct input *i) {
 
 	priv->tpriv.iface.p_interface = ptype_alloc("string");
 	priv->tpriv.iface.p_promisc = ptype_alloc("bool");
-	if (!priv->tpriv.iface.p_interface || !priv->tpriv.iface.p_promisc)
+	priv->tpriv.iface.p_buff_size = ptype_alloc_unit("uint32", "bytes");
+	if (!priv->tpriv.iface.p_interface || !priv->tpriv.iface.p_promisc || !priv->tpriv.iface.p_buff_size)
 		goto err;
 
 	priv->tpriv.iface.perf_dropped = registry_instance_add_perf(i->reg_instance, "dropped_pkt", registry_perf_type_counter, "Dropped packets", "pkts");
@@ -290,6 +297,10 @@ static int input_pcap_interface_init(struct input *i) {
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
+	p = registry_new_param("buff_size", "16777216", priv->tpriv.iface.p_buff_size, "PCAP ring buffer size", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
 	priv->type = input_pcap_type_interface;
 
 	return POM_OK;
@@ -301,6 +312,9 @@ err:
 
 	if (priv->tpriv.iface.p_promisc)
 		ptype_cleanup(priv->tpriv.iface.p_promisc);
+
+	if (priv->tpriv.iface.p_buff_size)
+		ptype_cleanup(priv->tpriv.iface.p_buff_size);
 
 	if (p)
 		registry_cleanup_param(p);
@@ -317,12 +331,31 @@ static int input_pcap_interface_open(struct input *i) {
 	char errbuf[PCAP_ERRBUF_SIZE + 1] = { 0 };
 
 	char *interface = PTYPE_STRING_GETVAL(p->tpriv.iface.p_interface);
-	char *promisc = PTYPE_BOOL_GETVAL(p->tpriv.iface.p_promisc);
 
-	p->p = pcap_open_live(interface, INPUT_PCAP_SNAPLEN_MAX, *promisc, 0,errbuf);
+	p->p = pcap_create(interface, errbuf);
 	if (!p->p) {
 		pomlog(POMLOG_ERR "Error opening interface %s : %s", interface, errbuf);
 		return POM_ERR;
+	}
+
+	char *promisc = PTYPE_BOOL_GETVAL(p->tpriv.iface.p_promisc);
+	int err = pcap_set_promisc(p->p, *promisc);
+	if (err)
+		pomlog(POMLOG_WARN "Error while setting promisc mode : %s", pcap_statustostr(err));
+
+	uint32_t buff_size = *PTYPE_UINT32_GETVAL(p->tpriv.iface.p_buff_size);
+
+	err = pcap_set_buffer_size(p->p, buff_size);
+	if (err)
+		pomlog(POMLOG_WARN "Error while setting the pcap buffer size : %s", pcap_statustostr(err));
+
+	err = pcap_activate(p->p);
+
+	if (err < 0) {
+		pomlog(POMLOG_ERR "Error while activating pcap : %s", pcap_statustostr(err));
+		return POM_ERR;
+	} else if (err > 0) {
+		pomlog(POMLOG_WARN "Warning while activating pcap : %s", pcap_statustostr(err));
 	}
 
 	return input_pcap_common_open(i);
@@ -814,6 +847,7 @@ static int input_pcap_cleanup(struct input *i) {
 		case input_pcap_type_interface:
 			ptype_cleanup(priv->tpriv.iface.p_interface);
 			ptype_cleanup(priv->tpriv.iface.p_promisc);
+			ptype_cleanup(priv->tpriv.iface.p_buff_size);
 			break;
 		case input_pcap_type_file:
 			ptype_cleanup(priv->tpriv.file.p_file);
