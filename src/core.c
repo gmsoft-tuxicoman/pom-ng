@@ -64,6 +64,7 @@ static struct ptype *core_param_dump_pkt = NULL, *core_param_offline_dns = NULL,
 // Perf objects
 struct registry_perf *perf_pkt_queue = NULL;
 struct registry_perf *perf_thread_active = NULL;
+struct registry_perf *perf_pkt_dropped = NULL;
 
 
 int core_init(unsigned int num_threads) {
@@ -76,8 +77,9 @@ int core_init(unsigned int num_threads) {
 
 	perf_pkt_queue = registry_class_add_perf(core_registry_class, "pkt_queue", registry_perf_type_gauge, "Number of packets in the queue waiting to be processed", "pkts");
 	perf_thread_active = registry_class_add_perf(core_registry_class, "active_thread", registry_perf_type_gauge, "Number of active threads", "threads");
+	perf_pkt_dropped = registry_class_add_perf(core_registry_class, "dropped_pkt", registry_perf_type_counter, "Number of packets dropped from the inputs", "pkts");
 
-	if (!perf_pkt_queue || !perf_thread_active)
+	if (!perf_pkt_queue || !perf_thread_active || !perf_pkt_dropped)
 		return POM_ERR;
 
 	core_param_dump_pkt = ptype_alloc("bool");
@@ -298,7 +300,7 @@ int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_
 			if (core_pkt_queue_count >= ((CORE_THREAD_PKT_QUEUE_MAX - 1) * core_num_threads)) {
 				// Queue full
 				if (flags & CORE_QUEUE_DROP_IF_FULL) {
-					// TODO add dropped stats
+					registry_perf_inc(perf_pkt_dropped, 1);
 					debug_core("Dropped packet %p (%u.%06u) to thread %u", p, pom_ptime_sec(p->ts), pom_ptime_usec(p->ts));
 					return POM_OK;
 				}
@@ -466,12 +468,13 @@ void *core_processing_thread_func(void *priv) {
 
 		pom_rwlock_unlock(&core_processing_lock);
 
+		debug_core("thread %u : Processed packet %p (%u.%06u)", tpriv->thread_id, pkt, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts));
+
 		if (packet_release(pkt) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while releasing the packet");
 			break;
 		}
 		
-		debug_core("thread %u : Processed packet %p (%u.%06u)", tpriv->thread_id, pkt, pom_ptime_sec(pkt->ts), pom_ptime_usec(pkt->ts));
 		// Re-lock our queue for the next run
 		pom_mutex_lock(&tpriv->pkt_queue_lock);
 
