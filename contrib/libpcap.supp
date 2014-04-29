@@ -13,3 +13,24 @@
   obj:/usr/lib*/libpcap.so*
   ...
 }
+
+{
+  libpcap Set buffer size
+  Memcheck:Param
+  socketcall.setsockopt(optval)
+  ...
+  obj:/usr/lib*/libpcap.so*
+  ...
+}
+
+
+{
+  libpcap filter leak
+  Memcheck:Leak
+  fun:malloc
+  obj:/usr/lib*/libpcap.so*
+  ...
+  fun:pcap_compile
+  ...
+}
+
