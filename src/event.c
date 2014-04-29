@@ -154,10 +154,12 @@ int event_cleanup(struct event *evt) {
 		return POM_ERR;
 	}
 
-	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN && !(evt->flags & EVENT_FLAG_PROCESS_DONE)) {
+/*	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN && !(evt->flags & EVENT_FLAG_PROCESS_DONE)) {
 		pomlog(POMLOG_ERR "Internal error: event %s processing began but never ended", evt->reg->info->name);
 		return POM_ERR;
 	}
+*/
+
 	if (evt->reg->info->cleanup && evt->reg->info->cleanup(evt) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while cleaning up the event %s", evt->reg->info->name);
 		return POM_ERR;
@@ -188,7 +190,7 @@ int event_payload_listen_start() {
 		return POM_OK;
 	}
 
-	event_pload_listener_ref++;
+	__sync_add_and_fetch(&event_pload_listener_ref, 1);
 
 	struct event_reg *tmp;
 	for (tmp = event_reg_head; tmp; tmp = tmp->next) {
@@ -215,9 +217,7 @@ int event_payload_listen_stop() {
 		return POM_ERR;
 	}
 
-	event_pload_listener_ref--;
-
-	if (event_pload_listener_ref)
+	if (__sync_sub_and_fetch(&event_pload_listener_ref, 1))
 		return POM_OK;
 
 	struct event_reg *tmp;
