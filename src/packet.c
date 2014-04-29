@@ -35,21 +35,9 @@
 #endif
 
 #if 0
-#define debug_stream(x ...) pomlog(POMLOG_DEBUG "stream: " x)
-#else
-#define debug_stream(x ...)
-#endif
-
-#if 0
 #define debug_info_pool(x ...) pomlog(POMLOG_DEBUG "info_pool: " x)
 #else
 #define debug_info_pool(x ...)
-#endif
-
-#if 0
-#define debug_packet_pool(x ...) pomlog(POMLOG_DEBUG "packet_pool: " x)
-#else
-#define debug_packet_pool(x ...)
 #endif
 
 // Define to debug packet_info_pool allocation
