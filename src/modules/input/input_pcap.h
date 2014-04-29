@@ -35,6 +35,7 @@ enum input_pcap_type {
 struct input_pcap_interface_priv {
 	struct ptype *p_interface;
 	struct ptype *p_promisc;
+	struct ptype *p_buff_size;
 	struct registry_perf *perf_dropped;
 };
 
