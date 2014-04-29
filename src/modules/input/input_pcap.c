@@ -815,6 +815,15 @@ static int input_pcap_close(struct input *i) {
 
 	struct input_pcap_priv *priv = i->priv;
 
+
+	if (priv->type == input_pcap_type_interface) {
+		struct pcap_stat ps;
+		char *iface = PTYPE_STRING_GETVAL(priv->tpriv.iface.p_interface);
+		if (!pcap_stats(priv->p, &ps)) {
+			pomlog(POMLOG_INFO "interface %s stats : %u pkts received, %u pkts dropped by pcap, %u pkts dropped by the interface", iface, ps.ps_recv, ps.ps_drop, ps.ps_ifdrop);
+		}
+	}
+
 	if (priv->p) {
 		pcap_close(priv->p);
 		priv->p = NULL;
