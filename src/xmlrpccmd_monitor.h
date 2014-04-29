@@ -37,6 +37,7 @@ struct xmlrpccmd_monitor_session {
 	pthread_cond_t cond;
 	struct main_timer *timer;
 	time_t timeout;
+	int pload_events_listening;
 	struct xmlrpccmd_monitor_event *events;
 	struct xmlrpccmd_monitor_pload *ploads;
 	struct xmlrpccmd_monitor_evtreg *events_reg;
@@ -95,6 +96,7 @@ xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlr
 xmlrpc_value *xmlrpccmd_monitor_pload_remove_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_event_remove_listener(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
+xmlrpc_value *xmlrpccmd_monitor_pload_events_listen(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData);
 xmlrpc_value *xmlrpccmd_monitor_build_pload(xmlrpc_env * const envP, struct pload *pload);
 xmlrpc_value *xmlrpccmd_monitor_build_event(xmlrpc_env * const envP, struct event *evt);

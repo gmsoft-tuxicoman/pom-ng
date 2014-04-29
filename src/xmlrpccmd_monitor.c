@@ -33,7 +33,7 @@ static struct xmlrpccmd_monitor_session *xmlrpccmd_monitor_sessions[XMLRPCCMD_MO
 
 static int xmlrpccmd_monitor_pload_listeners_count = 0;
 
-#define XMLRPCCMD_MONITOR_NUM 7
+#define XMLRPCCMD_MONITOR_NUM 8
 static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM] = {
 
 	{
@@ -69,6 +69,13 @@ static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM
 		.callback_func = xmlrpccmd_monitor_pload_remove_listener,
 		.signature = "i:iI",
 		.help = "Remove a payload listener from a monitoring session",
+	},
+
+	{
+		.name = "monitor.ploadEventsListen",
+		.callback_func = xmlrpccmd_monitor_pload_events_listen,
+		.signature = "i:ib",
+		.help = "Start or stop listening to events generating payloads",
 	},
 
 	{
@@ -310,9 +317,9 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		filter_cleanup(tmp->filter);
 		free(tmp);
 
-
 		if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1));
 			pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
+
 	}
 
 	while (sess->ploads) {
@@ -324,7 +331,8 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 
 	}
 
-
+	if (sess->pload_events_listening)
+		event_payload_listen_stop();
 
 	main_timer_cleanup(sess->timer);
 	pthread_cond_destroy(&sess->cond);
@@ -781,6 +789,65 @@ xmlrpc_value *xmlrpccmd_monitor_event_remove_listener(xmlrpc_env * const envP, x
 	pom_mutex_unlock(&sess->lock);
 	return xmlrpc_int_new(envP, 0);
 }
+
+xmlrpc_value *xmlrpccmd_monitor_pload_events_listen(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	xmlrpc_int id = -1;
+	xmlrpc_bool value = 0;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(ib)", &id, &value);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	
+	if (id < 0 || id >= XMLRPCCMD_MONITOR_MAX_SESSION) {
+		xmlrpc_faultf(envP, "Invalid session id");
+		return NULL;
+	}
+
+	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
+	struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[id];
+	if (!sess) {
+		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+		xmlrpc_faultf(envP, "Session %u not found", id);
+		return NULL;
+	}
+	pom_mutex_lock(&sess->lock);
+	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	if (value && sess->pload_events_listening) {
+		xmlrpc_faultf(envP, "This session is already listening to the payload generating events");
+		pom_mutex_unlock(&sess->lock);
+		return NULL;
+	} else if (!value && !sess->pload_events_listening) {
+		xmlrpc_faultf(envP, "This session is already not listening to the payload generating events");
+		pom_mutex_unlock(&sess->lock);
+		return NULL;
+	}
+
+
+	if (value) {
+		if (event_payload_listen_start() != POM_OK) {
+			xmlrpc_faultf(envP, "Error while listening to the payload generating events");
+			pom_mutex_unlock(&sess->lock);
+			return NULL;
+		}
+	} else {
+		if (event_payload_listen_stop() != POM_OK) {
+			xmlrpc_faultf(envP, "Error while stopping to listen to the payload generating events");
+			pom_mutex_unlock(&sess->lock);
+			return NULL;
+		}
+
+	}
+
+	sess->pload_events_listening = value;
+	pom_mutex_unlock(&sess->lock);
+
+	return xmlrpc_int_new(envP, 0);
+}
+
 
 xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
