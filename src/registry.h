@@ -152,4 +152,6 @@ int registry_config_delete(char *config_name);
 
 void registry_perf_reset_all();
 
+uint32_t registry_serial_poll(uint32_t last_serial, struct timespec *timeout);
+
 #endif

@@ -26,8 +26,6 @@
 #include <xmlrpc-c/server.h>
 #include <pom-ng/ptype.h>
 
-#define XMLRPCCMD_POLL_TIMEOUT 180
-
 int xmlrpccmd_init();
 
 int xmlrpccmd_cleanup();

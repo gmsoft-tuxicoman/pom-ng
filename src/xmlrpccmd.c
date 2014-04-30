@@ -196,7 +196,7 @@ xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value *
 		struct timeval now;
 		gettimeofday(&now, NULL);
 		struct timespec then = { 0 };
-		then.tv_sec = now.tv_sec + XMLRPCCMD_POLL_TIMEOUT;
+		then.tv_sec = now.tv_sec + XMLRPCSRV_POLL_TIMEOUT;
 
 		int res = pthread_cond_timedwait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock, &then);
 
@@ -279,7 +279,7 @@ xmlrpc_value *xmlrpccmd_core_serial_poll2(xmlrpc_env * const envP, xmlrpc_value 
 		struct timeval now;
 		gettimeofday(&now, NULL);
 		struct timespec then = { 0 };
-		then.tv_sec = now.tv_sec + XMLRPCCMD_POLL_TIMEOUT;
+		then.tv_sec = now.tv_sec + XMLRPCSRV_POLL_TIMEOUT;
 
 		pom_mutex_lock(&xmlrpccmd_serial_lock);
 		int res = pthread_cond_timedwait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock, &then);
@@ -386,7 +386,7 @@ xmlrpc_value *xmlrpccmd_core_poll_log(xmlrpc_env * const envP, xmlrpc_value * co
 	struct timeval now;
 	gettimeofday(&now, NULL);
 	struct timespec then = { 0 };
-	then.tv_sec = now.tv_sec + XMLRPCCMD_POLL_TIMEOUT;
+	then.tv_sec = now.tv_sec + XMLRPCSRV_POLL_TIMEOUT;
 
 	int count = 0, results = 0;
 

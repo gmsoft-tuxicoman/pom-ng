@@ -50,6 +50,7 @@ static struct datavalue_template registry_config_dataset_template[] = {
 };
 
 static pthread_mutex_t registry_global_lock;
+static pthread_cond_t registry_global_cond = PTHREAD_COND_INITIALIZER;
 static struct registry_class *registry_head = NULL;
 
 static uint32_t *registry_uid_table = NULL;
@@ -801,7 +802,16 @@ int registry_uid_assign(struct registry_instance *instance, char* uid) {
 
 void registry_classes_serial_inc() {
 	registry_classes_serial++;
+
 	registry_serial++;
+
+	// Calls to this function are always locked
+	int result = pthread_cond_broadcast(&registry_global_cond);
+	if (result) {
+		printf("Error while broadcasting the registry serial condition : %s\r", pom_strerror(result));
+		abort();
+	}
+
 	xmlrcpcmd_serial_inc();
 }
 
@@ -1663,3 +1673,28 @@ void registry_perf_reset_all() {
 	}
 	registry_unlock();
 }
+
+uint32_t registry_serial_poll(uint32_t last_serial, struct timespec *timeout) {
+
+
+	int serial;
+	registry_lock();
+
+	if (last_serial != registry_serial) {
+		registry_unlock();
+		return registry_serial;
+	}
+
+	int res = pthread_cond_timedwait(&registry_global_cond, &registry_global_lock, timeout);
+	serial = registry_serial;
+	registry_unlock();
+
+	if (res && res != ETIMEDOUT) {
+		pomlog(POMLOG_ERR "Error while waiting for poll condition : %s", pom_strerror(res));
+		abort();
+	}
+
+
+	return serial;
+}
+

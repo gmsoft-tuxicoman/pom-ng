@@ -26,7 +26,7 @@
 #include "registry.h"
 #include "core.h"
 
-#define XMLRPCCMD_REGISTRY_NUM 15
+#define XMLRPCCMD_REGISTRY_NUM 16
 static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_NUM] = {
 
 	{
@@ -134,6 +134,13 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 		.signature = "i:ss",
 		.help = "Reset the performances objects of an instance"
 	},
+
+	{
+		.name = "registry.poll",
+		.callback_func = xmlrpccmd_registry_poll,
+		.signature = "i:i",
+		.help = "Poll the registry for changes"
+	}
 };
 
 int xmlrpccmd_registry_register_all() {
@@ -977,3 +984,24 @@ xmlrpc_value *xmlrpccmd_registry_reset_instance_perfs(xmlrpc_env * const envP, x
 
 	return xmlrpc_int_new(envP, 0);
 }
+
+xmlrpc_value *xmlrpccmd_registry_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	uint32_t last_serial;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(i)", &last_serial);
+
+	if (envP->fault_occurred)
+		return NULL;
+
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	struct timespec then = { 0 };
+	then.tv_sec = now.tv_sec + XMLRPCSRV_POLL_TIMEOUT;
+
+	
+	uint32_t new_serial = registry_serial_poll(last_serial, &then);
+
+	return xmlrpc_int_new(envP, new_serial);
+}
+
