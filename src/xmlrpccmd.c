@@ -36,14 +36,9 @@
 #include <pom-ng/ptype_uint32.h>
 #include <pom-ng/ptype_uint64.h>
 
-
-static uint32_t xmlrpccmd_serial = 0;
-static pthread_mutex_t xmlrpccmd_serial_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t xmlrpccmd_serial_cond = PTHREAD_COND_INITIALIZER;
-
 static struct ptype_reg *pt_bool = NULL, *pt_string = NULL, *pt_timestamp = NULL, *pt_uint8 = NULL, *pt_uint16 = NULL, *pt_uint32 = NULL, *pt_uint64 = NULL;
 
-#define XMLRPCCMD_NUM 5
+#define XMLRPCCMD_NUM 3
 static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 
 	{
@@ -51,20 +46,6 @@ static struct xmlrpcsrv_command xmlrpccmd_commands[XMLRPCCMD_NUM] = {
 		.callback_func = xmlrpccmd_core_get_version,
 		.signature = "s:",
 		.help = "Get " PACKAGE_NAME " version",
-	},
-
-	{
-		.name = "core.serialPoll",
-		.callback_func = xmlrpccmd_core_serial_poll,
-		.signature = "S:i",
-		.help = "Poll the serial numbers",
-	},
-
-	{
-		.name = "core.serialPoll2",
-		.callback_func = xmlrpccmd_core_serial_poll2,
-		.signature = "S:S",
-		.help = "Poll the serial numbers",
 	},
 
 	{
@@ -103,10 +84,6 @@ int xmlrpccmd_init() {
 
 int xmlrpccmd_cleanup() {
 
-	pom_mutex_lock(&xmlrpccmd_serial_lock);
-	pthread_cond_broadcast(&xmlrpccmd_serial_cond);
-	pom_mutex_unlock(&xmlrpccmd_serial_lock);
-
 	xmlrpccmd_monitor_cleanup();
 
 	return POM_OK;
@@ -128,19 +105,6 @@ int xmlrpccmd_register_all() {
 	return res;
 
 }
-
-
-void xmlrcpcmd_serial_inc() {
-	pom_mutex_lock(&xmlrpccmd_serial_lock);
-	xmlrpccmd_serial++;
-	if (pthread_cond_broadcast(&xmlrpccmd_serial_cond)) {
-		pomlog(POMLOG_ERR "Error while signaling the serial condition. Aborting");
-		abort();
-	}
-	pom_mutex_unlock(&xmlrpccmd_serial_lock);
-
-}
-
 
 xmlrpc_value *xmlrpccmd_ptype_to_val(xmlrpc_env* const envP, struct ptype* p) {
 
@@ -178,154 +142,6 @@ xmlrpc_value *xmlrpccmd_ptype_to_val(xmlrpc_env* const envP, struct ptype* p) {
 xmlrpc_value *xmlrpccmd_core_get_version(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 	
 	return xmlrpc_string_new(envP, VERSION);
-}
-
-xmlrpc_value *xmlrpccmd_core_serial_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
-
-
-	uint32_t last_serial = 0;
-	xmlrpc_decompose_value(envP, paramArrayP, "(i)", &last_serial);
-	if (envP->fault_occurred)
-		return NULL;
-	
-
-	pom_mutex_lock(&xmlrpccmd_serial_lock);
-	while (last_serial == xmlrpccmd_serial) {
-		// Wait for update
-
-		struct timeval now;
-		gettimeofday(&now, NULL);
-		struct timespec then = { 0 };
-		then.tv_sec = now.tv_sec + XMLRPCSRV_POLL_TIMEOUT;
-
-		int res = pthread_cond_timedwait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock, &then);
-
-		if (res == ETIMEDOUT) {
-			break; // Return current values
-		} else if (res) {
-			xmlrpc_faultf(envP, "Error while waiting for serial condition : %s", pom_strerror(res));
-			abort();
-			return NULL;
-		}
-	
-	}
-
-	last_serial = xmlrpccmd_serial;
-	pom_mutex_unlock(&xmlrpccmd_serial_lock);
-
-	registry_lock();
-	pomlog_rlock();
-
-	struct pomlog_entry *last_log = pomlog_get_tail();
-	
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:i,s:i}",
-						"main", last_serial,
-						"registry", registry_serial_get(),
-						"log", last_log->id);
-
-	pomlog_unlock();
-	registry_unlock();
-
-	return res;
-
-}
-
-xmlrpc_value *xmlrpccmd_core_serial_poll2(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
-
-	xmlrpc_value *serials = NULL;
-	xmlrpc_decompose_value(envP, paramArrayP, "(S)", &serials);
-
-	if (envP->fault_occurred)
-		return NULL;
-
-	xmlrpc_value *xml_registry_serial = NULL;
-	xmlrpc_struct_find_value(envP, serials, "registry", &xml_registry_serial);
-	xmlrpc_int registry_serial = 0, last_registry_serial = 0;
-	if (xml_registry_serial) {
-		xmlrpc_read_int(envP, xml_registry_serial, &registry_serial);
-		xmlrpc_DECREF(xml_registry_serial);
-		registry_lock();
-		last_registry_serial = registry_serial_get();
-		registry_unlock();
-	}
-	
-	xmlrpc_value *xml_log_serial = NULL;
-	xmlrpc_struct_find_value(envP, serials, "log", &xml_log_serial);
-	xmlrpc_int log_serial = 0, last_log_serial = 0;
-	if (xml_log_serial) {
-		xmlrpc_read_int(envP, xml_log_serial, &log_serial);
-		xmlrpc_DECREF(xml_log_serial);
-		pomlog_rlock();
-		struct pomlog_entry *last_log = pomlog_get_tail();
-		last_log_serial = last_log->id;
-		pomlog_unlock();
-	}
-
-	xmlrpc_DECREF(serials);
-
-
-	if (envP->fault_occurred)
-		return NULL;
-	
-	if (!xml_registry_serial && !xml_log_serial) {
-		xmlrpc_faultf(envP, "No known serial provided");
-		return NULL;
-	}
-
-
-	while ( (!xml_registry_serial || (registry_serial == last_registry_serial)) && (!xml_log_serial || (log_serial == last_log_serial)) ) {
-		// Wait for update
-
-		struct timeval now;
-		gettimeofday(&now, NULL);
-		struct timespec then = { 0 };
-		then.tv_sec = now.tv_sec + XMLRPCSRV_POLL_TIMEOUT;
-
-		pom_mutex_lock(&xmlrpccmd_serial_lock);
-		int res = pthread_cond_timedwait(&xmlrpccmd_serial_cond, &xmlrpccmd_serial_lock, &then);
-		pom_mutex_unlock(&xmlrpccmd_serial_lock);
-
-		if (res == ETIMEDOUT) {
-			break; // Return current values
-		} else if (res) {
-			xmlrpc_faultf(envP, "Error while waiting for serial condition : %s", pom_strerror(errno));
-			abort();
-		}
-
-		// Update serials
-		if (xml_registry_serial) {
-			registry_lock();
-			last_registry_serial = registry_serial_get();
-			registry_unlock();
-		}
-
-		if (xml_log_serial) {
-			pomlog_rlock();
-			struct pomlog_entry *last_log = pomlog_get_tail();
-			last_log_serial = last_log->id;
-			pomlog_unlock();
-		}
-	
-	}
-
-
-	
-	xmlrpc_value *res = xmlrpc_struct_new(envP);
-
-	if (xml_registry_serial) {
-		xml_registry_serial = xmlrpc_int_new(envP, last_registry_serial);
-		xmlrpc_struct_set_value(envP, res, "registry", xml_registry_serial);
-		xmlrpc_DECREF(xml_registry_serial);
-	}
-
-	if (xml_log_serial) {
-		xml_log_serial = xmlrpc_int_new(envP, last_log_serial);
-		xmlrpc_struct_set_value(envP, res, "log", xml_log_serial);
-		xmlrpc_DECREF(xml_log_serial);
-	}
-
-	return res;
-
 }
 
 xmlrpc_value *xmlrpccmd_core_get_log(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {

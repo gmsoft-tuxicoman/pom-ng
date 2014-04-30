@@ -165,11 +165,13 @@ void pomlog_internal(const char *file, const char *format, ...) {
 		abort();
 	}
 	pom_mutex_unlock(&pomlog_poll_lock);
-
-	xmlrcpcmd_serial_inc();
 }
 
 int pomlog_cleanup() {
+
+	pom_mutex_lock(&pomlog_poll_lock);
+	pthread_cond_broadcast(&pomlog_poll_cond);
+	pom_mutex_unlock(&pomlog_poll_lock);
 
 	while (pomlog_head) {
 		struct pomlog_entry *tmp = pomlog_head;

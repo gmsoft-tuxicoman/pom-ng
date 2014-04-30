@@ -72,6 +72,10 @@ int registry_init() {
 }
 
 int registry_cleanup() {
+	
+	registry_lock();
+	pthread_cond_broadcast(&registry_global_cond);
+	registry_unlock();
 
 	while (registry_head) {
 		if (registry_remove_class(registry_head) != POM_OK)
@@ -811,8 +815,6 @@ void registry_classes_serial_inc() {
 		printf("Error while broadcasting the registry serial condition : %s\r", pom_strerror(result));
 		abort();
 	}
-
-	xmlrcpcmd_serial_inc();
 }
 
 
@@ -1057,7 +1059,6 @@ int registry_config_save(char *config_name) {
 
 	registry_config_serial++;
 	registry_serial++;
-	xmlrcpcmd_serial_inc();
 
 	registry_unlock();
 
@@ -1420,7 +1421,6 @@ int registry_config_delete(char *config_name) {
 
 	registry_config_serial++;
 	registry_serial++;
-	xmlrcpcmd_serial_inc();
 	registry_unlock();
 
 	return POM_OK;
