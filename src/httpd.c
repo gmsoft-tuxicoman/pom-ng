@@ -568,7 +568,7 @@ uint64_t httpd_pload_add(struct pload *pload) {
 	HASH_ADD(hh, httpd_ploads, id, sizeof(p->id), p);
 	pom_rwlock_unlock(&httpd_ploads_lock);
 
-	pomlog(POMLOG_DEBUG "Added pload of type %s with id %"PRIu64, p->mime_type, p->id);
+	pomlog(POMLOG_DEBUG "Added pload 0x%p of type %s with id %"PRIu64, pload, p->mime_type, p->id);
 
 	return p->id;
 }
@@ -582,7 +582,7 @@ void httpd_pload_remove(uint64_t id) {
 
 	HASH_FIND(hh, httpd_ploads, &id, sizeof(id), p);
 	if (!p) {
-		pomlog(POMLOG_WARN "Payload %"PRIX64" no found", id);
+		pomlog(POMLOG_WARN "Payload %"PRIu64" not found", id);
 		pom_rwlock_unlock(&httpd_ploads_lock);
 		return ;
 	}
@@ -591,6 +591,8 @@ void httpd_pload_remove(uint64_t id) {
 	pom_rwlock_unlock(&httpd_ploads_lock);
 
 	pload_store_release(p->store);
+
+	pomlog(POMLOG_DEBUG "Pload id %"PRIu64" removed", id);
 
 	free(p->mime_type);
 	free(p);
