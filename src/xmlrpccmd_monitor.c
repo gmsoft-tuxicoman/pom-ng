@@ -353,6 +353,7 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		struct xmlrpccmd_monitor_pload *pload = sess->ploads;
 		sess->ploads = pload->next;
 		// Don't free listeners here as the same list is used for the httpd_pload structure
+		pload_refcount_dec(pload->pload);
 		free(pload);
 
 	}
