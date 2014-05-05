@@ -165,17 +165,6 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 	registry_perf_inc(proto->perf_pkts, 1);
 	registry_perf_inc(proto->perf_bytes, s->plen);
 
-	if (res == PROTO_OK || res == PROTO_STOP) {
-		struct proto_packet_listener *l;
-		for (l = proto->packet_listeners; l; l = l->next) {
-			if (l->filter && !filter_proto_match(stack, l->filter))
-				continue;
-			if (l->process(l->object, p, stack, stack_index) != POM_OK) {
-				pomlog(POMLOG_WARN "Warning packet listener failed");
-				// FIXME remove listener from the list ?
-			}
-		}
-	}
 
 	if (res != PROTO_OK)
 		return res;
@@ -298,7 +287,7 @@ int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *
 	if (proto && s_next->plen) {
 		struct proto_packet_listener *l;
 		for (l = proto->payload_listeners; l; l = l->next) {
-			if (l->filter && !filter_proto_match(stack, l->filter))
+			if (l->filter && !filter_packet_match(l->filter, stack))
 				continue;
 			if (l->process(l->object, p, stack, stack_index + 1) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning payload listener failed");
@@ -319,7 +308,18 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 
 	if (!proto)
 		return PROTO_ERR;
-	
+
+	// Process the listeners after the whole stack has been processed
+	struct proto_packet_listener *l;
+	for (l = proto->packet_listeners; l; l = l->next) {
+		if (l->filter && !filter_packet_match(l->filter, s))
+			continue;
+		if (l->process(l->object, p, s, stack_index) != POM_OK) {
+			pomlog(POMLOG_WARN "Warning packet listener failed");
+			// FIXME remove listener from the list ?
+		}
+	}
+
 	if (proto->info->post_process)
 		return proto->info->post_process(proto->priv, p, s, stack_index);
 
@@ -363,9 +363,6 @@ struct proto *proto_get(char *name) {
 	
 	struct proto *tmp;
 	for (tmp = proto_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
-
-	if (!tmp)
-		pomlog(POMLOG_WARN "Proto %s not found !", name);
 
 	return tmp;
 }
@@ -480,7 +477,7 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 	return POM_OK;
 }
 
-void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_proto *f) {
+void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_node *f) {
 	l->filter = f;
 }
 
