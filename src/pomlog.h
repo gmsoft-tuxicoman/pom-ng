@@ -40,6 +40,7 @@ struct pomlog_entry {
 };
 
 int pomlog_cleanup();
+void pomlog_finish();
 int pomlog_set_debug_level(unsigned int debug_level);
 
 void pomlog_rlock();

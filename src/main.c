@@ -424,6 +424,8 @@ int main(int argc, char *argv[]) {
 
 	input_cleanup();
 	xmlrpcsrv_stop();
+	pomlog_finish();
+	registry_finish();
 	httpd_cleanup();
 	xmlrpcsrv_cleanup();
 	output_cleanup();

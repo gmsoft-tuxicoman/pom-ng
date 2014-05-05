@@ -73,10 +73,6 @@ int registry_init() {
 
 int registry_cleanup() {
 	
-	registry_lock();
-	pthread_cond_broadcast(&registry_global_cond);
-	registry_unlock();
-
 	while (registry_head) {
 		if (registry_remove_class(registry_head) != POM_OK)
 			return POM_ERR;
@@ -87,6 +83,14 @@ int registry_cleanup() {
 	free(registry_uid_table);
 	
 	return POM_OK;
+}
+
+void registry_finish() {
+
+	registry_lock();
+	pthread_cond_broadcast(&registry_global_cond);
+	registry_unlock();
+
 }
 
 void registry_lock() {

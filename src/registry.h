@@ -114,6 +114,7 @@ struct registry_config_entry {
 
 int registry_init();
 int registry_cleanup();
+void registry_finish();
 
 void registry_lock();
 void registry_unlock();

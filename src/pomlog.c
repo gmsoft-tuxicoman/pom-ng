@@ -169,10 +169,6 @@ void pomlog_internal(const char *file, const char *format, ...) {
 
 int pomlog_cleanup() {
 
-	pom_mutex_lock(&pomlog_poll_lock);
-	pthread_cond_broadcast(&pomlog_poll_cond);
-	pom_mutex_unlock(&pomlog_poll_lock);
-
 	while (pomlog_head) {
 		struct pomlog_entry *tmp = pomlog_head;
 		pomlog_head = pomlog_head->main_next;
@@ -184,6 +180,12 @@ int pomlog_cleanup() {
 	pomlog_tail = NULL;
 
 	return POM_OK;
+}
+
+void pomlog_finish() {
+	pom_mutex_lock(&pomlog_poll_lock);
+	pthread_cond_broadcast(&pomlog_poll_cond);
+	pom_mutex_unlock(&pomlog_poll_lock);
 }
 
 int pomlog_set_debug_level(unsigned int debug_level) {
