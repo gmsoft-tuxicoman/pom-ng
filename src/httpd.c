@@ -304,7 +304,10 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		// Process the query and send the output
 		char *xml_response = NULL;
 		size_t xml_reslen = 0;
-		xmlrpcsrv_process(info->buff, info->buffpos, &xml_response, &xml_reslen);
+		if (xmlrpcsrv_process(info->buff, info->buffpos, &xml_response, &xml_reslen) != POM_OK) {
+			free(info->buff);
+			return MHD_NO;
+		}
 		free(info->buff);
 
 		response = MHD_create_response_from_data(xml_reslen, (void *)xml_response, MHD_YES, MHD_NO);
