@@ -64,7 +64,7 @@ struct analyzer_docsis_priv {
 	pthread_mutex_t lock;
 	struct analyzer_docsis_cm *cms[ANALYZER_DOCSIS_CM_TABLE_SIZE];
 
-	struct filter_proto *filter;
+	struct filter_node *filter;
 };
 
 struct mod_reg_info *analyzer_docsis_reg_info();

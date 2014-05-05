@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,8 +18,8 @@
  *
  */
 
-#ifndef __OUTPUT_PCAP_H__
-#define __OUTPUT_PCAP_H__
+#ifndef __OUTPUT_INJECT_H__
+#define __OUTPUT_INJECT_H__
 
 
 #include <pom-ng/output.h>
@@ -32,7 +32,7 @@
 struct output_inject_priv {
 
 	pcap_t *p;
-	struct filter_proto *filter;
+	struct filter_node *filter;
 
 	struct proto_packet_listener *listener;
 

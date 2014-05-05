@@ -146,7 +146,7 @@ static int analyzer_docsis_cleanup(struct analyzer *analyzer) {
 		event_unregister(priv->evt_cm_reg_status);
 
 	if (priv->filter)
-		filter_proto_cleanup(priv->filter);
+		filter_cleanup(priv->filter);
 	
 	int i;
 	for (i = 0; i < ANALYZER_DOCSIS_CM_TABLE_SIZE; i++) {
@@ -174,8 +174,7 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 			return POM_OK;
 
 		if (!priv->filter) {
-			priv->filter = filter_proto_build("docsis_mgmt", "type", PTYPE_OP_GT, "3");
-			if (!priv->filter) {
+			if (filter_packet("docsis_mgmt.type > 3", &priv->filter) != POM_OK) {
 				pomlog(POMLOG_ERR "Error while building filter");
 				return POM_ERR;
 			}

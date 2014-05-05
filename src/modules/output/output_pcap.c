@@ -280,7 +280,7 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 static int output_pcap_filter_parse(void *priv, char *value) {
 
 	struct output_pcap_file_priv *p = priv;
-	return filter_proto_parse(value, strlen(value), &p->filter);
+	return filter_packet(value, &p->filter);
 }
 
 static int output_pcap_filter_update(void *priv, struct ptype *value) {

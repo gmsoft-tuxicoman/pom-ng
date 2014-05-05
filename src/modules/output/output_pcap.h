@@ -34,7 +34,7 @@ struct output_pcap_file_priv {
 	pcap_dumper_t *pdump;
 	pcap_t *p;
 	struct proto *proto;
-	struct filter_proto *filter;
+	struct filter_node *filter;
 
 	struct proto_packet_listener *listener;
 

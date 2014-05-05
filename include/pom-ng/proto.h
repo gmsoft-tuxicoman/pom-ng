@@ -84,7 +84,7 @@ struct proto_packet_listener {
 	struct proto *proto;
 	void *object;
 	int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-	struct filter_proto *filter;
+	struct filter_node *filter;
 	struct proto_packet_listener *prev, *next;
 };
 
@@ -110,7 +110,7 @@ struct proto_packet_listener *proto_packet_listener_register(struct proto *proto
 int proto_packet_listener_unregister(struct proto_packet_listener *l);
 
 // Set a filter on a packet listener
-void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_proto *f);
+void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_node *f);
 
 
 

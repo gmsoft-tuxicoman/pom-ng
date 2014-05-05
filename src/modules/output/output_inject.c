@@ -217,7 +217,7 @@ static int output_inject_process(void *obj, struct packet *p, struct proto_proce
 static int output_inject_filter_parse(void *priv, char *value) {
 
 	struct output_inject_priv *p = priv;
-	return filter_proto_parse(value, strlen(value), &p->filter);
+	return filter_packet(value, &p->filter);
 }
 
 static int output_inject_filter_update(void *priv, struct ptype *value) {

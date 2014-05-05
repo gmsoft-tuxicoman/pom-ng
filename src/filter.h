@@ -41,19 +41,8 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/filter.h>
 #include "pload.h"
-#include <pom-ng/event.h>
 #include "event.h"
 #include "core.h"
-
-struct filter_proto {
-	struct proto *proto; // If there is a proto, then it's a single match. Else it's a branch
-
-	int op;
-	struct filter_proto *a, *b;
-
-	int field_id;
-	struct ptype *value;
-};
 
 enum filter_evt_prop {
 	filter_evt_prop_time,
@@ -71,6 +60,7 @@ enum filter_value_type {
 	filter_value_type_evt_prop,
 	filter_value_type_pload_data,
 	filter_value_type_pload_evt_data,
+	filter_value_type_proto,
 };
 
 struct filter_data_raw {
@@ -84,14 +74,20 @@ struct filter_data {
 	struct ptype_reg *pt_reg;
 };
 
+struct filter_packet {
+	struct proto *proto;
+	int field_id;
+	struct ptype_reg *pt_reg;
+};
+
 union filter_value {
 	struct filter_node *node;
 	struct filter_data data;
 	struct filter_data_raw data_raw;
+	struct filter_packet proto;
 	struct ptype *ptype;
 	char *string;
 	uint64_t integer;
-
 };
 
 struct filter_node {
@@ -131,9 +127,6 @@ struct filter_raw_node {
 };
 
 
-int filter_proto_match(struct proto_process_stack *stack, struct filter_proto *f);
-int filter_proto_parse_block(char *expr, unsigned int len, struct filter_proto **f);
-
 int filter_raw_parse(char *expr, unsigned int len, struct filter_raw_node **n);
 int filter_raw_parse_block(char *expr, unsigned int len, struct filter_raw_node **n);
 void filter_raw_cleanup(struct filter_raw_node *fr);
@@ -141,21 +134,17 @@ void filter_raw_cleanup(struct filter_raw_node *fr);
 int filter_data_compile(struct filter_data *d, struct data_reg *dr, char *value);
 int filter_data_raw_compile(struct filter_data_raw *d, char *value);
 int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr);
-int filter_node_compile(struct filter_node *n);
 
+int filter_packet_compile(struct filter_node **filter, struct filter_raw_node *filter_raw);
 int filter_event_compile(struct filter_node **filter, struct event_reg *evt, struct filter_raw_node *filter_raw);
-
 int filter_pload_compile(struct filter_node **filter, struct filter_raw_node *filter_raw);
 
 int filter_node_data_match(struct filter_node *n, struct data *d);
 
+int filter_packet_match(struct filter_node *n, struct proto_process_stack *stack);
 int filter_event_match(struct filter_node *n, struct event *evt);
 int filter_pload_match(struct filter_node *n, struct pload *p);
 
-int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
-int filter_pload(char *filter_expr, struct filter_node **filter);
-
-void filter_cleanup(struct filter_node *n);
 
 #endif
 

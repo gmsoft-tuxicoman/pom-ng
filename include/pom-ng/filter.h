@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,15 +22,18 @@
 #ifndef __POM_NG_FILTER_H__
 #define __POM_NG_FILTER_H__
 
+#include <pom-ng/event.h>
+
 #define FILTER_MATCH_NO		0
 #define FILTER_MATCH_YES	1
 
 
 struct filter_node;
 
-struct filter_proto *filter_proto_build(char *proto, char *field, unsigned int op, char *value);
-struct filter_proto *filter_proto_build_branch(struct filter_proto *a, struct filter_proto *b, unsigned int op);
-void filter_proto_cleanup(struct filter_proto *f);
-int filter_proto_parse(char *expr, unsigned int len, struct filter_proto **f);
+int filter_packet(char *filter_expr, struct filter_node **filter);
+int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
+int filter_pload(char *filter_expr, struct filter_node **filter);
+
+void filter_cleanup(struct filter_node *n);
 
 #endif

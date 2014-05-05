@@ -23,367 +23,6 @@
 #include "core.h"
 #include "proto.h"
 
-int filter_proto_match(struct proto_process_stack *stack, struct filter_proto *f) {
-
-	int res = FILTER_MATCH_NO;
-
-	if (f->proto) {
-
-		unsigned int i;
-		for (i = CORE_PROTO_STACK_START; i <= CORE_PROTO_STACK_MAX && stack[i].proto; i++) {
-			// Find if we match a specific proto
-			if (stack[i].proto == f->proto) {
-				if (!f->value) // No value for this filter, we just want to know if a proto exists
-					res = FILTER_MATCH_YES;
-				if (ptype_compare_val(f->op & PTYPE_OP_ALL, stack[i].pkt_info->fields_value[f->field_id], f->value))
-					res = FILTER_MATCH_YES;
-				break; // FIXME : Should we break or see if there is another instance of this proto later ?
-			}
-		}
-	} else {
-		// It's a branch
-		
-		int res_a = filter_proto_match(stack, f->a);
-
-		if (f->op & FILTER_OP_OR)
-			res = res_a || filter_proto_match(stack, f->b);
-		else
-			res = res_a && filter_proto_match(stack, f->b);
-	}
-
-	return (f->op & FILTER_OP_NOT ? !res : res);
-}
-
-struct filter_proto *filter_proto_build(char *proto, char *field, unsigned int op, char *value) {
-
-	struct proto *p = proto_get(proto);
-	if (!p)
-		return NULL;
-
-	struct proto_pkt_field *fields = p->info->pkt_fields;
-	unsigned int field_id;
-	for (field_id = 0; fields[field_id].name && strcmp(fields[field_id].name, field); field_id++);
-	
-	if (!fields[field_id].name) {
-		pomlog(POMLOG_ERR "Field %s doesn't exists for proto %s", field, proto);
-		return NULL;
-	}
-
-	struct ptype *v = ptype_alloc_from_type(fields[field_id].value_type);
-	if (!v)
-		return NULL;
-
-	if (ptype_parse_val(v, value) != POM_OK) {
-		ptype_cleanup(v);
-		return NULL;
-	}
-
-	struct filter_proto *f = malloc(sizeof(struct filter_proto));
-	if (!f) {
-		ptype_cleanup(v);
-		pom_oom(sizeof(struct filter_proto));
-		return NULL;
-	}
-	memset(f, 0, sizeof(struct filter_proto));
-
-	f->proto = p;
-	f->op = op;
-	f->value = v;
-	f->field_id = field_id;
-
-
-	return f;
-}
-
-struct filter_proto *filter_proto_build_branch(struct filter_proto *a, struct filter_proto *b, unsigned int op) {
-
-	struct filter_proto *f = malloc(sizeof(struct filter_proto));
-	if (!f) {
-		pom_oom(sizeof(struct filter_proto));
-		return NULL;
-	}
-	memset(f, 0, sizeof(struct filter_proto));
-
-	f->a = a;
-	f->b = b;
-	f->op = op;
-
-	return f;
-}
-
-void filter_proto_cleanup(struct filter_proto *f) {
-
-	if (f->value)
-		ptype_cleanup(f->value);
-
-	if (f->a)
-		filter_proto_cleanup(f->a);
-
-	if (f->b)
-		filter_proto_cleanup(f->b);
-
-	free(f);
-}
-
-int filter_proto_parse(char *expr, unsigned int len, struct filter_proto **f) {
-
-	unsigned int i;
-	int stack_size = 0;
-
-	int branch_found = 0;
-	int branch_op = 0;
-
-	while (len && *expr == ' ') {
-		expr++;
-		len--;
-	}
-
-	while (len && expr[len - 1] == ' ')
-		len--;
-
-	if (!len) {
-		*f = NULL;
-		return POM_OK;
-	}
-
-	for (i = 0; i < len; i++) {
-		if (stack_size == 0 && expr[i] == '|' && expr[i + 1] == '|')  {
-			branch_found = 1;
-			branch_op = FILTER_OP_OR;
-		} else if (stack_size == 0 && expr[i] == '&' && expr[i + 1] == '&') {
-			branch_found = 1;
-			branch_op = FILTER_OP_AND;
-		}
-
-		if (expr[i] == '(') {
-			stack_size++;
-			continue;
-		}
-		if (expr[i] == ')') {
-			if (stack_size == 0) {
-				pomlog(POMLOG_ERR "Unmatched ')' at pos %u in expression '%s'", i, expr);
-				return POM_ERR;
-			}
-			stack_size--;
-			continue;
-		}
-
-		if (branch_found) {
-			// A branch was found, parse both sides
-
-			*f = malloc(sizeof(struct filter_proto));
-			if (!*f) {
-				pom_oom(sizeof(struct filter_proto));
-				return POM_ERR;
-			}
-			memset(*f, 0, sizeof(struct filter_proto));
-			
-			(*f)->op = branch_op;
-			
-			if (filter_proto_parse_block(expr, i - 1, &(*f)->a) != POM_OK || filter_proto_parse(expr + i + 2, len - i - 2, &(*f)->b) != POM_OK)
-				return POM_ERR;
-
-			if (!(*f)->a || !(*f)->b) {
-				pomlog(POMLOG_ERR "Branch of expression empty in expression '%s'", expr);
-				return POM_ERR;
-			}
-
-			return POM_OK;
-		}
-	}
-
-	if (stack_size > 0) {
-		pomlog(POMLOG_ERR "Unmatched '(' in expression '%s'", expr);
-		return POM_ERR;
-	}
-
-	// There was no branch, process the whole thing then
-	return filter_proto_parse_block(expr, len, f);
-	
-}
-
-int filter_proto_parse_block(char *expr, unsigned int len, struct filter_proto **f) {
-
-	if (len < 2)
-		return POM_ERR;
-
-	while (len && *expr == ' ') {
-		expr++;
-		len--;
-	}
-
-	while (len && expr[len - 1] == ' ')
-		len--;
-
-	if (!len) {
-		*f = NULL;
-		return POM_OK;
-	}
-
-	// Find out if there is an inversion
-	int inv = 0;
-	if (expr[0] == '!') {
-		inv = 1;
-		expr++;
-		len--;
-		while (*expr == ' ') {
-			expr++;
-			len--;
-		}
-
-	}
-
-	if (expr[0] == '(' && expr[len - 1] == ')') {
-		expr++;
-		len -= 2;
-		int res = filter_proto_parse(expr, len, f);
-		if (inv)
-			(*f)->op = ((*f)->op & FILTER_OP_NOT ? (*f)->op & ~FILTER_OP_NOT : (*f)->op | FILTER_OP_NOT);
-		return res;
-	}
-
-	// At this point we should have 'proto.field op value'
-	
-
-	// Search for the first token
-	char *dot = memchr(expr, '.', len);
-	if (!dot) {
-		pomlog(POMLOG_ERR "No field found");
-		return POM_ERR;
-	}
-	
-	// Parse and find the protocol
-	char *proto_str = strndup(expr, dot - expr);
-	if (!proto_str) {
-		pom_oom(dot - expr + 1);
-		return POM_ERR;
-	}
-	struct proto *proto = proto_get(proto_str);
-
-	if (!proto) {
-		pomlog(POMLOG_ERR "Protocol %s doesn't exists", proto);
-		free(proto_str);
-		return POM_ERR;
-	}
-	free(proto_str);
-
-	// Parse and find the field
-	char *space = memchr(expr, ' ', len);
-	size_t field_len;
-	if (space) {
-		field_len = space - dot - 1;
-		while (*space == ' ')
-			space++;
-	} else {
-		field_len = len - (dot - expr);
-	}
-	
-	char *field = strndup(dot + 1, field_len);
-	if (!field) {
-		pom_oom(field_len + 1);
-		return POM_ERR;
-	}
-
-	int field_id;
-	for (field_id = 0; proto->info->pkt_fields[field_id].name && strcmp(proto->info->pkt_fields[field_id].name, field); field_id++);
-
-	if (!proto->info->pkt_fields[field_id].name) {
-		pomlog(POMLOG_ERR "Field %s doesn't exists for proto %s", field, proto->info->name);
-		free(field);
-		return POM_ERR;
-	}
-	free(field);
-
-	*f = malloc(sizeof(struct filter_proto));
-	if (!*f) {
-		pom_oom(sizeof(struct filter_proto));
-		return POM_ERR;
-	}
-	memset(*f, 0, sizeof(struct filter_proto));
-
-	struct filter_proto *filter = *f;
-	filter->field_id = field_id;
-	filter->proto = proto;
-
-	if (!space) // Only make sure that the field is set if no value exists
-		return POM_OK;
-
-	// Parse the op
-	len -= space - expr;
-	expr = space;
-
-	space = memchr(expr, ' ', len);
-
-	if (!space) {
-		pomlog(POMLOG_ERR "Invalid expression. Missing operation or value");
-		goto err;
-	}
-
-	char *op_str = strndup(expr, space - expr);
-	if (!op_str) {
-		pom_oom(space - expr);
-		goto err;
-	}
-
-	while (*space == ' ')
-		space++;
-
-	char *value_str = strndup(space, len - (space - expr));
-	if (!value_str) {
-		free(op_str);
-		pom_oom(len - (space - expr));
-		goto err;
-	}
-
-	filter->value = ptype_alloc_from_type(proto->info->pkt_fields[field_id].value_type);
-	if (!filter->value) {
-		free(op_str);
-		free(value_str);
-		goto err;
-	}
-
-	if (ptype_parse_val(filter->value, value_str) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while parsing value '%s'", value_str);
-		free(op_str);
-		free(value_str);
-		goto err;
-	}
-
-
-	filter->op = ptype_get_op(filter->value, op_str);
-	if (filter->op == POM_ERR) {
-		free(value_str);
-		pomlog(POMLOG_ERR "Invalid operation '%s'", op_str);
-		free(op_str);
-		goto err;
-	}
-
-	free(op_str);
-
-	if (inv)
-		filter->op |= FILTER_OP_NOT;
-
-	return POM_OK;
-
-err:
-	if (*f) {
-		if ((*f)->value)
-			ptype_cleanup((*f)->value);
-		free(*f);
-		*f = NULL;
-	}
-	return POM_ERR;
-}
-
-
-
-
-
-
-
-
-
-
 int filter_raw_parse(char *expr, unsigned int len, struct filter_raw_node **n) {
 
 	unsigned int i;
@@ -582,6 +221,131 @@ void filter_raw_cleanup(struct filter_raw_node *fr) {
 
 }
 
+int filter_packet_compile(struct filter_node **filter, struct filter_raw_node *filter_raw) {
+
+
+	if (!*filter) {
+		*filter = malloc(sizeof(struct filter_node));
+		if (!*filter) {
+			pom_oom(sizeof(struct filter_node));
+			return POM_ERR;
+		}
+		memset(*filter, 0, sizeof(struct filter_node));
+	}
+
+	struct filter_node *n = *filter;
+
+
+	if (filter_raw->isbranch) {
+		n->type[0] = filter_value_type_node;
+		n->type[1] = filter_value_type_node;
+
+		if (filter_packet_compile(&n->value[0].node, filter_raw->branch.a) != POM_OK)
+			return POM_ERR;
+
+		if (filter_packet_compile(&n->value[1].node, filter_raw->branch.b) != POM_OK)
+			return POM_ERR;
+
+		n->op = filter_raw->branch.op;
+
+		return POM_OK;
+	}
+
+
+	int i;
+
+	for (i = 0; i < 2; i++) {
+
+		char *value = filter_raw->data.value[i];
+
+		if (!value)
+			continue;
+
+		char *dot = strchr(value, '.');
+		if (dot)
+			*dot = 0;
+
+		struct proto *proto = proto_get(value);
+		if (!proto) {
+			if (dot)
+				*dot = '.';
+
+			n->type[i] = filter_value_type_string;
+			n->value[i].string = value;
+			
+			// Prevent the string from beeing freed
+			filter_raw->data.value[i] = NULL;
+			continue;
+		}
+
+		// We are parsing a proto
+
+		n->type[i] = filter_value_type_proto;
+		n->value[i].proto.proto = proto;
+
+		if (dot) {
+			dot++;
+
+			int field_id;
+			for (field_id = 0; proto->info->pkt_fields[field_id].name && strcmp(proto->info->pkt_fields[field_id].name, dot); field_id++);
+
+			if (!proto->info->pkt_fields[field_id].name) {
+				pomlog(POMLOG_ERR "Field %s doesn't exists for proto %s", dot, proto->info->name);
+				return POM_ERR;
+			}
+			n->value[i].proto.field_id = field_id;
+			n->value[i].proto.pt_reg = proto->info->pkt_fields[field_id].value_type;
+
+		} else  {
+			n->value[i].proto.field_id = -1;
+			if (i == 1) {
+				pomlog(POMLOG_ERR "Proto cannot be compared to anything");
+				return POM_ERR;
+			}
+		}
+	}
+
+	if (filter_op_compile(n, filter_raw) != POM_OK)
+		return POM_ERR;
+
+	if (n->op == FILTER_OP_NOP)
+		return POM_OK;
+
+	if (n->type[0] == filter_value_type_proto && n->type[1] == filter_value_type_proto) {
+		if (n->value[0].proto.pt_reg != n->value[1].proto.pt_reg) {
+			pomlog(POMLOG_ERR "Cannot compare different types of ptype");
+			return POM_ERR;
+		}
+	} else if (n->type[0] == filter_value_type_proto || n->type[1] == filter_value_type_proto) {
+
+		int data = 0, value = 1;
+		if (n->type[0] != filter_value_type_proto) {
+			data = 1;
+			value = 0;
+		}
+
+		if (n->type[value] != filter_value_type_string) {
+			pomlog(POMLOG_ERR "Unhandled value of type %u when the other one is of type 'proto'", n->type[value]);
+			return POM_ERR;
+		}
+
+		struct ptype *v = ptype_alloc_from_type(n->value[data].proto.pt_reg);
+		if (!v)
+			return POM_ERR;
+		if (ptype_parse_val(v, n->value[value].string) != POM_OK)
+			return POM_ERR;
+
+		free(n->value[value].string);
+		n->type[value] = filter_value_type_ptype;
+		n->value[value].ptype = v;
+
+	} else if (n->type[0] == filter_value_type_proto && n->value[0].proto.field_id == -1 && n->op != FILTER_OP_NOP) {
+		pomlog(POMLOG_ERR "Proto cannot be compared to anything");
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
 
 int filter_event_compile(struct filter_node **filter, struct event_reg *evt, struct filter_raw_node *filter_raw) {
 
@@ -678,7 +442,38 @@ int filter_event_compile(struct filter_node **filter, struct event_reg *evt, str
 
 	}
 
-	return filter_node_compile(n);
+	if (n->type[0] == filter_value_type_data && n->type[1] == filter_value_type_data) {
+		if (n->value[0].data.pt_reg != n->value[1].data.pt_reg) {
+			pomlog(POMLOG_ERR "Cannot compare different types of ptype");
+			return POM_ERR;
+		}
+	} else if (n->type[0] == filter_value_type_data || n->type[1] == filter_value_type_data) {
+		int data = 0, value = 1;
+		if (n->type[0] != filter_value_type_data) {
+			data = 1;
+			value = 0;
+		}
+
+		if (n->type[value] == filter_value_type_string) {
+
+			struct ptype *v = ptype_alloc_from_type(n->value[data].data.pt_reg);
+			if (!v)
+				return POM_ERR;
+			if (ptype_parse_val(v, n->value[value].string) != POM_OK)
+				return POM_ERR;
+
+			free(n->value[value].string);
+			n->type[value] = filter_value_type_ptype;
+			n->value[value].ptype = v;
+		} else if (n->type[value] != filter_value_type_ptype) {
+			pomlog(POMLOG_ERR "Unhandled value type %u when the other one is of type 'data'", n->type[value]);
+			return POM_ERR;
+		}
+
+	}
+
+	pomlog(POMLOG_ERR "Unhandled combination of data types");
+	return POM_ERR;
 
 }
 
@@ -838,8 +633,9 @@ int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr) {
 	char *op = fr->data.op;
 
 	n->op = FILTER_OP_NOP;
-
-	if (!strcmp(op, "eq") || !strcmp(op, "==") || !strcmp(op, "equals")) {
+	if (!op) {
+		return POM_OK;
+	} else if (!strcmp(op, "eq") || !strcmp(op, "==") || !strcmp(op, "equals")) {
 		n->op = FILTER_OP_EQ;
 	} else if (!strcmp(op, "gt") || !strcmp(op, ">")) {
 		n->op = FILTER_OP_GT;
@@ -857,44 +653,6 @@ int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr) {
 		return POM_ERR;
 
 	return POM_OK;
-}
-
-
-int filter_node_compile(struct filter_node *n) {
-
-	if (n->type[0] == filter_value_type_data && n->type[1] == filter_value_type_data) {
-		if (n->value[0].data.pt_reg != n->value[1].data.pt_reg) {
-			pomlog(POMLOG_ERR "Cannot compare different types of ptype");
-			return POM_ERR;
-		}
-	} else if (n->type[0] == filter_value_type_data || n->type[1] == filter_value_type_data) {
-		int data = 0, value = 1;
-		if (n->type[0] != filter_value_type_data) {
-			data = 1;
-			value = 0;
-		}
-
-		if (n->type[value] == filter_value_type_string) {
-
-			struct ptype *v = ptype_alloc_from_type(n->value[data].data.pt_reg);
-			if (!v)
-				return POM_ERR;
-			if (ptype_parse_val(v, n->value[value].string) != POM_OK)
-				return POM_ERR;
-
-			free(n->value[value].string);
-			n->type[value] = filter_value_type_ptype;
-			n->value[value].ptype = v;
-		} else if (n->type[value] != filter_value_type_ptype) {
-			pomlog(POMLOG_ERR "Unhandled value type %u when the other one is of type 'data'", n->type[value]);
-			return POM_ERR;
-		}
-
-	}
-
-	pomlog(POMLOG_ERR "Unhandled combination of data types");
-	return POM_ERR;
-
 }
 
 int filter_node_data_match(struct filter_node *n, struct data *d) {
@@ -945,6 +703,82 @@ int filter_node_data_match(struct filter_node *n, struct data *d) {
 
 		res = ptype_compare_val(n->op, v[0], v[1]);
 	}
+
+	return res;
+}
+
+int filter_packet_match(struct filter_node *n, struct proto_process_stack *stack) {
+
+	int res = FILTER_MATCH_NO;
+
+	if (n->type[0] == filter_value_type_node && n->type[1] == filter_value_type_node) {
+		int res_a, res_b;
+
+		res_a = filter_packet_match(n->value[0].node, stack);
+		if (res_a == POM_ERR)
+			return POM_ERR;
+
+		res_b = filter_packet_match(n->value[1].node, stack);
+		if (res_b == POM_ERR)
+			return POM_ERR;
+
+
+		if (n->op == FILTER_OP_AND) {
+			res = res_a && res_b;
+		} else if (n->op == FILTER_OP_OR) {
+			res = res_a || res_b;
+		} else {
+			pomlog(POMLOG_ERR "Invalid operation for nodes");
+			return POM_ERR;
+		}
+
+		if (n->not)
+			return !res;
+
+		return res;
+	}
+
+
+	// Fetch values
+	struct ptype *values[2] = { 0 };
+
+	int i;
+	for (i = 0; i < 2; i++) {
+
+		if (n->type[i] == filter_value_type_proto) {
+
+			unsigned int j;
+			for (j = CORE_PROTO_STACK_START; j <= CORE_PROTO_STACK_MAX && stack[j].proto && stack[j].proto != n->value[i].proto.proto; j++);
+
+			if (!stack[j].proto)
+				break;
+			
+			if (n->value[i].proto.field_id == -1) {
+				// Set value to whatever
+				values[i] = (void*)-1;
+				break;
+			}
+
+			values[i] = stack[j].pkt_info->fields_value[n->value[i].proto.field_id];
+		} else if (n->type[i] == filter_value_type_ptype) {
+			values[i] = n->value[i].ptype;
+		}
+	}
+
+
+	if (n->op == FILTER_OP_NOP) {
+		if (values[0] || values[1]) { // Only v[0] should be set but for safety we match both
+			res = FILTER_MATCH_YES;
+		}
+	} else {
+
+		if (values[0] && values[1])
+			res = ptype_compare_val(n->op, values[0], values[1]);
+
+	}
+
+	if (n->not)
+		return !res;
 
 	return res;
 }
@@ -1132,9 +966,14 @@ err:
 	return res;
 }
 
-int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter) {
+int filter_packet(char *filter_expr, struct filter_node **filter) {
 
 	struct filter_raw_node *fr = NULL;
+
+	if (*filter) {
+		filter_cleanup(*filter);
+		*filter = NULL;
+	}
 
 	if (filter_raw_parse(filter_expr, strlen(filter_expr), &fr) != POM_OK) {
 		filter_raw_cleanup(fr);
@@ -1144,6 +983,31 @@ int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_nod
 	if (!fr)
 		return POM_OK;
 
+	if (filter_packet_compile(filter, fr) != POM_OK) {
+		filter_raw_cleanup(fr);
+		return POM_ERR;
+	}
+
+	filter_raw_cleanup(fr);
+	return POM_OK;
+}
+
+int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter) {
+
+	struct filter_raw_node *fr = NULL;
+
+	if (*filter) {
+		filter_cleanup(*filter);
+		*filter = NULL;
+	}
+
+	if (filter_raw_parse(filter_expr, strlen(filter_expr), &fr) != POM_OK) {
+		filter_raw_cleanup(fr);
+		return POM_ERR;
+	}
+
+	if (!fr)
+		return POM_OK;
 
 	if (filter_event_compile(filter, evt_reg, fr) != POM_OK) {
 		filter_raw_cleanup(fr);
@@ -1157,6 +1021,11 @@ int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_nod
 int filter_pload(char *filter_expr, struct filter_node **filter) {
 
 	struct filter_raw_node *fr = NULL;
+
+	if (*filter) {
+		filter_cleanup(*filter);
+		*filter = NULL;
+	}
 
 	if (filter_raw_parse(filter_expr, strlen(filter_expr), &fr) != POM_OK) {
 		filter_raw_cleanup(fr);

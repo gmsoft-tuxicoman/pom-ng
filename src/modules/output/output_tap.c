@@ -220,6 +220,8 @@ int output_tap_open(void *output_priv) {
 	if (!priv->listener)
 		goto err;
 
+	proto_packet_listener_set_filter(priv->listener, priv->filter);
+
 	return POM_OK;
 
 err:
@@ -271,7 +273,7 @@ int output_tap_pkt_process(void *obj, struct packet *p, struct proto_process_sta
 static int output_tap_filter_parse(void *priv, char *value) {
 	
 	struct output_tap_priv *p = priv;
-	return filter_proto_parse(value, strlen(value), &p->filter);
+	return filter_packet(value, &p->filter);
 }
 
 static int output_tap_filter_update(void *priv, struct ptype *value) {
