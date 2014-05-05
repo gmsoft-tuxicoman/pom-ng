@@ -90,6 +90,8 @@ struct xmlrpccmd_monitor_evtreg {
 struct xmlrpccmd_monitor_event {
 
 	struct event *evt;
+	unsigned int listeners_count;
+	uint64_t *listeners;
 	struct xmlrpccmd_monitor_evtreg *event_reg;
 	struct xmlrpccmd_monitor_event *prev, *next;
 };

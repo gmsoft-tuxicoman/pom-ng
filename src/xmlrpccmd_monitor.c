@@ -124,11 +124,39 @@ int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj) {
 	}
 	memset(lst, 0, sizeof(struct xmlrpccmd_monitor_event));
 	
-	event_refcount_inc(evt);
 	lst->evt = evt;
 	lst->event_reg = evtreg;
 
 	pom_mutex_lock(&sess->lock);
+
+
+	struct xmlrpccmd_monitor_evt_listener *listeners;
+
+	for (listeners = evtreg->listeners; listeners; listeners = listeners->next) {
+			
+		if (listeners->filter && (filter_event_match(listeners->filter, evt) != FILTER_MATCH_YES))
+			continue;
+
+		lst->listeners_count++;
+		uint64_t *new_lst = realloc(lst->listeners, sizeof(uint64_t) * lst->listeners_count);
+		if (!new_lst) {
+			pom_oom(sizeof(uint64_t) * lst->listeners_count);
+			// Simply ignore this one
+			continue;
+		}
+		lst->listeners = new_lst;
+		new_lst[lst->listeners_count - 1] = listeners->id;
+	}
+
+	if (!lst->listeners_count) {
+		// Nobody wants this event
+		pom_mutex_unlock(&sess->lock);
+		free(lst);
+		return POM_OK;
+	}
+
+	
+	event_refcount_inc(evt);
 
 	lst->next = sess->events;
 	if (lst->next)
@@ -331,6 +359,10 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		struct xmlrpccmd_monitor_event *evt = sess->events;
 		sess->events = evt->next;
 		event_refcount_dec(evt->evt);
+
+		if (evt->listeners)
+			free(evt->listeners);
+
 		free(evt);
 	}
 
@@ -1022,31 +1054,21 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 
 	while (lst_evt) {
 		struct event *evt = lst_evt->evt;
-		struct xmlrpccmd_monitor_evt_listener *listeners = lst_evt->event_reg->listeners;
 		struct xmlrpccmd_monitor_event *tmp = lst_evt;
 		lst_evt = lst_evt->next;
-		free(tmp);
 
-		xmlrpc_value *listener_lst = NULL;
-		for (; listeners; listeners = listeners->next) {
-			
-			if (listeners->filter && (filter_event_match(listeners->filter, evt) != FILTER_MATCH_YES))
-				continue;
-			
-			if (!listener_lst)
-				listener_lst = xmlrpc_array_new(envP);
-		
-			xmlrpc_value *id = xmlrpc_i8_new(envP, listeners->id);
+		xmlrpc_value *listener_lst = xmlrpc_array_new(envP);
+
+		int i;
+		for (i = 0; i < tmp->listeners_count; i++) {
+
+			xmlrpc_value *id = xmlrpc_i8_new(envP, tmp->listeners[i]);
 			xmlrpc_array_append_item(envP, listener_lst, id);
 			xmlrpc_DECREF(id);
-
 		}
 
-		// No listener matched this event
-		if (!listener_lst) {
-			event_refcount_dec(evt);
-			continue;
-		}
+		free(tmp->listeners);
+		free(tmp);
 
 		xmlrpc_value *xml_evt = xmlrpccmd_monitor_build_event(envP, evt);
 		event_refcount_dec(evt);
