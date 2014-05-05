@@ -148,11 +148,9 @@ static int output_inject_open(void *output_priv) {
 		goto err;
 	}
 
-	priv->listener = proto_packet_listener_register(proto, 0, priv, output_inject_process);
+	priv->listener = proto_packet_listener_register(proto, 0, priv, output_inject_process, priv->filter);
 	if (!priv->listener) 
 		goto err;
-
-	proto_packet_listener_set_filter(priv->listener, priv->filter);
 
 	return POM_OK;
 

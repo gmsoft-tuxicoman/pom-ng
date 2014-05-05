@@ -104,7 +104,7 @@ int proto_unregister(char *name);
 struct proto *proto_get(char *name);
 
 // Register a packet listener
-struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object,  int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index));
+struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object,  int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index), struct filter_node *f);
 
 // Unregister a packet listener
 int proto_packet_listener_unregister(struct proto_packet_listener *l);

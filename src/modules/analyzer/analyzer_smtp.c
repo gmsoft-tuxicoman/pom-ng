@@ -191,7 +191,7 @@ static int analyzer_smtp_event_listeners_notify(void *obj, struct event_reg *evt
 
 	if (evt_reg == priv->evt_msg) {
 		if (has_listeners) {
-			priv->pkt_listener = proto_packet_listener_register(proto_get("smtp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_smtp_pkt_process);
+			priv->pkt_listener = proto_packet_listener_register(proto_get("smtp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_smtp_pkt_process, NULL);
 			if (!priv->pkt_listener)
 				return POM_ERR;
 		} else {

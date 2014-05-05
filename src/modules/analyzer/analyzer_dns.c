@@ -186,7 +186,7 @@ static int analyzer_dns_event_listeners_notify(void *obj, struct event_reg *evt_
 	struct analyzer_dns_priv *priv = obj;
 
 	if (has_listeners) {
-		priv->dns_packet_listener = proto_packet_listener_register(priv->proto_dns, PROTO_PACKET_LISTENER_PLOAD_ONLY, priv, analyzer_dns_proto_packet_process);
+		priv->dns_packet_listener = proto_packet_listener_register(priv->proto_dns, PROTO_PACKET_LISTENER_PLOAD_ONLY, priv, analyzer_dns_proto_packet_process, NULL);
 		if (!priv->dns_packet_listener)
 			return POM_ERR;
 	} else {

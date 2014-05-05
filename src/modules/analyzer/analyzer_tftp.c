@@ -116,7 +116,7 @@ static int analyzer_tftp_event_listeners_notify(void *obj, struct event_reg *evt
 		if (priv->pkt_listener)
 			return POM_OK;
 
-		priv->pkt_listener = proto_packet_listener_register(proto_get("tftp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_tftp_pkt_process);
+		priv->pkt_listener = proto_packet_listener_register(proto_get("tftp"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_tftp_pkt_process, NULL);
 		if (!priv->pkt_listener)
 			return POM_ERR;
 	} else {

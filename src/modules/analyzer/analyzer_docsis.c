@@ -180,12 +180,9 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 			}
 		}
 
-		priv->pkt_listener = proto_packet_listener_register(proto_get("docsis_mgmt"), 0, obj, analyzer_docsis_pkt_process);
+		priv->pkt_listener = proto_packet_listener_register(proto_get("docsis_mgmt"), 0, obj, analyzer_docsis_pkt_process, priv->filter);
 		if (!priv->pkt_listener)
 			return POM_ERR;
-
-		// Filter out useless broadcast docsis_mgmt packets
-		proto_packet_listener_set_filter(priv->pkt_listener, priv->filter);
 
 	} else {
 		

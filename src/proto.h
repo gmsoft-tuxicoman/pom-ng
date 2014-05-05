@@ -42,6 +42,7 @@ struct proto {
 
 	void *priv;
 
+	pthread_rwlock_t listeners_lock;
 	struct proto_packet_listener *packet_listeners;
 	struct proto_packet_listener *payload_listeners;
 

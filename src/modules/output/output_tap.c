@@ -216,11 +216,9 @@ int output_tap_open(void *output_priv) {
 		pomlog(POMLOG_WARN "Unable to set persistent mode to tap device %s : %s", PTYPE_STRING_GETVAL(priv->p_ifname), pom_strerror(errno));
 	}
 
-	priv->listener = proto_packet_listener_register(proto_get("ethernet"), 0, priv, output_tap_pkt_process);
+	priv->listener = proto_packet_listener_register(proto_get("ethernet"), 0, priv, output_tap_pkt_process, priv->filter);
 	if (!priv->listener)
 		goto err;
-
-	proto_packet_listener_set_filter(priv->listener, priv->filter);
 
 	return POM_OK;
 

@@ -196,7 +196,7 @@ static int analyzer_arp_event_listeners_notify(void *obj, struct event_reg *evt_
 		if (priv->pkt_listener)
 			return POM_OK;
 
-		priv->pkt_listener = proto_packet_listener_register(proto_get("arp"), 0, obj, analyzer_arp_pkt_process);
+		priv->pkt_listener = proto_packet_listener_register(proto_get("arp"), 0, obj, analyzer_arp_pkt_process, NULL);
 		if (!priv->pkt_listener)
 			return POM_ERR;
 	} else {

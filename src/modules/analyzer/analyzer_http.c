@@ -208,7 +208,7 @@ int analyzer_http_event_listeners_notify(void *obj, struct event_reg *evt_reg, i
 			return POM_ERR;
 		}
 
-		priv->http_packet_listener = proto_packet_listener_register(priv->proto_http, PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_http_proto_packet_process);
+		priv->http_packet_listener = proto_packet_listener_register(priv->proto_http, PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_http_proto_packet_process, NULL);
 		if (!priv->http_packet_listener) {
 			event_listener_unregister(priv->evt_query, analyzer);
 			event_listener_unregister(priv->evt_response, analyzer);

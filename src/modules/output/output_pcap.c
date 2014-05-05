@@ -195,11 +195,9 @@ static int output_pcap_file_open(void *output_priv) {
 	}
 
 
-	priv->listener = proto_packet_listener_register(priv->proto, 0, priv, output_pcap_file_process);
+	priv->listener = proto_packet_listener_register(priv->proto, 0, priv, output_pcap_file_process, priv->filter);
 	if (!priv->listener) 
 		goto err;
-
-	proto_packet_listener_set_filter(priv->listener, priv->filter);
 
 	return POM_OK;
 
