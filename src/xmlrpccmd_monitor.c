@@ -33,7 +33,7 @@ static struct xmlrpccmd_monitor_session *xmlrpccmd_monitor_sessions[XMLRPCCMD_MO
 
 static int xmlrpccmd_monitor_pload_listeners_count = 0;
 
-#define XMLRPCCMD_MONITOR_NUM 8
+#define XMLRPCCMD_MONITOR_NUM 9
 static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM] = {
 
 	{
@@ -76,6 +76,13 @@ static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM
 		.callback_func = xmlrpccmd_monitor_pload_events_listen,
 		.signature = "i:ib",
 		.help = "Start or stop listening to events generating payloads",
+	},
+
+	{
+		.name = "monitor.ploadDiscard",
+		.callback_func = xmlrpccmd_monitor_pload_discard,
+		.signature = "i:iII",
+		.help = "Discard a payload that has been received",
 	},
 
 	{
@@ -140,7 +147,6 @@ int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj) {
 
 int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload) {
 
-	uint64_t pload_id = -1;
 
 	// Check if we need this payload
 	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
@@ -153,6 +159,8 @@ int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload) {
 			continue;
 
 		pom_mutex_lock(&sess->lock);
+
+		uint64_t pload_id = -1;
 
 		struct xmlrpccmd_monitor_pload *lst = NULL;
 
@@ -215,6 +223,25 @@ int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload) {
 		}
 
 		if (lst) {
+
+			// Save this payload in the session with all it's listeners
+			struct xmlrpccmd_monitor_httpd_pload *httpd_lst = malloc(sizeof(struct xmlrpccmd_monitor_httpd_pload));
+			if (!httpd_lst) {
+				pom_mutex_unlock(&sess->lock);
+				pom_oom(sizeof(struct xmlrpccmd_monitor_httpd_pload));
+				httpd_pload_remove(pload_id);
+				free(lst->listeners);
+				free(lst);
+				return PLOAD_OPEN_ERR;
+			}
+			memset(httpd_lst, 0, sizeof(struct xmlrpccmd_monitor_httpd_pload));
+
+			httpd_lst->listeners = lst->listeners;
+			httpd_lst->listeners_count = lst->listeners_count;
+			httpd_lst->pload_id = pload_id;
+			
+			HASH_ADD(hh, sess->httpd_ploads, pload_id, sizeof(httpd_lst->pload_id), httpd_lst);
+
 			lst->next = sess->ploads;
 			sess->ploads = lst;
 
@@ -317,7 +344,7 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		filter_cleanup(tmp->filter);
 		free(tmp);
 
-		if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1));
+		if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1))
 			pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
 
 	}
@@ -325,14 +352,22 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 	while (sess->ploads) {
 		struct xmlrpccmd_monitor_pload *pload = sess->ploads;
 		sess->ploads = pload->next;
-		if (pload->listeners)
-			free(pload->listeners);
+		// Don't free listeners here as the same list is used for the httpd_pload structure
 		free(pload);
 
 	}
 
 	if (sess->pload_events_listening)
 		event_payload_listen_stop();
+
+	struct xmlrpccmd_monitor_httpd_pload *cur_pload, *tmp_pload;
+	HASH_ITER(hh, sess->httpd_ploads, cur_pload, tmp_pload) {
+		HASH_DEL(sess->httpd_ploads, cur_pload);
+		
+		httpd_pload_remove(cur_pload->pload_id);
+		free(cur_pload->listeners);
+		free(cur_pload);
+	}
 
 	main_timer_cleanup(sess->timer);
 	pthread_cond_destroy(&sess->cond);
@@ -848,6 +883,67 @@ xmlrpc_value *xmlrpccmd_monitor_pload_events_listen(xmlrpc_env * const envP, xml
 	return xmlrpc_int_new(envP, 0);
 }
 
+xmlrpc_value *xmlrpccmd_monitor_pload_discard(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	xmlrpc_int sess_id = -1;
+	uint64_t listener_id = 0, pload_id = 0;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(iII)", &sess_id, &listener_id, &pload_id);
+	if (envP->fault_occurred)
+		return NULL;
+
+	if (sess_id < 0 || sess_id >= XMLRPCCMD_MONITOR_MAX_SESSION) {
+		xmlrpc_faultf(envP, "Invalsess_id session sess_id");
+		return NULL;
+	}
+
+	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
+	struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[sess_id];
+	if (!sess) {
+		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+		xmlrpc_faultf(envP, "Session %u not found", sess_id);
+		return NULL;
+	}
+	pom_mutex_lock(&sess->lock);
+	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	struct xmlrpccmd_monitor_httpd_pload *tmp = NULL;
+	HASH_FIND(hh, sess->httpd_ploads, &pload_id, sizeof(pload_id), tmp);
+
+	if (!tmp) {
+		xmlrpc_faultf(envP, "Pload id %"PRIu64" not found", pload_id);
+		pom_mutex_unlock(&sess->lock);
+		return xmlrpc_int_new(envP, 0);
+	}
+
+	int i;
+	for (i = 0; i < tmp->listeners_count && tmp->listeners[i] != listener_id; i++);
+	if (i >= tmp->listeners_count) {
+		xmlrpc_faultf(envP, "Listener %"PRIu64" not monitoring pload %"PRIu64, listener_id, pload_id);
+		pom_mutex_unlock(&sess->lock);
+		return xmlrpc_int_new(envP, 0);
+	}
+
+	if (tmp->listeners_count > 1) {
+		if (i < tmp->listeners_count - 1)
+			memmove(&tmp->listeners[i], &tmp->listeners[i + 1], sizeof(uint64_t) * (tmp->listeners_count - i));
+		tmp->listeners_count--;
+	} else {
+		HASH_DEL(sess->httpd_ploads, tmp);
+		free(tmp->listeners);
+		free(tmp);
+		httpd_pload_remove(pload_id);
+		tmp = NULL;
+		HASH_FIND(hh, sess->httpd_ploads, &pload_id, sizeof(pload_id), tmp);
+		if (tmp)
+			printf("WTF\n");
+	}
+
+	pom_mutex_unlock(&sess->lock);
+
+	return xmlrpc_int_new(envP, 0);
+}
+
 
 xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
@@ -898,7 +994,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 		if (res == ETIMEDOUT) {
 			pom_mutex_unlock(&sess->lock);
 			main_timer_queue(sess->timer, sess->timeout);
-			return xmlrpc_build_value(envP, "{}");
+			return xmlrpc_array_new(envP);
 		} else if (res) {
 			pomlog(POMLOG_ERR "Error while waiting for session condition : %s", pom_strerror(errno));
 			abort();
@@ -907,7 +1003,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 		if (sess->id == -1) {
 			// The session has been removed while polling
 			pom_mutex_unlock(&sess->lock);
-			return xmlrpc_build_value(envP, "{}");
+			return xmlrpc_array_new(envP);
 		}
 		
 	}
@@ -988,8 +1084,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 
 		struct xmlrpccmd_monitor_pload *tmp = lst_pload;
 		lst_pload = lst_pload->next;
-		if (tmp->listeners)
-			free(tmp->listeners);
+		// Don't free listeners here as the same list is used for the httpd_pload structure
 		free(tmp);
 
 	}
