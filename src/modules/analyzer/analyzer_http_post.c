@@ -99,15 +99,16 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 			continue;
 		}
 
-		buff = eq + 1;
+
+		char *value = eq + 1;
 
 		size_t value_len = buff_len - name_len - 1;
 		if (amp)
-			value_len = amp - buff;
+			value_len = amp - value;
 
-		char *value = NULL;
+		char *value_dec = NULL;
 		size_t value_size = 0;
-		if (decoder_decode_simple("percent", buff, value_len, &value, &value_size) == DEC_ERR) {
+		if (decoder_decode_simple("percent", value, value_len, &value_dec, &value_size) == DEC_ERR) {
 			free(name);
 			continue;
 		}
@@ -116,11 +117,11 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 
 		if (!value_pt) {
 			free(name);
-			free(value);
+			free(value_dec);
 			return POM_ERR;
 		}
 
-		PTYPE_STRING_SETVAL_P(value_pt, value);
+		PTYPE_STRING_SETVAL_P(value_pt, value_dec);
 
 		// Do not free value and name
 
