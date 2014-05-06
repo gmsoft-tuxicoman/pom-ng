@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,7 +52,7 @@ static int decoder_gzip_mod_register(struct mod_reg *mod) {
 	static struct decoder_reg_info dec_deflate = { 0 };
 	dec_deflate.name = "deflate";
 	dec_deflate.mod = mod;
-	dec_deflate.alloc = decoder_deflate_alloc;
+	dec_deflate.alloc = decoder_gzip_alloc;
 	dec_deflate.cleanup = decoder_gzip_cleanup;
 	dec_deflate.estimate_size = decoder_gzip_estimate_size;
 	dec_deflate.decode = decoder_gzip_decode;
@@ -71,7 +71,7 @@ static int decoder_gzip_mod_unregister() {
 	return res;
 }
 
-static int decoder_gzip_deflate_alloc(struct decoder *dec, int window_bits) {
+static int decoder_gzip_alloc(struct decoder *dec) {
 
 	z_stream *zbuff = malloc(sizeof(z_stream));
 	if (!zbuff) {
@@ -81,7 +81,7 @@ static int decoder_gzip_deflate_alloc(struct decoder *dec, int window_bits) {
 
 	memset(zbuff, 0, sizeof(z_stream));
 
-	if (inflateInit2(zbuff, window_bits) != Z_OK) {
+	if (inflateInit2(zbuff, 15 + 32) != Z_OK) {
 		if (zbuff->msg)
 			pomlog(POMLOG_ERR "Unable to init Zlib : %s", zbuff->msg);
 		else
@@ -93,18 +93,6 @@ static int decoder_gzip_deflate_alloc(struct decoder *dec, int window_bits) {
 	dec->priv = zbuff;
 
 	return POM_OK;
-}
-
-static int decoder_gzip_alloc(struct decoder *dec) {
-
-	// window_bits : 15, default window bits. 32, magic value to enable header detection
-	return decoder_gzip_deflate_alloc(dec, 15 + 32);
-}
-
-static int decoder_deflate_alloc(struct decoder *dec) {
-
-	// window_bits : -15, raw data
-	return decoder_gzip_deflate_alloc(dec, -15);
 }
 
 static int decoder_gzip_cleanup(struct decoder *dec) {
