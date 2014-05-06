@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,14 +36,13 @@ struct mod_reg_info *decoder_quoted_printable_reg_info() {
 static int decoder_quoted_printable_mod_register(struct mod_reg *mod) {
 
 	static struct decoder_reg_info dec_quoted_printable = { 0 };
-	dec_quoted_printable.name = "quoted-printable";
 	dec_quoted_printable.mod = mod;
 	dec_quoted_printable.alloc = decoder_quoted_printable_alloc;
 	dec_quoted_printable.cleanup = decoder_quoted_printable_cleanup;
 	dec_quoted_printable.estimate_size = decoder_quoted_printable_estimate_size;
 	dec_quoted_printable.decode = decoder_quoted_printable_decode;
 
-	return decoder_register(&dec_quoted_printable);
+	return decoder_register("quoted-printable", &dec_quoted_printable);
 
 }
 

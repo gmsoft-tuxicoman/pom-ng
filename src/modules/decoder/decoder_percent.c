@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,14 +36,13 @@ struct mod_reg_info *decoder_percent_reg_info() {
 static int decoder_percent_mod_register(struct mod_reg *mod) {
 
 	static struct decoder_reg_info dec_percent = { 0 };
-	dec_percent.name = "percent";
 	dec_percent.mod = mod;
 	dec_percent.alloc = decoder_percent_alloc;
 	dec_percent.cleanup = decoder_percent_cleanup;
 	dec_percent.estimate_size = decoder_percent_estimate_size;
 	dec_percent.decode = decoder_percent_decode;
 
-	return decoder_register(&dec_percent);
+	return decoder_register("percent", &dec_percent);
 
 }
 

@@ -26,9 +26,9 @@
 static struct decoder_reg *decoder_reg_head = NULL;
 
 
-int decoder_register(struct decoder_reg_info *reg_info) {
+int decoder_register(char *name, struct decoder_reg_info *reg_info) {
 
-	pomlog(POMLOG_DEBUG "Registering decoder %s", reg_info->name);
+	pomlog(POMLOG_DEBUG "Registering decoder %s", name);
 
 	struct decoder_reg *decoder = malloc(sizeof(struct decoder_reg));
 	if (!decoder) {
@@ -37,6 +37,7 @@ int decoder_register(struct decoder_reg_info *reg_info) {
 	}
 	memset(decoder, 0, sizeof(struct decoder_reg));
 	decoder->info = reg_info;
+	decoder->name = name;
 
 	decoder->next = decoder_reg_head;
 	if (decoder->next)
@@ -51,7 +52,7 @@ int decoder_register(struct decoder_reg_info *reg_info) {
 int decoder_unregister(char *name) {
 
 	struct decoder_reg *tmp;
-	for (tmp = decoder_reg_head; tmp && strcmp(tmp->info->name, name); tmp = tmp->next);
+	for (tmp = decoder_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 
 	if (!tmp)
 		return POM_OK;
@@ -74,7 +75,7 @@ int decoder_unregister(char *name) {
 struct decoder *decoder_alloc(char *name) {
 
 	struct decoder_reg *tmp;
-	for (tmp = decoder_reg_head; tmp && strcasecmp(tmp->info->name, name); tmp = tmp->next);
+	for (tmp = decoder_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
 	if (!tmp) {
 		pomlog(POMLOG_DEBUG "Decoder %s not found !", name);
 		return NULL;
@@ -137,7 +138,7 @@ int decoder_estimate_output_size(struct decoder *dec, size_t in_len) {
 int decoder_decode_simple(char *encoding, char *in, size_t in_len, char **out, size_t *out_len) {
 
 	struct decoder_reg *tmp;
-	for (tmp = decoder_reg_head; tmp && strcasecmp(tmp->info->name, encoding); tmp = tmp->next);
+	for (tmp = decoder_reg_head; tmp && strcasecmp(tmp->name, encoding); tmp = tmp->next);
 
 	if (!tmp) {
 		pomlog(POMLOG_ERR "Decoder %s does not exists", encoding);

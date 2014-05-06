@@ -39,25 +39,19 @@ struct mod_reg_info *decoder_gzip_reg_info() {
 static int decoder_gzip_mod_register(struct mod_reg *mod) {
 
 	static struct decoder_reg_info dec_gzip = { 0 };
-	dec_gzip.name = "gzip";
 	dec_gzip.mod = mod;
 	dec_gzip.alloc = decoder_gzip_alloc;
 	dec_gzip.cleanup = decoder_gzip_cleanup;
 	dec_gzip.estimate_size = decoder_gzip_estimate_size;
 	dec_gzip.decode = decoder_gzip_decode;
 
-	if (decoder_register(&dec_gzip) != POM_OK)
+	if (decoder_register("gzip", &dec_gzip) != POM_OK)
 		return POM_ERR;
 
-	static struct decoder_reg_info dec_deflate = { 0 };
-	dec_deflate.name = "deflate";
-	dec_deflate.mod = mod;
-	dec_deflate.alloc = decoder_gzip_alloc;
-	dec_deflate.cleanup = decoder_gzip_cleanup;
-	dec_deflate.estimate_size = decoder_gzip_estimate_size;
-	dec_deflate.decode = decoder_gzip_decode;
+	if (decoder_register("x-gzip", &dec_gzip) != POM_OK)
+		return POM_ERR;
 
-	if (decoder_register(&dec_deflate) != POM_OK)
+	if (decoder_register("deflate", &dec_gzip) != POM_OK)
 		return POM_ERR;
 
 	return POM_OK;
@@ -67,6 +61,7 @@ static int decoder_gzip_mod_unregister() {
 
 	int res = POM_OK;
 	res += decoder_unregister("gzip");
+	res += decoder_unregister("x-gzip");
 	res += decoder_unregister("deflate");
 	return res;
 }

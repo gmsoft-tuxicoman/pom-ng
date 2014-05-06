@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -44,7 +44,6 @@ struct decoder {
 
 struct decoder_reg_info {
 
-	char *name;
 	struct mod_reg *mod;
 
 	int (*alloc)(struct decoder *dec);
@@ -56,7 +55,7 @@ struct decoder_reg_info {
 
 };
 
-int decoder_register(struct decoder_reg_info *reg_info);
+int decoder_register(char *name, struct decoder_reg_info *reg_info);
 int decoder_unregister(char *name);
 
 struct decoder *decoder_alloc(char *name);

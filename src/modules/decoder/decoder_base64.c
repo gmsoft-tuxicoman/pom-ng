@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,14 +36,13 @@ struct mod_reg_info *decoder_base64_reg_info() {
 static int decoder_base64_mod_register(struct mod_reg *mod) {
 
 	static struct decoder_reg_info dec_base64 = { 0 };
-	dec_base64.name = "base64";
 	dec_base64.mod = mod;
 	dec_base64.alloc = decoder_base64_alloc;
 	dec_base64.cleanup = decoder_base64_cleanup;
 	dec_base64.estimate_size = decoder_base64_estimate_size;
 	dec_base64.decode = decoder_base64_decode;
 
-	return decoder_register(&dec_base64);
+	return decoder_register("base64", &dec_base64);
 
 }
 
