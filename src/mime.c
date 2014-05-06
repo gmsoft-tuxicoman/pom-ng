@@ -32,6 +32,7 @@ struct mime_top_type_str {
 };
 
 static struct mime_top_type_str mime_top_types_str[] = {
+	{ mime_top_type_binary, "binary" },
 	{ mime_top_type_text, "text" },
 	{ mime_top_type_image, "image" },
 	{ mime_top_type_audio, "audio" },

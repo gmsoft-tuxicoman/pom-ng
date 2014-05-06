@@ -38,6 +38,7 @@ enum mime_top_type {
 	mime_top_type_audio,
 	mime_top_type_video,
 	mime_top_type_application,
+	mime_top_type_binary,
 
 	// Composite top-level types
 	mime_top_type_multipart,
