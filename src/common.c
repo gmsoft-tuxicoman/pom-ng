@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -179,3 +179,28 @@ uint64_t bswap64(uint64_t x) {
 
 #endif
 
+char *pom_strnstr(char *haystack, char *needle, size_t len) {
+
+	size_t needle_len = strlen(needle);
+	if (len < needle_len)
+		return NULL;
+
+	
+	char *start = NULL;
+	while (len > 0) {
+		start = memchr(haystack, *needle, len - needle_len + 1);
+		if (!start)
+			return NULL;
+
+		size_t pos = start - haystack;
+		if (len - pos < needle_len)
+			return NULL;
+
+		if (!memcmp(start, needle, needle_len))
+			return start;
+		haystack = start + 1;
+		len -= pos + 1;
+	}
+	
+	return NULL;
+}

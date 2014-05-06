@@ -284,7 +284,7 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 	}
 
 	while (plen) {
-		char * dotdot = strstr(pload, ANALYZER_SMTP_DOTDOT);
+		char * dotdot = pom_strnstr(pload, ANALYZER_SMTP_DOTDOT, plen);
 
 		if (!dotdot)
 			break;

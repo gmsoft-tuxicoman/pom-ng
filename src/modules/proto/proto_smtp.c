@@ -259,7 +259,7 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 				}
 
 
-				char *dotline = strstr(pload, PROTO_SMTP_DATA_END);
+				char *dotline = pom_strnstr(pload, PROTO_SMTP_DATA_END, plen);
 				if (dotline) {
 					if (pload + plen - PROTO_SMTP_DATA_END_LEN != dotline) {
 						pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");

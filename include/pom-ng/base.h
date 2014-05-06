@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -147,4 +147,9 @@ uint64_t bswap64(uint64_t x);
 #else
 #error "Please define byte ordering"
 #endif
+
+
+// Our own version of strnstr()
+char *pom_strnstr(char *haystack, char *needle, size_t len);
+
 #endif
