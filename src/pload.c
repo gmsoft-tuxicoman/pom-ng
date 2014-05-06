@@ -693,7 +693,7 @@ int pload_store_append(struct pload *p, void *data, size_t len) {
 int pload_append(struct pload *p, void *data, size_t len) {
 
 	if (p->flags & PLOAD_FLAG_IS_ERR)
-		return POM_ERR;
+		return POM_OK;
 
 
 	// Allright, let's see what to do. There a multiple scenario
@@ -707,7 +707,7 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		// Remember where we left off
 		off_t start_off = write_map->off_start + write_map->off_cur;
 		if (pload_store_append(p, data, len) != POM_OK)
-			return POM_ERR;
+			return POM_OK;
 
 		// Use the data from the map
 		data = write_map->map + (start_off - write_map->off_start);
@@ -729,14 +729,14 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		// The pload is not yet open so there is no store possible yet
 		if (p->buf.data_len || p->decoder) {
 			if (pload_buffer_append(p, data, len) != POM_OK)
-				return POM_ERR;
+				return POM_OK;
 			data = p->buf.data;
 			len = p->buf.data_len;
 		}
 	} else if (!p->store && p->decoder) {
 		// There is no store being used but we still need some space to decode the payload
 		if (pload_buffer_append(p, data, len) != POM_OK)
-			return POM_ERR;
+			return POM_OK;
 		data = p->buf.data;
 		len = p->buf.data_len;
 	}
@@ -755,7 +755,7 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		if (!magic_cookie) {
 			if (pload_magic_open() != POM_OK) {
 				p->flags |= PLOAD_FLAG_IS_ERR;
-				return POM_ERR;
+				return POM_OK;
 			}
 		}
 
@@ -764,14 +764,14 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		if (!magic_mime_type_name) {
 			pomlog(POMLOG_ERR "Error while proceeding with magic : %s", magic_error(magic_cookie));
 			p->flags |= PLOAD_FLAG_IS_ERR;
-			return POM_ERR;
+			return POM_OK;
 		}
 
 		struct mime_type *magic_mime_type = mime_type_parse(magic_mime_type_name);
 
 		if (!magic_mime_type) {
 			p->flags |= PLOAD_FLAG_IS_ERR;
-			return POM_ERR;
+			return POM_OK;
 		}
 
 		if (p->mime_type) {
@@ -827,7 +827,9 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		if (res == PLOAD_ANALYSIS_ERR) {
 			// Something went wrong during the analysis
 			p->flags |= PLOAD_FLAG_IS_ERR;
-			return POM_ERR;
+			if (a->cleanup)
+				a->cleanup(p, p->priv);
+			return POM_OK;
 		} else if (res == PLOAD_ANALYSIS_FAILED) {
 			// Payload type wasn't recognized
 			p->type = NULL;
