@@ -394,6 +394,10 @@ int pload_end(struct pload *pload) {
 	if (pload->buf.data)
 		free(pload->buf.data);
 
+	if (pload->priv && pload->type && pload->type->analyzer && pload->type->analyzer->cleanup)
+		pload->type->analyzer->cleanup(pload, pload->priv);
+	
+
 	if (pload->refcount)
 		return POM_OK;
 
@@ -827,15 +831,19 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		if (res == PLOAD_ANALYSIS_ERR) {
 			// Something went wrong during the analysis
 			p->flags |= PLOAD_FLAG_IS_ERR;
-			if (a->cleanup)
+			if (a->cleanup) {
 				a->cleanup(p, p->priv);
+				p->priv = NULL;
+			}
 			return POM_OK;
 		} else if (res == PLOAD_ANALYSIS_FAILED) {
 			// Payload type wasn't recognized
 			p->type = NULL;
 			p->flags &= ~PLOAD_FLAG_NEED_ANALYSIS;
-			if (a->cleanup)
+			if (a->cleanup) {
 				a->cleanup(p, p->priv);
+				p->priv = NULL;
+			}
 			if (p->data) {
 				data_cleanup_table(p->data, a->data_reg);
 				p->data = NULL;
@@ -844,8 +852,10 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		} else if (res == PLOAD_ANALYSIS_OK) {
 			// Analysis is done
 			p->flags &= ~PLOAD_FLAG_NEED_ANALYSIS;
-			if (a->cleanup)
+			if (a->cleanup) {
 				a->cleanup(p, p->priv);
+				p->priv = NULL;
+			}
 
 			registry_perf_inc(p->type->perf_analyzed, 1);
 
