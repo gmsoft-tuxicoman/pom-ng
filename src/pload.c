@@ -782,7 +782,7 @@ int pload_append(struct pload *p, void *data, size_t len) {
 			if (!strcmp(magic_mime_type->name, p->mime_type->name)) {
 				// Mime types are the same, cleanup the magic one
 				mime_type_cleanup(magic_mime_type);
-			} else if (!strcmp(magic_mime_type->name, "binary") || !strcmp(magic_mime_type->name, "application/octet-stream") || !strcmp(magic_mime_type->name, "plain/text")) {
+			} else if (!strcmp(magic_mime_type->name, "binary") || !strcmp(magic_mime_type->name, "application/octet-stream") || !strcmp(magic_mime_type->name, "text/plain")) {
 				// Irrelevant mime types, keep the original one
 				mime_type_cleanup(magic_mime_type);
 			} else {
