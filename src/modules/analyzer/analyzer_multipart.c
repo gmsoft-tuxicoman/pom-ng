@@ -206,7 +206,7 @@ static int analyzer_multipart_pload_write(void *obj, void *p, void *data, size_t
 	
 		// Because of the NOTE in RFC 2046 section 5.1.1, line start at CR 
 
-		void *cr = memchr(data + 1, '\r', remaining_len);
+		void *cr = memchr(data + 1, '\r', remaining_len - 1);
 		if (!cr || priv->last_line) {
 
 			size_t add_len = remaining_len;
