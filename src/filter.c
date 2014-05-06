@@ -894,7 +894,7 @@ int filter_pload_match(struct filter_node *n, struct pload *p) {
 				continue;
 
 			int j;
-			for (j = 0; strcmp(dr->items[j].name, data_raw->field_name) && j < dr->data_count; j++);
+			for (j = 0; j < dr->data_count && strcmp(dr->items[j].name, data_raw->field_name); j++);
 
 			if (j >= dr->data_count)
 				continue;
