@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,8 @@
 
 #define EVENT_REGISTRY "event"
 
+#include <pom-ng/event.h>
+
 struct event {
 	struct event_reg *reg;
 	unsigned int flags;
@@ -36,6 +38,7 @@ struct event {
 };
 
 struct event_reg {
+
 	struct event_reg_info *info;
 	struct event_listener *listeners;
 	struct event_reg *prev, *next;
@@ -43,6 +46,7 @@ struct event_reg {
 	struct registry_perf *perf_listeners;
 	struct registry_perf *perf_ongoing;
 	struct registry_perf *perf_processed;
+	pthread_rwlock_t listeners_lock;
 };
 
 struct event_listener {
@@ -55,5 +59,6 @@ struct event_listener {
 
 int event_init();
 int event_finish();
+int event_add_listener(struct event *evt, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
 
 #endif

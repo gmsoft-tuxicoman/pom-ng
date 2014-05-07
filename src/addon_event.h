@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@
 #ifndef __ADDON_EVENT_H__
 #define __ADDON_EVENT_H__
 
-#include <pom-ng/event.h>
+#include "event.h"
 
 #define ADDON_EVENT_METATABLE	"addon.event"
 
