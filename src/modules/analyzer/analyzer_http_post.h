@@ -30,6 +30,7 @@ struct analyzer_http_post_pload_priv {
 
 	struct event *evt;
 	char *buff;
+	size_t buff_len;
 
 };
 

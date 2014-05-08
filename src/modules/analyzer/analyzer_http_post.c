@@ -61,7 +61,7 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 	size_t buff_len = len;
 
 	if (priv->buff) {
-		buff_len = strlen(priv->buff) + len;
+		buff_len = priv->buff_len + len;
 		buff = realloc(priv->buff, buff_len  + 1);
 		if (!buff) {
 			free(priv->buff);
@@ -69,8 +69,9 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 			return POM_ERR;
 		}
 		priv->buff = buff;
-		strncat(buff, data, len);
+		memcpy(buff + priv->buff_len, data, len);
 		buff[buff_len] = 0; // Make sure it ends with a 0
+		priv->buff_len = buff_len;
 	}
 
 
@@ -139,12 +140,14 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 				pom_oom(buff_len + 1);
 				return POM_ERR;
 			}
+			priv->buff_len = buff_len;
 		} // If priv->buff already exists, it's at least as big as the memory it holds
 		memmove(priv->buff, buff, buff_len);
 		
 	} else {
 		free(priv->buff);
 		priv->buff = NULL;
+		priv->buff_len = 0;
 	}
 
 	return POM_OK;
