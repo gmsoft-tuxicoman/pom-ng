@@ -40,7 +40,7 @@ static pthread_rwlock_t httpd_ploads_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *ssl_key) {
 
-	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | MHD_USE_DEBUG;
+	unsigned int mhd_flags = MHD_USE_THREAD_PER_CONNECTION | MHD_USE_POLL | MHD_USE_DEBUG | MHD_USE_PIPE_FOR_SHUTDOWN;
 
 	if ((ssl_cert || ssl_key) && (!ssl_cert || !ssl_key)) {
 		pomlog(POMLOG_ERR "Both SSL certificate and key must be provided.");
@@ -131,7 +131,8 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 		// Get the address
 		struct addrinfo hints, *res;
 		memset(&hints, 0, sizeof(struct addrinfo));
-		hints.ai_flags = AI_PASSIVE;hints.ai_family = AF_UNSPEC;
+		hints.ai_flags = AI_PASSIVE;
+		hints.ai_family = AF_UNSPEC;
 		hints.ai_socktype = SOCK_STREAM;
 
 		char port_str[16];
@@ -152,6 +153,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 				break;
 			}
 			memset(lst, 0, sizeof(struct httpd_daemon_list));
+			lst->listen_fd = -1;
 
 			unsigned int flags = mhd_flags;
 			if (tmpres->ai_family == AF_INET6) {
@@ -491,6 +493,12 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 int httpd_cleanup() {
 
 
+	struct httpd_daemon_list *tmp = http_daemons;
+	while (tmp) {
+		tmp->listen_fd = MHD_quiesce_daemon(tmp->daemon);
+		tmp = tmp->next;
+	}
+
 	struct httpd_pload *cur_pload, *tmp_pload;
 	HASH_ITER(hh, httpd_ploads, cur_pload, tmp_pload) {
 		HASH_DELETE(hh, httpd_ploads, cur_pload);
@@ -507,6 +515,7 @@ int httpd_cleanup() {
 		struct httpd_daemon_list *tmp = http_daemons;
 		http_daemons = tmp->next;
 		MHD_stop_daemon(tmp->daemon);
+		close(tmp->listen_fd);
 		free(tmp);
 	}
 

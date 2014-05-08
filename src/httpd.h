@@ -48,6 +48,7 @@
 
 struct httpd_daemon_list {
 	struct MHD_Daemon *daemon;
+	int listen_fd;
 	struct httpd_daemon_list *next;
 };
 
