@@ -165,11 +165,11 @@ int event_cleanup(struct event *evt) {
 		return POM_ERR;
 	}
 
-/*	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN && !(evt->flags & EVENT_FLAG_PROCESS_DONE)) {
+	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN && !(evt->flags & EVENT_FLAG_PROCESS_DONE)) {
 		pomlog(POMLOG_ERR "Internal error: event %s processing began but never ended", evt->reg->info->name);
 		return POM_ERR;
 	}
-*/
+
 
 	if (evt->reg->info->cleanup && evt->reg->info->cleanup(evt) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while cleaning up the event %s", evt->reg->info->name);
@@ -394,7 +394,7 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 	}
 	pom_rwlock_unlock(&evt->reg->listeners_lock);
 
-	evt->flags |= EVENT_FLAG_PROCESS_BEGAN;
+	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_BEGAN);
 
 	registry_perf_inc(evt->reg->perf_ongoing, 1);
 
@@ -437,7 +437,7 @@ int event_process_end(struct event *evt) {
 	
 	evt->ce = NULL;
 
-	evt->flags |= EVENT_FLAG_PROCESS_DONE;
+	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_DONE);
 
 	registry_perf_dec(evt->reg->perf_ongoing, 1);
 	registry_perf_inc(evt->reg->perf_processed, 1);
