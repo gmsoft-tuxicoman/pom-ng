@@ -322,13 +322,6 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 	}
 
 	conntrack_lock(parent);
-#ifdef DEBUG_CONNTRACK
-	if (!parent->refcount) {
-		pomlog(POMLOG_ERR "Parent conntrack has a refcount of 0 !");
-		conntrack_unlock(parent);
-		return POM_ERR;
-	}
-#endif
 
 	struct conntrack_tables *ct = s->proto->ct;
 	struct conntrack_entry *res = NULL;
@@ -781,6 +774,11 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 
 	pom_mutex_unlock(&ct->locks[hash]);
 
+	if (ce->cleanup_timer && ce->cleanup_timer != (void *) -1) {
+		conntrack_timer_cleanup(ce->cleanup_timer);
+		ce->cleanup_timer = (void *) -1; // Mark that the conntrack is being cleaned up
+	}
+
 	// Once the conntrack is removed from the hash table, it will not be referenced ever again
 	conntrack_unlock(ce);
 
@@ -832,11 +830,6 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 		pom_mutex_unlock(&ce->parent->ct->locks[hash]);
 
 		free(ce->parent);
-	}
-
-	if (ce->cleanup_timer && ce->cleanup_timer != (void *) -1) {
-		conntrack_timer_cleanup(ce->cleanup_timer);
-		ce->cleanup_timer = (void *) -1; // Mark that the conntrack is being cleaned up
 	}
 
 	if (ce->session)
