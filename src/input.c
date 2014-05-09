@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -385,19 +385,28 @@ int input_stop(struct input *i) {
 int input_stop_all() {
 
 	registry_lock();
-
-	int res = POM_OK;
-
 	struct input *tmp;
 	for (tmp = input_head; tmp ; tmp = tmp->next) {
+		pom_mutex_lock(&tmp->lock);
 		if (tmp->running == INPUT_RUN_RUNNING) {
-			res += input_stop(tmp);
+			tmp->running = INPUT_RUN_STOPPING;
+			pom_mutex_unlock(&tmp->lock);
+
+			if (tmp->reg->info->interrupt && tmp->reg->info->interrupt(tmp) == POM_ERR) {
+				pomlog(POMLOG_WARN "Warning : error while interrupting the read process of the input");
+			}
+
+			if (pthread_join(tmp->thread, NULL))
+				pomlog(POMLOG_WARN "Error while joining the input thread : %s", pom_strerror(errno));
+
+		} else {
+			pom_mutex_unlock(&tmp->lock);
 		}
 	}
-
 	registry_unlock();
 
-	return (res == POM_OK ? POM_OK : POM_ERR);
+	core_set_state(core_state_finishing);
+	return POM_OK;
 }
 
 
