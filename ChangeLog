@@ -1,3 +1,31 @@
+v0.0.16
+	Split the pload API from the analyzers.
+	Add descriptions to datastores, inputs and outputs.
+	Make it easy to register multiple times the same decoder with different names.
+	Add filters for events and payloads and merge the old proto filters with the new code.
+	Add the pload_store API to keep a pload in memory.
+	Prevent the conntrack timers to be requeued.
+	Add perf object for dropped packets.
+	Fix multiple crash and memory leaks.
+	Add perf objects for the offline DNS subsystem.
+	Add a lock for event listeners.
+	Allow the HTTP server to serv pload_store.
+	Improve HTTP server shutdown.
+	Log error messages from the HTTP server.
+	Fix deadlocks on shutdown.
+	Add the main_timer API for real time timer (not based on packet clock).
+	Add output_inject.
+	Add perf objects for analyzer_arp.
+	Make analyzer_arp flush its cache when the core finishes processing.
+	Fix DNS TXT record parsing.
+	Fix width and height parsing of GIFs.
+	Make analyzer_http_post process partial payloads.
+	Fix decoder deflate.
+	Allow the user to set the buffer size for input pcap_interface.
+	Make processing thread queues bigger to avoir packet loss.
+	Use new XML-RPC polling API for logs and registry.
+	Add new XML-RPC for monitoring events and payloads.
+
 v0.0.15
 	Add proto_8021x, proto_eap, proto_ppp_pap.
 	Add analyzer_eap, analyzer_ppp_pap.
