@@ -1,6 +1,6 @@
 
 # This file is part of pom-ng.
-# Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+# Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([pom-ng], [0.0.15], [Guy Martin <gmsoft@tuxicoman.be>])
+AC_INIT([pom-ng], [0.0.16], [Guy Martin <gmsoft@tuxicoman.be>])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([-Wall foreign])
 AC_CONFIG_SRCDIR([config.h.in])
