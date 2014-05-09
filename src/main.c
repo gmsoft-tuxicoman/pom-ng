@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -413,6 +413,8 @@ int main(int argc, char *argv[]) {
 	free(shutdown_reason);
 	shutdown_reason = NULL;
 
+	httpd_stop();
+
 	input_stop_all();
 
 	if (!shutdown_in_error)
@@ -458,6 +460,7 @@ err_dstore:
 err_timer:
 err_packet:
 err_httpd:
+	httpd_stop();
 	httpd_cleanup();
 err_core:
 	core_cleanup(1);

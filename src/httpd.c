@@ -490,14 +490,17 @@ void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, v
 }
 
 
-int httpd_cleanup() {
-
+void httpd_stop() {
 
 	struct httpd_daemon_list *tmp = http_daemons;
 	while (tmp) {
 		tmp->listen_fd = MHD_quiesce_daemon(tmp->daemon);
 		tmp = tmp->next;
 	}
+	
+}
+
+int httpd_cleanup() {
 
 	struct httpd_pload *cur_pload, *tmp_pload;
 	HASH_ITER(hh, httpd_ploads, cur_pload, tmp_pload) {
