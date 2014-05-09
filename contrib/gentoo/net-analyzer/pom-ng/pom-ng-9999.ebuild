@@ -16,6 +16,7 @@ IUSE="magic pcap zlib jpeg sqlite console exif addons"
 DEPEND="
 	net-libs/libmicrohttpd[messages]
 	dev-libs/libxml2
+	dev-libs/uthash
 	dev-libs/xmlrpc-c[threads]
 	=dev-lang/lua-5.1*
 	magic? ( sys-apps/file )
