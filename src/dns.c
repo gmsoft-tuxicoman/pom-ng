@@ -172,6 +172,9 @@ err:
 
 int dns_core_cleanup() {
 
+	if (!dns_record_evt)
+		return POM_OK;
+
 	event_listener_unregister(dns_record_evt, dns_table);
 
 	unsigned int i;
