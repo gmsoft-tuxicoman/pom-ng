@@ -271,7 +271,7 @@ int main(int argc, char *argv[]) {
 
 	}
 
-	pomlog("Starting " PACKAGE_NAME " ...");
+	pomlog("Starting " PACKAGE_NAME " v" PACKAGE_VERSION " ...");
 
 	// Drop privileges if provided
 
