@@ -22,7 +22,11 @@
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/decoder.h>
 
+static struct event_reg *analyzer_http_post_event_request = NULL;
+
 int analyzer_http_post_init(struct analyzer *analyzer) {
+
+	analyzer_http_post_event_request = event_find("http_request");
 
 	return pload_listen_start(analyzer, ANALYZER_HTTP_POST_PLOAD_TYPE, NULL, analyzer_http_post_pload_open, analyzer_http_post_pload_write, analyzer_http_post_pload_close);
 }
@@ -40,6 +44,23 @@ int analyzer_http_post_pload_open(void *obj, void **priv, struct pload *pload) {
 	if (!evt)
 		return PLOAD_OPEN_STOP;
 
+	if (event_get_reg(evt) != analyzer_http_post_event_request) {
+		pomlog(POMLOG_DEBUG "HTTP POST urlencoded received with the wrong event");
+		return PLOAD_OPEN_STOP;
+	}
+
+	struct data *data = event_get_data(evt);
+	if (data_is_set(data[analyzer_http_request_status])) {
+		// If status is set, it's a response
+		pomlog(POMLOG_DEBUG "Payload received in a response");
+		return PLOAD_OPEN_STOP;
+	}
+
+	if (!data_is_set(data[analyzer_http_request_request_method]) || strcmp("POST", PTYPE_STRING_GETVAL(data[analyzer_http_request_request_method].value))) {
+		pomlog(POMLOG_DEBUG "Payload received on something that is not a POST request");
+		return PLOAD_OPEN_STOP;
+	}
+
 	struct analyzer_http_post_pload_priv *p = malloc(sizeof(struct analyzer_http_post_pload_priv));
 	if (!p) {
 		pom_oom(sizeof(struct analyzer_http_post_pload_priv));
@@ -47,6 +68,7 @@ int analyzer_http_post_pload_open(void *obj, void **priv, struct pload *pload) {
 	}
 	memset(p, 0, sizeof(struct analyzer_http_post_pload_priv));
 	p->evt = evt;
+
 
 	*priv = p;
 	
@@ -80,19 +102,21 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 		char *eq = memchr(buff, '=', buff_len);
 		char *amp = memchr(buff, '&', buff_len);
 
-		if (!eq) {
-			// Nothing more to parse
+		// We only parse parameters we are sure are complete
+		if (!eq || !amp)
 			break;
-		}
 
-		if (amp && amp < eq) {
+		size_t name_len = eq - buff;
+
+
+		if (amp < eq) {
 			// Parameter without value, skip to next param
 			buff_len -= amp - buff + 1;
 			buff = amp + 1;
 			continue;
 		}
 
-		size_t name_len = eq - buff;
+
 
 		char *name = NULL;
 		size_t name_size = 0;
@@ -100,12 +124,9 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 			continue;
 		}
 
-
 		char *value = eq + 1;
 
-		size_t value_len = buff_len - name_len - 1;
-		if (amp)
-			value_len = amp - value;
+		size_t value_len = amp - value;
 
 		char *value_dec = NULL;
 		size_t value_size = 0;
@@ -126,9 +147,6 @@ int analyzer_http_post_pload_write(void *obj, void *p, void *data, size_t len) {
 
 		// Do not free value and name
 
-		if (!amp)
-			break;
-	
 		buff = amp + 1;
 		buff_len -= value_len + name_len + 2;
 	}
@@ -159,10 +177,57 @@ int analyzer_http_post_pload_close(void *obj, void *p) {
 	if (!priv)
 		return POM_ERR;
 
-	if (priv->buff) {
-		pomlog(POMLOG_DEBUG "Some parts were not used in HTTP POST data.");
-		free(priv->buff);
+	if (!priv->buff) {
+		free(priv);
+		return POM_OK;
 	}
+
+	char *buff = priv->buff;
+	size_t buff_len = priv->buff_len;
+
+	// Parse the last param
+
+	char *eq = memchr(buff, '=', buff_len);
+
+	if (!eq) {
+		pomlog(POMLOG_DEBUG "Last param of HTTP post has no value");
+		goto end;
+	}
+
+	size_t name_len = eq - buff;
+
+	char *name = NULL;
+	size_t name_size = 0;
+	if (decoder_decode_simple("percent", buff, name_len, &name, &name_size) == DEC_ERR) {
+		goto end;
+	}
+
+	char *value = eq + 1;
+	size_t value_len = buff_len - name_len - 1;
+
+	char *value_dec = NULL;
+	size_t value_size = 0;
+	if (decoder_decode_simple("percent", value, value_len, &value_dec, &value_size) == DEC_ERR) {
+		free(name);
+		goto end;
+	}
+
+	struct ptype *value_pt = event_data_item_add(priv->evt, analyzer_http_request_post_data, name);
+
+	if (!value_pt) {
+		free(name);
+		free(value_dec);
+		goto end;
+	}
+
+	PTYPE_STRING_SETVAL_P(value_pt, value_dec);
+
+	// Do not free value and name
+
+end:
+	if (priv->buff)
+		free(priv->buff);
+
 	free(priv);
 
 	return POM_OK;
