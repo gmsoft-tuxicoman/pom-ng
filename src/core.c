@@ -779,9 +779,11 @@ int core_set_state(enum core_state state) {
 		for (i = 0; i < CORE_PROCESS_THREAD_MAX; i++)
 			core_clock[i] = 0;
 
-		ptime runtime = now - core_start_time;
+		if (core_start_time) {
+			ptime runtime = now - core_start_time;
 
-		pomlog(POMLOG_INFO "Core was running for %u.%06u secs", pom_ptime_sec(runtime), pom_ptime_usec(runtime));
+			pomlog(POMLOG_INFO "Core was running for %u.%06u secs", pom_ptime_sec(runtime), pom_ptime_usec(runtime));
+		}
 
 	} else if (state == core_state_running) {
 		core_start_time = pom_gettimeofday();
