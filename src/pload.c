@@ -99,6 +99,9 @@ int pload_init() {
 	if (!pload_store_path || !pload_store_mmap_block_size)
 		return POM_ERR;
 
+	struct resource *r = NULL;
+	struct resource_dataset *pload_types_ds = NULL, *mime_types_ds = NULL;
+	
 	
 	struct registry_param *p = NULL;
 	// Add the registry class
@@ -118,10 +121,6 @@ int pload_init() {
 	p = NULL;
 
 
-
-	struct resource *r = NULL;
-	struct resource_dataset *pload_types_ds = NULL, *mime_types_ds = NULL;
-	
 	r = resource_open("payload_types", pload_types_resource_template);
 	if (!r)
 		goto err;
