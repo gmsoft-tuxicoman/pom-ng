@@ -760,6 +760,11 @@ int core_set_state(enum core_state state) {
 		return POM_OK;
 	}
 
+	if (core_cur_state == core_state_idle && state == core_state_finishing) {
+		pom_mutex_unlock(&core_state_lock);
+		return POM_OK;
+	}
+
 	core_cur_state = state;
 	pomlog(POMLOG_DEBUG "Core state changed to %u", state);
 	if (pthread_cond_broadcast(&core_state_cond)) {
