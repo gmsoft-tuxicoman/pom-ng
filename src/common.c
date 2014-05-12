@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
 
 char *pom_strerror(int err_num) {
 
