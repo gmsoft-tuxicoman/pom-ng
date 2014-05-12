@@ -35,6 +35,7 @@ static pthread_rwlock_t pomlog_buffer_lock = PTHREAD_RWLOCK_INITIALIZER;
 static uint32_t pomlog_buffer_entry_id = 0;
 static pthread_mutex_t pomlog_poll_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t pomlog_poll_cond = PTHREAD_COND_INITIALIZER;
+static int pomlog_shutdown = 0;
 
 
 static unsigned int pomlog_debug_level = 3; // Default to POMLOG_INFO
@@ -184,6 +185,7 @@ int pomlog_cleanup() {
 
 void pomlog_finish() {
 	pom_mutex_lock(&pomlog_poll_lock);
+	pomlog_shutdown = 1;
 	pthread_cond_broadcast(&pomlog_poll_cond);
 	pom_mutex_unlock(&pomlog_poll_lock);
 }
@@ -220,6 +222,10 @@ struct pomlog_entry *pomlog_get_tail() {
 int pomlog_poll(struct timespec *timeout) {
 
 	pom_mutex_lock(&pomlog_poll_lock);
+	if (pomlog_shutdown) {
+		pom_mutex_unlock(&pomlog_poll_lock);
+		return POM_ERR;
+	}
 
 	int res = pthread_cond_timedwait(&pomlog_poll_cond, &pomlog_poll_lock, timeout);
 	pom_mutex_unlock(&pomlog_poll_lock);

@@ -322,7 +322,10 @@ xmlrpc_value *xmlrpccmd_core_poll_log(xmlrpc_env * const envP, xmlrpc_value * co
 		if (now.tv_sec > then.tv_sec)
 			break;
 		
-		pomlog_poll(&then);
+		if (pomlog_poll(&then) == POM_ERR) {
+			// We are shutting down
+			break;
+		}
 	};
 
 	return res;
