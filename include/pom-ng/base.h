@@ -50,8 +50,8 @@
 typedef uint64_t ptime;
 #define pom_timeval_to_ptime(x) (((uint64_t) ((x).tv_sec) * 1000000UL) + (uint64_t) (x).tv_usec)
 #define pom_sec_ptime(x) ((uint64_t) (x) * 1000000UL);
-#define pom_ptime_sec(x) ((x) / 1000000UL)
-#define pom_ptime_usec(x) ((x) % 1000000UL)
+#define pom_ptime_sec(x) (uint32_t) ((x) / 1000000UL)
+#define pom_ptime_usec(x) (uint32_t) ((x) % 1000000UL)
 
 // Get the current time in ptime form
 ptime pom_gettimeofday();

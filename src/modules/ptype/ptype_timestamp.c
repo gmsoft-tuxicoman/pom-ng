@@ -128,7 +128,7 @@ int ptype_timestamp_compare(int op, void *val_a, void *val_b) {
 int ptype_timestamp_serialize(struct ptype *p, char *val, size_t size) {
 
 	ptime *v = p->value;
-	return snprintf(val, size, "%"PRIu64".%"PRIu64, pom_ptime_sec(*v), pom_ptime_usec(*v));
+	return snprintf(val, size, "%"PRIu32".%"PRIu32, pom_ptime_sec(*v), pom_ptime_usec(*v));
 
 }
 
