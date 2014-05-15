@@ -183,7 +183,7 @@ static int proto_ipv6_process_fragment(struct packet *p, struct proto_process_st
 		
 		tmp->id = fhdr->ip6f_ident;
 		tmp->nxthdr = nxthdr;
-		tmp->multipart = packet_multipart_alloc(s_next->proto, 0);
+		tmp->multipart = packet_multipart_alloc(s_next->proto, 0, 0);
 		if (!tmp->multipart) {
 			conntrack_timer_cleanup(tmp->t);
 			free(tmp);

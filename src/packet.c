@@ -289,7 +289,7 @@ int packet_info_pool_cleanup() {
 }
 
 
-struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags) {
+struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags, unsigned int align_offset) {
 
 	struct packet_multipart *res = malloc(sizeof(struct packet_multipart));
 	if (!res) {
@@ -305,6 +305,7 @@ struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned in
 	}
 
 	res->flags = flags;
+	res->align_offset = align_offset;
 
 	return res;
 }
@@ -436,8 +437,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	}
 
 
-	// FIXME align offset
-	if (packet_buffer_alloc(p, multipart->cur, 0)) {
+	if (packet_buffer_alloc(p, multipart->cur, multipart->align_offset)) {
 		packet_release(p);
 		packet_multipart_cleanup(multipart);
 		pom_oom(multipart->cur);
@@ -469,7 +469,7 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 
 	packet_release(p);
 
-	return res;
+	return (res == PROTO_ERR ? POM_ERR : POM_OK);
 }
 
 struct packet_stream_parser *packet_stream_parser_alloc(size_t max_line_size, unsigned int flags) {

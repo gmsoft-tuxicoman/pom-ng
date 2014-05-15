@@ -245,7 +245,7 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 			return PROTO_STOP;
 		}
 
-		tmp->multipart = packet_multipart_alloc(s_next->proto, 0);
+		tmp->multipart = packet_multipart_alloc(s_next->proto, 0, 0);
 		if (!tmp->multipart) {
 			conntrack_unlock(s->ce);
 			conntrack_timer_cleanup(tmp->t);

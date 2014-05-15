@@ -104,7 +104,10 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		return PROTO_OK;
 	}
 
-	// FIXME Check the adaptation layer
+	if (buff[3] & 0x20) {
+		// FIXME Check the adaptation layer
+		return PROTO_INVALID;
+	}
 
 
 	// Try to find out what type or payload we are dealing with
@@ -235,6 +238,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 
 				struct docsis_hdr *tmp_hdr = (struct docsis_hdr*)tmp_buff;
 				stream->pkt_tot_len = ntohs(tmp_hdr->len) + sizeof(struct docsis_hdr);
+
 			} else if (stream->type == proto_mpeg_stream_type_sect) {
 				switch (stream->multipart->head->len) {
 					case 1:
@@ -320,7 +324,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 			if ( (stream->type == proto_mpeg_stream_type_docsis && (pos > (MPEG_TS_LEN - offsetof(struct docsis_hdr, hcs))))
 				|| (stream->type == proto_mpeg_stream_type_sect && (pos > (MPEG_TS_LEN - 3)))) {
 				// Cannot fetch the complete packet size, will do later
-				stream->multipart = packet_multipart_alloc(next_proto, 0);
+				stream->multipart = packet_multipart_alloc(next_proto, 0, 0);
 				if (!stream->multipart)
 					return PROTO_ERR;
 				stream->pkt_tot_len = 0;
@@ -332,7 +336,8 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 			unsigned int pkt_len = 0;
 			if (stream->type == proto_mpeg_stream_type_docsis) {
 				struct docsis_hdr *docsis_hdr = (void*)buff + pos;
-				pkt_len = ntohs(docsis_hdr->len) + sizeof(struct docsis_hdr);
+				memcpy(&pkt_len, &docsis_hdr->len, sizeof(docsis_hdr->len));
+				pkt_len = ntohs(pkt_len) + sizeof(struct docsis_hdr);
 			} else if (stream->type == proto_mpeg_stream_type_sect) {
 				pkt_len = (((*(buff + pos + 1) & 0xF) << 8) | *(buff + pos + 2)) + 3;
 			} else {
@@ -340,7 +345,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 				return PROTO_ERR;
 			}
 			if (pkt_len + pos > MPEG_TS_LEN) {
-				stream->multipart = packet_multipart_alloc(next_proto, 0);
+				stream->multipart = packet_multipart_alloc(next_proto, 0, 0);
 				if (!stream->multipart)
 					return PROTO_ERR;
 				stream->pkt_tot_len = pkt_len;
@@ -348,15 +353,33 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 
 				break;
 			}
-				
-			// Process the packet
-			s_next->pload = buff + pos;
-			s_next->plen = pkt_len;
-			s_next->proto = next_proto;
-			int res = core_process_multi_packet(stack, stack_index + 1, p);
-			if (res == PROTO_ERR)
-				return PROTO_ERR;
 
+			s_next->proto = next_proto;
+
+#ifdef FIX_PACKET_ALIGNMENT
+			char offset = pos & 3;
+#else
+			char offset = 0;
+#endif
+			if (offset) {
+				struct packet_multipart *tmp = packet_multipart_alloc(s_next->proto, 0, 0);
+				if (packet_multipart_add_packet(tmp, p, 0, pkt_len, pos) != POM_OK) {
+					packet_multipart_cleanup(tmp);
+					return PROTO_ERR;
+				}
+
+				if (packet_multipart_process(tmp, stack, stack_index + 1) != POM_OK)
+					return PROTO_ERR;
+
+			} else {
+
+				// Process the packet
+				s_next->pload = buff + pos;
+				s_next->plen = pkt_len;
+				int res = core_process_multi_packet(stack, stack_index + 1, p);
+				if (res == PROTO_ERR)
+					return PROTO_ERR;
+			}
 			pos += pkt_len;
 
 			if (pos >= MPEG_TS_LEN)

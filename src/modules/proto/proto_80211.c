@@ -270,21 +270,26 @@ static int proto_80211_process(void *proto_priv, struct packet *p, struct proto_
 	s_next->pload = s->pload + offt;
 	s_next->plen = s->plen - offt;
 
-// x86 can do non aligned access 
-#if !defined(__i386__) && !defined(__x86_64__)
+#ifdef FIX_PACKET_ALIGNMENT
+
+	if (!s_next->proto)
+		return PROTO_OK;
 
 	// Let's align the buffer
 	// Why is this stupid header not always a multiple of 4 bytes ?
-	char offset = (long)(f->buff + l->payload_start) & 3;
+	char offset = (long)(s_next->pload) & 3;
 	if (offset) {
-		if (f->buff - offset > f->buff_base) {
-			memmove(f->buff - offset, f->buff, f->len);
-			f->buff -= offset;
-		} else {
-			memmove(f->buff + offset, f->buff, f->len);
-			f->buff += offset;
-
+		// Use a multipart to handle this
+		struct packet_multipart *tmp = packet_multipart_alloc(s_next->proto, 0, 0);
+		if (packet_multipart_add_packet(tmp, p, 0, s_next->plen, s_next->pload - p->buff) != POM_OK) {
+			packet_multipart_cleanup(tmp);
+			return PROTO_ERR;
 		}
+
+		if (packet_multipart_process(tmp, stack, stack_index + 1) != POM_OK)
+			return PROTO_ERR;
+
+		return PROTO_STOP;
 	}
 
 #endif

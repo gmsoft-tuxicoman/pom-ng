@@ -60,6 +60,7 @@ struct packet_multipart {
 	unsigned int flags;
 	struct packet_multipart_pkt *head, *tail;
 	struct proto *proto;
+	unsigned int align_offset;
 };
 
 struct packet_info {
@@ -73,7 +74,7 @@ struct packet *packet_alloc();
 struct packet *packet_clone(struct packet *src, unsigned int flags);
 int packet_release(struct packet *p);
 
-struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags);
+struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags, unsigned int align_offset);
 int packet_multipart_cleanup(struct packet_multipart *m);
 int packet_multipart_add_packet(struct packet_multipart *multipart, struct packet *pkt, size_t offset, size_t len, size_t pkt_buff_offset);
 int packet_multipart_process(struct packet_multipart *multipart, struct proto_process_stack *stack, unsigned int stack_index);

@@ -197,6 +197,11 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 	switch (dhdr->fc_type) {
 		case FC_TYPE_PKT_MAC:
 		case FC_TYPE_ISOLATION_PKT_MAC:
+
+			// 2 ethernet addresses + type + hcs
+			if (s_next->plen < 6 + 6 + 2 +4)
+				return PROTO_INVALID;
+
 			// We don't need the 4 bytes of ethernet checksum
 			s_next->plen -= 4;
 			s_next->proto = priv->proto_ethernet;
@@ -212,6 +217,20 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 			break;
 
 	}
+
+#ifdef FIX_PACKET_ALIGNMENT
+	char offset = (int)s_next->pload & 3;
+	if (offset != 2) {
+		struct packet_multipart *tmp = packet_multipart_alloc(s_next->proto, 0, 2);
+		if (packet_multipart_add_packet(tmp, p, 0, s->plen, s_next->pload - p->buff) != POM_OK) {
+			packet_multipart_cleanup(tmp);
+			return PROTO_ERR;
+		}
+		if (packet_multipart_process(tmp, stack, stack_index + 1) != POM_OK)
+			return PROTO_ERR;
+		return PROTO_STOP;
+	}
+#endif
 
 	return PROTO_OK;
 
