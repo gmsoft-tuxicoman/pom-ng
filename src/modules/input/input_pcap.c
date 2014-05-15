@@ -37,9 +37,6 @@
 #include <stddef.h>
 #include <signal.h>
 
-// FIXME change this define when this value gets upstream
-#define DLT_MPEGTS DLT_USER0
-
 struct mod_reg_info* input_pcap_reg_info() {
 	static struct mod_reg_info reg_info;
 	memset(&reg_info, 0, sizeof(struct mod_reg_info));
@@ -205,11 +202,11 @@ static int input_pcap_common_open(struct input *i) {
 		case DLT_RAW:
 			datalink = "ipv4";
 			break;
-
-		case DLT_MPEGTS: // FIXME update this when upstream add it
+#ifdef DLT_MPEG_2_TS
+		case DLT_MPEG_2_TS:
 			datalink = "mpeg_ts";
 			break;
-
+#endif
 		case DLT_PPI:
 			datalink = "ppi";
 			break;
@@ -802,11 +799,13 @@ static int input_pcap_read(struct input *i) {
 	if (p->type == input_pcap_type_interface)
 		flags = CORE_QUEUE_DROP_IF_FULL;
 
-	if (p->datalink_type == DLT_MPEGTS) {
+#ifdef DLT_MPEG_2_TS
+	if (p->datalink_type == DLT_MPEG_2_TS) {
 		// MPEG2 TS has thread affinity based on the PID
 		flags |= CORE_QUEUE_HAS_THREAD_AFFINITY;
 		affinity = ((((char*)pkt->buff)[1] & 0x1F) << 8) | ((char *)pkt->buff)[2];
 	}
+#endif
 
 	return core_queue_packet(pkt, flags, affinity);
 }
