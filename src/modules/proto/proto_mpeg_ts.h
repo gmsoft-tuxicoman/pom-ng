@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -38,6 +38,7 @@ enum proto_mpeg_ts_fields {
 };
 
 enum proto_mpeg_stream_type {
+	proto_mpeg_stream_type_unknown = 0,
 	proto_mpeg_stream_type_pes,
 	proto_mpeg_stream_type_sect,
 	proto_mpeg_stream_type_docsis,

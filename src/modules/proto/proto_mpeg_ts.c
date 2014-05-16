@@ -96,6 +96,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 
 	int hdr_len = 4;
 
+
 	// Filter out NULL packets
 	if (pid == MPEG_TS_NULL_PID) {
 		s_next->proto = NULL;
@@ -104,11 +105,8 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		return PROTO_OK;
 	}
 
-	if (buff[3] & 0x20) {
-		// FIXME Check the adaptation layer
-		return PROTO_INVALID;
-	}
-
+	unsigned char afc = (buff[3] & 0x30) >> 4;
+	unsigned char tsc = (buff[3] & 0xC0) >> 6;
 
 	// Try to find out what type or payload we are dealing with
 
@@ -172,13 +170,6 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		// Identify the stream,
 		if (pid == MPEG_TS_DOCSIS_PID) {
 			stream->type = proto_mpeg_stream_type_docsis;
-		} else if (buff[4] == 0x0 && buff[5] == 0x0 && buff[6] == 0x1) {
-			// PES packet. They have no pointer if PUSI is 1
-			// Currently not handled
-			stream->type = proto_mpeg_stream_type_pes;
-		} else {
-			// The last option is a SECT packet
-			stream->type = proto_mpeg_stream_type_sect;
 		}
 
 
@@ -188,24 +179,10 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 
 	conntrack_unlock(s->ce);
 
-	// Filter out PES packets
-	if (stream->type == proto_mpeg_stream_type_pes) {
-		s_next->pload = s->pload + hdr_len;
-		s_next->plen = s->plen - hdr_len;
-		s_next->proto = NULL;
-		return POM_OK;
-	}
-
-	// Check the validity of the pointer
-	if (pusi) {
-		if (buff[4] > 183)
-			return PROTO_INVALID;
-	}
-
-
 	// Check for missing packets
 	unsigned int missed = 0;
-	stream->last_seq = (stream->last_seq + 1) & 0xF;
+	if (afc & 1) // only increment last_seq when AFC has payload
+		stream->last_seq = (stream->last_seq + 1) & 0xF;
 	while (stream->last_seq != (buff[3] & 0xF)) {
 		stream->last_seq = (stream->last_seq + 1) & 0xF;
 		missed++;
@@ -219,12 +196,61 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %s", missed, stream->input->name);
 	}
 
+	// Check the Adaptation Field Control
+	if (afc & 0x2) {
+		hdr_len += buff[4] + 1;
+		if (hdr_len >= MPEG_TS_LEN)
+			return PROTO_INVALID;
+	}
+
+	if (!(afc & 1) || tsc) {
+		s_next->proto = NULL;
+		s_next->pload = NULL;
+		s_next->plen = 0;
+		return PROTO_OK;
+	}
+
+	unsigned char *pload = s->pload + hdr_len;
+	unsigned char pusi_ptr = pload[0];
+
+	// Try to identify the stream if unknown
+	if (stream->type == proto_mpeg_stream_type_unknown && pusi) {
+
+		if (pload[0] == 0x0 && pload[1] == 0x0 && pload[2] == 0x1) {
+			// PES packet. They have no pointer if PUSI is 1
+			// Currently not handled
+			stream->type = proto_mpeg_stream_type_pes;
+		} else {
+			// The last option is a SECT packet
+			stream->type = proto_mpeg_stream_type_sect;
+		}
+	}
+
+	// Filter out PES and unknown packets
+	if (stream->type == proto_mpeg_stream_type_pes) {
+		s_next->pload = s->pload + hdr_len;
+		s_next->plen = s->plen - hdr_len;
+		s_next->proto = NULL;
+		return PROTO_OK;
+	}
+
+
+	// Check the validity of the pointer
+	if (pusi) {
+		if (pusi_ptr > 183)
+			return PROTO_INVALID;
+		
+		// PUSI is the first byte of the payload
+		pload++;
+	}
+
+
+
 
 	// Add the payload to the multipart if any
 	if (stream->multipart) {
 
 		if (!stream->pkt_tot_len) {
-			unsigned char *pload_buff = buff + (pusi ? 5 : 4);
 			// Last packet was too short to know the size
 			if (stream->type == proto_mpeg_stream_type_docsis) {
 				if (stream->multipart->head->len >= sizeof(struct docsis_hdr)) {
@@ -234,7 +260,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 
 				unsigned char tmp_buff[sizeof(struct docsis_hdr)];
 				memcpy(tmp_buff, stream->multipart->head->pkt->buff + stream->multipart->head->pkt_buff_offset, stream->multipart->head->len);
-				memcpy(tmp_buff + stream->multipart->head->len, pload_buff, sizeof(struct docsis_hdr) - stream->multipart->head->len);
+				memcpy(tmp_buff + stream->multipart->head->len, pload, sizeof(struct docsis_hdr) - stream->multipart->head->len);
 
 				struct docsis_hdr *tmp_hdr = (struct docsis_hdr*)tmp_buff;
 				stream->pkt_tot_len = ntohs(tmp_hdr->len) + sizeof(struct docsis_hdr);
@@ -242,10 +268,10 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 			} else if (stream->type == proto_mpeg_stream_type_sect) {
 				switch (stream->multipart->head->len) {
 					case 1:
-						stream->pkt_tot_len = ((pload_buff[0] & 0xF) << 8) | pload_buff[1];
+						stream->pkt_tot_len = ((pload[0] & 0xF) << 8) | pload[1];
 						break;
 					case 2:
-						stream->pkt_tot_len = ((((unsigned char*)stream->multipart->head->pkt->buff + stream->multipart->head->pkt_buff_offset)[1] & 0xF) << 8) | pload_buff[0];
+						stream->pkt_tot_len = ((((unsigned char*)stream->multipart->head->pkt->buff + stream->multipart->head->pkt_buff_offset)[1] & 0xF) << 8) | pload[0];
 						break;
 				}
 				stream->pkt_tot_len += 3; // add the 3 headers bytes
@@ -271,23 +297,21 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 	}
 
 	// We have the begining of a new packets, there are some stuff to do ...
-	unsigned int pos = 4;
+	unsigned int pos = hdr_len;
 	if (pusi) {
 		pos++;
-
-		unsigned char ptr = buff[4];
 
 	
 		// If we already have some parts of a packet, process it
 		if (stream->multipart) {
 			
-			if (ptr != stream->pkt_tot_len - stream->pkt_cur_len) {
-				pomlog(POMLOG_DEBUG "Invalid tail length for %s packet : expected %u, got %hhu", (stream->type == proto_mpeg_stream_type_docsis ? "DOCSIS" : "SECT" ), stream->pkt_tot_len - stream->pkt_cur_len, ptr);
+			if (pusi_ptr != stream->pkt_tot_len - stream->pkt_cur_len) {
+				pomlog(POMLOG_DEBUG "Invalid tail length for %s packet : expected %u, got %hhu", (stream->type == proto_mpeg_stream_type_docsis ? "DOCSIS" : "SECT" ), stream->pkt_tot_len - stream->pkt_cur_len, pusi_ptr);
 				packet_multipart_cleanup(stream->multipart);
 			} else {
 
 				// Add the end of the previous packet
-				if (packet_multipart_add_packet(stream->multipart, p, stream->pkt_cur_len, ptr, (s->pload - (void *)p->buff + 5)) != POM_OK)
+				if (packet_multipart_add_packet(stream->multipart, p, stream->pkt_cur_len, pusi_ptr, hdr_len) != POM_OK)
 					return PROTO_ERR;
 				
 				// Process the multipart once we're done with the MPEG packet
@@ -306,7 +330,7 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 			stream->pkt_tot_len = 0;
 
 		}
-		pos += ptr;
+		pos += pusi_ptr;
 
 		if (pos >= MPEG_TS_LEN)
 			// Nothing left to process
