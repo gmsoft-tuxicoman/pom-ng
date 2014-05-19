@@ -643,25 +643,15 @@ static int input_dvb_read(struct input *i) {
 
 	ssize_t len = 0, r = 0;
 
-	// Get a new place holder for our packet
-	struct packet *pkt = packet_alloc();
+	unsigned int pkt_count = 100;
+	unsigned char buff[MPEG_TS_LEN * pkt_count];
 
-	if (!pkt)
-		return POM_ERR;
+	char filter_null_pid = *PTYPE_BOOL_GETVAL(p->filter_null_pid);
 
-	if (packet_buffer_alloc(pkt, MPEG_TS_LEN, 0) != POM_OK) {
-		packet_release(pkt);
-		return POM_ERR;
-	}
-
-	pkt->input = i;
-	pkt->datalink = p->proto_mpeg_ts;
-
-	unsigned char *pload = pkt->buff;
-
+	// Read a few packets at a time
 	do {
 
-		r = read(p->dvr_fd, pkt->buff + len, MPEG_TS_LEN - len);
+		r = read(p->dvr_fd, buff + len, sizeof(buff) - len);
 		if (r < 0) {
 			if (errno == EOVERFLOW) {
 				pomlog(POMLOG_DEBUG "Overflow in the kernel buffer while reading packets. Lots of packets were missed");
@@ -679,29 +669,53 @@ static int input_dvb_read(struct input *i) {
 		}
 		len += r;
 
-		char *filter_null_pid = PTYPE_BOOL_GETVAL(p->filter_null_pid);
-		if (*filter_null_pid) {
-			uint16_t pid = ((pload[1] & 0x1F) << 8) | (pload)[2];
-			if (len > 3 && pid == 0x1FFF) { // 0x1FFF is the NULL PID
-				len = 0;
-				registry_perf_inc(p->perf_null_discarded, 1);
-			}
-		}
 
-	} while (len < MPEG_TS_LEN);
+	} while (len < sizeof(buff));
 
 
 	// Check sync byte
-	if (pload[0] != 0x47) {
+	if (buff[0] != 0x47) {
 		pomlog(POMLOG_ERR "Error, stream out of sync !");
 		return POM_ERR;
 	}
 
-	pkt->ts = pom_gettimeofday();
+	ptime now = pom_gettimeofday();
 
-	uint16_t pid = ((pload[1] & 0x1F) << 8) | pload[2];
+	int j;
+	for (j = 0; j < pkt_count; j++) {
 
-	return core_queue_packet(pkt, CORE_QUEUE_HAS_THREAD_AFFINITY | CORE_QUEUE_DROP_IF_FULL, pid);
+		unsigned char *pload = buff + (j * MPEG_TS_LEN);
+		uint16_t pid = ((pload[1] & 0x1F) << 8) | pload[2];
+		if (filter_null_pid && pid == 0x1FFF) { // 0x1FFF is the NULL PID
+			registry_perf_inc(p->perf_null_discarded, 1);
+			continue;
+		}
+
+
+		// Get a new place holder for our packet
+		struct packet *pkt = packet_alloc();
+
+		if (!pkt)
+			return POM_ERR;
+
+		if (packet_buffer_alloc(pkt, MPEG_TS_LEN, 0) != POM_OK) {
+			packet_release(pkt);
+			return POM_ERR;
+		}
+
+		pkt->input = i;
+		pkt->datalink = p->proto_mpeg_ts;
+		pkt->ts = now + j;
+
+		memcpy(pkt->buff, pload, MPEG_TS_LEN);
+
+
+		if (core_queue_packet(pkt, CORE_QUEUE_HAS_THREAD_AFFINITY | CORE_QUEUE_DROP_IF_FULL, pid) != POM_OK)
+			return POM_ERR;
+
+	}
+
+	return POM_OK;
 
 }
 
