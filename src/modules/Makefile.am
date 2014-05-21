@@ -20,7 +20,7 @@ libdir=$(mod_dir)
 
 ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
-DECODER_SRC = decoder_base64.la decoder_gzip.la decoder_percent.la decoder_quoted_printable.la
+DECODER_SRC = decoder_base64.la decoder_percent.la decoder_quoted_printable.la @DECODER_OBJS@
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
 PROTO_SRC = proto_80211.la proto_8021x.la proto_arp.la proto_dns.la proto_docsis.la proto_eap.la proto_ethernet.la proto_gre.la proto_http.la proto_icmp.la proto_icmp6.la proto_ipv4.la proto_ipv6.la proto_mpeg.la proto_ppi.la proto_ppp.la proto_ppp_chap.la proto_ppp_pap.la proto_pppoe.la proto_radiotap.la proto_smtp.la proto_tcp.la proto_tftp.la proto_udp.la proto_vlan.la
@@ -28,7 +28,7 @@ PTYPE_SRC = ptype_bool.la ptype_bytes.la ptype_mac.la ptype_ipv4.la ptype_ipv6.l
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(DECODER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
 
-EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la datastore_postgres.la input_pcap.la input_dvb.la output_inject.la output_pcap.la output_tap.la
+EXTRA_LTLIBRARIES = analyzer_jpeg.la datastore_sqlite.la datastore_postgres.la decoder_gzip.la input_pcap.la input_dvb.la output_inject.la output_pcap.la output_tap.la
 
 
 analyzer_arp_la_SOURCES = analyzer/analyzer_arp.c analyzer/analyzer_arp.h
