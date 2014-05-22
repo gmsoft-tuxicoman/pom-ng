@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -72,6 +72,7 @@ void conntrack_refcount_dec(struct conntrack_entry *ce);
 
 int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv));
 void *conntrack_get_priv(struct conntrack_entry *ce, void *obj);
+void conntrack_remove_priv(struct conntrack_entry *ce, void *obj);
 
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay, ptime now);
 

@@ -686,6 +686,26 @@ void *conntrack_get_priv(struct conntrack_entry *ce, void *obj) {
 	return priv_lst->priv;
 }
 
+void conntrack_remove_priv(struct conntrack_entry *ce, void *obj) {
+
+	struct conntrack_priv_list *priv_lst = ce->priv_list;
+	for (; priv_lst && priv_lst->obj != obj; priv_lst = priv_lst->next);
+
+	if (!priv_lst)
+		return;
+
+	if (priv_lst->next)
+		priv_lst->next->prev = priv_lst->prev;
+	
+	if (priv_lst->prev)
+		priv_lst->prev->next = priv_lst->next;
+	else
+		ce->priv_list = priv_lst->next;
+
+	free(priv_lst);
+		
+}
+
 int conntrack_delayed_cleanup(struct conntrack_entry *ce, unsigned int delay, ptime now) {
 
 	if (!delay) {
