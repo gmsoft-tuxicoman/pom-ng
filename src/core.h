@@ -29,9 +29,6 @@
 #include <pom-ng/input.h>
 #include <pthread.h>
 
-#define CORE_PROTO_STACK_START		1
-#define CORE_PROTO_STACK_MAX		16
-
 #define CORE_PROCESS_THREAD_MAX		64
 #define CORE_PROCESS_THREAD_DEFAULT	2
 
