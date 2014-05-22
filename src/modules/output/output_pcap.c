@@ -117,6 +117,14 @@ static int output_pcap_file_init(struct output *o) {
 		return POM_ERR;
 	}
 	memset(priv, 0, sizeof(struct output_pcap_file_priv));
+
+	int res = pthread_mutex_init(&priv->lock, NULL);
+	if (res) {
+		pomlog(POMLOG_ERR "Error while initializing mutex : %s", pom_strerror(res));
+		free(priv);
+		return POM_ERR;
+	}
+
 	output_set_priv(o, priv);
 
 	priv->p_filename = ptype_alloc("string");
@@ -169,21 +177,24 @@ static int output_pcap_file_cleanup(void *output_priv) {
 
 	struct output_pcap_file_priv *priv = output_priv;
 	
-	if (priv) {
-		if (priv->p_filename)
-			ptype_cleanup(priv->p_filename);
-		if (priv->p_snaplen)
-			ptype_cleanup(priv->p_snaplen);
-		if (priv->p_link_type)
-			ptype_cleanup(priv->p_link_type);
-		if (priv->p_unbuffered)
-			ptype_cleanup(priv->p_unbuffered);
-		if (priv->p_filter)
-			ptype_cleanup(priv->p_filter);
-		
-		free(priv);
+	if (!priv)
+		return POM_OK;
 
-	}
+	pthread_mutex_destroy(&priv->lock);
+
+	if (priv->p_filename)
+		ptype_cleanup(priv->p_filename);
+	if (priv->p_snaplen)
+		ptype_cleanup(priv->p_snaplen);
+	if (priv->p_link_type)
+		ptype_cleanup(priv->p_link_type);
+	if (priv->p_unbuffered)
+		ptype_cleanup(priv->p_unbuffered);
+	if (priv->p_filter)
+		ptype_cleanup(priv->p_filter);
+	
+	free(priv);
+
 
 	return POM_OK;
 }
@@ -286,12 +297,14 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 	else
 		phdr.caplen = *snaplen;
 
-	pcap_dump((u_char*)priv->pdump, &phdr, stack->pload);
 	registry_perf_inc(priv->perf_pkts_out, 1);
 	registry_perf_inc(priv->perf_bytes_out, phdr.caplen);
-
+	
+	pom_mutex_lock(&priv->lock);
+	pcap_dump((u_char*)priv->pdump, &phdr, stack->pload);
 	if (PTYPE_BOOL_GETVAL(priv->p_unbuffered))
 		pcap_dump_flush(priv->pdump);
+	pom_mutex_unlock(&priv->lock);
 
 	return POM_OK;
 
