@@ -33,14 +33,13 @@ struct output_pcap_file_priv {
 
 	pcap_dumper_t *pdump;
 	pcap_t *p;
-	struct proto *proto;
 	struct filter_node *filter;
 
 	struct proto_packet_listener *listener;
 
 	struct ptype *p_filename;
 	struct ptype *p_snaplen;
-	struct ptype *p_proto;
+	struct ptype *p_link_type;
 	struct ptype *p_unbuffered;
 	struct ptype *p_filter;
 
@@ -49,9 +48,47 @@ struct output_pcap_file_priv {
 
 };
 
+struct output_pcap_flow_priv {
+
+	struct ptype *p_link_type;
+	struct ptype *p_flow_proto;
+	struct ptype *p_snaplen;
+	struct ptype *p_unbuffered;
+	struct ptype *p_prefix;
+
+	struct proto *proto;
+	struct proto_packet_listener *listener;
+	int link_type;
+
+	struct registry_perf *perf_pkts_out;
+	struct registry_perf *perf_bytes_out;
+	struct registry_perf *perf_flows_cur;
+	struct registry_perf *perf_flows_tot;
+
+	pthread_mutex_t lock;
+
+	struct output_pcap_flow_ce_priv *flows;
+
+};
+
+struct output_pcap_flow_ce_priv {
+
+	pcap_dumper_t *pdump;
+	pcap_t *p;
+	char *filename;
+	struct conntrack_entry *ce;
+
+	pthread_mutex_t lock;
+
+	struct output_pcap_flow_ce_priv *prev, *next;
+
+};
+
 struct mod_reg_info *output_pcap_reg_info();
 static int output_pcap_mod_register(struct mod_reg *mod);
 static int output_pcap_mod_unregister();
+
+static int output_pcap_linktype_to_dlt(char *link_type);
 
 static int output_pcap_file_init(struct output *o);
 static int output_pcap_file_cleanup(void *output_priv);
@@ -60,5 +97,13 @@ static int output_pcap_file_close(void *output_priv);
 static int output_pcap_file_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
 static int output_pcap_filter_parse(void *priv, char *value);
 static int output_pcap_filter_update(void *priv, struct ptype *value);
+
+static int output_pcap_flow_init(struct output *o);
+static int output_pcap_flow_cleanup(void *output_priv);
+static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
+static int output_pcap_flow_ce_cleanup(void *obj, void *priv);
+static int output_pcap_flow_open(void *output_priv);
+static int output_pcap_flow_close(void *output_priv);
+static int output_pcap_flow_parse_filename(struct proto_process_stack *s, struct packet *p, char *format, char *filename, size_t filename_len);
 
 #endif
