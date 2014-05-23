@@ -27,6 +27,7 @@ enum input_dvb_type {
 	input_dvb_type_c,
 	input_dvb_type_s,
 	input_dvb_type_t, // TODO
+	input_dvb_type_atsc,
 };
 
 struct input_dvb_c_priv {
@@ -39,6 +40,11 @@ struct input_dvb_s_priv{
 	struct ptype *polarity;
 	struct ptype *lnb_type;
 	// TODO support for DiSEqC
+};
+
+struct input_dvb_atsc_priv {
+	
+	struct ptype *modulation;
 };
 
 struct input_dvb_priv {
@@ -55,6 +61,7 @@ struct input_dvb_priv {
 	union {
 		struct input_dvb_c_priv c;
 		struct input_dvb_s_priv s;
+		struct input_dvb_atsc_priv a;
 	} tpriv;
 
 	struct registry_perf *perf_null_discarded;
@@ -82,6 +89,7 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type);
 static int input_dvb_device_init(struct input *i);
 static int input_dvb_c_init(struct input *i);
 static int input_dvb_s_init(struct input *i);
+static int input_dvb_atsc_init(struct input *i);
 
 static int input_dvb_device_open(struct input *i);
 static int input_dvb_open(struct input *i);

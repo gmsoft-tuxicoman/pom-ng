@@ -117,6 +117,19 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 
 	res += input_register(&in_dvb_s);
 
+	static struct input_reg_info in_dvb_atsc;
+	memset(&in_dvb_atsc, 0, sizeof(struct input_reg_info));
+	in_dvb_atsc.name = "dvb_atsc";
+	in_dvb_atsc.description = "Read from a DVB-ATSC device";
+	in_dvb_atsc.flags = INPUT_REG_FLAG_LIVE;
+	in_dvb_atsc.mod = mod;
+	in_dvb_atsc.init = input_dvb_atsc_init;
+	in_dvb_atsc.open = input_dvb_open;
+	in_dvb_atsc.read = input_dvb_read;
+	in_dvb_atsc.close = input_dvb_close;
+	in_dvb_atsc.cleanup = input_dvb_cleanup;
+
+	res += input_register(&in_dvb_atsc);
 	return res;
 }
 
@@ -126,6 +139,7 @@ static int input_dvb_mod_unregister() {
 	res += input_unregister("dvb_device");
 	res += input_unregister("dvb_c");
 	res += input_unregister("dvb_s");
+	res += input_unregister("dvb_atsc");
 
 	return res;
 }
@@ -185,7 +199,6 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 	priv->adapter = ptype_alloc("uint16");
 	priv->frontend = ptype_alloc("uint16");
 	priv->freq = ptype_alloc_unit("uint32", "Hz");
-	priv->symbol_rate = ptype_alloc_unit("uint32", "symbols/second");
 	priv->tuning_timeout = ptype_alloc_unit("uint16", "seconds");
 
 	if (!priv->adapter || !priv->frontend || !priv->freq || !priv->tuning_timeout) 
@@ -200,10 +213,6 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 		goto err;
 
 	p = registry_new_param("frequency", "0", priv->freq, "Frequency in Hz", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
-		goto err;
-
-	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
@@ -275,10 +284,14 @@ static int input_dvb_c_init(struct input *i) {
 
 	struct registry_param *p = NULL;
 
+	priv->symbol_rate = ptype_alloc_unit("uint32", "symbols/second");
 	priv->tpriv.c.modulation = ptype_alloc_unit("string", NULL);
-	if (!priv->tpriv.c.modulation) 
+	if (!priv->tpriv.c.modulation || !priv->symbol_rate) 
 		goto err;
 
+	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
 
 	p = registry_new_param("modulation", "QAM256", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
@@ -290,6 +303,8 @@ err:
 
 	if (priv->tpriv.c.modulation)
 		ptype_cleanup(priv->tpriv.c.modulation);
+	if (priv->symbol_rate)
+		ptype_cleanup(priv->symbol_rate);
 	
 	free(priv);
 
@@ -307,10 +322,15 @@ static int input_dvb_s_init(struct input *i) {
 
 	priv->tpriv.s.polarity = ptype_alloc_unit("string", NULL);
 	priv->tpriv.s.lnb_type = ptype_alloc_unit("string", NULL);
-	if (!priv->tpriv.s.polarity || !priv->tpriv.s.lnb_type) 
+	priv->symbol_rate = ptype_alloc_unit("uint32", "symbols/second");
+	if (!priv->tpriv.s.polarity || !priv->tpriv.s.lnb_type || !priv->symbol_rate) 
 		goto err;
 
 	p = registry_new_param("polarity", "h" , priv->tpriv.s.polarity, "Polarisation, either 'h' or 'v'", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
 	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
 		goto err;
 
@@ -328,6 +348,37 @@ err:
 		ptype_cleanup(priv->tpriv.s.polarity);
 	if (priv->tpriv.s.lnb_type)
 		ptype_cleanup(priv->tpriv.s.lnb_type);
+	if (priv->symbol_rate)
+		ptype_cleanup(priv->symbol_rate);
+	
+	free(priv);
+
+	return POM_ERR;
+}
+
+static int input_dvb_atsc_init(struct input *i) {
+
+	if (input_dvb_common_init(i, input_dvb_type_atsc) != POM_OK)
+		return POM_ERR;
+
+	struct input_dvb_priv *priv = i->priv;
+
+	struct registry_param *p = NULL;
+
+	priv->tpriv.a.modulation = ptype_alloc_unit("string", NULL);
+	if (!priv->tpriv.a.modulation) 
+		goto err;
+
+	p = registry_new_param("modulation", "QAM256", priv->tpriv.a.modulation, "Modulation either QAM64 or QAM256", 0);
+	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+		goto err;
+
+	return POM_OK;
+
+err:
+
+	if (priv->tpriv.a.modulation)
+		ptype_cleanup(priv->tpriv.a.modulation);
 	
 	free(priv);
 
@@ -394,6 +445,12 @@ static int input_dvb_open(struct input *i) {
 				goto err;
 			}
 			break;
+
+		case input_dvb_type_atsc:
+			if (info.type != FE_ATSC) {
+				pomlog(POMLOG_ERR "The frontend %s is not a DVB-ATSC adapter", frontend);
+				goto err;
+			}
 
 		default:
 			break;
@@ -514,6 +571,17 @@ static int input_dvb_open(struct input *i) {
 		}
 
 
+	} else if (priv->type == input_dvb_type_atsc) {
+
+		char *mod_str = PTYPE_STRING_GETVAL(priv->tpriv.a.modulation);
+		if (!strcmp(mod_str, "QAM64"))
+			modulation = QAM_64;
+		else if (!strcmp(mod_str, "QAM256"))
+			modulation = QAM_256;
+		else {
+			pomlog(POMLOG_ERR "Invalid modulation \"%s\"", mod_str);
+			goto err;
+		}
 	}
 
 	int res = input_dvb_tune(priv, tuning_frequency, symbol_rate, modulation);
@@ -566,6 +634,9 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 		case input_dvb_type_s:
 			frp.u.qpsk.symbol_rate = symbol_rate;
 			frp.u.qpsk.fec_inner = FEC_AUTO;
+			break;
+		case input_dvb_type_atsc:
+			frp.u.vsb.modulation = modulation;
 			break;
 
 		default:
