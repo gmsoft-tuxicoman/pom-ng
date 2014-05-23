@@ -442,6 +442,14 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 			free(filename);
 		}
 
+	} else if (!strcmp(method, MHD_HTTP_METHOD_OPTIONS)) {
+
+		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+		if (!response) {
+			pomlog(POMLOG_ERR "Error while creating an empty response");
+			return MHD_NO;
+		}
+
 	} else {
 		pomlog(POMLOG_INFO "Unknown request %s for %s using version %s", method, url, version);
 		return MHD_NO;
@@ -459,6 +467,20 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 	if (MHD_add_response_header(response, MHD_HTTP_HEADER_SERVER, PACKAGE_NAME) == MHD_NO) {
 		pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_SERVER " header to the response");
+		goto err;
+	}
+
+	// add allow Cross-Site-Scripting headers
+	if (MHD_add_response_header(response, "Access-Control-Allow-Origin", "*") == MHD_NO) {
+		pomlog(POMLOG_ERR "Error, could not add Access-Control-Allow-Origin header");
+		goto err;
+	}
+	if (MHD_add_response_header(response, "Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept") == MHD_NO) {
+		pomlog(POMLOG_ERR "Error, could not add Access-Control-Allow-Headers header");
+		goto err;
+	}
+	if (MHD_add_response_header(response, "Access-Control-Allow-Methods", "POST, GET, OPTIONS") == MHD_NO) {
+		pomlog(POMLOG_ERR "Error, could not add Access-Control-Allow-Methods header");
 		goto err;
 	}
 
