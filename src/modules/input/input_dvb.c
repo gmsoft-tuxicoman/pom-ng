@@ -505,7 +505,7 @@ static int input_dvb_open(struct input *i) {
 
 	uint32_t frequency = *PTYPE_UINT32_GETVAL(priv->freq);
 	uint32_t tuning_frequency = frequency;
-	uint32_t symbol_rate = *PTYPE_UINT32_GETVAL(priv->symbol_rate);
+	uint32_t symbol_rate = 0;
 
 	if (priv->type == input_dvb_type_c) {
 
@@ -519,6 +519,7 @@ static int input_dvb_open(struct input *i) {
 			goto err;
 		}
 
+		symbol_rate = *PTYPE_UINT32_GETVAL(priv->symbol_rate);
 
 	} else if (priv->type == input_dvb_type_s) {
 		
@@ -570,6 +571,7 @@ static int input_dvb_open(struct input *i) {
 			goto err;
 		}
 
+		symbol_rate = *PTYPE_UINT32_GETVAL(priv->symbol_rate);
 
 	} else if (priv->type == input_dvb_type_atsc) {
 
@@ -837,6 +839,10 @@ static int input_dvb_cleanup(struct input *i) {
 		case input_dvb_type_s:
 			ptype_cleanup(p->tpriv.s.polarity);
 			ptype_cleanup(p->tpriv.s.lnb_type);
+			break;
+
+		case input_dvb_type_atsc:
+			ptype_cleanup(p->tpriv.a.modulation);
 			break;
 	
 		default:
