@@ -538,18 +538,19 @@ static int output_pcap_flow_ce_cleanup(void *obj, void *priv) {
 
 	pthread_mutex_destroy(&cpriv->lock);
 
-	pom_mutex_lock(&opriv->lock);
+	if (opriv) {
+		pom_mutex_lock(&opriv->lock);
 
-	if (cpriv->next)
-		cpriv->next->prev = cpriv->prev;
-	
-	if (cpriv->prev)
-		cpriv->prev->next = cpriv->next;
-	else
-		opriv->flows = cpriv->next;
+		if (cpriv->next)
+			cpriv->next->prev = cpriv->prev;
 
-	pom_mutex_unlock(&opriv->lock);
-	
+		if (cpriv->prev)
+			cpriv->prev->next = cpriv->next;
+		else
+			opriv->flows = cpriv->next;
+
+		pom_mutex_unlock(&opriv->lock);
+	}
 
 	if (cpriv->pdump)
 		pcap_dump_close(cpriv->pdump);
