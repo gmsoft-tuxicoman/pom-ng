@@ -482,6 +482,9 @@ static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_pr
 		if (conntrack_add_priv(ce, priv, cpriv, output_pcap_flow_ce_cleanup) != POM_OK)
 			goto err;
 
+		registry_perf_inc(priv->perf_flows_cur, 1);
+		registry_perf_inc(priv->perf_flows_tot, 1);
+
 		pom_mutex_lock(&priv->lock);
 		cpriv->next = priv->flows;
 		if (cpriv->next)
@@ -550,6 +553,7 @@ static int output_pcap_flow_ce_cleanup(void *obj, void *priv) {
 			opriv->flows = cpriv->next;
 
 		pom_mutex_unlock(&opriv->lock);
+		registry_perf_dec(opriv->perf_flows_cur, 1);
 	}
 
 	if (cpriv->pdump)
