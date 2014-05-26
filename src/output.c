@@ -305,4 +305,8 @@ struct registry_instance *output_get_reg_instance(struct output *o) {
 	return o->reg_instance;
 }
 
+char *output_get_name(struct output *o) {
+	return o->name;
+}
+
 
