@@ -372,7 +372,8 @@ int input_stop_all() {
 	registry_lock();
 	struct input *tmp;
 	for (tmp = input_head; tmp ; tmp = tmp->next) {
-		registry_set_param(tmp->reg_instance, "running", "no");
+		if (i->running & INPUT_RUN_RUNNING)
+			registry_set_param(tmp->reg_instance, "running", "no");
 	}
 	registry_unlock();
 
