@@ -25,9 +25,11 @@
 #include <pom-ng/output.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/filter.h>
+#include <pom-ng/event.h>
 
 #include <pcap.h>
 
+#define OUTPUT_PCAP_FLOW_FILE_DATA_COUNT 5
 
 struct output_pcap_file_priv {
 
@@ -67,6 +69,8 @@ struct output_pcap_flow_priv {
 	struct registry_perf *perf_flows_cur;
 	struct registry_perf *perf_flows_tot;
 
+	char *output_name;
+
 	pthread_mutex_t lock;
 
 	struct output_pcap_flow_ce_priv *flows;
@@ -82,8 +86,18 @@ struct output_pcap_flow_ce_priv {
 
 	pthread_mutex_t lock;
 
+	struct event *evt;
+
 	struct output_pcap_flow_ce_priv *prev, *next;
 
+};
+
+enum {
+	output_pcap_flow_file_output = 0,
+	output_pcap_flow_file_filename,
+	output_pcap_flow_file_bytes,
+	output_pcap_flow_file_packets,
+	output_pcap_flow_file_info,
 };
 
 struct mod_reg_info *output_pcap_reg_info();
@@ -100,6 +114,8 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 static int output_pcap_filter_parse(void *priv, char *value);
 static int output_pcap_filter_update(void *priv, struct ptype *value);
 
+static int output_pcap_flow_register();
+static int output_pcap_flow_unregister();
 static int output_pcap_flow_init(struct output *o);
 static int output_pcap_flow_cleanup(void *output_priv);
 static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);

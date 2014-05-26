@@ -26,7 +26,10 @@
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint64.h>
 
+
+struct event_reg *output_pcap_flow_evt_file_reg = NULL;
 
 struct mod_reg_info *output_pcap_reg_info() {
 
@@ -35,7 +38,7 @@ struct mod_reg_info *output_pcap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = output_pcap_mod_register;
 	reg_info.unregister_func = output_pcap_mod_unregister;
-	reg_info.dependencies = "ptype_string, ptype_bool, ptype_uint16";
+	reg_info.dependencies = "ptype_string, ptype_bool, ptype_uint16, ptype_uint64";
 
 	return &reg_info;
 }
@@ -62,11 +65,12 @@ static int output_pcap_mod_register(struct mod_reg *mod) {
 	output_pcap_flow.description = "Save packets of each flow in separate pcap files";
 	output_pcap_flow.mod = mod;
 
+	output_pcap_flow.register_func = output_pcap_flow_register;
+	output_pcap_flow.unregister_func = output_pcap_flow_unregister;
 	output_pcap_flow.init = output_pcap_flow_init;
 	output_pcap_flow.cleanup = output_pcap_flow_cleanup;
 	output_pcap_flow.open = output_pcap_flow_open;
 	output_pcap_flow.close = output_pcap_flow_close;
-
 
 	return output_register(&output_pcap_flow);
 }
@@ -76,6 +80,7 @@ static int output_pcap_mod_unregister() {
 
 	output_unregister("pcap_file");
 	output_unregister("pcap_flow");
+
 	return POM_OK;
 }
 
@@ -325,6 +330,50 @@ static int output_pcap_filter_update(void *priv, struct ptype *value) {
 
 }
 
+static int output_pcap_flow_register() {
+
+	// We need to register the event before the output pcap_flow
+	static struct data_item_reg evt_flow_file_data_items[OUTPUT_PCAP_FLOW_FILE_DATA_COUNT] = { { 0 } };
+	evt_flow_file_data_items[output_pcap_flow_file_output].name = "output";
+	evt_flow_file_data_items[output_pcap_flow_file_output].value_type = ptype_get_type("string");
+
+	evt_flow_file_data_items[output_pcap_flow_file_filename].name = "filename";
+	evt_flow_file_data_items[output_pcap_flow_file_filename].value_type = ptype_get_type("string");
+
+	evt_flow_file_data_items[output_pcap_flow_file_bytes].name = "bytes";
+	evt_flow_file_data_items[output_pcap_flow_file_bytes].value_type = ptype_get_type("uint64");
+
+	evt_flow_file_data_items[output_pcap_flow_file_packets].name = "packets";
+	evt_flow_file_data_items[output_pcap_flow_file_packets].value_type = ptype_get_type("uint64");
+
+	evt_flow_file_data_items[output_pcap_flow_file_info].name = "info";
+	evt_flow_file_data_items[output_pcap_flow_file_info].flags = DATA_REG_FLAG_LIST;
+
+	static struct data_reg evt_flow_file_data = {
+		.items = evt_flow_file_data_items,
+		.data_count = OUTPUT_PCAP_FLOW_FILE_DATA_COUNT
+	};
+
+	static struct event_reg_info output_pcap_flow_evt_file = { 0 };
+	output_pcap_flow_evt_file.source_name = "output_pcap_flow";
+	output_pcap_flow_evt_file.name = "pcap_flow_file";
+	output_pcap_flow_evt_file.description = "Output pcap flow file information";
+	output_pcap_flow_evt_file.data_reg = &evt_flow_file_data;
+
+	output_pcap_flow_evt_file_reg = event_register(&output_pcap_flow_evt_file);
+	if (!output_pcap_flow_evt_file_reg)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
+static int output_pcap_flow_unregister() {
+
+	if (output_pcap_flow_evt_file_reg)
+		return event_unregister(output_pcap_flow_evt_file_reg);
+	return POM_OK;
+}
+
 static int output_pcap_flow_init(struct output *o) {
 
 
@@ -342,13 +391,14 @@ static int output_pcap_flow_init(struct output *o) {
 		goto err;
 	}
 
+	priv->output_name = strdup(output_get_name(o));
 	priv->p_link_type = ptype_alloc("string");
 	priv->p_flow_proto = ptype_alloc("string");
 	priv->p_snaplen = ptype_alloc_unit("uint16", "bytes");
 	priv->p_unbuffered = ptype_alloc("bool");
 	priv->p_prefix = ptype_alloc("string");
 
-	if (!priv->p_link_type || !priv->p_flow_proto || !priv->p_snaplen || !priv->p_unbuffered || !priv->p_prefix)
+	if (!priv->output_name || !priv->p_link_type || !priv->p_flow_proto || !priv->p_snaplen || !priv->p_unbuffered || !priv->p_prefix)
 		goto err;
 
 	struct registry_instance *inst = output_get_reg_instance(o);
@@ -359,7 +409,6 @@ static int output_pcap_flow_init(struct output *o) {
 
 	if (!priv->perf_pkts_out || !priv->perf_bytes_out || !priv->perf_flows_cur || !priv->perf_flows_tot)
 		goto err;
-
 
 	struct registry_param *p = registry_new_param("flow_proto", "tcp", priv->p_flow_proto, "Protocol to use for flows", 0);
 	if (registry_instance_add_param(inst, p) != POM_OK)
@@ -394,6 +443,9 @@ static int output_pcap_flow_cleanup(void *output_priv) {
 
 	if (!priv)
 		return POM_OK;
+
+	if (priv->output_name)
+		free(priv->output_name);
 
 	if (priv->p_link_type)
 		ptype_cleanup(priv->p_link_type);
@@ -479,6 +531,55 @@ static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_pr
 			goto err;
 		}
 
+		if (event_has_listener(output_pcap_flow_evt_file_reg)) {
+			cpriv->evt = event_alloc(output_pcap_flow_evt_file_reg);
+			if (!cpriv->evt)
+				goto err;
+
+			struct data *evt_data = event_get_data(cpriv->evt);
+			PTYPE_STRING_SETVAL(evt_data[output_pcap_flow_file_output].value, priv->output_name);
+			data_set(evt_data[output_pcap_flow_file_output]);
+
+			PTYPE_STRING_SETVAL(evt_data[output_pcap_flow_file_filename].value, cpriv->filename);
+			data_set(evt_data[output_pcap_flow_file_filename]);
+
+			// Add all the packet info
+			int i;
+			for (i = CORE_PROTO_STACK_START; i < CORE_PROTO_STACK_MAX && s[i].proto; i++) {
+				struct proto_reg_info *info = proto_get_info(s[i].proto);
+				int j;
+				for (j = 0; info->pkt_fields[j].name; j++) {
+					char *key = malloc(strlen(info->name) + strlen(info->pkt_fields[j].name) + 2);
+					if (!key) {
+						pom_oom(strlen(info->name) + strlen(info->pkt_fields[j].name) + 2);
+						event_cleanup(cpriv->evt);
+						cpriv->evt = NULL;
+						goto err;
+					}
+					strcpy(key, info->name);
+					strcat(key, ".");
+					strcat(key, info->pkt_fields[j].name);
+
+					struct ptype *value = ptype_alloc_from(s[i].pkt_info->fields_value[j]);
+					if (!value) {
+						free(key);
+						event_cleanup(cpriv->evt);
+						cpriv->evt = NULL;
+						goto err;
+					}
+
+					if (data_item_add_ptype(evt_data, output_pcap_flow_file_info, key, value) != POM_OK) {
+						free(key);
+						ptype_cleanup(value);
+						event_cleanup(cpriv->evt);
+						cpriv->evt = NULL;
+						goto err;
+					}
+				}
+			}
+			event_process_begin(cpriv->evt, s, stack_index, p->ts);
+		}
+
 		if (conntrack_add_priv(ce, priv, cpriv, output_pcap_flow_ce_cleanup) != POM_OK)
 			goto err;
 
@@ -511,6 +612,13 @@ static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_pr
 
 	registry_perf_inc(priv->perf_pkts_out, 1);
 	registry_perf_inc(priv->perf_bytes_out, phdr.caplen);
+
+	if (cpriv->evt) {
+		struct data *evt_data = event_get_data(cpriv->evt);
+		PTYPE_UINT64_INC(evt_data[output_pcap_flow_file_bytes].value, phdr.caplen);
+
+		PTYPE_UINT64_INC(evt_data[output_pcap_flow_file_packets].value, 1);
+	}
 
 	// pcap is not multithread
 	pom_mutex_lock(&cpriv->lock);
@@ -563,6 +671,13 @@ static int output_pcap_flow_ce_cleanup(void *obj, void *priv) {
 
 	if (cpriv->filename)
 		free(cpriv->filename);
+
+	if (cpriv->evt) {
+		struct data *evt_data = event_get_data(cpriv->evt);
+		data_set(evt_data[output_pcap_flow_file_bytes]);
+		data_set(evt_data[output_pcap_flow_file_packets]);
+		event_process_end(cpriv->evt);
+	}
 
 	free(cpriv);
 
