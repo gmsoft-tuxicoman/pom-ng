@@ -149,23 +149,23 @@ static int output_pcap_file_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("snaplen", "1550", priv->p_snaplen, "Snaplen", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("link_type", "ethernet", priv->p_link_type, "Link type to use for the pcap file", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("unbuffered", "no", priv->p_unbuffered, "Write packets directly without using a buffer (slower)", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	p = registry_new_param("filter", "", priv->p_filter, "Filter", REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING);
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	registry_param_set_callbacks(p, priv, output_pcap_filter_parse, output_pcap_filter_update);
@@ -411,23 +411,23 @@ static int output_pcap_flow_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("flow_proto", "tcp", priv->p_flow_proto, "Protocol to use for flows", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("snaplen", "1550", priv->p_snaplen, "Snaplen", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("link_type", "ethernet", priv->p_link_type, "Link type to use for the pcap files", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("unbuffered", "no", priv->p_unbuffered, "Write packets directly without using a buffer (slower)", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("prefix", "/tmp/${ipv4.src}.${tcp.sport}-${ipv4.dst}.${tcp.dport}-", priv->p_prefix, "File name prefix", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;

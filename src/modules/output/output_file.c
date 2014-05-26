@@ -118,11 +118,11 @@ int output_file_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt, "Listen to all events that generate payloads", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
 	return POM_OK;

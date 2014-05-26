@@ -79,11 +79,11 @@ int output_log_txt_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("prefix", "/tmp/", priv->p_prefix, "Log files prefix", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("template", "", priv->p_template, "Log template to use", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;

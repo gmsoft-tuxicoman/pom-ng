@@ -93,11 +93,11 @@ static int output_inject_init(struct output *o) {
 	}
 
 	struct registry_param *p = registry_new_param("interface", dev, priv->p_interface, "Output interface", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
-	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	p = registry_new_param("filter", "", priv->p_filter, "Filter", REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING);
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	registry_param_set_callbacks(p, priv, output_inject_filter_parse, output_inject_filter_update);
