@@ -69,6 +69,13 @@ int output_register(struct output_reg_info *reg_info) {
 
 	pomlog(POMLOG_DEBUG "Registering output %s", reg_info->name);
 
+	if (reg_info->register_func) {
+		if (reg_info->register_func() != POM_OK) {
+			pomlog(POMLOG_ERR "Error while calling the register function of input %s", reg_info->name);
+			return POM_ERR;
+		}
+	}
+
 	pom_mutex_lock(&output_lock);
 	struct output_reg *output = malloc(sizeof(struct output_reg));
 	if (!output) {
@@ -78,6 +85,7 @@ int output_register(struct output_reg_info *reg_info) {
 	}
 	memset(output, 0, sizeof(struct output_reg));
 	output->reg_info = reg_info;
+
 
 	if (registry_add_instance_type(output_registry_class, reg_info->name, reg_info->description) != POM_OK) {
 		pom_mutex_unlock(&output_lock);
@@ -276,6 +284,10 @@ int output_unregister(char *name) {
 	if (!tmp) {
 		pom_mutex_unlock(&output_lock);
 		return POM_OK;
+	}
+
+	if (tmp->reg_info->unregister_func && tmp->reg_info->unregister_func() != POM_OK) {
+		pomlog(POMLOG_WARN "Error while running the unregister function of output %s", tmp->reg_info->name);
 	}
 
 	registry_remove_instance_type(output_registry_class, name);

@@ -32,10 +32,12 @@ struct output_reg_info {
 	char *description;
 	struct mod_reg *mod;
 
+	int (*register_func) ();
 	int (*init) (struct output *o);
 	int (*open) (void *output_priv);
 	int (*close) (void *output_priv);
 	int (*cleanup) (void *output_priv);
+	int (*unregister_func) ();
 
 };
 
