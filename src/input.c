@@ -446,3 +446,22 @@ void *input_process_thread(void *param) {
 	return NULL;
 
 }
+
+
+int input_add_param(struct input *i, struct registry_param *p) {
+
+	if (!(p->flags & (REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING | REGISTRY_PARAM_FLAG_IMMUTABLE)))
+		registry_param_set_callbacks(p, i, input_param_locked_while_running, NULL);
+
+	return registry_instance_add_param(i->reg_instance, p);
+}
+
+int input_param_locked_while_running(void *input, char *param) {
+
+	struct input *i = input;
+
+	pom_mutex_lock(&i->lock);
+	int running = i->running;
+	pom_mutex_unlock(&i->lock);
+	return (running ? POM_ERR : POM_OK);
+}

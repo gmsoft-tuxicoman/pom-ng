@@ -117,4 +117,5 @@ int input_unregister(char *name);
 
 int input_stop(struct input *i);
 
+int input_add_param(struct input *i, struct registry_param *p);
 #endif

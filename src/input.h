@@ -54,4 +54,6 @@ int input_stop_all();
 
 void *input_process_thread(void *param);
 
+int input_param_locked_while_running(void *input, char *param);
+
 #endif
