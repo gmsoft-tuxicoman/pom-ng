@@ -46,7 +46,6 @@ struct input {
 
 	void *priv;
 
-	pthread_mutex_t lock;
 	pthread_t thread;
 
 	struct input *prev, *next;

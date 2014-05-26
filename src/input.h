@@ -28,9 +28,8 @@
 
 #define INPUT_REGISTRY "input"
 
-#define INPUT_RUN_STOPPED	0x0
 #define INPUT_RUN_RUNNING	0x1
-#define INPUT_RUN_STOPPING	0x2
+#define INPUT_RUN_BUSY		0x2 // Either it's starting or it's stopping
 
 struct input_reg {
 

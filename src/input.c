@@ -152,12 +152,6 @@ int input_instance_add(char *type, char *name) {
 	}
 	memset(res, 0, sizeof(struct input));
 
-	if (pthread_mutex_init(&res->lock, NULL)) {
-		pomlog(POMLOG_ERR "Error while initializing the input mutex : %s", pom_strerror(errno));
-		free(res);
-		return POM_ERR;
-	}
-
 	res->reg_instance = registry_add_instance(input_registry_class, name);
 	if (!res->reg_instance)
 		goto err;
@@ -247,9 +241,7 @@ int input_instance_remove(struct registry_instance *ri) {
 
 	struct input *i = ri->priv;
 	
-	pom_mutex_lock(&i->lock);
-	int running = i->running;
-	pom_mutex_unlock(&i->lock);
+	int running = i->running & INPUT_RUN_RUNNING;
 	if (running && registry_set_param(i->reg_instance, "running", "0") != POM_OK) {
 		return POM_ERR;
 	}
@@ -260,8 +252,6 @@ int input_instance_remove(struct registry_instance *ri) {
 			return POM_ERR;
 		}
 	}
-
-	pthread_mutex_destroy(&i->lock);
 
 	if (i->name)
 		free(i->name);
@@ -285,68 +275,60 @@ int input_instance_start_stop_handler(void *priv, struct ptype *run) {
 
 	char *new_state = PTYPE_BOOL_GETVAL(run);
 
-	pom_mutex_lock(&i->lock);
-	char cur_state = (i->running == INPUT_RUN_STOPPED ? 0 : 1);
+	if (i->running & INPUT_RUN_BUSY) {
+		pomlog(POMLOG_INFO "Input %s is busy starting/stopping and cannot be changed yet.", i->name);
+		return POM_ERR;
+	}
+
+	char cur_state = i->running & INPUT_RUN_RUNNING;
 
 	if (cur_state == *new_state) {
-		pom_mutex_unlock(&i->lock);
 		pomlog(POMLOG_ERR "Error, input is already %s", (cur_state ? "running" : "stopped"));
 		return POM_ERR;
 	}
 
+	__sync_fetch_and_or(&i->running, INPUT_RUN_BUSY);
 	if (*new_state) {
 
 		struct input *tmp;
 		for (tmp = input_head; tmp; tmp = tmp->next) {
 			if (tmp != i) {
-				pom_mutex_lock(&tmp->lock);
 			
-				if (tmp->running) {
+				if (tmp->running & INPUT_RUN_RUNNING) {
 
 					// Don't start any other input if a non-live input is running
 					if (!(tmp->reg->info->flags & INPUT_REG_FLAG_LIVE)) {
 						pomlog(POMLOG_ERR "When using non-live input, only one input can be started at once");
-						pom_mutex_unlock(&tmp->lock);
-						pom_mutex_unlock(&i->lock);
-						return POM_ERR;
+						goto err;
 					}
 
 					// Don't start a non live input if other inputs are running
 					if (!(i->reg->info->flags & INPUT_REG_FLAG_LIVE)) {
 						pomlog(POMLOG_ERR "Non-live input cannot be started while live inputs are running");
-						pom_mutex_unlock(&tmp->lock);
-						pom_mutex_unlock(&i->lock);
-						return POM_ERR;
-
+						goto err;
 					}
-
 				}
-				pom_mutex_unlock(&tmp->lock);
 			}
 		}
 
 		if (i->reg->info->open && i->reg->info->open(i) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while starting input %s", i->name);
-			pom_mutex_unlock(&i->lock);
-			return POM_ERR;
+			goto err;
 		}
 
-		i->running = INPUT_RUN_RUNNING;
-		pom_mutex_unlock(&i->lock);
 		if (pthread_create(&i->thread, NULL, input_process_thread, (void*) i)) {
-			pom_mutex_unlock(&i->lock);
 			pomlog(POMLOG_ERR "Unable to start a new thread for input %s : %s", i->name, pom_strerror(errno));
-			return POM_ERR;
+			goto err;
 		}
 
-		input_cur_running++;
-
-		if (input_cur_running == 1)
+		if (__sync_add_and_fetch(&input_cur_running, 1))
 			core_set_state(core_state_running);
+
+		__sync_fetch_and_or(&i->running, INPUT_RUN_RUNNING);
 		
 	} else {
-		i->running = INPUT_RUN_STOPPING;
-		pom_mutex_unlock(&i->lock);
+
+		__sync_fetch_and_and(&i->running, ~INPUT_RUN_RUNNING);
 
 		if (i->reg->info->interrupt && i->reg->info->interrupt(i) == POM_ERR) {
 			pomlog(POMLOG_WARN "Warning : error while interrupting the read process of the input");
@@ -360,14 +342,17 @@ int input_instance_start_stop_handler(void *priv, struct ptype *run) {
 				pomlog(POMLOG_WARN "Error while detaching the input thread : %s", pom_strerror(errno));
 		}
 
-		input_cur_running--;
-
-		if (!input_cur_running)
+		if (!__sync_sub_and_fetch(&input_cur_running, 1))
 			core_set_state(core_state_finishing);
 	}
 
+	__sync_fetch_and_and(&i->running, ~INPUT_RUN_BUSY);
 
 	return POM_OK;
+
+err:
+	__sync_fetch_and_and(&i->running, ~INPUT_RUN_BUSY);
+	return POM_ERR;
 
 }
 
@@ -376,7 +361,7 @@ int input_stop(struct input *i) {
 	// This is called by the inputs to terminate cleanly
 	// The input is already locked
 	
-	if (i->running == INPUT_RUN_RUNNING)
+	if (i->running & INPUT_RUN_RUNNING)
 		return registry_set_param(i->reg_instance, "running", "no");
 
 	return POM_OK;
@@ -387,25 +372,10 @@ int input_stop_all() {
 	registry_lock();
 	struct input *tmp;
 	for (tmp = input_head; tmp ; tmp = tmp->next) {
-		pom_mutex_lock(&tmp->lock);
-		if (tmp->running == INPUT_RUN_RUNNING) {
-			tmp->running = INPUT_RUN_STOPPING;
-			pom_mutex_unlock(&tmp->lock);
-
-			if (tmp->reg->info->interrupt && tmp->reg->info->interrupt(tmp) == POM_ERR) {
-				pomlog(POMLOG_WARN "Warning : error while interrupting the read process of the input");
-			}
-
-			if (pthread_join(tmp->thread, NULL))
-				pomlog(POMLOG_WARN "Error while joining the input thread : %s", pom_strerror(errno));
-
-		} else {
-			pom_mutex_unlock(&tmp->lock);
-		}
+		registry_set_param(tmp->reg_instance, "running", "no");
 	}
 	registry_unlock();
 
-	core_set_state(core_state_finishing);
 	return POM_OK;
 }
 
@@ -414,22 +384,18 @@ void *input_process_thread(void *param) {
 
 	struct input *i = param;
 
-	pom_mutex_lock(&i->lock);
-
 	pomlog("Input %s started", i->name);
 	registry_perf_timeticks_restart(i->perf_runtime);
 
-	while (i->running == INPUT_RUN_RUNNING) {
+	while (i->running & INPUT_RUN_RUNNING) {
 	
-		pom_mutex_unlock(&i->lock);
 		if (i->reg->info->read(i) != POM_OK) {
-			if (i->running == INPUT_RUN_RUNNING) {
+			if (i->running & INPUT_RUN_RUNNING) {
 				// This will update the value of i->running
 				pomlog(POMLOG_ERR "Error while reading from input %s", i->name);
 				registry_set_param(i->reg_instance, "running" , "0");
 			}
 		}
-		pom_mutex_lock(&i->lock);
 
 	}
 
@@ -437,10 +403,9 @@ void *input_process_thread(void *param) {
 		pomlog(POMLOG_WARN "Error while stopping input %s", i->name);
 	}
 
+	__sync_fetch_and_and(&i->running, ~INPUT_RUN_RUNNING);
 
-	i->running = INPUT_RUN_STOPPED;
 	registry_perf_timeticks_stop(i->perf_runtime);
-	pom_mutex_unlock(&i->lock);
 	pomlog("Input %s stopped", i->name);
 
 	return NULL;
@@ -459,9 +424,5 @@ int input_add_param(struct input *i, struct registry_param *p) {
 int input_param_locked_while_running(void *input, char *param) {
 
 	struct input *i = input;
-
-	pom_mutex_lock(&i->lock);
-	int running = i->running;
-	pom_mutex_unlock(&i->lock);
-	return (running ? POM_ERR : POM_OK);
+	return (i->running ? POM_ERR : POM_OK);
 }
