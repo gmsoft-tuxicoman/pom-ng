@@ -54,6 +54,10 @@ int output_cleanup() {
 		struct output_reg *tmp = output_reg_head;
 		output_reg_head = tmp->next;
 
+		if (tmp->reg_info->unregister_func && tmp->reg_info->unregister_func() != POM_OK) {
+			pomlog(POMLOG_WARN "Error while running the unregister function of output %s", tmp->reg_info->name);
+		}
+
 		mod_refcount_dec(tmp->reg_info->mod);
 
 		free(tmp);
