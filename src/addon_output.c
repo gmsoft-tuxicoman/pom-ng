@@ -761,6 +761,7 @@ int addon_output_init(struct output *o) {
 
 err:
 	lua_close(L);
+	p->L = NULL;
 	return POM_ERR;
 }
 
@@ -768,7 +769,8 @@ int addon_output_cleanup(void *output_priv) {
 	
 	struct addon_instance_priv *p = output_priv;
 
-	lua_close(p->L);
+	if (p->L)
+		lua_close(p->L);
 
 	return POM_OK;
 }
