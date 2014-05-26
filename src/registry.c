@@ -484,7 +484,10 @@ int registry_cleanup_param(struct registry_param *p) {
 
 
 int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_callback) (void *priv, char *value), int (*post_callback) (void *priv, struct ptype* value)) {
-	
+
+	if (p->set_pre_callback || p->set_post_callback)
+		pomlog(POMLOG_WARN "Registry param %u already had a callback");
+
 	p->callback_priv = priv;
 	p->set_pre_callback = pre_callback;
 	p->set_post_callback = post_callback;
