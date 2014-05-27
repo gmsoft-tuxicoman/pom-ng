@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -52,7 +52,7 @@ int proto_mpeg_ts_init(struct proto *proto, struct registry_instance *i) {
 		goto err;
 
 	p = registry_new_param("stream_timeout", "60", priv->param_mpeg_ts_stream_timeout, "Timeout for each MPEG PID", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = NULL;

@@ -128,4 +128,6 @@ struct proto_reg_info *proto_get_info(struct proto *p);
 
 int proto_number_register(char *class, unsigned int proto_num, struct proto *p);
 struct proto *proto_get_by_number(struct proto *p, unsigned int num);
+
+int proto_add_param(struct proto *proto, struct registry_param *p);
 #endif

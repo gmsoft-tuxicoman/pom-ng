@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -140,36 +140,36 @@ static int proto_tcp_init(struct proto *proto, struct registry_instance *i) {
 	}
 
 	p = registry_new_param("syn_recv_timer", "60", priv->param_tcp_syn_recv_t, "SYN received timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("syn_sent_timer", "180", priv->param_tcp_syn_sent_t, "SYN sent timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("established_timer", "1800", priv->param_tcp_established_t, "Established timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("half_closed_timer", "120", priv->param_tcp_half_closed_t, "Half-closed timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("closed_timer", "30", priv->param_tcp_closed_t, "Closed timer", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 /*	FIXME
 	p = registry_new_param("enable_reuse_handling", "no", priv->param_tcp_reuse_handling, "Enable connection reuse handling (SO_REUSEADDR)", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 */
 	p = registry_new_param("conn_buffer", "8388608", priv->param_tcp_conn_buffer, "Maximum buffer per connection", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("stream_timeout", "60", priv->param_tcp_stream_timeout, "Stream timeout (for missing packets)", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = NULL;
