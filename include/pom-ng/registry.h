@@ -55,8 +55,4 @@ void registry_perf_timeticks_stop(struct registry_perf *p);
 void registry_perf_timeticks_restart(struct registry_perf *p);
 uint64_t registry_perf_getval(struct registry_perf *p);
 void registry_perf_reset(struct registry_perf *p);
-
-
-// TODO remove
-int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
 #endif

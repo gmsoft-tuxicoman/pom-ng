@@ -133,6 +133,7 @@ struct registry_instance *registry_add_instance(struct registry_class *c, char *
 int registry_remove_instance(struct registry_instance *i);
 
 int registry_class_add_param(struct registry_class *c, struct registry_param *p);
+int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
 int registry_set_param(struct registry_instance *i, char *param, char* value);
 int registry_set_param_value(struct registry_param *p, char *value);
 
