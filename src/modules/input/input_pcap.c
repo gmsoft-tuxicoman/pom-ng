@@ -124,7 +124,7 @@ static int input_pcap_common_init(struct input *i) {
 		goto err;
 		
 	p = registry_new_param("bpf_filter", "", priv->p_filter, "BPF filter to use", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	i->priv = priv;
@@ -287,15 +287,15 @@ static int input_pcap_interface_init(struct input *i) {
 	}
 
 	p = registry_new_param("interface", dev, priv->tpriv.iface.p_interface, "Interface to capture packets from", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("promisc", "no", priv->tpriv.iface.p_promisc, "Promiscious mode", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("buff_size", "16777216", priv->tpriv.iface.p_buff_size, "PCAP ring buffer size", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	priv->type = input_pcap_type_interface;
@@ -377,7 +377,7 @@ static int input_pcap_file_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("filename", "dump.cap", priv->tpriv.file.p_file, "File in PCAP format", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	priv->type = input_pcap_type_file;
@@ -431,11 +431,11 @@ static int input_pcap_dir_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("directory", "/tmp", priv->tpriv.dir.p_dir, "Directory containing pcap files", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("match", "\\.p\\?cap[0-9]*$", priv->tpriv.dir.p_match, "Match files with the specific pattern (regex)", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	priv->type = input_pcap_type_dir;
