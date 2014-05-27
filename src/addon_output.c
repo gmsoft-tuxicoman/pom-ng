@@ -734,9 +734,8 @@ int addon_output_init(struct output *o) {
 			goto err;
 		}
 		
-		struct registry_instance *inst = output_get_reg_instance(o);
 		struct registry_param *reg_param = registry_new_param((char*)name, (char*)defval, param->value, (char*)descr, 0);
-		if (registry_instance_add_param(inst, reg_param) != POM_OK) {
+		if (output_add_param(o, reg_param) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while adding parameter to the output instance");
 			if (p)
 				registry_cleanup_param(reg_param);
