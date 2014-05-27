@@ -173,7 +173,7 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 	priv->filter_null_pid = ptype_alloc("bool");
 
 	p = registry_new_param("filter_null_pid", "yes", priv->filter_null_pid, "Filter out the null MPEG PID (0x1FFF) as it usually contains no usefull data", REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING);
-	if (input_add_param(i->reg_instance, p) != POM_OK) {
+	if (input_add_param(i, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}
@@ -205,19 +205,19 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 		goto err;
 
 	p = registry_new_param("adapter", "0", priv->adapter, "Adapter ID : /dev/dvb/adapterX", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("frontend", "0", priv->frontend, "Frontend ID : /dev/dvb/adapterX/frontendY", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("frequency", "0", priv->freq, "Frequency in Hz", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("tuning_timeout", "3", priv->tuning_timeout, "Timeout while trying to tune in seconds", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -260,7 +260,7 @@ static int input_dvb_device_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("device", "/dev/dvb/adapterX/dvrY", priv->frontend, "Device to read packets from", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -290,11 +290,11 @@ static int input_dvb_c_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("modulation", "QAM256", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -327,15 +327,15 @@ static int input_dvb_s_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("polarity", "h" , priv->tpriv.s.polarity, "Polarisation, either 'h' or 'v'", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("lnb_type", "universal", priv->tpriv.s.lnb_type, "LNB type", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
@@ -370,7 +370,7 @@ static int input_dvb_atsc_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("modulation", "QAM256", priv->tpriv.a.modulation, "Modulation either QAM64 or QAM256", 0);
-	if (input_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	return POM_OK;

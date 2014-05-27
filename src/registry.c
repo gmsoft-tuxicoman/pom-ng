@@ -483,7 +483,7 @@ int registry_cleanup_param(struct registry_param *p) {
 }
 
 
-int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_callback) (void *priv, char *value), int (*post_callback) (void *priv, struct ptype* value)) {
+int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_callback) (void *priv, struct registry_param *p, char *value), int (*post_callback) (void *priv, struct registry_param *p, struct ptype *value)) {
 
 	if (p->set_pre_callback || p->set_post_callback)
 		pomlog(POMLOG_WARN "Registry param %u already had a callback");
@@ -634,7 +634,7 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE)
 		return POM_ERR;
 	
-	if (p->set_pre_callback && p->set_pre_callback(p->callback_priv, value) != POM_OK) {
+	if (p->set_pre_callback && p->set_pre_callback(p->callback_priv, p, value) != POM_OK) {
 		return POM_ERR;
 	}
 
@@ -648,7 +648,7 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 		return POM_ERR;
 	}
 
-	if (p->set_post_callback && p->set_post_callback(p->callback_priv, p->value) != POM_OK) {
+	if (p->set_post_callback && p->set_post_callback(p->callback_priv, p, p->value) != POM_OK) {
 		// Revert the old value
 		ptype_copy(p->value, old_value);
 		core_resume_processing();

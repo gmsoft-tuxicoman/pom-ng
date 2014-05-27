@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -48,11 +48,11 @@ int input_cleanup();
 
 int input_instance_add(char *type, char *name);
 int input_instance_remove(struct registry_instance *ri);
-int input_instance_start_stop_handler(void *priv, struct ptype *run);
+int input_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run);
 int input_stop_all();
 
 void *input_process_thread(void *param);
 
-int input_param_locked_while_running(void *input, char *param);
+int input_param_locked_while_running(void *input, struct registry_param *p, char *param);
 
 #endif

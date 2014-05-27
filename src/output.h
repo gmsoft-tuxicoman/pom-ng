@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -54,6 +54,6 @@ int output_init();
 int output_cleanup();
 int output_instance_add(char *type, char *name);
 int output_instance_remove(struct registry_instance *ri);
-int output_instance_start_stop_handler(void *priv, struct ptype *run);
-int output_param_locked_while_running(void *output, char *param);
+int output_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run);
+int output_param_locked_while_running(void *output, struct registry_param *p, char *param);
 #endif

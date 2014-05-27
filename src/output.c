@@ -239,7 +239,7 @@ int output_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
-int output_instance_start_stop_handler(void *priv, struct ptype *run) {
+int output_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run) {
 	
 	struct output *o = priv;
 
@@ -328,8 +328,12 @@ int output_add_param(struct output *o, struct registry_param *p) {
 	return registry_instance_add_param(o->reg_instance, p);
 }
 
-int output_param_locked_while_running(void *output, char *param) {
+int output_param_locked_while_running(void *output, struct registry_param *p, char *param) {
 
 	struct output *o = output;
-	return (o->running ? POM_ERR : POM_OK);
+	if (o->running) {
+		pomlog("Parameter '%s' cannot be changed while output %s is running", p->name, o->name);
+		return POM_ERR;
+	}
+	return POM_OK;
 }

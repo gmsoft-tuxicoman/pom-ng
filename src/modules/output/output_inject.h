@@ -53,7 +53,7 @@ static int output_inject_cleanup(void *output_priv);
 static int output_inject_open(void *output_priv);
 static int output_inject_close(void *output_priv);
 static int output_inject_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-static int output_inject_filter_parse(void *priv, char *value);
-static int output_inject_filter_update(void *priv, struct ptype *value);
+static int output_inject_filter_parse(void *priv, struct registry_param *param, char *value);
+static int output_inject_filter_update(void *priv, struct registry_param *param, struct ptype *value);
 
 #endif

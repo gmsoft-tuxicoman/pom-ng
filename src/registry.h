@@ -54,8 +54,8 @@ struct registry_param {
 	unsigned int flags;
 
 	void *callback_priv;
-	int (*set_pre_callback) (void *priv, char *value);
-	int (*set_post_callback) (void *priv, struct ptype *value);
+	int (*set_pre_callback) (void *priv, struct registry_param *p, char *value);
+	int (*set_post_callback) (void *priv, struct registry_param *p, struct ptype *value);
 
 	struct registry_param *next, *prev;
 };

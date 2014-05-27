@@ -269,7 +269,7 @@ int input_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
-int input_instance_start_stop_handler(void *priv, struct ptype *run) {
+int input_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run) {
 
 	struct input *i = priv;
 
@@ -372,7 +372,7 @@ int input_stop_all() {
 	registry_lock();
 	struct input *tmp;
 	for (tmp = input_head; tmp ; tmp = tmp->next) {
-		if (i->running & INPUT_RUN_RUNNING)
+		if (tmp->running & INPUT_RUN_RUNNING)
 			registry_set_param(tmp->reg_instance, "running", "no");
 	}
 	registry_unlock();
@@ -422,8 +422,14 @@ int input_add_param(struct input *i, struct registry_param *p) {
 	return registry_instance_add_param(i->reg_instance, p);
 }
 
-int input_param_locked_while_running(void *input, char *param) {
+int input_param_locked_while_running(void *input, struct registry_param *p, char *param) {
 
 	struct input *i = input;
-	return (i->running ? POM_ERR : POM_OK);
+
+	if (i->running) {
+		pomlog("Parameter '%s' cannot be changed while input %s is running", p->name, i->name);
+		return POM_ERR;
+	}
+
+	return POM_OK;
 }

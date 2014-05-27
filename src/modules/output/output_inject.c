@@ -212,13 +212,13 @@ static int output_inject_process(void *obj, struct packet *p, struct proto_proce
 
 }
 
-static int output_inject_filter_parse(void *priv, char *value) {
+static int output_inject_filter_parse(void *priv, struct registry_param *param, char *value) {
 
 	struct output_inject_priv *p = priv;
 	return filter_packet(value, &p->filter);
 }
 
-static int output_inject_filter_update(void *priv, struct ptype *value) {
+static int output_inject_filter_update(void *priv, struct registry_param *param, struct ptype *value) {
 
 	struct output_inject_priv *p = priv;
 	if (p->listener)

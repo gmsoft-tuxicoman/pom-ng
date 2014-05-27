@@ -41,7 +41,7 @@ enum registry_perf_type {
 
 struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags);
 int registry_cleanup_param(struct registry_param *p);
-int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value));
+int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, struct registry_param *p, char *value), int (*post_check) (void *priv, struct registry_param *p, struct ptype *value));
 int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
 
 int registry_uid_create(struct registry_instance *instance);

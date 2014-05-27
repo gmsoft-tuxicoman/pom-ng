@@ -49,8 +49,8 @@ int output_tap_close(void *output_priv);
 
 int output_tap_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
-static int output_tap_filter_parse(void *priv, char *value);
-static int output_tap_filter_update(void *priv, struct ptype *value);
+static int output_tap_filter_parse(void *priv, struct registry_param *param, char *value);
+static int output_tap_filter_update(void *priv, struct registry_param *param, struct ptype *value);
 
 
 
