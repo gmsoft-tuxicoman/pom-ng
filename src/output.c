@@ -71,7 +71,7 @@ int output_register(struct output_reg_info *reg_info) {
 
 	if (reg_info->register_func) {
 		if (reg_info->register_func() != POM_OK) {
-			pomlog(POMLOG_ERR "Error while calling the register function of input %s", reg_info->name);
+			pomlog(POMLOG_ERR "Error while calling the register function of output %s", reg_info->name);
 			return POM_ERR;
 		}
 	}
