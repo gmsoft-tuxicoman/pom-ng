@@ -638,12 +638,14 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 		return POM_ERR;
 	}
 
-	core_pause_processing();
+	if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+		core_pause_processing();
 
 	struct ptype *old_value = ptype_alloc_from(p->value);
 
 	if (ptype_parse_val(p->value, value) != POM_OK) {
-		core_resume_processing();
+		if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+			core_resume_processing();
 		ptype_cleanup(old_value);
 		return POM_ERR;
 	}
@@ -651,12 +653,14 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 	if (p->set_post_callback && p->set_post_callback(p->callback_priv, p, p->value) != POM_OK) {
 		// Revert the old value
 		ptype_copy(p->value, old_value);
-		core_resume_processing();
+		if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+			core_resume_processing();
 		ptype_cleanup(old_value);
 		return POM_ERR;
 	}
 
-	core_resume_processing();
+	if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+		core_resume_processing();
 
 	ptype_cleanup(old_value);
 	
