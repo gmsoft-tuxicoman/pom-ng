@@ -186,6 +186,28 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 		}
 		free(value);
 
+		int suggestion = p->flags & REGISTRY_PARAM_FLAG_INFO_SUGGESTION;
+		xmlrpc_value *info = NULL;
+		if (p->info_type == registry_param_info_type_min_max) {
+			info = xmlrpc_build_value(envP, "{s:i,s:i,s:b}", "min", p->info.mm.min, "max", p->info.mm.max, "suggestion", suggestion);
+		} else if (p->info_type == registry_param_info_type_value) {
+			xmlrpc_value *values = xmlrpc_array_new(envP);
+			struct registry_param_info_value *v;
+			for (v = p->info.v; v; v = v->next) {
+				xmlrpc_value *value = xmlrpc_string_new(envP, v->value);
+				xmlrpc_array_append_item(envP, values, value);
+				xmlrpc_DECREF(value);
+			}
+
+			info = xmlrpc_build_value(envP, "{s:A,s:b}", "values", values, "suggestion", suggestion);
+			xmlrpc_DECREF(values);
+		}
+
+		if (info) {
+			xmlrpc_struct_set_value(envP, param, "info", info);
+			xmlrpc_DECREF(info);
+		}
+
 		xmlrpc_array_append_item(envP, params, param);
 		xmlrpc_DECREF(param);
 

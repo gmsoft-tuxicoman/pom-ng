@@ -1709,3 +1709,44 @@ uint32_t registry_serial_poll(uint32_t last_serial, struct timespec *timeout) {
 	return serial;
 }
 
+
+int registry_param_info_set_min_max(struct registry_param *p, uint32_t min, uint32_t max) {
+
+	if (p->info_type != registry_param_info_type_none && p->info_type != registry_param_info_type_min_max)
+		return POM_ERR;
+
+
+	p->info_type = registry_param_info_type_min_max;
+	p->info.mm.min = min;
+	p->info.mm.max = max;
+
+	return POM_OK;
+}
+
+int registry_param_info_add_value(struct registry_param *p, char *value) {
+
+
+	if (p->info_type != registry_param_info_type_none && p->info_type != registry_param_info_type_value)
+		return POM_ERR;
+
+	struct registry_param_info_value *v = malloc(sizeof(struct registry_param_info_value));
+	if (!v) {
+		pom_oom(sizeof(struct registry_param_info_value));
+		return POM_ERR;
+	}
+	memset(v, 0, sizeof(struct registry_param_info_value));
+	v->value = strdup(value);
+	if (!v->value) {
+		pom_oom(strlen(value) + 1);
+		free(v);
+		return POM_ERR;
+	}
+
+	v->next = p->info.v;
+	p->info.v = v;
+
+	p->info_type = registry_param_info_type_value;
+
+	return POM_OK;
+
+}

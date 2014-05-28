@@ -46,12 +46,38 @@ struct registry_perf {
 	pthread_mutex_t hook_lock;
 };
 
+enum registry_param_info_type {
+
+	registry_param_info_type_none = 0,
+	registry_param_info_type_min_max,
+	registry_param_info_type_value,
+};
+
+struct registry_param_info_min_max {
+
+	uint32_t min, max;
+};
+
+struct registry_param_info_value {
+	char *value;
+	struct registry_param_info_value *next;
+};
+
+union registry_param_info {
+
+	struct registry_param_info_min_max mm;
+	struct registry_param_info_value *v;
+};
+
 struct registry_param {
 	char *name;
 	char *default_value;
 	struct ptype *value;
 	char *description;
 	unsigned int flags;
+
+	enum registry_param_info_type info_type;
+	union registry_param_info info;
 
 	void *callback_priv;
 	int (*set_pre_callback) (void *priv, struct registry_param *p, char *value);

@@ -25,10 +25,11 @@
 
 #include <pom-ng/ptype.h>
 
-#define REGISTRY_PARAM_FLAG_CLEANUP_VAL			0x1
-#define REGISTRY_PARAM_FLAG_IMMUTABLE			0x2
-#define REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING	0x4
-#define REGISTRY_PARAM_FLAG_PAUSE_PROCESSING		0x8
+#define REGISTRY_PARAM_FLAG_CLEANUP_VAL			0x01
+#define REGISTRY_PARAM_FLAG_IMMUTABLE			0x02
+#define REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING	0x04
+#define REGISTRY_PARAM_FLAG_PAUSE_PROCESSING		0x08
+#define REGISTRY_PARAM_FLAG_INFO_SUGGESTION		0x10
 
 struct registry_instance;
 struct registry_param;
@@ -55,4 +56,7 @@ void registry_perf_timeticks_stop(struct registry_perf *p);
 void registry_perf_timeticks_restart(struct registry_perf *p);
 uint64_t registry_perf_getval(struct registry_perf *p);
 void registry_perf_reset(struct registry_perf *p);
+
+int registry_param_info_set_min_max(struct registry_param *p, uint32_t min, uint32_t max);
+int registry_param_info_add_value(struct registry_param *p, char *value);
 #endif
