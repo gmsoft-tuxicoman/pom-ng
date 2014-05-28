@@ -120,37 +120,37 @@ static int datastore_postgres_init(struct datastore *d) {
 	}
 
 	p = registry_new_param("dbname", "pom-ng", priv->p_dbname, "Database name", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}
 
 	p = registry_new_param("host", "localhost", priv->p_host, "Server hostname", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}
 
 	p = registry_new_param("port", "", priv->p_port, "Server port", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}
 
 	p = registry_new_param("user", "", priv->p_user, "Username", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}
 
 	p = registry_new_param("password", "", priv->p_password, "Password", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}
 
 	p = registry_new_param("async_commit", "yes", priv->p_async_commit, "Perform asynchronous commit", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}

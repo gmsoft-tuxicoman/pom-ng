@@ -110,7 +110,7 @@ static int datastore_sqlite_init(struct datastore *d) {
 		goto err;
 
 	p = registry_new_param("dbfile", "pom-ng.db", priv->p_dbfile, "Path to the database", 0);
-	if (registry_instance_add_param(d->reg_instance, p) != POM_OK) {
+	if (datastore_add_param(d, p) != POM_OK) {
 		registry_cleanup_param(p);
 		goto err;
 	}

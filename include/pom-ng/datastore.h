@@ -200,4 +200,6 @@ int datastore_dataset_query_unset_condition(struct dataset_query *dsq);
 int datastore_dataset_query_set_order(struct dataset_query *dsq, short field_id, int direction);
 int datastore_dataset_query_unset_order(struct dataset_query *dsq);
 
+int datastore_add_param(struct datastore *d, struct registry_param *p);
+
 #endif

@@ -570,8 +570,6 @@ int datastore_close(struct datastore *d) {
 		dset = dset->next;
 	}
 
-
-
 	dset = d->datasets;
 
 	// Cleanup all the datasets
@@ -1262,3 +1260,31 @@ int datastore_dataset_query_unset_order(struct dataset_query *dsq) {
 	return POM_OK;
 }
 
+
+int datastore_add_param(struct datastore *d, struct registry_param *p) {
+
+	if (!(p->flags & (REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING | REGISTRY_PARAM_FLAG_IMMUTABLE)))
+		registry_param_set_callbacks(p, d, datastore_param_locked_while_connected, NULL);
+
+	 return registry_instance_add_param(d->reg_instance, p);
+}
+
+int datastore_param_locked_while_connected(void *datastore, struct registry_param *p, char *param) {
+
+	struct datastore *d = datastore;
+
+	int res = POM_ERR;
+	pom_mutex_lock(&d->lock);
+	if (!d->cons) {
+		if (datastore_close(d) != POM_OK) {
+			pom_mutex_unlock(&d->lock);
+			return POM_ERR;
+		}
+		res = POM_OK;
+	} else {
+		pomlog("Cannot change parameter '%s' of datastore %s while it's in use", d->name, p->name);
+	}
+	pom_mutex_unlock(&d->lock);
+
+	return res;
+}

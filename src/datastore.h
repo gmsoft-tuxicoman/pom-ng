@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -56,6 +56,6 @@ struct dataset *datastore_dataset_alloc(struct datastore *d, struct datavalue_te
 struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct datavalue_template *dt, struct datastore_connection *dc);
 int datastore_dataset_cleanup(struct dataset *ds);
 int datastore_dataset_create(struct dataset *ds, struct datastore_connection *dc);
-
+int datastore_param_locked_while_connected(void *datastore, struct registry_param *p, char *param);
 
 #endif
