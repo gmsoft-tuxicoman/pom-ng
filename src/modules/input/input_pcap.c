@@ -280,13 +280,28 @@ static int input_pcap_interface_init(struct input *i) {
 	registry_perf_set_update_hook(priv->tpriv.iface.perf_dropped, input_pcap_interface_perf_dropped, priv);
 
 	char err[PCAP_ERRBUF_SIZE] = { 0 };
-	char *dev = pcap_lookupdev(err);
-	if (!dev) {
+	char *dev = "<none>";
+	pcap_if_t *alldevsp = NULL;
+	if (pcap_findalldevs(&alldevsp, err)) {
 		pomlog(POMLOG_WARN "Warning, could not find a suitable interface to sniff packets from : %s", err);
-		dev = "none";
+		alldevsp = NULL;
+	} else {
+		dev = alldevsp->name;
 	}
 
 	p = registry_new_param("interface", dev, priv->tpriv.iface.p_interface, "Interface to capture packets from", 0);
+
+	if (alldevsp) {
+		pcap_if_t *tmp;
+		for (tmp = alldevsp; tmp; tmp = tmp->next) {
+			if (registry_param_info_add_value(p, tmp->name) != POM_OK) {
+				pcap_freealldevs(alldevsp);
+				goto err;
+			}
+		}
+		pcap_freealldevs(alldevsp);
+	}
+
 	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
