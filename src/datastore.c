@@ -150,28 +150,11 @@ int datastore_instance_add(char *type, char *name) {
 	}
 	memset(res, 0, sizeof(struct datastore));
 
-	// Create a new recursive lock
-	pthread_mutexattr_t attr;
-	if (pthread_mutexattr_init(&attr)) {
-		pomlog(POMLOG_ERR "Error while initializing the conntrack mutex attribute");
+
+	if (pom_mutex_init_type(&res->lock, PTHREAD_MUTEX_RECURSIVE) != POM_OK) {
 		free(res);
 		return POM_ERR;
 	}
-
-	if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE)) {
-		pomlog(POMLOG_ERR "Error while setting conntrack mutex attribute to recursive");
-		pthread_mutexattr_destroy(&attr);
-		free(res);
-		return POM_ERR;
-	}
-
-	if (pthread_mutex_init(&res->lock, &attr)) {
-		pomlog(POMLOG_ERR "Error while initializing the datastore lock : %s", pom_strerror(errno));
-		free(res);
-		return POM_ERR;
-	}
-
-	pthread_mutexattr_destroy(&attr);
 
 	res->reg = reg;
 	res->name = strdup(name);
