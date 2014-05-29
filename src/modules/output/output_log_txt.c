@@ -83,11 +83,41 @@ int output_log_txt_init(struct output *o) {
 		goto err;
 	
 	p = registry_new_param("template", "", priv->p_template, "Log template to use", 0);
+
+	struct resource *r = NULL;
+	struct resource_dataset *r_templates = NULL;
+	r = resource_open(OUTPUT_LOG_TXT_RESOURCE, output_log_txt_templates);
+
+	if (!r)
+		goto err;
+
+	r_templates = resource_dataset_open(r, "templates");
+	if (!r_templates)
+		goto err;
+
+	while (1) {
+		struct datavalue *v;
+		int res = resource_dataset_read(r_templates, &v);
+		if (res < 0)
+			goto err;
+		if (res == DATASET_QUERY_OK)
+			break;
+		char *name = PTYPE_STRING_GETVAL(v[0].value);
+		if (registry_param_info_add_value(p, name) != POM_OK)
+			goto err;
+	}
+
+	resource_dataset_close(r_templates);
+	resource_close(r);
+
+	r_templates = NULL;
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
 err:
+	if (p)
+		registry_cleanup_param(p);
 
 	output_log_txt_cleanup(priv);
 	return POM_ERR;
