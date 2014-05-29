@@ -100,6 +100,11 @@ enum {
 	output_pcap_flow_file_info,
 };
 
+struct output_pcap_link_type {
+	char *name;
+	int dlt;
+};
+
 struct mod_reg_info *output_pcap_reg_info();
 static int output_pcap_mod_register(struct mod_reg *mod);
 static int output_pcap_mod_unregister();

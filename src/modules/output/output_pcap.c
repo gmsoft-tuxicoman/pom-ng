@@ -29,7 +29,24 @@
 #include <pom-ng/ptype_uint64.h>
 
 
-struct event_reg *output_pcap_flow_evt_file_reg = NULL;
+static struct event_reg *output_pcap_flow_evt_file_reg = NULL;
+
+static struct output_pcap_link_type output_pcap_link_types[] = {
+	{ "ethernet", DLT_EN10MB },
+	{ "ipv4", DLT_RAW },
+	{ "80211", DLT_IEEE802_11 },
+	{ "radiotap", DLT_IEEE802_11_RADIO },
+	{ "ppi", DLT_PPI },
+#ifdef DLT_DOCSIS
+	{ "docsis", DLT_DOCSIS },
+#endif
+#ifdef DLT_MPEG_2_TS
+	{ "mpeg_ts", DLT_MPEG_2_TS },
+#endif
+	{ NULL, 0 }
+
+};
+
 
 struct mod_reg_info *output_pcap_reg_info() {
 
@@ -88,26 +105,12 @@ static int output_pcap_mod_unregister() {
 static int output_pcap_linktype_to_dlt(char *link_type) {
 
 
-	if (!strcasecmp("ethernet", link_type)) {
-		return DLT_EN10MB;
-	} else if (!strcasecmp("ipv4", link_type)) {
-		return DLT_RAW;
-#ifdef DLT_DOCSIS
-	} else if (!strcasecmp("docsis", link_type)) {
-		return DLT_DOCSIS;
-#endif
-	} else if (!strcasecmp("80211", link_type)) {
-		return DLT_IEEE802_11;
-	} else if (!strcasecmp("radiotap", link_type)){
-		return DLT_IEEE802_11_RADIO;
-#ifdef DLT_MPEG_2_TS
-	} else if (!strcasecmp("mpeg_ts", link_type)) {
-		return DLT_MPEG_2_TS;
-#endif
-	} else if (!strcasecmp("ppi", link_type)) {
-		return DLT_PPI;
-	}
+	int i;
+	for (i = 0; output_pcap_link_types[i].name; i++) {
 
+		if (!strcasecmp("ethernet", output_pcap_link_types[i].name))
+			return output_pcap_link_types[i].dlt;
+	}
 
 	pomlog(POMLOG_ERR "Protocol %s is not supported", link_type);
 	return POM_ERR;
@@ -157,6 +160,14 @@ static int output_pcap_file_init(struct output *o) {
 		goto err;
 
 	p = registry_new_param("link_type", "ethernet", priv->p_link_type, "Link type to use for the pcap file", 0);
+
+	int i;
+	for (i = 0; output_pcap_link_types[i].name; i++) {
+		if (registry_param_info_add_value(p, output_pcap_link_types[i].name) != POM_OK) {
+			goto err;
+		}
+	}
+
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
@@ -419,6 +430,12 @@ static int output_pcap_flow_init(struct output *o) {
 		goto err;
 
 	p = registry_new_param("link_type", "ethernet", priv->p_link_type, "Link type to use for the pcap files", 0);
+	int i;
+	for (i = 0; output_pcap_link_types[i].name; i++) {
+		if (registry_param_info_add_value(p, output_pcap_link_types[i].name) != POM_OK) {
+			goto err;
+		}
+	}
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
