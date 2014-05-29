@@ -183,15 +183,7 @@ int registry_remove_class(struct registry_class *c) {
 		struct registry_param *p = c->global_params;
 		c->global_params = p->next;
 
-		free(p->name);
-		if (p->default_value)
-			free(p->default_value);
-		free(p->description);
-
-		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
-			ptype_cleanup(p->value);
-
-		free(p);
+		registry_cleanup_param(p);
 	}
 
 	while (c->perfs) {
@@ -350,15 +342,7 @@ int registry_remove_instance(struct registry_instance *i) {
 		struct registry_param *p = i->params;
 		i->params = p->next;
 
-		free(p->name);
-		if (p->default_value)
-			free(p->default_value);
-		free(p->description);
-
-		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
-			ptype_cleanup(p->value);
-
-		free(p);
+		registry_cleanup_param(p);
 	}
 
 	while (i->funcs) {
@@ -487,6 +471,8 @@ int registry_cleanup_param(struct registry_param *p) {
 		}
 
 	}
+	if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
+		ptype_cleanup(p->value);
 
 	free(p);
 	
