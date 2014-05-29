@@ -477,6 +477,17 @@ int registry_cleanup_param(struct registry_param *p) {
 	if (p->description)
 		free(p->description);
 
+	if (p->info_type == registry_param_info_type_value) {
+		while (p->info.v) {
+			struct registry_param_info_value *v = p->info.v;
+			p->info.v = v->next;
+			if (v->value)
+				free(v->value);
+			free(v);
+		}
+
+	}
+
 	free(p);
 	
 	return POM_OK;
