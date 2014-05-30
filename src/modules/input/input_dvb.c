@@ -294,12 +294,18 @@ static int input_dvb_c_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("modulation", "QAM256", priv->tpriv.c.modulation, "Modulation either QAM64 or QAM256", 0);
+	if (registry_param_info_add_value(p, "QAM256") != POM_OK || registry_param_info_add_value(p, "QAM64") != POM_OK)
+		goto err;
+
 	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	return POM_OK;
 
 err:
+
+	if (p)
+		registry_cleanup_param(p);
 
 	if (priv->tpriv.c.modulation)
 		ptype_cleanup(priv->tpriv.c.modulation);
