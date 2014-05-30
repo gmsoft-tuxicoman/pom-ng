@@ -46,7 +46,6 @@ struct input {
 
 	void *priv;
 
-	pthread_mutex_t lock;
 	pthread_t thread;
 
 	struct input *prev, *next;
@@ -117,4 +116,5 @@ int input_unregister(char *name);
 
 int input_stop(struct input *i);
 
+int input_add_param(struct input *i, struct registry_param *p);
 #endif

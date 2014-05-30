@@ -88,11 +88,11 @@ int output_log_xml_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "log.xml", priv->p_filename, "XML log file", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("source", "", priv->p_source, "Define the type of event being logged", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;

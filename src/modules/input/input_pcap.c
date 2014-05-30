@@ -124,7 +124,7 @@ static int input_pcap_common_init(struct input *i) {
 		goto err;
 		
 	p = registry_new_param("bpf_filter", "", priv->p_filter, "BPF filter to use", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	i->priv = priv;
@@ -280,22 +280,37 @@ static int input_pcap_interface_init(struct input *i) {
 	registry_perf_set_update_hook(priv->tpriv.iface.perf_dropped, input_pcap_interface_perf_dropped, priv);
 
 	char err[PCAP_ERRBUF_SIZE] = { 0 };
-	char *dev = pcap_lookupdev(err);
-	if (!dev) {
+	char *dev = "<none>";
+	pcap_if_t *alldevsp = NULL;
+	if (pcap_findalldevs(&alldevsp, err)) {
 		pomlog(POMLOG_WARN "Warning, could not find a suitable interface to sniff packets from : %s", err);
-		dev = "none";
+		alldevsp = NULL;
+	} else {
+		dev = alldevsp->name;
 	}
 
 	p = registry_new_param("interface", dev, priv->tpriv.iface.p_interface, "Interface to capture packets from", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+
+	if (alldevsp) {
+		pcap_if_t *tmp;
+		for (tmp = alldevsp; tmp; tmp = tmp->next) {
+			if (registry_param_info_add_value(p, tmp->name) != POM_OK) {
+				pcap_freealldevs(alldevsp);
+				goto err;
+			}
+		}
+		pcap_freealldevs(alldevsp);
+	}
+
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("promisc", "no", priv->tpriv.iface.p_promisc, "Promiscious mode", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("buff_size", "16777216", priv->tpriv.iface.p_buff_size, "PCAP ring buffer size", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	priv->type = input_pcap_type_interface;
@@ -377,7 +392,7 @@ static int input_pcap_file_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("filename", "dump.cap", priv->tpriv.file.p_file, "File in PCAP format", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	priv->type = input_pcap_type_file;
@@ -431,11 +446,11 @@ static int input_pcap_dir_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("directory", "/tmp", priv->tpriv.dir.p_dir, "Directory containing pcap files", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("match", "\\.p\\?cap[0-9]*$", priv->tpriv.dir.p_match, "Match files with the specific pattern (regex)", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 	priv->type = input_pcap_type_dir;

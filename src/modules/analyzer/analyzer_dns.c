@@ -130,11 +130,11 @@ static int analyzer_dns_init(struct analyzer *analyzer) {
 		goto err;
 
 	p = registry_new_param("anti_spoof", "no", priv->p_anti_spoof, "Prevent spoofing by accepting only replies that match a query", 0);
-	if (registry_instance_add_param(analyzer->reg_instance, p) != POM_OK)
+	if (analyzer_add_param(analyzer, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("q_timeout", "10", priv->p_qtimeout, "Query timeout for anti spoofing protection", 0);
-	if (registry_instance_add_param(analyzer->reg_instance, p) != POM_OK)
+	if (analyzer_add_param(analyzer, p) != POM_OK)
 		goto err;
 
 	p = NULL;

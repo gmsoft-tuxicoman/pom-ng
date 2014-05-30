@@ -25,8 +25,11 @@
 
 #include <pom-ng/ptype.h>
 
-#define REGISTRY_PARAM_FLAG_CLEANUP_VAL	1
-#define REGISTRY_PARAM_FLAG_IMMUTABLE	2
+#define REGISTRY_PARAM_FLAG_CLEANUP_VAL			0x01
+#define REGISTRY_PARAM_FLAG_IMMUTABLE			0x02
+#define REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING	0x04
+#define REGISTRY_PARAM_FLAG_PAUSE_PROCESSING		0x08
+#define REGISTRY_PARAM_FLAG_INFO_SUGGESTION		0x10
 
 struct registry_instance;
 struct registry_param;
@@ -40,8 +43,7 @@ enum registry_perf_type {
 
 struct registry_param* registry_new_param(char *name, char *default_value, struct ptype *value, char *description, int flags);
 int registry_cleanup_param(struct registry_param *p);
-int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, char *value), int (*post_check) (void *priv, struct ptype* value));
-int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
+int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, struct registry_param *p, char *value), int (*post_check) (void *priv, struct registry_param *p, struct ptype *value));
 int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
 
 int registry_uid_create(struct registry_instance *instance);
@@ -55,4 +57,6 @@ void registry_perf_timeticks_restart(struct registry_perf *p);
 uint64_t registry_perf_getval(struct registry_perf *p);
 void registry_perf_reset(struct registry_perf *p);
 
+int registry_param_info_set_min_max(struct registry_param *p, uint32_t min, uint32_t max);
+int registry_param_info_add_value(struct registry_param *p, char *value);
 #endif

@@ -102,11 +102,11 @@ static int input_kismet_drone_init(struct input *i) {
 		goto err;
 
 	p = registry_new_param("host", "localhost", priv->p_host, "Kismet drone host", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("port", "2502", priv->p_port, "Kismet drone port", 0);
-	if (registry_instance_add_param(i->reg_instance, p) != POM_OK)
+	if (input_add_param(i, p) != POM_OK)
 		goto err;
 
 

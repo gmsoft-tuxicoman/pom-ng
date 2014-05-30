@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -110,11 +110,11 @@ static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
 		return POM_ERR;
 
 	struct registry_param *p = registry_new_param("fragment_timeout", "60", param_frag_timeout, "Timeout for incomplete ipv6 fragments", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("conntrack_timeout", "7200", param_conntrack_timeout, "Timeout for ipv6 connections", 0);
-	if (registry_instance_add_param(i, p) != POM_OK)
+	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 	
 	return POM_OK;

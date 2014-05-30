@@ -862,3 +862,9 @@ int proto_number_unregister(struct proto *p) {
 	return POM_OK;
 
 }
+
+int proto_add_param(struct proto *proto, struct registry_param *p) {
+	
+	p->flags &= REGISTRY_PARAM_FLAG_PAUSE_PROCESSING;
+	return registry_instance_add_param(proto->reg_instance, p);
+}

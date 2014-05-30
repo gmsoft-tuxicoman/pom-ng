@@ -147,4 +147,9 @@ int analyzer_finish() {
 	return POM_OK;
 }
 
+int analyzer_add_param(struct analyzer *a, struct registry_param *p) {
+
+	p->flags &= REGISTRY_PARAM_FLAG_PAUSE_PROCESSING;
+	return registry_instance_add_param(a->reg_instance, p);
+}
 

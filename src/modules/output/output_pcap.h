@@ -100,6 +100,11 @@ enum {
 	output_pcap_flow_file_info,
 };
 
+struct output_pcap_link_type {
+	char *name;
+	int dlt;
+};
+
 struct mod_reg_info *output_pcap_reg_info();
 static int output_pcap_mod_register(struct mod_reg *mod);
 static int output_pcap_mod_unregister();
@@ -111,8 +116,8 @@ static int output_pcap_file_cleanup(void *output_priv);
 static int output_pcap_file_open(void *output_priv);
 static int output_pcap_file_close(void *output_priv);
 static int output_pcap_file_process(void *obj, struct packet *p, struct proto_process_stack *s, unsigned int stack_index);
-static int output_pcap_filter_parse(void *priv, char *value);
-static int output_pcap_filter_update(void *priv, struct ptype *value);
+static int output_pcap_filter_parse(void *priv, struct registry_param *param, char *value);
+static int output_pcap_filter_update(void *priv, struct registry_param *param, struct ptype *value);
 
 static int output_pcap_flow_register();
 static int output_pcap_flow_unregister();

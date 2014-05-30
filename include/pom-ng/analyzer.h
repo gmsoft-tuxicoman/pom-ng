@@ -22,7 +22,7 @@
 #ifndef __POM_NG_ANALYZER_H__
 #define __POM_NG_ANALYZER_H__
 
-#include <pom-ng/base.h>
+#include <pom-ng/registry.h>
 
 struct analyzer {
 
@@ -48,5 +48,6 @@ struct analyzer_reg {
 
 int analyzer_register(struct analyzer_reg *reg_info);
 int analyzer_unregister(char *name);
+int analyzer_add_param(struct analyzer *a, struct registry_param *p);
 
 #endif

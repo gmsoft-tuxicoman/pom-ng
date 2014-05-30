@@ -29,7 +29,24 @@
 #include <pom-ng/ptype_uint64.h>
 
 
-struct event_reg *output_pcap_flow_evt_file_reg = NULL;
+static struct event_reg *output_pcap_flow_evt_file_reg = NULL;
+
+static struct output_pcap_link_type output_pcap_link_types[] = {
+	{ "ethernet", DLT_EN10MB },
+	{ "ipv4", DLT_RAW },
+	{ "80211", DLT_IEEE802_11 },
+	{ "radiotap", DLT_IEEE802_11_RADIO },
+	{ "ppi", DLT_PPI },
+#ifdef DLT_DOCSIS
+	{ "docsis", DLT_DOCSIS },
+#endif
+#ifdef DLT_MPEG_2_TS
+	{ "mpeg_ts", DLT_MPEG_2_TS },
+#endif
+	{ NULL, 0 }
+
+};
+
 
 struct mod_reg_info *output_pcap_reg_info() {
 
@@ -88,26 +105,12 @@ static int output_pcap_mod_unregister() {
 static int output_pcap_linktype_to_dlt(char *link_type) {
 
 
-	if (!strcasecmp("ethernet", link_type)) {
-		return DLT_EN10MB;
-	} else if (!strcasecmp("ipv4", link_type)) {
-		return DLT_RAW;
-#ifdef DLT_DOCSIS
-	} else if (!strcasecmp("docsis", link_type)) {
-		return DLT_DOCSIS;
-#endif
-	} else if (!strcasecmp("80211", link_type)) {
-		return DLT_IEEE802_11;
-	} else if (!strcasecmp("radiotap", link_type)){
-		return DLT_IEEE802_11_RADIO;
-#ifdef DLT_MPEG_2_TS
-	} else if (!strcasecmp("mpeg_ts", link_type)) {
-		return DLT_MPEG_2_TS;
-#endif
-	} else if (!strcasecmp("ppi", link_type)) {
-		return DLT_PPI;
-	}
+	int i;
+	for (i = 0; output_pcap_link_types[i].name; i++) {
 
+		if (!strcasecmp("ethernet", output_pcap_link_types[i].name))
+			return output_pcap_link_types[i].dlt;
+	}
 
 	pomlog(POMLOG_ERR "Protocol %s is not supported", link_type);
 	return POM_ERR;
@@ -149,23 +152,31 @@ static int output_pcap_file_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("snaplen", "1550", priv->p_snaplen, "Snaplen", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("link_type", "ethernet", priv->p_link_type, "Link type to use for the pcap file", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+
+	int i;
+	for (i = 0; output_pcap_link_types[i].name; i++) {
+		if (registry_param_info_add_value(p, output_pcap_link_types[i].name) != POM_OK) {
+			goto err;
+		}
+	}
+
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("unbuffered", "no", priv->p_unbuffered, "Write packets directly without using a buffer (slower)", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("filter", "", priv->p_filter, "Filter", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	p = registry_new_param("filter", "", priv->p_filter, "Filter", REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING);
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	registry_param_set_callbacks(p, priv, output_pcap_filter_parse, output_pcap_filter_update);
@@ -315,13 +326,13 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 
 }
 
-static int output_pcap_filter_parse(void *priv, char *value) {
+static int output_pcap_filter_parse(void *priv, struct registry_param *param, char *value) {
 
 	struct output_pcap_file_priv *p = priv;
 	return filter_packet(value, &p->filter);
 }
 
-static int output_pcap_filter_update(void *priv, struct ptype *value) {
+static int output_pcap_filter_update(void *priv, struct registry_param *param, struct ptype *value) {
 
 	struct output_pcap_file_priv *p = priv;
 	if (p->listener)
@@ -411,23 +422,29 @@ static int output_pcap_flow_init(struct output *o) {
 		goto err;
 
 	struct registry_param *p = registry_new_param("flow_proto", "tcp", priv->p_flow_proto, "Protocol to use for flows", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
 	p = registry_new_param("snaplen", "1550", priv->p_snaplen, "Snaplen", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("link_type", "ethernet", priv->p_link_type, "Link type to use for the pcap files", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	int i;
+	for (i = 0; output_pcap_link_types[i].name; i++) {
+		if (registry_param_info_add_value(p, output_pcap_link_types[i].name) != POM_OK) {
+			goto err;
+		}
+	}
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("unbuffered", "no", priv->p_unbuffered, "Write packets directly without using a buffer (slower)", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	p = registry_new_param("prefix", "/tmp/${ipv4.src}.${tcp.sport}-${ipv4.dst}.${tcp.dport}-", priv->p_prefix, "File name prefix", 0);
-	if (registry_instance_add_param(inst, p) != POM_OK)
+	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
 	return POM_OK;

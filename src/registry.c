@@ -183,15 +183,7 @@ int registry_remove_class(struct registry_class *c) {
 		struct registry_param *p = c->global_params;
 		c->global_params = p->next;
 
-		free(p->name);
-		if (p->default_value)
-			free(p->default_value);
-		free(p->description);
-
-		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
-			ptype_cleanup(p->value);
-
-		free(p);
+		registry_cleanup_param(p);
 	}
 
 	while (c->perfs) {
@@ -350,15 +342,7 @@ int registry_remove_instance(struct registry_instance *i) {
 		struct registry_param *p = i->params;
 		i->params = p->next;
 
-		free(p->name);
-		if (p->default_value)
-			free(p->default_value);
-		free(p->description);
-
-		if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
-			ptype_cleanup(p->value);
-
-		free(p);
+		registry_cleanup_param(p);
 	}
 
 	while (i->funcs) {
@@ -477,14 +461,30 @@ int registry_cleanup_param(struct registry_param *p) {
 	if (p->description)
 		free(p->description);
 
+	if (p->info_type == registry_param_info_type_value) {
+		while (p->info.v) {
+			struct registry_param_info_value *v = p->info.v;
+			p->info.v = v->next;
+			if (v->value)
+				free(v->value);
+			free(v);
+		}
+
+	}
+	if (p->flags & REGISTRY_PARAM_FLAG_CLEANUP_VAL)
+		ptype_cleanup(p->value);
+
 	free(p);
 	
 	return POM_OK;
 }
 
 
-int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_callback) (void *priv, char *value), int (*post_callback) (void *priv, struct ptype* value)) {
-	
+int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_callback) (void *priv, struct registry_param *p, char *value), int (*post_callback) (void *priv, struct registry_param *p, struct ptype *value)) {
+
+	if (p->set_pre_callback || p->set_post_callback)
+		pomlog(POMLOG_WARN "Registry param %u already had a callback");
+
 	p->callback_priv = priv;
 	p->set_pre_callback = pre_callback;
 	p->set_post_callback = post_callback;
@@ -631,29 +631,33 @@ int registry_set_param_value(struct registry_param *p, char *value) {
 	if (p->flags & REGISTRY_PARAM_FLAG_IMMUTABLE)
 		return POM_ERR;
 	
-	if (p->set_pre_callback && p->set_pre_callback(p->callback_priv, value) != POM_OK) {
+	if (p->set_pre_callback && p->set_pre_callback(p->callback_priv, p, value) != POM_OK) {
 		return POM_ERR;
 	}
 
-	core_pause_processing();
+	if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+		core_pause_processing();
 
 	struct ptype *old_value = ptype_alloc_from(p->value);
 
 	if (ptype_parse_val(p->value, value) != POM_OK) {
-		core_resume_processing();
+		if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+			core_resume_processing();
 		ptype_cleanup(old_value);
 		return POM_ERR;
 	}
 
-	if (p->set_post_callback && p->set_post_callback(p->callback_priv, p->value) != POM_OK) {
+	if (p->set_post_callback && p->set_post_callback(p->callback_priv, p, p->value) != POM_OK) {
 		// Revert the old value
 		ptype_copy(p->value, old_value);
-		core_resume_processing();
+		if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+			core_resume_processing();
 		ptype_cleanup(old_value);
 		return POM_ERR;
 	}
 
-	core_resume_processing();
+	if (p->flags & REGISTRY_PARAM_FLAG_PAUSE_PROCESSING)
+		core_resume_processing();
 
 	ptype_cleanup(old_value);
 	
@@ -1702,3 +1706,44 @@ uint32_t registry_serial_poll(uint32_t last_serial, struct timespec *timeout) {
 	return serial;
 }
 
+
+int registry_param_info_set_min_max(struct registry_param *p, uint32_t min, uint32_t max) {
+
+	if (p->info_type != registry_param_info_type_none && p->info_type != registry_param_info_type_min_max)
+		return POM_ERR;
+
+
+	p->info_type = registry_param_info_type_min_max;
+	p->info.mm.min = min;
+	p->info.mm.max = max;
+
+	return POM_OK;
+}
+
+int registry_param_info_add_value(struct registry_param *p, char *value) {
+
+
+	if (p->info_type != registry_param_info_type_none && p->info_type != registry_param_info_type_value)
+		return POM_ERR;
+
+	struct registry_param_info_value *v = malloc(sizeof(struct registry_param_info_value));
+	if (!v) {
+		pom_oom(sizeof(struct registry_param_info_value));
+		return POM_ERR;
+	}
+	memset(v, 0, sizeof(struct registry_param_info_value));
+	v->value = strdup(value);
+	if (!v->value) {
+		pom_oom(strlen(value) + 1);
+		free(v);
+		return POM_ERR;
+	}
+
+	v->next = p->info.v;
+	p->info.v = v;
+
+	p->info_type = registry_param_info_type_value;
+
+	return POM_OK;
+
+}

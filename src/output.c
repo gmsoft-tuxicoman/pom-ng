@@ -75,7 +75,7 @@ int output_register(struct output_reg_info *reg_info) {
 
 	if (reg_info->register_func) {
 		if (reg_info->register_func() != POM_OK) {
-			pomlog(POMLOG_ERR "Error while calling the register function of input %s", reg_info->name);
+			pomlog(POMLOG_ERR "Error while calling the register function of output %s", reg_info->name);
 			return POM_ERR;
 		}
 	}
@@ -243,7 +243,7 @@ int output_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
-int output_instance_start_stop_handler(void *priv, struct ptype *run) {
+int output_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run) {
 	
 	struct output *o = priv;
 
@@ -325,4 +325,19 @@ char *output_get_name(struct output *o) {
 	return o->name;
 }
 
+int output_add_param(struct output *o, struct registry_param *p) {
+	if (!(p->flags & (REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING | REGISTRY_PARAM_FLAG_IMMUTABLE)))
+		registry_param_set_callbacks(p, o, output_param_locked_while_running, NULL);
 
+	return registry_instance_add_param(o->reg_instance, p);
+}
+
+int output_param_locked_while_running(void *output, struct registry_param *p, char *param) {
+
+	struct output *o = output;
+	if (o->running) {
+		pomlog("Parameter '%s' cannot be changed while output %s is running", p->name, o->name);
+		return POM_ERR;
+	}
+	return POM_OK;
+}
