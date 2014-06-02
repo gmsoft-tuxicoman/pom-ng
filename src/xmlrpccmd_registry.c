@@ -184,6 +184,13 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 							"default_value", p->default_value,
 							"description", p->description);
 		}
+
+		if (p->value->unit) {
+			xmlrpc_value *unit = xmlrpc_string_new(envP, p->value->unit);
+			xmlrpc_struct_set_value(envP, param, "unit", unit);
+			xmlrpc_DECREF(unit);
+		}
+
 		free(value);
 
 		int suggestion = p->flags & REGISTRY_PARAM_FLAG_INFO_SUGGESTION;
