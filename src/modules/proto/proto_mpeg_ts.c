@@ -227,13 +227,12 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 	}
 
 	// Filter out PES and unknown packets
-	if (stream->type == proto_mpeg_stream_type_pes) {
+	if (stream->type == proto_mpeg_stream_type_pes || stream->type == proto_mpeg_stream_type_unknown) {
 		s_next->pload = s->pload + hdr_len;
 		s_next->plen = s->plen - hdr_len;
 		s_next->proto = NULL;
 		return PROTO_OK;
 	}
-
 
 	// Check the validity of the pointer
 	if (pusi) {
@@ -243,9 +242,6 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 		// PUSI is the first byte of the payload
 		pload++;
 	}
-
-
-
 
 	// Add the payload to the multipart if any
 	if (stream->multipart) {
