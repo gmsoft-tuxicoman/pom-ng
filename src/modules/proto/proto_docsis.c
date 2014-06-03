@@ -219,6 +219,10 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 	}
 
 #ifdef FIX_PACKET_ALIGNMENT
+
+	if (!s_next->proto)
+		return PROTO_OK;
+
 	char offset = (int)s_next->pload & 3;
 	if (offset != 2) {
 		struct packet_multipart *tmp = packet_multipart_alloc(s_next->proto, 0, 2);
