@@ -21,6 +21,8 @@
 #ifndef __INPUT_DVB_H__
 #define __INPUT_DVB_H__
 
+#define INPUT_DVB_DOCSIS_PID		0x1FFE
+#define INPUT_DVB_DOCSIS_EHDR_MAX_LEN	240
 
 enum input_dvb_type {
 	input_dvb_type_device, // Used for card with a user space tuner not compatible with the dvb api
@@ -28,11 +30,7 @@ enum input_dvb_type {
 	input_dvb_type_s,
 	input_dvb_type_t, // TODO
 	input_dvb_type_atsc,
-};
-
-struct input_dvb_c_priv {
-	
-	struct ptype *modulation;
+	input_dvb_type_docsis,
 };
 
 struct input_dvb_s_priv{
@@ -42,26 +40,32 @@ struct input_dvb_s_priv{
 	// TODO support for DiSEqC
 };
 
-struct input_dvb_atsc_priv {
+struct input_dvb_docsis_priv {
+
+	struct packet *pkt;
+	size_t pkt_pos;
 	
-	struct ptype *modulation;
+	unsigned char docsis_buff[3]; // Temporary buffer to gather the docsis headers
+	size_t docsis_buff_len; // Size of the docsis header content len
+
 };
 
 struct input_dvb_priv {
 
 	enum input_dvb_type type;
 
-	struct proto *proto_mpeg_ts;
+	struct proto *link_proto;
 
 	// Some (mostly) common params
-	struct ptype *adapter, *frontend, *freq, *symbol_rate, *tuning_timeout, *filter_null_pid;
+	struct ptype *adapter, *frontend, *freq, *symbol_rate, *tuning_timeout, *filter_null_pid, *modulation, *buff_pkt_count;
 
 	int frontend_fd, demux_fd, dvr_fd;
 
+	fe_type_t fe_type; // Frontend type
+
 	union {
-		struct input_dvb_c_priv c;
 		struct input_dvb_s_priv s;
-		struct input_dvb_atsc_priv a;
+		struct input_dvb_docsis_priv d;
 	} tpriv;
 
 	struct registry_perf *perf_null_discarded;
@@ -69,6 +73,8 @@ struct input_dvb_priv {
 	struct registry_perf *perf_snr;
 	struct registry_perf *perf_unc;
 	struct registry_perf *perf_ber;
+
+	unsigned char *mpeg_buff;
 
 };
 
@@ -90,12 +96,15 @@ static int input_dvb_device_init(struct input *i);
 static int input_dvb_c_init(struct input *i);
 static int input_dvb_s_init(struct input *i);
 static int input_dvb_atsc_init(struct input *i);
+static int input_dvb_docsis_init(struct input *i);
 
 static int input_dvb_device_open(struct input *i);
 static int input_dvb_open(struct input *i);
 
 static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t symbol_rate, fe_modulation_t modulation);
 static int input_dvb_read(struct input *i);
+static int input_dvb_docsis_read(struct input *i);
+static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff);
 static int input_dvb_close(struct input *i);
 static int input_dvb_cleanup(struct input *i);
 
