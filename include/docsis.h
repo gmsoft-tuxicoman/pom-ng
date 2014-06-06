@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2006-2008 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2006-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -105,11 +105,17 @@ struct docsis_tlv {
 #define FCP_CONCAT	0x1C // Concatenation header (upstream only)
 
 // Definition of extended header types
-#define EH_TYPE_NULL		0x0	// Null type for padding
-#define EH_TYPE_MINI_REQ	0x1	// Mini-slot request
-#define EH_TYPE_ACK		0x1	// Ack request
-#define EH_TYPE_BP_UP		0x2	// Upstream privacy element
-#define EH_TYPE_BP_DOWN		0x4	// Downstream privacy element
+#define EH_TYPE_NULL		0	// Null type for padding
+#define EH_TYPE_MINI_REQ	1	// Mini-slot request
+#define EH_TYPE_ACK		2	// Ack request
+#define EH_TYPE_BP_UP		3	// Upstream privacy element
+#define EH_TYPE_BP_DOWN		4	// Downstream privacy element
+#define EH_TYPE_SVC_FLOW_DOWN	5	// Service Flow EH Element; Payload Header Suppression Header Downstream
+#define EH_TYPE_SCV_FLOW_UP	6	// Service Flow EH Element; Payload Header Suppression Header Upstream
+#define EH_TYPE_BP_UP2		7	// Upstream privacy element v2 without piggyback request
+#define EH_TYPE_DOWN_SVC	8	// Downstream service
+#define EH_TYPE_PATH_VRFY	9	// Downstream path verify
+#define EH_TYPE_EXTENDED	15	// Extended extension header
 
 // Definition of MAC management message types
 #define MMT_SYNC		1
