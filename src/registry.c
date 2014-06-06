@@ -1068,6 +1068,11 @@ int registry_config_save(char *config_name) {
 	registry_config_serial++;
 	registry_serial++;
 
+	int result = pthread_cond_broadcast(&registry_global_cond);
+	if (result) {
+		printf("Error while broadcasting the registry serial condition : %s\r", pom_strerror(result));
+		abort();
+	}
 	registry_unlock();
 
 	if (datastore_transaction_commit(dc) != POM_OK)
@@ -1429,6 +1434,12 @@ int registry_config_delete(char *config_name) {
 
 	registry_config_serial++;
 	registry_serial++;
+
+	int result = pthread_cond_broadcast(&registry_global_cond);
+	if (result) {
+		printf("Error while broadcasting the registry serial condition : %s\r", pom_strerror(result));
+		abort();
+	}
 	registry_unlock();
 
 	return POM_OK;
