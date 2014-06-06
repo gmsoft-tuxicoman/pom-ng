@@ -131,6 +131,15 @@ static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 	memset(priv, 0, sizeof(struct proto_docsis_priv));
 	proto_set_priv(proto, priv);
 
+	priv->p_filter_docsis3 = ptype_alloc("bool");
+	if (!priv->p_filter_docsis3)
+		return POM_ERR;
+
+	struct registry_param *p = registry_new_param("filter_docsis3", "yes", priv->p_filter_docsis3, "Filter DOCSIS 3 packets sent on multiple streams", 0);
+	if (proto_add_param(proto, p) != POM_OK)
+		return POM_ERR;
+
+
 	priv->proto_ethernet = proto_get("ethernet");
 	priv->proto_docsis_mgmt = proto_get("docsis_mgmt");
 	priv->perf_encrypted_pkts = registry_instance_add_perf(i, "encrypted_pkts", registry_perf_type_counter, "Number of encrypted packets", "pkts");
@@ -177,13 +186,31 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 
 		hdr_len += dhdr->mac_parm;
 
-		// Don't process crypted packets any further
-		struct docsis_ehdr *ehdr = (struct docsis_ehdr*) (s->pload + offsetof(struct docsis_hdr, hcs));
-		if (ehdr->eh_type == EH_TYPE_BP_DOWN || ehdr->eh_type == EH_TYPE_BP_UP) {
-			registry_perf_inc(priv->perf_encrypted_pkts, 1);
-			registry_perf_inc(priv->perf_encrypted_bytes, s->plen);
-			PTYPE_BOOL_SETVAL(s->pkt_info->fields_value[proto_docsis_field_crypted], 1);
-			return PROTO_OK;
+		uint8_t ehdr_len = dhdr->mac_parm;
+
+		void *ehdr_p = (s->pload + offsetof(struct docsis_hdr, hcs));
+
+		while (ehdr_len) {
+
+			struct docsis_ehdr *ehdr = ehdr_p;
+
+			if (ehdr->eh_len > ehdr_len)
+				return PROTO_INVALID;
+
+			if (ehdr->eh_type == EH_TYPE_BP_DOWN || ehdr->eh_type == EH_TYPE_BP_UP) {
+				registry_perf_inc(priv->perf_encrypted_pkts, 1);
+				registry_perf_inc(priv->perf_encrypted_bytes, s->plen);
+				PTYPE_BOOL_SETVAL(s->pkt_info->fields_value[proto_docsis_field_crypted], 1);
+				return PROTO_OK;
+			}
+
+			if (ehdr->eh_type == EH_TYPE_DOWN_SVC && ehdr->eh_len == 5 && *PTYPE_BOOL_GETVAL(priv->p_filter_docsis3)) {
+				return PROTO_STOP;
+			}
+
+			ehdr_len -= ehdr->eh_len + 1;
+			ehdr_p += ehdr->eh_len + 1;
+
 		}
 			
 	}
