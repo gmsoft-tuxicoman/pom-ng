@@ -108,7 +108,7 @@ static int output_pcap_linktype_to_dlt(char *link_type) {
 	int i;
 	for (i = 0; output_pcap_link_types[i].name; i++) {
 
-		if (!strcasecmp("ethernet", output_pcap_link_types[i].name))
+		if (!strcasecmp(link_type, output_pcap_link_types[i].name))
 			return output_pcap_link_types[i].dlt;
 	}
 
