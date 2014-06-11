@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,13 @@
 #define __TIMER_H__
 
 #include <pom-ng/timer.h>
+
+struct timer_sys {
+	time_t expiry;
+	void *priv;
+	int (*handler) (void*);
+	struct timer_sys *prev, *next;
+};
 
 struct timer {
 
@@ -52,5 +59,6 @@ int timers_cleanup();
 void timer_queue_lock(struct timer_queue *q, int write);
 void timer_queue_unlock(struct timer_queue *q);
 
+int timer_sys_process();
 
 #endif

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,15 +27,7 @@
 #define POMNG_HTTPD_WWW_DATA	DATAROOT "/pom-ng-webui/"
 #define POMNG_SYSTEM_DATASTORE "sqlite:system?dbfile=~/.pom-ng/sys_datastore.db"
 
-#define MAIN_TIMER_DELAY	2
-
-struct main_timer {
-	time_t expiry;
-	void *priv;
-	int (*handler) (void*);
-	struct main_timer *prev, *next;
-};
-
+#define MAIN_TIMER_SYS_DELAY	2
 
 void signal_handler(int signal);
 struct datastore *system_datastore_open(char *dstore_uri);
@@ -44,11 +36,5 @@ int main(int argc, char *argv[]);
 int halt(char *reason, int error);
 int halt_signal(char *reason);
 struct datastore *system_datastore();
-
-
-struct main_timer* main_timer_alloc(void *priv, int (*handler) (void*));
-int main_timer_queue(struct main_timer *t, time_t timeout);
-int main_timer_dequeue(struct main_timer *t);
-int main_timer_cleanup(struct main_timer *t);
 
 #endif

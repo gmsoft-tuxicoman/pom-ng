@@ -402,7 +402,7 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		free(cur_pload);
 	}
 
-	main_timer_cleanup(sess->timer);
+	timer_sys_cleanup(sess->timer);
 	pthread_cond_destroy(&sess->cond);
 	pthread_mutex_destroy(&sess->lock);
 	free(sess);
@@ -448,7 +448,7 @@ xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * co
 	}
 	memset(sess, 0, sizeof(struct xmlrpccmd_monitor_session));
 
-	sess->timer = main_timer_alloc(sess, xmlrpccmd_monitor_timeout);
+	sess->timer = timer_sys_alloc(sess, xmlrpccmd_monitor_timeout);
 	sess->timeout = timeout;
 
 	if (!sess->timer) {
@@ -458,14 +458,14 @@ xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * co
 	}
 
 	if (pthread_mutex_init(&sess->lock, NULL)) {
-		main_timer_cleanup(sess->timer);
+		timer_sys_cleanup(sess->timer);
 		free(sess);
 		xmlrpc_faultf(envP, "Error while initializing session lock : %s", pom_strerror(errno));
 		return NULL;
 	}
 
 	if (pthread_cond_init(&sess->cond, NULL)) {
-		main_timer_cleanup(sess->timer);
+		timer_sys_cleanup(sess->timer);
 		pthread_mutex_destroy(&sess->lock);
 		free(sess);
 		xmlrpc_faultf(envP, "Error while initializing session condition : %s", pom_strerror(errno));
@@ -480,7 +480,7 @@ xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * co
 
 	if (i >= XMLRPCCMD_MONITOR_MAX_SESSION) {
 		xmlrpc_faultf(envP, "No monitoring session available");
-		main_timer_cleanup(sess->timer);
+		timer_sys_cleanup(sess->timer);
 		pthread_mutex_destroy(&sess->lock);
 		pthread_cond_destroy(&sess->cond);
 		free(sess);
@@ -492,7 +492,7 @@ xmlrpc_value *xmlrpccmd_monitor_start(xmlrpc_env * const envP, xmlrpc_value * co
 
 	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 
-	main_timer_queue(sess->timer, sess->timeout);
+	timer_sys_queue(sess->timer, sess->timeout);
 
 	pomlog(POMLOG_INFO "New event monitoring session started with id %u and timeout %u sec", i, timeout);
 
@@ -1003,7 +1003,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 	
 
-	main_timer_dequeue(sess->timer);
+	timer_sys_dequeue(sess->timer);
 
 
 
@@ -1026,7 +1026,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 
 		if (res == ETIMEDOUT) {
 			pom_mutex_unlock(&sess->lock);
-			main_timer_queue(sess->timer, sess->timeout);
+			timer_sys_queue(sess->timer, sess->timeout);
 			return xmlrpc_array_new(envP);
 		} else if (res) {
 			pomlog(POMLOG_ERR "Error while waiting for session condition : %s", pom_strerror(errno));
@@ -1117,7 +1117,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 	xmlrpc_DECREF(xml_pload_lst);
 
 
-	main_timer_queue(sess->timer, sess->timeout);
+	timer_sys_queue(sess->timer, sess->timeout);
 
 	return res;
 }

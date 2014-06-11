@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,6 +29,10 @@
 #else
 #define debug_timer(x...)
 #endif
+
+static struct timer_sys *timer_sys_head = NULL, *timer_sys_tail = NULL;
+static pthread_mutex_t timer_sys_lock;
+
 
 static pthread_mutex_t timer_main_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct timer_queue *timer_queues = NULL;
@@ -364,3 +368,120 @@ int timer_dequeue(struct timer *t) {
 	return POM_OK;
 }
 
+
+struct timer_sys* timer_sys_alloc(void *priv, int (*handler) (void*)) {
+	struct timer_sys *res = malloc(sizeof(struct timer_sys));
+	if (!res) {
+		pom_oom(sizeof(struct timer_sys));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct timer_sys));
+	res->priv = priv;
+	res->handler = handler;
+
+	return res;
+}
+
+int timer_sys_queue(struct timer_sys *t, time_t timeout) {
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	t->expiry = tv.tv_sec + timeout;
+
+	pom_mutex_lock(&timer_sys_lock);
+	struct timer_sys *tmp = timer_sys_head;
+	while (tmp && tmp->expiry < t->expiry)
+		tmp = tmp->next;
+
+	if (!tmp) {
+		t->prev = timer_sys_tail;
+	} else {
+		t->next = tmp;
+		t->prev = tmp->prev;
+	}
+
+	if (t->prev) {
+		t->prev->next = t;
+	} else {
+		timer_sys_head = t;
+	}
+
+	if (t->next) {
+		t->next->prev = t;
+	} else {
+		timer_sys_tail = t;
+	}
+	pom_mutex_unlock(&timer_sys_lock);
+
+	return POM_OK;
+}
+
+int timer_sys_dequeue(struct timer_sys *t) {
+
+	pom_mutex_lock(&timer_sys_lock);
+	if (t->prev || t->next || timer_sys_head == t) {
+		if (t->prev)
+			t->prev->next = t->next;
+		else
+			timer_sys_head = t->next;
+		if (t->next)
+			t->next->prev = t->prev;
+		else
+			timer_sys_tail = t->prev;
+		t->prev = NULL;
+		t->next = NULL;
+	}
+	pom_mutex_unlock(&timer_sys_lock);
+	return POM_OK;
+}
+
+int timer_sys_cleanup(struct timer_sys *t) {
+
+	pom_mutex_lock(&timer_sys_lock);
+	if (t->prev || t->next || timer_sys_head == t) {
+		if (t->prev)
+			t->prev->next = t->next;
+		else
+			timer_sys_head = t->next;
+		if (t->next)
+			t->next->prev = t->prev;
+		else
+			timer_sys_tail = t->prev;
+	}
+	pom_mutex_unlock(&timer_sys_lock);
+
+	free(t);
+	return POM_OK;
+}
+
+
+int timer_sys_process() {
+
+	pom_mutex_lock(&timer_sys_lock);
+
+	if (!timer_sys_head) {
+		pom_mutex_unlock(&timer_sys_lock);
+		return POM_OK;
+	}
+
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+
+	while (timer_sys_head && timer_sys_head->expiry <= tv.tv_sec) {
+		struct timer_sys *t = timer_sys_head;
+		timer_sys_head = timer_sys_head->next;
+		if (!timer_sys_head) {
+			timer_sys_tail = NULL;
+		} else {
+			timer_sys_head->prev = NULL;
+		}
+
+		pom_mutex_unlock(&timer_sys_lock);
+		if (t->handler(t->priv) != POM_OK)
+			pomlog(POMLOG_ERR "Error while running timer_sys handler");
+		pom_mutex_lock(&timer_sys_lock);
+	}
+	pom_mutex_unlock(&timer_sys_lock);
+
+	return POM_OK;
+}

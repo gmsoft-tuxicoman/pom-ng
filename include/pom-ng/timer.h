@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,5 +33,9 @@ int timer_queue(struct timer *t, unsigned int expiry);
 int timer_queue_now(struct timer *t, unsigned int expiry, ptime now);
 int timer_dequeue(struct timer *t);
 
+struct timer_sys* timer_sys_alloc(void *priv, int (*handler) (void*));
+int timer_sys_queue(struct timer_sys *t, time_t timeout);
+int timer_sys_dequeue(struct timer_sys *t);
+int timer_sys_cleanup(struct timer_sys *t);
 
 #endif

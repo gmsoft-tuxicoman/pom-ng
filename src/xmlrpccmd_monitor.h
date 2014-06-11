@@ -35,7 +35,7 @@ struct xmlrpccmd_monitor_session {
 	unsigned int polling;
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
-	struct main_timer *timer;
+	struct timer_sys *timer;
 	time_t timeout;
 	int pload_events_listening;
 	struct xmlrpccmd_monitor_event *events;
