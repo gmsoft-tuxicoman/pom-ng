@@ -46,6 +46,7 @@
 #include <pom-ng/packet.h>
 #include <pom-ng/core.h>
 #include <pom-ng/timer.h>
+#include <pom-ng/event.h>
 
 #include <docsis.h>
 
@@ -58,6 +59,8 @@
 #define MPEG_TS_LEN 188
 
 #define LNB_COUNT 1
+
+static struct event_reg *input_dvb_evt_status_reg = NULL;
 
 static struct input_dvb_lnb_param input_dvb_lnbs[LNB_COUNT] = {
 	{ "universal", 9750000, 10600000, 11700000, 10700000, 12750000 },
@@ -105,6 +108,8 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_dvb_c.read = input_dvb_read;
 	in_dvb_c.close = input_dvb_close;
 	in_dvb_c.cleanup = input_dvb_cleanup;
+	in_dvb_c.register_func = input_dvb_register;
+	in_dvb_c.unregister_func = input_dvb_unregister;
 
 	res += input_register(&in_dvb_c);
 
@@ -119,6 +124,8 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_dvb_s.read = input_dvb_read;
 	in_dvb_s.close = input_dvb_close;
 	in_dvb_s.cleanup = input_dvb_cleanup;
+	in_dvb_s.register_func = input_dvb_register;
+	in_dvb_s.unregister_func = input_dvb_unregister;
 
 	res += input_register(&in_dvb_s);
 
@@ -133,6 +140,8 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_dvb_atsc.read = input_dvb_read;
 	in_dvb_atsc.close = input_dvb_close;
 	in_dvb_atsc.cleanup = input_dvb_cleanup;
+	in_dvb_atsc.register_func = input_dvb_register;
+	in_dvb_atsc.unregister_func = input_dvb_unregister;
 
 	res += input_register(&in_dvb_atsc);
 
@@ -148,6 +157,8 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_docsis.read = input_dvb_docsis_read;
 	in_docsis.close = input_dvb_close;
 	in_docsis.cleanup = input_dvb_cleanup;
+	in_docsis.register_func = input_dvb_register;
+	in_docsis.unregister_func = input_dvb_unregister;
 
 	res += input_register(&in_docsis);
 
@@ -181,6 +192,54 @@ static int input_dvb_mod_unregister() {
 	return res;
 }
 
+static int input_dvb_register() {
+
+	if (input_dvb_evt_status_reg)
+		return POM_OK;
+
+	static struct data_item_reg evt_dvb_status_data_items[INPUT_DVB_STATUS_DATA_COUNT] = { { 0 } };
+	evt_dvb_status_data_items[input_dvb_status_lock].name = "lock";
+	evt_dvb_status_data_items[input_dvb_status_lock].value_type = ptype_get_type("bool");
+
+	evt_dvb_status_data_items[input_dvb_status_adapter].name = "adapter";
+	evt_dvb_status_data_items[input_dvb_status_adapter].value_type = ptype_get_type("uint16");
+
+	evt_dvb_status_data_items[input_dvb_status_frontend].name = "frontend";
+	evt_dvb_status_data_items[input_dvb_status_frontend].value_type = ptype_get_type("uint16");
+
+	evt_dvb_status_data_items[input_dvb_status_frequency].name = "frequency";
+	evt_dvb_status_data_items[input_dvb_status_frequency].value_type = ptype_get_type("uint32");
+
+	evt_dvb_status_data_items[input_dvb_status_input_name].name = "input_name";
+	evt_dvb_status_data_items[input_dvb_status_input_name].value_type = ptype_get_type("string");
+
+	static struct data_reg evt_dvb_status_data = {
+		.items = evt_dvb_status_data_items,
+		.data_count = INPUT_DVB_STATUS_DATA_COUNT
+	};
+
+	static struct event_reg_info input_dvb_evt_status = { 0 };
+	input_dvb_evt_status.source_name = "input_dvb";
+	input_dvb_evt_status.name = "input_dvb_status";
+	input_dvb_evt_status.description = "Provide lock status on DVB interfaces";
+	input_dvb_evt_status.data_reg = &evt_dvb_status_data;
+
+	input_dvb_evt_status_reg = event_register(&input_dvb_evt_status);
+	if (!input_dvb_evt_status_reg)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
+static int input_dvb_unregister() {
+
+	int res = POM_OK;
+	if (input_dvb_evt_status_reg)
+		res = event_unregister(input_dvb_evt_status_reg);
+
+	input_dvb_evt_status_reg = NULL;
+	return res;
+}
 
 static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 
@@ -522,6 +581,9 @@ static int input_dvb_card_open(struct input_dvb_priv *priv) {
 		}
 		return POM_OK;
 	}
+
+	// Queue the timer to check the lock
+	timer_sys_queue(priv->timer, 2);
 
 	priv->dvr_fd = open(dvr, O_RDONLY);
 	if (priv->dvr_fd == -1) {
@@ -1527,6 +1589,8 @@ static void input_dvb_card_close(struct input_dvb_priv *p) {
 		close(p->dvr_fd);
 		p->dvr_fd = -1;
 	}
+
+	timer_sys_dequeue(p->timer);
 }
 
 static int input_dvb_close(struct input *i) {
@@ -1615,6 +1679,45 @@ static int input_dvb_timer_process(void *input) {
 		//  Timeout occured, interrupt current read
 		pthread_kill(i->thread, SIGCHLD);
 		return POM_OK;
+	}
+
+
+	// Check lock status
+
+	fe_status_t status;
+
+	if (ioctl(p->frontend_fd, FE_READ_STATUS, &status)) {
+		pomlog(POMLOG_WARN "IOCTL failed while getting status of the DVB adapter");
+		input_stop(input);
+		return POM_ERR;
+	}
+
+	// Requeue the timer
+	timer_sys_queue(p->timer, 2);
+
+	if (p->status != status) {
+		p->status = status;
+		struct event *evt = event_alloc(input_dvb_evt_status_reg);
+		if (!evt)
+			return POM_ERR;
+
+		struct data *evt_data = event_get_data(evt);
+		PTYPE_BOOL_SETVAL(evt_data[input_dvb_status_lock].value, (status & FE_HAS_LOCK ? 1 : 0));
+		data_set(evt_data[input_dvb_status_lock]);
+
+		ptype_copy(evt_data[input_dvb_status_adapter].value, p->adapter);
+		data_set(evt_data[input_dvb_status_adapter]);
+
+		ptype_copy(evt_data[input_dvb_status_frontend].value, p->frontend);
+		data_set(evt_data[input_dvb_status_frontend]);
+
+		ptype_copy(evt_data[input_dvb_status_frequency].value, p->freq);
+		data_set(evt_data[input_dvb_status_frequency]);
+
+		PTYPE_STRING_SETVAL(evt_data[input_dvb_status_input_name].value, i->name);
+		data_set(evt_data[input_dvb_status_input_name]);
+
+		event_process(evt, NULL, 0, pom_gettimeofday());
 	}
 
 	return POM_OK;

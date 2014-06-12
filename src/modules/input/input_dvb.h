@@ -21,9 +21,20 @@
 #ifndef __INPUT_DVB_H__
 #define __INPUT_DVB_H__
 
+#define INPUT_DVB_STATUS_DATA_COUNT		5
+
 #define INPUT_DVB_DOCSIS_PID			0x1FFE
 #define INPUT_DVB_DOCSIS_EHDR_MAX_LEN		240
 #define INPUT_DVB_DOCSIS_EURO_SYMBOLRATE	6952000
+
+
+enum {
+	input_dvb_status_lock = 0,
+	input_dvb_status_adapter,
+	input_dvb_status_frontend,
+	input_dvb_status_frequency,
+	input_dvb_status_input_name
+};
 
 enum input_dvb_type {
 	input_dvb_type_device, // Used for card with a user space tuner not compatible with the dvb api
@@ -110,6 +121,8 @@ struct input_dvb_priv {
 
 	struct timer_sys *timer;
 
+	fe_status_t status;
+
 };
 
 struct input_dvb_lnb_param {
@@ -124,6 +137,9 @@ struct input_dvb_lnb_param {
 struct mod_reg_info* input_dvb_reg_info();
 static int input_dvb_mod_register(struct mod_reg *mod);
 static int input_dvb_mod_unregister();
+
+static int input_dvb_register();
+static int input_dvb_unregister();
 
 static int input_dvb_common_init(struct input *i, enum input_dvb_type type);
 static int input_dvb_device_init(struct input *i);
