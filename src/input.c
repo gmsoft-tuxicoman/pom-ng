@@ -61,6 +61,10 @@ int input_cleanup() {
 		struct input_reg *tmp = input_reg_head;
 		input_reg_head = tmp->next;
 
+		if (tmp->info->unregister_func && tmp->info->unregister_func() != POM_OK) {
+			pomlog(POMLOG_WARN "Error while running the unregister function of the input %s", tmp->info->name);
+		}
+
 		mod_refcount_dec(tmp->info->mod);
 		free(tmp);
 	}
@@ -80,6 +84,12 @@ int input_register(struct input_reg_info *reg_info) {
 	if (tmp) {
 		pomlog(POMLOG_ERR "Input %s already registered", reg_info->name);
 		return POM_ERR;
+	}
+
+	if (reg_info->register_func) {
+		if (reg_info->register_func() != POM_OK) {
+			pomlog(POMLOG_ERR "Error while calling the register function of the input %s", reg_info->name);
+		}
 	}
 
 	struct input_reg *reg = malloc(sizeof(struct input_reg));
@@ -114,6 +124,10 @@ int input_unregister(char *name) {
 	for (reg = input_reg_head; reg && strcmp(reg->info->name, name); reg = reg->next);
 	if (!reg) 
 		return POM_OK;
+
+	if (reg->info->unregister_func && reg->info->register_func() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while calling the register function of the input %s", reg->info->name);
+	}
 
 	registry_remove_instance_type(input_registry_class, name);
 

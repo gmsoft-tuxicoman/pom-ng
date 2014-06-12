@@ -58,11 +58,19 @@ struct input_reg_info {
 	struct mod_reg *mod;
 	unsigned int flags;
 
+	/// Pointer to the register function of the input
+	/**
+	 * The register function is called when the input is
+	 * being registered.
+	 * @return POM_OK on success and POM_ERR on failure.
+	 **/
+	int (*register_func) ();
+
 	/// Pointer to the initialization function of the input
 	/**
 	 * The init function is called to create a new input
 	 * @param i The input structure to init
-	 * @return POM_OK on nuccess and POM_ERR on failure.
+	 * @return POM_OK on success and POM_ERR on failure.
 	 **/
 	int (*init) (struct input *i);
 
@@ -106,6 +114,16 @@ struct input_reg_info {
 	 * @return POM_OK on success and POM_ERR on failure.
 	 */
 	int (*interrupt) (struct input *i);
+
+	/// Pointer to the unregister function of the input
+	/**
+	 * The unregister function is called when the input is
+	 * being unregistered.
+	 * @return POM_OK on success and POM_ERR on failure.
+	 **/
+	int (*unregister_func) ();
+
+
 };
 
 // Full decl is private
