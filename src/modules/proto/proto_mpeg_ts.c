@@ -186,12 +186,60 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 	while (stream->last_seq != (buff[3] & 0xF)) {
 		stream->last_seq = (stream->last_seq + 1) & 0xF;
 		missed++;
-
-		// Add missing payload to length
-		// TODO fill the gap 
-
 	}
+
 	if (missed) {
+
+		if (stream->multipart) {
+			if (!stream->pkt_tot_len) {
+				// The last packet was too short to know the size
+				// Drop the multipart
+				packet_multipart_cleanup(stream->multipart);
+				stream->multipart = NULL;
+			} else {
+				size_t missed_len = missed * (MPEG_TS_LEN - 4);
+
+				size_t remaining_len = stream->pkt_tot_len - stream->pkt_cur_len;
+
+				if (missed_len > remaining_len)
+					missed_len = remaining_len;
+
+				// Create a packet with filled in bytes
+				struct packet *pkt = packet_alloc();
+				if (!pkt)
+					return PROTO_ERR;
+
+				if (packet_buffer_alloc(pkt, missed_len, 0) != POM_OK) {
+					packet_release(pkt);
+					return PROTO_ERR;
+				}
+
+				memset(pkt->buff, 0xFF, missed_len);
+
+				if (packet_multipart_add_packet(stream->multipart, pkt, stream->pkt_cur_len, missed_len, 0) != POM_OK) {
+					packet_multipart_cleanup(stream->multipart);
+					stream->multipart = NULL;
+					stream->pkt_cur_len = 0;
+					stream->pkt_tot_len = 0;
+					return PROTO_ERR;
+				}
+
+				stream->pkt_cur_len += missed_len;
+
+				if (stream->pkt_tot_len >= stream->pkt_cur_len) {
+					timer_dequeue(stream->t);
+
+					// Process the multipart
+					struct packet_multipart *m = stream->multipart;
+					stream->multipart = NULL;
+					stream->pkt_cur_len = 0;
+					stream->pkt_tot_len = 0;
+					if (packet_multipart_process(m, stack, stack_index + 1) == PROTO_ERR)
+						return PROTO_ERR;
+				}
+			}
+		}
+
 		registry_perf_inc(ppriv->perf_missed_pkts, missed);
 		pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %s", missed, stream->input->name);
 	}
@@ -300,30 +348,30 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 	
 		// If we already have some parts of a packet, process it
 		if (stream->multipart) {
-			
-			if (pusi_ptr != stream->pkt_tot_len - stream->pkt_cur_len) {
-				pomlog(POMLOG_DEBUG "Invalid tail length for %s packet : expected %u, got %hhu", (stream->type == proto_mpeg_stream_type_docsis ? "DOCSIS" : "SECT" ), stream->pkt_tot_len - stream->pkt_cur_len, pusi_ptr);
-				packet_multipart_cleanup(stream->multipart);
-			} else {
 
-				// Add the end of the previous packet
-				if (packet_multipart_add_packet(stream->multipart, p, stream->pkt_cur_len, pusi_ptr, hdr_len) != POM_OK)
-					return PROTO_ERR;
-				
-				// Process the multipart once we're done with the MPEG packet
-				if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR) {
-					stream->multipart = NULL;
-					return PROTO_ERR;
-				}
-
-			}
+			size_t remaining_len = stream->pkt_tot_len - stream->pkt_cur_len;
 
 			timer_dequeue(stream->t);
 
-			// Multipart will be released automatically
+			struct packet_multipart *m = stream->multipart;
 			stream->multipart = NULL;
-			stream->pkt_cur_len = 0;
 			stream->pkt_tot_len = 0;
+			
+			if (pusi_ptr != remaining_len) {
+				pomlog(POMLOG_DEBUG "Invalid tail length for %s packet : expected %u, got %hhu", (stream->type == proto_mpeg_stream_type_docsis ? "DOCSIS" : "SECT" ), remaining_len, pusi_ptr);
+				packet_multipart_cleanup(m);
+			} else {
+
+				// Add the end of the previous packet
+				if (packet_multipart_add_packet(m, p, stream->pkt_cur_len, pusi_ptr, hdr_len) != POM_OK)
+					return PROTO_ERR;
+				
+				// Process the multipart once we're done with the MPEG packet
+				if (packet_multipart_process(m, stack, stack_index + 1) == PROTO_ERR)
+					return PROTO_ERR;
+			}
+
+			stream->pkt_cur_len = 0;
 
 		}
 		pos += pusi_ptr;
@@ -427,12 +475,12 @@ int proto_mpeg_ts_process(void *proto_priv, struct packet *p, struct proto_proce
 	if (stream->pkt_tot_len && stream->pkt_cur_len >= stream->pkt_tot_len) {
 		timer_dequeue(stream->t);
 		// Process the multipart
-		if (packet_multipart_process(stream->multipart, stack, stack_index + 1) == PROTO_ERR)
-			return PROTO_ERR;
-
+		struct packet_multipart *m = stream->multipart;
 		stream->multipart = NULL;
 		stream->pkt_cur_len = 0;
 		stream->pkt_tot_len = 0;
+		if (packet_multipart_process(m, stack, stack_index + 1) == PROTO_ERR)
+			return PROTO_ERR;
 	}
 
 	if (stream->multipart) {
