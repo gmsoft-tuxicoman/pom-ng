@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <arpa/inet.h>
 
 #include <linux/dvb/dmx.h>
 #include <linux/dvb/frontend.h>
@@ -43,6 +45,7 @@
 
 #include <pom-ng/packet.h>
 #include <pom-ng/core.h>
+#include <pom-ng/timer.h>
 
 #include <docsis.h>
 
@@ -148,6 +151,20 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 
 	res += input_register(&in_docsis);
 
+	static struct input_reg_info in_docsis_scan;
+	memset(&in_docsis_scan, 0, sizeof(struct input_reg_info));
+	in_docsis_scan.name = "docsis_scan";
+	in_docsis_scan.description = "Read a DOCSIS stream";
+	in_docsis_scan.flags = INPUT_REG_FLAG_LIVE;
+	in_docsis_scan.mod = mod;
+	in_docsis_scan.init = input_dvb_docsis_scan_init;
+	in_docsis_scan.open = input_dvb_docsis_scan_open;
+	in_docsis_scan.read = input_dvb_docsis_scan_read;
+	in_docsis_scan.close = input_dvb_close;
+	in_docsis_scan.cleanup = input_dvb_cleanup;
+
+	res += input_register(&in_docsis_scan);
+
 	return res;
 }
 
@@ -159,6 +176,7 @@ static int input_dvb_mod_unregister() {
 	res += input_unregister("dvb_s");
 	res += input_unregister("dvb_atsc");
 	res += input_unregister("docsis");
+	res += input_unregister("docsis_scan");
 
 	return res;
 }
@@ -175,6 +193,10 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 	memset(priv, 0, sizeof(struct input_dvb_priv));
 
 	i->priv = priv;
+
+	priv->timer = timer_sys_alloc(i, input_dvb_timer_process);
+	if (!priv->timer)
+		return POM_ERR;
 
 	priv->frontend_fd = -1;
 	priv->demux_fd = -1;
@@ -209,7 +231,6 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 
 	}
 
-
 	if (type == input_dvb_type_device) {
 		priv->frontend = ptype_alloc("string");
 		if (!priv->frontend)
@@ -221,18 +242,6 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 
 		return POM_OK;
 	}
-
-	priv->perf_signal = registry_instance_add_perf(i->reg_instance, "signal", registry_perf_type_gauge, "Signal", "dB");
-	priv->perf_snr = registry_instance_add_perf(i->reg_instance, "snr", registry_perf_type_gauge, "Signal to Noise ratio (SNR)", "dB");
-	priv->perf_unc = registry_instance_add_perf(i->reg_instance, "unc", registry_perf_type_counter, "Uncorrected blocks", "blocks");
-	priv->perf_ber = registry_instance_add_perf(i->reg_instance, "ber", registry_perf_type_gauge, "Bit error rate (BER)", "bits/block");
-	if (!priv->perf_signal | !priv->perf_snr | !priv->perf_unc | !priv->perf_ber)
-		return POM_ERR;
-
-	registry_perf_set_update_hook(priv->perf_signal, input_dvb_perf_update_signal, priv);
-	registry_perf_set_update_hook(priv->perf_snr, input_dvb_perf_update_snr, priv);
-	registry_perf_set_update_hook(priv->perf_unc, input_dvb_perf_update_unc, priv);
-	registry_perf_set_update_hook(priv->perf_ber, input_dvb_perf_update_ber, priv);
 
 
 	priv->adapter = ptype_alloc("uint16");
@@ -263,6 +272,21 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 	p = registry_new_param("buff_pkt_count", "10", priv->buff_pkt_count, "Number of MPEG packets to read at once", 0);
 	if (input_add_param(i, p) != POM_OK)
 		return POM_ERR;
+
+	if (type == input_dvb_type_docsis_scan)
+		return POM_OK;
+
+	priv->perf_signal = registry_instance_add_perf(i->reg_instance, "signal", registry_perf_type_gauge, "Signal", "dB");
+	priv->perf_snr = registry_instance_add_perf(i->reg_instance, "snr", registry_perf_type_gauge, "Signal to Noise ratio (SNR)", "dB");
+	priv->perf_unc = registry_instance_add_perf(i->reg_instance, "unc", registry_perf_type_counter, "Uncorrected blocks", "blocks");
+	priv->perf_ber = registry_instance_add_perf(i->reg_instance, "ber", registry_perf_type_gauge, "Bit error rate (BER)", "bits/block");
+	if (!priv->perf_signal | !priv->perf_snr | !priv->perf_unc | !priv->perf_ber)
+		return POM_ERR;
+
+	registry_perf_set_update_hook(priv->perf_signal, input_dvb_perf_update_signal, priv);
+	registry_perf_set_update_hook(priv->perf_snr, input_dvb_perf_update_snr, priv);
+	registry_perf_set_update_hook(priv->perf_unc, input_dvb_perf_update_unc, priv);
+	registry_perf_set_update_hook(priv->perf_ber, input_dvb_perf_update_ber, priv);
 
 
 	if (type == input_dvb_type_c || type == input_dvb_type_s) {
@@ -338,6 +362,41 @@ static int input_dvb_docsis_init(struct input *i) {
 	return input_dvb_common_init(i, input_dvb_type_docsis);
 }
 
+static int input_dvb_docsis_scan_init(struct input *i) {
+
+	if (input_dvb_common_init(i, input_dvb_type_docsis_scan) != POM_OK)
+		return POM_ERR;
+
+	struct input_dvb_priv *priv = i->priv;
+
+	struct input_dvb_docsis_scan_priv *spriv = malloc(sizeof(struct input_dvb_docsis_scan_priv));
+	if (!spriv) {
+		pom_oom(sizeof(struct input_dvb_docsis_scan_priv));
+		return POM_ERR;
+	}
+	memset(spriv, 0, sizeof(struct input_dvb_docsis_scan_priv));
+
+	priv->tpriv.d.scan = spriv;
+
+
+	struct registry_param *p = NULL;
+	spriv->p_scan_qam64 = ptype_alloc("bool");
+	spriv->p_complete_freq_scan = ptype_alloc("bool");
+
+	if (!spriv->p_scan_qam64 || !spriv->p_complete_freq_scan)
+		return POM_ERR;
+
+	p = registry_new_param("scan_qam64", "no", spriv->p_scan_qam64, "Scan QAM64 streams in addition to QAM256", 0);
+	if (input_add_param(i, p) != POM_OK)
+		return POM_ERR;
+
+	p = registry_new_param("scan_all_freq", "no", spriv->p_complete_freq_scan, "Scan all the frequencies, not just the one in the official frequency plan", 0);
+	if (input_add_param(i, p) != POM_OK)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
 static int input_dvb_device_open(struct input *i) {
 
 	struct input_dvb_priv *priv = i->priv;
@@ -355,16 +414,7 @@ static int input_dvb_device_open(struct input *i) {
 	return POM_OK;
 }
 
-
-static int input_dvb_open(struct input *i) {
-
-	struct input_dvb_priv *priv = i->priv;
-
-	// Allocate the buffer
-	unsigned int pkt_count = *PTYPE_UINT16_GETVAL(priv->buff_pkt_count);
-	priv->mpeg_buff = malloc(MPEG_TS_LEN * pkt_count);
-	if (!priv->mpeg_buff)
-		return POM_ERR;
+static int input_dvb_card_open(struct input_dvb_priv *priv) {
 
 	char adapter[FILENAME_MAX];
 	memset(adapter, 0, FILENAME_MAX);
@@ -464,12 +514,108 @@ static int input_dvb_open(struct input *i) {
 	strcpy(dvr, adapter);
 	strcat(dvr, "/dvr0");
 
+	if (priv->type == input_dvb_type_docsis_scan) {
+		priv->tpriv.d.scan->dvr_dev = strdup(dvr);
+		if (!priv->tpriv.d.scan->dvr_dev) {
+			pom_oom(strlen(dvr) + 1);
+			return POM_ERR;
+		}
+		return POM_OK;
+	}
+
 	priv->dvr_fd = open(dvr, O_RDONLY);
 	if (priv->dvr_fd == -1) {
 		pomlog(POMLOG_ERR "Unable to open DVR device : %s", pom_strerror(errno));
 		goto err;
 	}
 
+	return POM_OK;
+
+err:
+	if (priv->frontend_fd != -1) {
+		close(priv->frontend_fd);
+		priv->frontend_fd = 1;
+	}
+
+	if (priv->demux_fd != -1) {
+		close(priv->demux_fd);
+		priv->demux_fd = -1;
+	}
+
+	if (priv->dvr_fd != -1) {
+		close(priv->dvr_fd);
+		priv->dvr_fd = -1;
+	}
+
+	return POM_ERR;
+}
+
+static int input_dvb_docsis_scan_open(struct input *i) {
+
+	struct input_dvb_priv *priv = i->priv;
+
+	// Allocate the buffer
+	unsigned int pkt_count = *PTYPE_UINT16_GETVAL(priv->buff_pkt_count);
+	priv->mpeg_buff = malloc(MPEG_TS_LEN * pkt_count);
+	if (!priv->mpeg_buff)
+		return POM_ERR;
+
+	if (input_dvb_card_open(priv) != POM_OK)
+		return POM_ERR;
+
+
+	struct input_dvb_docsis_scan_priv *spriv = priv->tpriv.d.scan;
+
+	if (priv->fe_type == FE_QAM) {
+		spriv->freq_max = 858000000;
+		spriv->freq_min = 106000000;
+		spriv->freq_step = 8000000;
+		spriv->freq_fast_start = 306000000;
+	} else if (priv->fe_type == FE_ATSC) {
+		spriv->freq_max = 999000000;
+		spriv->freq_min = 57000000;
+		spriv->freq_step = 6000000;
+		spriv->freq_fast_start = 471000000;
+	} else {
+		pomlog(POMLOG_ERR "Frontend is not DVB-C or ASTC/QAM.");
+		return POM_ERR;
+	}
+
+
+	struct dvb_frontend_info fe_info = { { 0 } };
+	if (ioctl(priv->frontend_fd, FE_GET_INFO, &fe_info)) {
+		pomlog(POMLOG_ERR "Error while querying frontend info : %s");
+		return POM_ERR;
+	}
+
+	if (fe_info.frequency_min > spriv->freq_min) {
+		spriv->freq_min = fe_info.frequency_min;
+		spriv->freq_min += spriv->freq_step - (spriv->freq_min % spriv->freq_step);
+	}
+	if (fe_info.frequency_max < spriv->freq_max) {
+		spriv->freq_max = fe_info.frequency_max;
+		spriv->freq_max -= spriv->freq_max % spriv->freq_step;
+	}
+
+	spriv->cur_freq = spriv->freq_fast_start;
+	spriv->cur_step = spriv->freq_step;
+	spriv->cur_mod = QAM_256;
+
+	return POM_OK;
+}
+
+static int input_dvb_open(struct input *i) {
+
+	struct input_dvb_priv *priv = i->priv;
+
+	// Allocate the buffer
+	unsigned int pkt_count = *PTYPE_UINT16_GETVAL(priv->buff_pkt_count);
+	priv->mpeg_buff = malloc(MPEG_TS_LEN * pkt_count);
+	if (!priv->mpeg_buff)
+		return POM_ERR;
+
+	if (input_dvb_card_open(priv) != POM_OK)
+		goto err;
 
 	// Do the tuning
 	
@@ -551,6 +697,9 @@ static int input_dvb_open(struct input *i) {
 		if (priv->fe_type == FE_QAM)
 			symbol_rate = 6952000;
 		// FE_ATSC doesn't need a symbol rate
+
+		// Invalid sequence that needs initialization
+		priv->tpriv.d.mpeg_seq = 0xFF;
 	}
 
 	int res = input_dvb_tune(priv, tuning_frequency, symbol_rate, modulation);
@@ -566,27 +715,13 @@ err:
 	if (priv->mpeg_buff)
 		free(priv->mpeg_buff);
 
-	if (priv->frontend_fd != -1) {
-		close(priv->frontend_fd);
-		priv->frontend_fd = 1;
-	}
-
-	if (priv->demux_fd != -1) {
-		close(priv->demux_fd);
-		priv->demux_fd = -1;
-	}
-
-	if (priv->dvr_fd != -1) {
-		close(priv->dvr_fd);
-		priv->dvr_fd = -1;
-	}
 	return POM_ERR;
 }
 
 // Return -1 on fatal error, 0 if not tuned, 1 if tuned
 static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t symbol_rate, fe_modulation_t modulation) {
 
-	fe_status_t status;
+	fe_status_t status = 0, last_status = 0;
 	struct dvb_frontend_parameters frp;
 	struct pollfd pfd[1];
 
@@ -620,7 +755,7 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 
 	if (ioctl(p->frontend_fd, FE_SET_FRONTEND, &frp) < 0){
 		pomlog(POMLOG_ERR "Error while setting tuning parameters : %s", pom_strerror(errno));
-		return POM_ERR;
+		return -1;
 	}
 
 
@@ -648,11 +783,17 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 					pomlog(POMLOG_WARN "Frontend was reinit");
 					return 0;
 				}
-				
+
+				// Avoid repeating the status if it's always the same
+				if (status == last_status)
+					continue;
+
 				char status_str[128];
 				memset(status_str, 0, sizeof(status_str));
-				if (status)
+				if (status) {
 					strcat(status_str, "Status : " );
+					last_status = status;
+				}
 
 				if (status & FE_HAS_SIGNAL)
 					strcat(status_str, "SIGNAL ");
@@ -666,18 +807,16 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 					strcat(status_str, "LOCK ");
 				if (status)
 					pomlog(POMLOG_DEBUG "%s", status_str);
-				if (status & FE_HAS_LOCK) {
 
+				if (status & FE_HAS_LOCK) {
 					return 1;
 				}
-
-
 			} 
 		} 
 		gettimeofday(&now, NULL);
 	}
 
-	return POM_OK;
+	return 0;
 }
 
 static int input_dvb_read(struct input *i) {
@@ -765,6 +904,171 @@ static int input_dvb_read(struct input *i) {
 
 }
 
+static int input_dvb_docsis_scan_read(struct input *i) {
+
+	struct input_dvb_priv *p = i->priv;
+
+	struct input_dvb_docsis_scan_priv *spriv = p->tpriv.d.scan;
+
+	uint32_t cur_freq = spriv->cur_freq;
+	fe_modulation_t cur_mod = spriv->cur_mod;
+
+	// Calculate next frequency
+	spriv->cur_freq += spriv->cur_step;
+
+	// Check if we were before our fast scan
+	if (spriv->cur_step == spriv->freq_step) {
+		// We are currently scanning the official frequency plan
+
+		if (spriv->cur_freq >= spriv->freq_max) {
+			// We started at the "fast scan freq start", restart from the lower freq
+			spriv->cur_freq = spriv->freq_min;
+		} else if (cur_freq < spriv->freq_fast_start && spriv->cur_freq >= spriv->freq_fast_start) {
+			// We scanned from the lower freq up to the "fast scan freq start"
+			if (*PTYPE_BOOL_GETVAL(spriv->p_complete_freq_scan)) {
+				// The user wants a complete frequency scan
+				// Restart with a smaller step and from the min freq
+				spriv->cur_step = 1000000;
+				spriv->cur_freq = spriv->freq_min;
+			} else if (spriv->cur_mod == QAM_256) {
+				if (*PTYPE_BOOL_GETVAL(spriv->p_scan_qam64)) {
+					// The user wants to scan QAM64
+					// Restart at the fast scan freq
+					spriv->cur_step = spriv->freq_step;
+					spriv->cur_freq = spriv->freq_fast_start;
+					spriv->cur_mod = QAM_64;
+				} else {
+					pomlog(POMLOG_INFO "Fast frequency scan (QAM256 only) completed");
+					input_stop(i);
+					return POM_OK;
+				}
+			} else {
+				pomlog(POMLOG_INFO "Fast frequency scan (QAM256 and QAM64) completed");
+				input_stop(i);
+				return POM_OK;
+			}
+		}
+	} else {
+		// We are doing a complete scan
+
+		// Skip freq that we already scanned in the fast scan
+		if (!((spriv->freq_max - spriv->cur_freq) % spriv->freq_step))
+			spriv->cur_freq += spriv->cur_step;
+
+		if (spriv->cur_freq >= spriv->freq_max) {
+
+			if (spriv->cur_mod == QAM_256) {
+				if (*PTYPE_BOOL_GETVAL(spriv->p_scan_qam64)) {
+					// The user wants to scan QAM64
+					// Restart from the fast scan freq
+					spriv->cur_step = spriv->freq_step;
+					spriv->cur_freq = spriv->freq_fast_start;
+					spriv->cur_mod = QAM_64;
+				} else {
+					pomlog(POMLOG_INFO "Complete frequency scan (QAM256 only) completed");
+					input_stop(i);
+					return POM_OK;
+				}
+			} else {
+				pomlog(POMLOG_INFO "Complete frequency scan (QAM256 and QAM64) scan completed");
+				input_stop(i);
+				return POM_OK;
+			}
+		}
+	}
+
+	pomlog(POMLOG_INFO "Scanning frequency %uHz on QAM%s ...", cur_freq, (cur_mod == QAM_256 ? "256" : "64"));
+	// US DOCSIS will not use the symbol rate
+	int res = input_dvb_tune(p, cur_freq, INPUT_DVB_DOCSIS_EURO_SYMBOLRATE, cur_mod);
+
+	if (res == -1) {
+		// Something went wrong
+		pomlog(POMLOG_ERR "Error while tuning");
+		return POM_ERR;
+	}
+
+	if (!res) {
+		pomlog(POMLOG_DEBUG "Tuning failed on %uHz", cur_freq);
+		return POM_OK;
+	}
+
+	spriv->sync_count = 0;
+	spriv->mdd_found = 0;
+	p->tpriv.d.mpeg_seq = 0xFF; // Invalid sequence that needs initialization
+
+	// We need to open and close the DVR device for each TP in order to flush the buffer from the previous TP
+	p->dvr_fd = open(p->tpriv.d.scan->dvr_dev, O_RDONLY);
+	if (p->dvr_fd == -1) {
+		pomlog(POMLOG_ERR "Error while opening the DVR device : %s", pom_strerror(errno));
+		return POM_ERR;
+	}
+
+	timer_sys_queue(p->timer, 3);
+	while (spriv->sync_count < 10 && spriv->sync_count >= 0) {
+		res = input_dvb_docsis_read(i);
+		if (res == POM_ERR) {
+			spriv->sync_count = -1;
+			break;
+		}
+	}
+	timer_sys_dequeue(p->timer);
+
+	if (spriv->sync_count >= 10) {
+
+		if (!spriv->mdd_found) {
+			// Give it 30 more sec to find an mdd
+			timer_sys_queue(p->timer, 30);
+			while (!spriv->mdd_found) {
+				res = input_dvb_docsis_read(i);
+				if (res == POM_ERR)
+					break;
+			}
+
+			timer_sys_dequeue(p->timer);
+		}
+
+
+		if (!spriv->mdd_found) {
+			// No MDD was found, this means we have a DOCSIS 2 stream
+
+			// Check if a channel with this freq is already known
+			struct input_dvb_docsis_scan_priv_stream *s;
+			for (s = spriv->streams; s && s->freq != cur_freq; s = s->next);
+
+			if (!s) {
+				s = malloc(sizeof(struct input_dvb_docsis_scan_priv_stream));
+				if (!s) {
+					pom_oom(sizeof(struct input_dvb_docsis_scan_priv_stream));
+					return POM_ERR;
+				}
+				memset(s, 0, sizeof(struct input_dvb_docsis_scan_priv_stream));
+				s->freq = cur_freq;
+				s->modulation = cur_mod;
+				s->docsis_ver = 2; // Or 1 ...
+
+				s->next = spriv->streams;
+				spriv->streams = s;
+
+				if (input_dvb_docsis_process_new_stream(i, s) != POM_OK)
+					return POM_ERR;
+			}
+		}
+	} else {
+		pomlog(POMLOG_DEBUG "No DOCSIS stream found on %uHz", cur_freq);
+	}
+
+	close(p->dvr_fd);
+	p->dvr_fd = -1;
+
+	p->tpriv.d.docsis_buff_len = 0;
+	if (p->tpriv.d.pkt) {
+		packet_release(p->tpriv.d.pkt);
+		p->tpriv.d.pkt = NULL;
+	}
+
+	return POM_OK;
+}
+
 static int input_dvb_docsis_read(struct input *i) {
 
 	struct input_dvb_priv *p = i->priv;
@@ -801,7 +1105,7 @@ static int input_dvb_docsis_read(struct input *i) {
 
 	int j;
 	for (j = 0; j < pkt_count; j++) {
-		if (input_dvb_docsis_process_packet(i, buff + (j * MPEG_TS_LEN)) != POM_OK)
+		if (input_dvb_docsis_process_mpeg_packet(i, buff + (j * MPEG_TS_LEN)) != POM_OK)
 			return POM_ERR;
 
 	}
@@ -810,7 +1114,189 @@ static int input_dvb_docsis_read(struct input *i) {
 	return POM_OK;
 }
 
-static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff) {
+static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb_docsis_scan_priv_stream *s) {
+
+	if (s->docsis_ver == 3) {
+		if (s->pri_capable) {
+			pomlog(POMLOG_INFO "Got new DOCSIS 3 stream : %uHz, QAM %u, Primary capable", s->freq, (s->modulation == QAM_256 ? 256 : 64));
+		} else {
+			pomlog(POMLOG_INFO "Got new DOCSIS 3 stream : %uHz, QAM %u", s->freq, (s->modulation == QAM_256 ? 256 : 64));
+		}
+	} else {
+		pomlog(POMLOG_INFO "Got new DOCSIS 2 stream : %uHz, QAM %u", s->freq, (s->modulation == QAM_256 ? 256 : 64));
+	}
+
+	return POM_OK;
+}
+
+static int input_dvb_docsis_process_docsis_mdd(struct input_dvb_priv *p, unsigned char *buff, size_t len) {
+
+	if (len < 4)
+		return POM_ERR;
+
+	// Skip MDD header
+	buff += 4;
+	len -= 4;
+
+	while (len > 2) {
+		uint8_t tlvlen = buff[1];
+		switch (buff[0]) {
+			case 1: { // Downstream Channel List
+				if (len < 4) // 4 = 1 tvl, 1 len 1, 1 subtlv, 1 subtlv len
+					return POM_OK;
+
+				struct input_dvb_docsis_scan_priv_stream *s = malloc(sizeof(struct input_dvb_docsis_scan_priv_stream));
+				if (!s) {
+					pom_oom(sizeof(struct input_dvb_docsis_scan_priv_stream));
+					return POM_ERR;
+				}
+				memset(s, 0, sizeof(struct input_dvb_docsis_scan_priv_stream));
+				s->docsis_ver = 3;
+
+				buff += 2;
+				len -= tlvlen + 2;
+				while (tlvlen > 2) {
+					// Sub TLVS
+					uint8_t subtlvlen = buff[1];
+					if (tlvlen < subtlvlen + 1) {
+						free(s);
+						return POM_OK;
+					}
+
+					uint8_t realsublen = 0;
+					switch (buff[0]) {
+						case 1:
+							s->chan_id = buff[2];
+							realsublen = sizeof(uint8_t);
+							break;
+						case 2: { // Frequency
+							if (subtlvlen < sizeof(uint32_t))
+								return POM_OK;
+							uint32_t val;
+							memcpy(&val, buff + 2, sizeof(val));
+							s->freq = ntohl(val);
+							realsublen = sizeof(uint32_t);
+							break;
+						}
+
+						case 3:
+							if ((buff[2] & 0xF) == 0)
+								s->modulation = QAM_64;
+							else if ((buff[2] & 0xF) == 1)
+								s->modulation = QAM_256;
+							realsublen = sizeof(uint8_t);
+							break;
+						case 4:
+							s->pri_capable = buff[2];
+							realsublen = sizeof(uint8_t);
+							break;
+						default:
+							realsublen = subtlvlen;
+							break;
+					}
+
+					if (realsublen != subtlvlen) {
+						free(s);
+						return POM_OK;
+					}
+
+					tlvlen -= subtlvlen + 2;
+					buff += subtlvlen + 2;
+				}
+
+				len -= tlvlen + 2;
+
+
+				// Check the result
+				if (s->freq == 0 || s->modulation == 0 || s->chan_id == 0) {
+					free(s);
+					continue;
+				}
+
+				struct input_dvb_docsis_scan_priv *spriv = p->tpriv.d.scan;
+				struct input_dvb_docsis_scan_priv_stream *tmp;
+				for (tmp = spriv->streams; tmp && tmp->chan_id != s->chan_id; tmp = tmp->next);
+				if (tmp) {
+					free(s);
+					continue;
+				}
+
+				s->next = spriv->streams;
+				spriv->streams = s;
+
+				input_dvb_docsis_process_new_stream(NULL, s);
+				break;
+			}
+
+			default:
+				len -= tlvlen + 2;
+				buff += tlvlen + 2;
+				break;
+		}
+	}
+
+	return POM_OK;
+}
+
+static int input_dvb_docsis_process_docsis_packet(struct input_dvb_priv *p) {
+
+	if (p->type == input_dvb_type_docsis) {
+		struct packet *pkt = p->tpriv.d.pkt;
+		if (!pkt)
+			return POM_ERR;
+		p->tpriv.d.pkt = NULL;
+		p->tpriv.d.pkt_pos = 0;
+		return core_queue_packet(pkt, 0, 0);
+	}
+
+	if (p->type != input_dvb_type_docsis_scan)
+		return POM_ERR;
+
+	struct input_dvb_docsis_scan_priv *spriv = p->tpriv.d.scan;
+
+	// At this point we are either looking for SYNC messages or MDD messages
+	unsigned char *buffer = p->tpriv.d.pkt->buff;
+	size_t len = p->tpriv.d.pkt->len;
+
+	if (len < 26)
+		goto done;
+
+	// Some things are common for both
+
+	if (
+		(buffer[1] != 0) ||  // MAC_PARM = 0
+		(buffer[20] != 0) || // DSAP = 0
+		(buffer[20] != 0) || // SSAP = 0
+		(buffer[22] != 0x3)  // Control = unumbered info
+	)
+		goto done;
+
+	if (
+		(buffer[0] == 0xC0) && // FC_TYPE = 11, FC_PARM = 0, EHDR_ON = 0 -> FC = 0xC0
+		(buffer[23] == 0x1) && // Version = 1
+		(buffer[24] == 0x1)    // Type = 1 (SYNC msg)
+	) {
+		// SYNC message
+		spriv->sync_count++;
+	} else if (
+		(buffer[0] == 0xC2) && // FC_TYPE=11, FC_PARM = 1, EHDR_ON = 0 -> FC = 0xC2
+		(buffer[23] == 4) &&   // Version = 4
+		(buffer[24] == 33)     // Type = 33
+	) {
+		// MDD message
+		if (input_dvb_docsis_process_docsis_mdd(p, buffer + 26, p->tpriv.d.pkt->len - 26) == POM_OK)
+			spriv->mdd_found = 1;
+	}
+
+done:
+	packet_release(p->tpriv.d.pkt);
+	p->tpriv.d.pkt = NULL;
+	p->tpriv.d.pkt_pos = 0;
+
+	return POM_OK;
+}
+
+static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *buff) {
 
 	struct input_dvb_priv *p = i->priv;
 
@@ -827,16 +1313,58 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 	unsigned char pusi = buff[1] & 0x40;
 	unsigned char afc = (buff[3] & 0x30) >> 4; // Adaptation field control
 	unsigned char tsc = (buff[3] & 0xC0) >> 6; // Transport scrambling control
-
-	if (tsc || afc != 0x1)
-		return POM_OK; // DOCSIS packets are not encrypted on mpeg level and there should not be an adaptation field
+	uint8_t mpeg_seq = buff[3] & 0xF; // MPEG continuity counter
 
 	unsigned char *pload = buff + 4;
 	unsigned int plen = MPEG_TS_LEN - 4;
 
 	unsigned char pusi_ptr = *pload;
 
-	// TODO handle missed packets
+	if (!(afc & 0x1)) // There should be a payload in the packet
+		return POM_OK;
+
+	if (p->tpriv.d.mpeg_seq > 0xF) {
+		// Init the sequence
+		p->tpriv.d.mpeg_seq = mpeg_seq;
+	} else {
+		p->tpriv.d.mpeg_seq = (p->tpriv.d.mpeg_seq + 1) & 0xF;
+
+		if (p->tpriv.d.mpeg_seq != mpeg_seq) {
+			// We missed some packets
+
+			// Lame way to compute the missed packets
+			int missed = 0;
+			while (p->tpriv.d.mpeg_seq != mpeg_seq) {
+				p->tpriv.d.mpeg_seq = (p->tpriv.d.mpeg_seq + 1) & 0xF;
+				missed++;
+			}
+
+			pomlog(POMLOG_DEBUG "Missed %u MPEG packet(s) on input %s", missed, i->name);
+
+			if (p->tpriv.d.docsis_buff_len) {
+				// We had at most 3 bytes of a packet, discard them
+				p->tpriv.d.docsis_buff_len = 0;
+			} else if (p->tpriv.d.pkt) {
+				// We have the begining of a packet try to fill whatever was missed into it
+				int missed_len = missed * (MPEG_TS_LEN - 4);
+				int remaining_len = p->tpriv.d.pkt->len - p->tpriv.d.pkt_pos;
+				if (missed_len > remaining_len)
+					missed_len = remaining_len;
+
+				memset(p->tpriv.d.pkt->buff + p->tpriv.d.pkt_pos, 0xFF, remaining_len);
+				p->tpriv.d.pkt_pos += remaining_len;
+
+				if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
+					// process the packet
+					if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
+						return POM_ERR;
+				}
+			}
+		}
+	}
+
+	if (tsc || afc != 0x1)
+		return POM_OK; // DOCSIS packets are not encrypted on mpeg level and there should not be an adaptation field
 
 	if (pusi) { // Skip the pusi_ptr
 		if (pusi_ptr > MPEG_TS_LEN - 5)
@@ -856,9 +1384,6 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 		size_t hdr_len = sizeof(struct docsis_hdr) + hdr->mac_parm;
 		char *tmplen = (char*)&hdr->len;
 		size_t pkt_len = ((tmplen[0] << 8) + tmplen[1]) + sizeof(struct docsis_hdr);
-
-		if (pkt_len > 2000)
-			printf("WTF !\n");
 
 		p->tpriv.d.pkt = packet_alloc();
 		if (!p->tpriv.d.pkt)
@@ -894,9 +1419,8 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 				memcpy(p->tpriv.d.pkt->buff + p->tpriv.d.pkt_pos, pload, pusi_ptr);
 
 				// process the packet
-				if (core_queue_packet(p->tpriv.d.pkt, 0, 0))
+				if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
 					return POM_ERR;
-				p->tpriv.d.pkt = NULL;
 			}
 		}
 
@@ -918,10 +1442,8 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 
 		if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
 			// process the packet
-			if (core_queue_packet(p->tpriv.d.pkt, 0, 0))
+			if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
 				return POM_ERR;
-
-			p->tpriv.d.pkt = NULL;
 		}
 
 	} else {
@@ -951,9 +1473,6 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 			char *tmplen = (char*)&hdr->len;
 			size_t pkt_len = ((tmplen[0] << 8) + tmplen[1]) + sizeof(struct docsis_hdr);
 
-			if (pkt_len > 2000)
-				printf("WTF !\n");
-
 			p->tpriv.d.pkt = packet_alloc();
 			if (!p->tpriv.d.pkt)
 				return POM_ERR;
@@ -968,8 +1487,6 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 			p->tpriv.d.pkt->input = i;
 			p->tpriv.d.pkt->datalink = p->link_proto;
 			p->tpriv.d.pkt->ts = pom_gettimeofday();
-
-
 		}
 
 		// Copy stuff to the packet
@@ -984,10 +1501,8 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 
 		if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
 			// process the packet
-			if (core_queue_packet(p->tpriv.d.pkt, 0, 0))
+			if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
 				return POM_ERR;
-			p->tpriv.d.pkt = NULL;
-			p->tpriv.d.pkt_pos = 0;
 		}
 	}
 
@@ -996,12 +1511,7 @@ static int input_dvb_docsis_process_packet(struct input *i, unsigned char *buff)
 }
 
 
-static int input_dvb_close(struct input *i) {
-
-	struct input_dvb_priv *p = i->priv;
-
-	if (p->mpeg_buff)
-		free(p->mpeg_buff);
+static void input_dvb_card_close(struct input_dvb_priv *p) {
 
 	if (p->frontend_fd != -1) {
 		close(p->frontend_fd);
@@ -1017,6 +1527,16 @@ static int input_dvb_close(struct input *i) {
 		close(p->dvr_fd);
 		p->dvr_fd = -1;
 	}
+}
+
+static int input_dvb_close(struct input *i) {
+
+	struct input_dvb_priv *p = i->priv;
+
+	if (p->mpeg_buff)
+		free(p->mpeg_buff);
+
+	input_dvb_card_close(p);
 
 	return POM_OK;
 }
@@ -1024,6 +1544,9 @@ static int input_dvb_close(struct input *i) {
 static int input_dvb_cleanup(struct input *i) {
 
 	struct input_dvb_priv *p = i->priv;
+
+	if (p->timer)
+		timer_sys_cleanup(p->timer);
 
 	if (p->adapter)
 		ptype_cleanup(p->adapter);
@@ -1048,6 +1571,28 @@ static int input_dvb_cleanup(struct input *i) {
 			if (p->tpriv.s.lnb_type)
 				ptype_cleanup(p->tpriv.s.lnb_type);
 			break;
+		case input_dvb_type_docsis_scan:
+			if (p->tpriv.d.scan) {
+				if (p->tpriv.d.scan->p_scan_qam64)
+					ptype_cleanup(p->tpriv.d.scan->p_scan_qam64);
+				if (p->tpriv.d.scan->p_complete_freq_scan)
+					ptype_cleanup(p->tpriv.d.scan->p_complete_freq_scan);
+				if (p->tpriv.d.scan->dvr_dev)
+					free(p->tpriv.d.scan->dvr_dev);
+
+				while (p->tpriv.d.scan->streams) {
+					struct input_dvb_docsis_scan_priv_stream *tmp = p->tpriv.d.scan->streams;
+					p->tpriv.d.scan->streams = tmp->next;
+					free(tmp);
+
+				}
+				free(p->tpriv.d.scan);
+			}
+			// No break
+		case input_dvb_type_docsis:
+			if (p->tpriv.d.pkt)
+				packet_release(p->tpriv.d.pkt);
+			break;
 		default:
 			break;
 	}
@@ -1056,6 +1601,23 @@ static int input_dvb_cleanup(struct input *i) {
 
 	return POM_OK;
 
+}
+
+static int input_dvb_timer_process(void *input) {
+
+	struct input *i = input;
+	struct input_dvb_priv *p = i->priv;
+
+	if (p->type == input_dvb_type_docsis_scan) {
+
+		struct input_dvb_docsis_scan_priv *spriv = p->tpriv.d.scan;
+		spriv->sync_count = -1;
+		//  Timeout occured, interrupt current read
+		pthread_kill(i->thread, SIGCHLD);
+		return POM_OK;
+	}
+
+	return POM_OK;
 }
 
 static int input_dvb_perf_update_signal(uint64_t *value, void *priv) {
