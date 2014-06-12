@@ -620,7 +620,7 @@ static int datastore_sqlite_dataset_read(struct dataset_query *dsq) {
 					break;
 				}
 				case DATASTORE_SQLITE_PTYPE_TIMESTAMP: {
-					time_t res = pom_sec_ptime(sqlite3_column_int64(qpriv->read_stmt, i + 1));
+					ptime res = pom_sec_ptime(sqlite3_column_int64(qpriv->read_stmt, i + 1));
 					PTYPE_TIMESTAMP_SETVAL(dv[i].value, res);
 					break;
 				}
