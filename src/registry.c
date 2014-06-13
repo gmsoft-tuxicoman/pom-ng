@@ -1758,3 +1758,51 @@ int registry_param_info_add_value(struct registry_param *p, char *value) {
 	return POM_OK;
 
 }
+
+struct registry_instance *registry_create_instance(char *cls, char *type, char *name) {
+
+	int i;
+	for (i = 0; i < strlen(name); i++) {
+		char c = name[i];
+		if ( !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && (c != '_') && (c != '-') && (c != '.') ) {
+			pomlog(POMLOG_ERR "Only alpha numeric character and '_' '-' '.' are allowed for instance names");
+			return NULL;
+		}
+	}
+
+	struct registry_instance *inst = NULL;
+
+	registry_lock();
+
+	if (registry_find_instance(cls, name)) {
+		pomlog(POMLOG_ERR "Cannot add instance : instance %s already exists", name);
+		goto err;
+	}
+
+	struct registry_class *c = registry_find_class(cls);
+	if (!c) {
+		pomlog(POMLOG_ERR "Cannot add instance : class %s not found", cls);
+		goto err;
+	}
+
+	if (!c->instance_add) {
+		pomlog(POMLOG_ERR "Class %s doesn't support adding instances", cls);
+		goto err;
+	}
+
+	if (c->instance_add(type, name) != POM_OK) {
+		pomlog(POMLOG_ERR "Error while adding instance %s", name);
+		goto err;
+	}
+
+	inst = registry_find_instance(cls, name);
+	if (!inst) {
+		pomlog(POMLOG_ERR "Cannot find instance after adding it");
+		goto err;
+	}
+
+err:
+	registry_unlock();
+
+	return inst;
+}

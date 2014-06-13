@@ -45,8 +45,7 @@ struct registry_param* registry_new_param(char *name, char *default_value, struc
 int registry_cleanup_param(struct registry_param *p);
 int registry_param_set_callbacks(struct registry_param *p, void *priv, int (*pre_check) (void *priv, struct registry_param *p, char *value), int (*post_check) (void *priv, struct registry_param *p, struct ptype *value));
 int registry_instance_add_function(struct registry_instance *i, char *name, int (*handler) (struct registry_instance *), char *description);
-
-int registry_uid_create(struct registry_instance *instance);
+int registry_set_param(struct registry_instance *i, char *param, char* value);
 
 struct registry_perf *registry_instance_add_perf(struct registry_instance *i, const char *name, enum registry_perf_type type, const char *description, const char *unit);
 void registry_perf_set_update_hook(struct registry_perf *p, int (*update_hook) (uint64_t *cur_val, void *priv), void *hook_priv);
@@ -59,4 +58,6 @@ void registry_perf_reset(struct registry_perf *p);
 
 int registry_param_info_set_min_max(struct registry_param *p, uint32_t min, uint32_t max);
 int registry_param_info_add_value(struct registry_param *p, char *value);
+
+struct registry_instance *registry_create_instance(char *cls, char *type, char *name);
 #endif

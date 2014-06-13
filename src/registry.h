@@ -145,6 +145,8 @@ void registry_finish();
 void registry_lock();
 void registry_unlock();
 
+int registry_uid_create(struct registry_instance *instance);
+
 struct registry_class *registry_get();
 
 struct registry_class* registry_add_class(char *name);
@@ -160,7 +162,6 @@ int registry_remove_instance(struct registry_instance *i);
 
 int registry_class_add_param(struct registry_class *c, struct registry_param *p);
 int registry_instance_add_param(struct registry_instance *i, struct registry_param *p);
-int registry_set_param(struct registry_instance *i, char *param, char* value);
 int registry_set_param_value(struct registry_param *p, char *value);
 
 struct registry_class *registry_find_class(char *cls);
