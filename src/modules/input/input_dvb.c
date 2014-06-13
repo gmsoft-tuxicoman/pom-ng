@@ -224,7 +224,7 @@ static int input_dvb_register() {
 
 	static struct event_reg_info input_dvb_evt_status = { 0 };
 	input_dvb_evt_status.source_name = "input_dvb";
-	input_dvb_evt_status.name = "input_dvb_status";
+	input_dvb_evt_status.name = "dvb_status";
 	input_dvb_evt_status.description = "Provide lock status on DVB interfaces";
 	input_dvb_evt_status.data_reg = &evt_dvb_status_data;
 
@@ -273,7 +273,7 @@ static int input_dvb_docsis_scan_register() {
 
 	static struct event_reg_info input_docsis_evt_stream = { 0 };
 	input_docsis_evt_stream.source_name = "input_docsis_scan";
-	input_docsis_evt_stream.name = "input_docsis_scan_stream";
+	input_docsis_evt_stream.name = "docsis_scan_stream";
 	input_docsis_evt_stream.description = "Provide information about new stream found";
 	input_docsis_evt_stream.data_reg = &evt_docsis_scan_stream_data;
 
@@ -1260,14 +1260,17 @@ static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb
 			PTYPE_STRING_SETVAL(evt_data[input_dvb_docsis_stream_modulation].value, (s->modulation == QAM_256 ? "QAM256" : "QAM64"));
 			data_set(evt_data[input_dvb_docsis_stream_modulation]);
 
-			PTYPE_UINT8_SETVAL(evt_data[input_dvb_docsis_stream_chan_id].value, s->chan_id);
-			data_set(evt_data[input_dvb_docsis_stream_chan_id]);
-
-			PTYPE_BOOL_SETVAL(evt_data[input_dvb_docsis_stream_pri_capable].value, s->pri_capable);
-			data_set(evt_data[input_dvb_docsis_stream_pri_capable]);
 
 			PTYPE_BOOL_SETVAL(evt_data[input_dvb_docsis_stream_chan_bonding].value, s->chan_bonding);
 			data_set(evt_data[input_dvb_docsis_stream_chan_bonding]);
+
+			if (s->chan_bonding) {
+				PTYPE_UINT8_SETVAL(evt_data[input_dvb_docsis_stream_chan_id].value, s->chan_id);
+				data_set(evt_data[input_dvb_docsis_stream_chan_id]);
+
+				PTYPE_BOOL_SETVAL(evt_data[input_dvb_docsis_stream_pri_capable].value, s->pri_capable);
+				data_set(evt_data[input_dvb_docsis_stream_pri_capable]);
+			}
 
 			PTYPE_STRING_SETVAL(evt_data[input_dvb_docsis_stream_input_name].value, i->name);
 			data_set(evt_data[input_dvb_docsis_stream_input_name]);
@@ -1813,28 +1816,37 @@ static int input_dvb_timer_process(void *input) {
 	timer_sys_queue(p->timer, 2);
 
 	if (p->status != status) {
+
+		if (p->status)
+			pomlog(POMLOG_WARN "Lock %s on input %s", (status & FE_HAS_LOCK ? "re-aquired" : "lost"), i->name);
+
 		p->status = status;
-		struct event *evt = event_alloc(input_dvb_evt_status_reg);
-		if (!evt)
-			return POM_ERR;
 
-		struct data *evt_data = event_get_data(evt);
-		PTYPE_BOOL_SETVAL(evt_data[input_dvb_status_lock].value, (status & FE_HAS_LOCK ? 1 : 0));
-		data_set(evt_data[input_dvb_status_lock]);
 
-		ptype_copy(evt_data[input_dvb_status_adapter].value, p->adapter);
-		data_set(evt_data[input_dvb_status_adapter]);
+		if (event_has_listener(input_dvb_evt_status_reg)) {
 
-		ptype_copy(evt_data[input_dvb_status_frontend].value, p->frontend);
-		data_set(evt_data[input_dvb_status_frontend]);
+			struct event *evt = event_alloc(input_dvb_evt_status_reg);
+			if (!evt)
+				return POM_ERR;
 
-		ptype_copy(evt_data[input_dvb_status_frequency].value, p->freq);
-		data_set(evt_data[input_dvb_status_frequency]);
+			struct data *evt_data = event_get_data(evt);
+			PTYPE_BOOL_SETVAL(evt_data[input_dvb_status_lock].value, (status & FE_HAS_LOCK ? 1 : 0));
+			data_set(evt_data[input_dvb_status_lock]);
 
-		PTYPE_STRING_SETVAL(evt_data[input_dvb_status_input_name].value, i->name);
-		data_set(evt_data[input_dvb_status_input_name]);
+			ptype_copy(evt_data[input_dvb_status_adapter].value, p->adapter);
+			data_set(evt_data[input_dvb_status_adapter]);
 
-		event_process(evt, NULL, 0, pom_gettimeofday());
+			ptype_copy(evt_data[input_dvb_status_frontend].value, p->frontend);
+			data_set(evt_data[input_dvb_status_frontend]);
+
+			ptype_copy(evt_data[input_dvb_status_frequency].value, p->freq);
+			data_set(evt_data[input_dvb_status_frequency]);
+
+			PTYPE_STRING_SETVAL(evt_data[input_dvb_status_input_name].value, i->name);
+			data_set(evt_data[input_dvb_status_input_name]);
+
+			event_process(evt, NULL, 0, pom_gettimeofday());
+		}
 	}
 
 	return POM_OK;
