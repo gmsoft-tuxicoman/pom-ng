@@ -78,7 +78,7 @@ struct input_dvb_docsis_scan_priv_stream {
 
 struct input_dvb_docsis_scan_priv {
 
-	struct ptype *p_scan_qam64, *p_complete_freq_scan;
+	struct ptype *p_scan_qam64, *p_complete_freq_scan, *p_add_input;
 
 	uint32_t freq_min, freq_max, freq_step;
 	uint32_t freq_fast_start;
@@ -89,6 +89,7 @@ struct input_dvb_docsis_scan_priv {
 	int sync_count;
 	char *dvr_dev;
 	int mdd_found;
+	int input_id;
 	struct input_dvb_docsis_scan_priv_stream *streams;
 
 };
@@ -159,8 +160,8 @@ static int input_dvb_read(struct input *i);
 static int input_dvb_docsis_scan_read(struct input *i);
 static int input_dvb_docsis_read(struct input *i);
 static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb_docsis_scan_priv_stream *s);
-static int input_dvb_docsis_process_docsis_mdd(struct input_dvb_priv *p, unsigned char *buff, size_t len);
-static int input_dvb_docsis_process_docsis_packet(struct input_dvb_priv *p);
+static int input_dvb_docsis_process_docsis_mdd(struct input *i, unsigned char *buff, size_t len);
+static int input_dvb_docsis_process_docsis_packet(struct input *i);
 static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *buff);
 static void input_dvb_card_close(struct input_dvb_priv *p);
 static int input_dvb_close(struct input *i);

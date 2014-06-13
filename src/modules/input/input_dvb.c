@@ -262,7 +262,7 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 	priv->dvr_fd = -1;
 	priv->type = type;
 
-	if (type != input_dvb_type_docsis) {
+	if (type != input_dvb_type_docsis && type != input_dvb_type_docsis_scan) {
 
 		priv->link_proto = proto_get("mpeg_ts");
 		if (!priv->link_proto) {
@@ -441,8 +441,9 @@ static int input_dvb_docsis_scan_init(struct input *i) {
 	struct registry_param *p = NULL;
 	spriv->p_scan_qam64 = ptype_alloc("bool");
 	spriv->p_complete_freq_scan = ptype_alloc("bool");
+	spriv->p_add_input = ptype_alloc("bool");
 
-	if (!spriv->p_scan_qam64 || !spriv->p_complete_freq_scan)
+	if (!spriv->p_scan_qam64 || !spriv->p_complete_freq_scan || !spriv->p_add_input)
 		return POM_ERR;
 
 	p = registry_new_param("scan_qam64", "no", spriv->p_scan_qam64, "Scan QAM64 streams in addition to QAM256", 0);
@@ -450,6 +451,10 @@ static int input_dvb_docsis_scan_init(struct input *i) {
 		return POM_ERR;
 
 	p = registry_new_param("scan_all_freq", "no", spriv->p_complete_freq_scan, "Scan all the frequencies, not just the one in the official frequency plan", 0);
+	if (input_add_param(i, p) != POM_OK)
+		return POM_ERR;
+
+	p = registry_new_param("add_input", "yes", spriv->p_add_input, "Automatically add input for the discovered streams", 0);
 	if (input_add_param(i, p) != POM_OK)
 		return POM_ERR;
 
@@ -662,6 +667,7 @@ static int input_dvb_docsis_scan_open(struct input *i) {
 	spriv->cur_freq = spriv->freq_fast_start;
 	spriv->cur_step = spriv->freq_step;
 	spriv->cur_mod = QAM_256;
+	spriv->input_id = 0;
 
 	return POM_OK;
 }
@@ -1188,11 +1194,36 @@ static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb
 		pomlog(POMLOG_INFO "Got new pre-DOCSIS 3 stream : %uHz, QAM %u", s->freq, (s->modulation == QAM_256 ? 256 : 64));
 	}
 
+	struct input_dvb_priv *p = i->priv;
+	struct input_dvb_docsis_scan_priv *spriv = p->tpriv.d.scan;
+
+	if (*PTYPE_BOOL_GETVAL(spriv->p_add_input)) {
+		char buff[24];
+		snprintf(buff, sizeof(buff), "docsis_ch%hhu_%umhz", s->chan_id, s->freq / 1000000);
+
+		struct registry_instance *inst = registry_create_instance("input", "docsis", buff);
+
+		if (!inst)
+			return POM_ERR;
+
+		snprintf(buff, sizeof(buff), "%u", s->freq);
+		registry_set_param(inst, "frequency", buff);
+
+		registry_set_param(inst, "modulation", (s->modulation == QAM_256 ? "QAM256" : "QAM64"));
+
+		snprintf(buff, sizeof(buff), "%u", spriv->input_id);
+		registry_set_param(inst, "adapter", buff);
+		spriv->input_id++;
+
+	}
+
+
 	return POM_OK;
 }
 
-static int input_dvb_docsis_process_docsis_mdd(struct input_dvb_priv *p, unsigned char *buff, size_t len) {
+static int input_dvb_docsis_process_docsis_mdd(struct input *i,unsigned char *buff, size_t len) {
 
+	struct input_dvb_priv *p = i->priv;
 	if (len < 4)
 		return POM_ERR;
 
@@ -1286,7 +1317,7 @@ static int input_dvb_docsis_process_docsis_mdd(struct input_dvb_priv *p, unsigne
 				s->next = spriv->streams;
 				spriv->streams = s;
 
-				input_dvb_docsis_process_new_stream(NULL, s);
+				input_dvb_docsis_process_new_stream(i, s);
 				break;
 			}
 
@@ -1300,7 +1331,9 @@ static int input_dvb_docsis_process_docsis_mdd(struct input_dvb_priv *p, unsigne
 	return POM_OK;
 }
 
-static int input_dvb_docsis_process_docsis_packet(struct input_dvb_priv *p) {
+static int input_dvb_docsis_process_docsis_packet(struct input *i) {
+
+	struct input_dvb_priv *p = i->priv;
 
 	if (p->type == input_dvb_type_docsis) {
 		struct packet *pkt = p->tpriv.d.pkt;
@@ -1346,7 +1379,7 @@ static int input_dvb_docsis_process_docsis_packet(struct input_dvb_priv *p) {
 		(buffer[24] == 33)     // Type = 33
 	) {
 		// MDD message
-		if (input_dvb_docsis_process_docsis_mdd(p, buffer + 26, p->tpriv.d.pkt->len - 26) == POM_OK)
+		if (input_dvb_docsis_process_docsis_mdd(i, buffer + 26, p->tpriv.d.pkt->len - 26) == POM_OK)
 			spriv->mdd_found = 1;
 	}
 
@@ -1418,7 +1451,7 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 
 				if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
 					// process the packet
-					if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
+					if (input_dvb_docsis_process_docsis_packet(i) != POM_OK)
 						return POM_ERR;
 				}
 			}
@@ -1481,7 +1514,7 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 				memcpy(p->tpriv.d.pkt->buff + p->tpriv.d.pkt_pos, pload, pusi_ptr);
 
 				// process the packet
-				if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
+				if (input_dvb_docsis_process_docsis_packet(i) != POM_OK)
 					return POM_ERR;
 			}
 		}
@@ -1504,7 +1537,7 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 
 		if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
 			// process the packet
-			if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
+			if (input_dvb_docsis_process_docsis_packet(i) != POM_OK)
 				return POM_ERR;
 		}
 
@@ -1563,7 +1596,7 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 
 		if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
 			// process the packet
-			if (input_dvb_docsis_process_docsis_packet(p) != POM_OK)
+			if (input_dvb_docsis_process_docsis_packet(i) != POM_OK)
 				return POM_ERR;
 		}
 	}
@@ -1601,6 +1634,17 @@ static int input_dvb_close(struct input *i) {
 		free(p->mpeg_buff);
 
 	input_dvb_card_close(p);
+
+
+	if (p->type == input_dvb_type_docsis_scan) {
+		while (p->tpriv.d.scan->streams) {
+			struct input_dvb_docsis_scan_priv_stream *tmp = p->tpriv.d.scan->streams;
+			p->tpriv.d.scan->streams = tmp->next;
+			free(tmp);
+		}
+		if (p->tpriv.d.scan->dvr_dev)
+			free(p->tpriv.d.scan->dvr_dev);
+	}
 
 	return POM_OK;
 }
@@ -1641,15 +1685,9 @@ static int input_dvb_cleanup(struct input *i) {
 					ptype_cleanup(p->tpriv.d.scan->p_scan_qam64);
 				if (p->tpriv.d.scan->p_complete_freq_scan)
 					ptype_cleanup(p->tpriv.d.scan->p_complete_freq_scan);
-				if (p->tpriv.d.scan->dvr_dev)
-					free(p->tpriv.d.scan->dvr_dev);
+				if (p->tpriv.d.scan->p_add_input)
+					ptype_cleanup(p->tpriv.d.scan->p_add_input);
 
-				while (p->tpriv.d.scan->streams) {
-					struct input_dvb_docsis_scan_priv_stream *tmp = p->tpriv.d.scan->streams;
-					p->tpriv.d.scan->streams = tmp->next;
-					free(tmp);
-
-				}
 				free(p->tpriv.d.scan);
 			}
 			// No break
