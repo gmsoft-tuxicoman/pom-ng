@@ -1,3 +1,17 @@
+v0.0.17
+	Fix support for DLT_MPEG_2_TS in pcap related modules.
+	Improve dvb inputs.
+	Add input docsis and input_docsis_scan.
+	Fix compilation if zlib wasn't detected.
+	Add output_pcap_flow.
+	Fix possible pcap corruption in pcap outputs.
+	Add input dvb_atsc.
+	Improve registry parameters handling.
+	Some more fixes for non-x86 architectures.
+	Improve handling of missing MPEG TS packets.
+	Allow the user to select optional modules to compile.
+	Fix multiple segfaults.
+
 v0.0.16
 	Split the pload API from the analyzers.
 	Add descriptions to datastores, inputs and outputs.
