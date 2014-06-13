@@ -38,6 +38,7 @@
 #include <pom-ng/input.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
 
@@ -61,6 +62,7 @@
 #define LNB_COUNT 1
 
 static struct event_reg *input_dvb_evt_status_reg = NULL;
+static struct event_reg *evt_docsis_scan_stream_reg = NULL;
 
 static struct input_dvb_lnb_param input_dvb_lnbs[LNB_COUNT] = {
 	{ "universal", 9750000, 10600000, 11700000, 10700000, 12750000 },
@@ -73,7 +75,7 @@ struct mod_reg_info* input_dvb_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = input_dvb_mod_register;
 	reg_info.unregister_func = input_dvb_mod_unregister;
-	reg_info.dependencies = "proto_docsis, proto_mpeg, ptype_bool, ptype_string, ptype_uint16, ptype_uint32";
+	reg_info.dependencies = "proto_docsis, proto_mpeg, ptype_bool, ptype_string, ptype_uint8, ptype_uint16, ptype_uint32";
 
 	return &reg_info;
 
@@ -173,6 +175,8 @@ static int input_dvb_mod_register(struct mod_reg *mod) {
 	in_docsis_scan.read = input_dvb_docsis_scan_read;
 	in_docsis_scan.close = input_dvb_close;
 	in_docsis_scan.cleanup = input_dvb_cleanup;
+	in_docsis_scan.register_func = input_dvb_docsis_scan_register;
+	in_docsis_scan.unregister_func = input_dvb_docsis_scan_unregister;
 
 	res += input_register(&in_docsis_scan);
 
@@ -238,6 +242,55 @@ static int input_dvb_unregister() {
 		res = event_unregister(input_dvb_evt_status_reg);
 
 	input_dvb_evt_status_reg = NULL;
+	return res;
+}
+
+static int input_dvb_docsis_scan_register() {
+
+	static struct data_item_reg evt_docsis_scan_stream_data_items[INPUT_DVB_DOCSIS_STREAM_DATA_COUNT] = { { 0 } };
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_frequency].name = "frequency";
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_frequency].value_type = ptype_get_type("uint32");
+
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_modulation].name = "modulation";
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_modulation].value_type = ptype_get_type("string");
+
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_chan_id].name = "channel_id";
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_chan_id].value_type = ptype_get_type("uint8");
+
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_pri_capable].name = "primary_capable";
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_pri_capable].value_type = ptype_get_type("bool");
+
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_chan_bonding].name = "channel_bonding";
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_chan_bonding].value_type = ptype_get_type("bool");
+
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_input_name].name = "input_name";
+	evt_docsis_scan_stream_data_items[input_dvb_docsis_stream_input_name].value_type = ptype_get_type("string");
+
+	static struct data_reg evt_docsis_scan_stream_data = {
+		.items = evt_docsis_scan_stream_data_items,
+		.data_count = INPUT_DVB_DOCSIS_STREAM_DATA_COUNT
+	};
+
+	static struct event_reg_info input_docsis_evt_stream = { 0 };
+	input_docsis_evt_stream.source_name = "input_docsis_scan";
+	input_docsis_evt_stream.name = "input_docsis_scan_stream";
+	input_docsis_evt_stream.description = "Provide information about new stream found";
+	input_docsis_evt_stream.data_reg = &evt_docsis_scan_stream_data;
+
+	evt_docsis_scan_stream_reg = event_register(&input_docsis_evt_stream);
+	if (!evt_docsis_scan_stream_reg)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
+static int input_dvb_docsis_scan_unregister() {
+
+	int res = POM_OK;
+	if (evt_docsis_scan_stream_reg)
+		res = event_unregister(evt_docsis_scan_stream_reg);
+
+	evt_docsis_scan_stream_reg = NULL;
 	return res;
 }
 
@@ -1196,6 +1249,32 @@ static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb
 
 	struct input_dvb_priv *p = i->priv;
 	struct input_dvb_docsis_scan_priv *spriv = p->tpriv.d.scan;
+
+	if (event_has_listener(evt_docsis_scan_stream_reg)) {
+		struct event *evt = event_alloc(evt_docsis_scan_stream_reg);
+		if (evt) {
+			struct data *evt_data = event_get_data(evt);
+			PTYPE_UINT32_SETVAL(evt_data[input_dvb_docsis_stream_frequency].value, s->freq);
+			data_set(evt_data[input_dvb_docsis_stream_frequency]);
+
+			PTYPE_STRING_SETVAL(evt_data[input_dvb_docsis_stream_modulation].value, (s->modulation == QAM_256 ? "QAM256" : "QAM64"));
+			data_set(evt_data[input_dvb_docsis_stream_modulation]);
+
+			PTYPE_UINT8_SETVAL(evt_data[input_dvb_docsis_stream_chan_id].value, s->chan_id);
+			data_set(evt_data[input_dvb_docsis_stream_chan_id]);
+
+			PTYPE_BOOL_SETVAL(evt_data[input_dvb_docsis_stream_pri_capable].value, s->pri_capable);
+			data_set(evt_data[input_dvb_docsis_stream_pri_capable]);
+
+			PTYPE_BOOL_SETVAL(evt_data[input_dvb_docsis_stream_chan_bonding].value, s->chan_bonding);
+			data_set(evt_data[input_dvb_docsis_stream_chan_bonding]);
+
+			PTYPE_STRING_SETVAL(evt_data[input_dvb_docsis_stream_input_name].value, i->name);
+			data_set(evt_data[input_dvb_docsis_stream_input_name]);
+
+			event_process(evt, NULL, 0, pom_gettimeofday());
+		}
+	}
 
 	if (*PTYPE_BOOL_GETVAL(spriv->p_add_input)) {
 		char buff[24];

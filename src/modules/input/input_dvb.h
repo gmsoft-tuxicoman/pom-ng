@@ -22,6 +22,7 @@
 #define __INPUT_DVB_H__
 
 #define INPUT_DVB_STATUS_DATA_COUNT		5
+#define INPUT_DVB_DOCSIS_STREAM_DATA_COUNT	6
 
 #define INPUT_DVB_DOCSIS_PID			0x1FFE
 #define INPUT_DVB_DOCSIS_EHDR_MAX_LEN		240
@@ -34,6 +35,15 @@ enum {
 	input_dvb_status_frontend,
 	input_dvb_status_frequency,
 	input_dvb_status_input_name
+};
+
+enum {
+	input_dvb_docsis_stream_frequency = 0,
+	input_dvb_docsis_stream_modulation,
+	input_dvb_docsis_stream_chan_id,
+	input_dvb_docsis_stream_pri_capable,
+	input_dvb_docsis_stream_chan_bonding,
+	input_dvb_docsis_stream_input_name
 };
 
 enum input_dvb_type {
@@ -141,6 +151,8 @@ static int input_dvb_mod_unregister();
 
 static int input_dvb_register();
 static int input_dvb_unregister();
+static int input_dvb_docsis_scan_register();
+static int input_dvb_docsis_scan_unregister();
 
 static int input_dvb_common_init(struct input *i, enum input_dvb_type type);
 static int input_dvb_device_init(struct input *i);
