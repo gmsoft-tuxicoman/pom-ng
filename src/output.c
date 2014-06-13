@@ -243,6 +243,20 @@ int output_instance_remove(struct registry_instance *ri) {
 	return POM_OK;
 }
 
+int output_stop_all() {
+
+	pom_mutex_lock(&output_lock);
+	struct output *tmp;
+	for (tmp = output_head; tmp; tmp = tmp->next) {
+		if (tmp->running)
+			registry_set_param(tmp->reg_instance, "running", "no");
+	}
+
+	pom_mutex_unlock(&output_lock);
+
+	return POM_OK;
+}
+
 int output_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run) {
 	
 	struct output *o = priv;

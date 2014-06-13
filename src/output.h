@@ -54,6 +54,7 @@ int output_init();
 int output_cleanup();
 int output_instance_add(char *type, char *name);
 int output_instance_remove(struct registry_instance *ri);
+int output_stop_all();
 int output_instance_start_stop_handler(void *priv, struct registry_param *p, struct ptype *run);
 int output_param_locked_while_running(void *output, struct registry_param *p, char *param);
 #endif

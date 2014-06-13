@@ -398,6 +398,7 @@ int main(int argc, char *argv[]) {
 	httpd_stop();
 
 	input_stop_all();
+	output_stop_all();
 
 	if (!shutdown_in_error)
 		core_wait_state(core_state_idle);
