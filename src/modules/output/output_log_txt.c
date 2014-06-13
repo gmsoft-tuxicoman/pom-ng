@@ -68,6 +68,8 @@ int output_log_txt_init(struct output *o) {
 	memset(priv, 0, sizeof(struct output_log_txt_priv));
 	output_set_priv(o, priv);
 
+	struct registry_param *p = NULL;
+
 	priv->p_prefix = ptype_alloc("string");
 	priv->p_template = ptype_alloc("string");
 	if (!priv->p_prefix || !priv->p_template)
@@ -78,7 +80,7 @@ int output_log_txt_init(struct output *o) {
 	if (!priv->perf_events)
 		goto err;
 
-	struct registry_param *p = registry_new_param("prefix", "/tmp/", priv->p_prefix, "Log files prefix", 0);
+	p = registry_new_param("prefix", "/tmp/", priv->p_prefix, "Log files prefix", 0);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
