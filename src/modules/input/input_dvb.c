@@ -1106,7 +1106,7 @@ static int input_dvb_docsis_scan_read(struct input *i) {
 				memset(s, 0, sizeof(struct input_dvb_docsis_scan_priv_stream));
 				s->freq = cur_freq;
 				s->modulation = cur_mod;
-				s->docsis_ver = 2; // Or 1 ...
+				s->chan_bonding = 0;
 
 				s->next = spriv->streams;
 				spriv->streams = s;
@@ -1178,14 +1178,14 @@ static int input_dvb_docsis_read(struct input *i) {
 
 static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb_docsis_scan_priv_stream *s) {
 
-	if (s->docsis_ver == 3) {
+	if (s->chan_bonding) {
 		if (s->pri_capable) {
 			pomlog(POMLOG_INFO "Got new DOCSIS 3 stream : %uHz, QAM %u, Primary capable", s->freq, (s->modulation == QAM_256 ? 256 : 64));
 		} else {
 			pomlog(POMLOG_INFO "Got new DOCSIS 3 stream : %uHz, QAM %u", s->freq, (s->modulation == QAM_256 ? 256 : 64));
 		}
 	} else {
-		pomlog(POMLOG_INFO "Got new DOCSIS 2 stream : %uHz, QAM %u", s->freq, (s->modulation == QAM_256 ? 256 : 64));
+		pomlog(POMLOG_INFO "Got new pre-DOCSIS 3 stream : %uHz, QAM %u", s->freq, (s->modulation == QAM_256 ? 256 : 64));
 	}
 
 	return POM_OK;
@@ -1213,7 +1213,7 @@ static int input_dvb_docsis_process_docsis_mdd(struct input_dvb_priv *p, unsigne
 					return POM_ERR;
 				}
 				memset(s, 0, sizeof(struct input_dvb_docsis_scan_priv_stream));
-				s->docsis_ver = 3;
+				s->chan_bonding = 1;
 
 				buff += 2;
 				len -= tlvlen + 2;

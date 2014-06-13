@@ -73,7 +73,7 @@ struct input_dvb_docsis_scan_priv_stream {
 	struct input_dvb_docsis_scan_priv_stream *next;
 	uint8_t chan_id;
 	uint8_t pri_capable;
-	uint8_t docsis_ver;
+	uint8_t chan_bonding;
 };
 
 struct input_dvb_docsis_scan_priv {
