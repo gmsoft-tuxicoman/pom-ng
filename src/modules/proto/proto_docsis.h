@@ -30,7 +30,7 @@
 
 struct proto_docsis_priv {
 
-	struct ptype *p_filter_docsis3;
+	struct ptype *p_filter_split_traffic;
 
 	struct proto *proto_ethernet;
 	struct proto *proto_docsis_mgmt;

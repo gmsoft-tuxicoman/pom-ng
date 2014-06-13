@@ -131,11 +131,11 @@ static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 	memset(priv, 0, sizeof(struct proto_docsis_priv));
 	proto_set_priv(proto, priv);
 
-	priv->p_filter_docsis3 = ptype_alloc("bool");
-	if (!priv->p_filter_docsis3)
+	priv->p_filter_split_traffic = ptype_alloc("bool");
+	if (!priv->p_filter_split_traffic)
 		return POM_ERR;
 
-	struct registry_param *p = registry_new_param("filter_docsis3", "yes", priv->p_filter_docsis3, "Filter DOCSIS 3 packets sent on multiple streams", 0);
+	struct registry_param *p = registry_new_param("filter_split_traffic", "yes", priv->p_filter_split_traffic, "Filter packets sent on multiple streams", 0);
 	if (proto_add_param(proto, p) != POM_OK)
 		return POM_ERR;
 
@@ -204,7 +204,7 @@ static int proto_docsis_process(void *proto_priv, struct packet *p, struct proto
 				return PROTO_OK;
 			}
 
-			if (ehdr->eh_type == EH_TYPE_DOWN_SVC && ehdr->eh_len == 5 && *PTYPE_BOOL_GETVAL(priv->p_filter_docsis3)) {
+			if (ehdr->eh_type == EH_TYPE_DOWN_SVC && ehdr->eh_len == 5 && *PTYPE_BOOL_GETVAL(priv->p_filter_split_traffic)) {
 				return PROTO_STOP;
 			}
 
