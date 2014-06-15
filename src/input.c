@@ -330,6 +330,8 @@ int input_instance_start_stop_handler(void *priv, struct registry_param *p, stru
 			goto err;
 		}
 
+		__sync_fetch_and_or(&i->running, INPUT_RUN_RUNNING);
+
 		if (pthread_create(&i->thread, NULL, input_process_thread, (void*) i)) {
 			pomlog(POMLOG_ERR "Unable to start a new thread for input %s : %s", i->name, pom_strerror(errno));
 			goto err;
@@ -337,8 +339,6 @@ int input_instance_start_stop_handler(void *priv, struct registry_param *p, stru
 
 		if (__sync_add_and_fetch(&input_cur_running, 1))
 			core_set_state(core_state_running);
-
-		__sync_fetch_and_or(&i->running, INPUT_RUN_RUNNING);
 		
 	} else {
 
