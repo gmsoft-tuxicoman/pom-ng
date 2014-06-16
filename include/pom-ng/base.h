@@ -43,6 +43,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <stdio.h>
 
 #define POM_STRERROR_BUFF_SIZE 128
 
@@ -67,7 +68,7 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 #define pom_mutex_lock(x) {													\
 	int err_num = pthread_mutex_lock(x);											\
 	if (err_num) {														\
-		pomlog(POMLOG_ERR "Error while locking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
+		printf(POMLOG_ERR "Error while locking mutex in %s:%u : %s\n", __FILE__, __LINE__, pom_strerror(err_num));	\
 		abort();													\
 	}															\
 }
@@ -75,7 +76,7 @@ void pom_oom_internal(size_t size, char *file, unsigned int line);
 #define pom_mutex_unlock(x) {													\
 	int err_num = pthread_mutex_unlock(x);											\
 	if (err_num) {														\
-		pomlog(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s", __FILE__, __LINE__, pom_strerror(err_num));	\
+		printf(POMLOG_ERR "Error while unlocking mutex in %s:%u : %s\n", __FILE__, __LINE__, pom_strerror(err_num));	\
 		abort();													\
 	}															\
 }
