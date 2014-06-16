@@ -281,7 +281,7 @@ int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_i
 	}
 
 	conntrack_lock(s->ce);
-	s->ce->refcount++;
+	__sync_fetch_and_add(&s->ce->refcount, 1);
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	s_next->direction = s->direction;
@@ -402,7 +402,7 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 	conntrack_unlock(parent);
 
 	conntrack_lock(res);
-	res->refcount++;
+	__sync_fetch_and_add(&res->refcount, 1);
 	s->ce = res;
 	s->direction = s_prev->direction;
 
@@ -463,7 +463,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 			s->direction = POM_DIR_FWD;
 			s_next->direction = POM_DIR_FWD;
 			pom_mutex_lock(&s->ce->lock);
-			s->ce->refcount++;
+			__sync_fetch_and_add(&s->ce->refcount, 1);
 			pom_mutex_unlock(&ct->locks[hash]);
 			return POM_OK;;
 		}
@@ -477,7 +477,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 			s->direction = POM_DIR_REV;
 			s_next->direction = POM_DIR_REV;
 			pom_mutex_lock(&s->ce->lock);
-			s->ce->refcount++;
+			__sync_fetch_and_add(&s->ce->refcount, 1);
 			pom_mutex_unlock(&ct->locks[hash]);
 			return POM_OK;
 		}
@@ -599,7 +599,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 		debug_conntrack("Allocated conntrack %p with no parent", ce);
 	}
 	pom_mutex_lock(&ce->lock);
-	ce->refcount++;
+	__sync_fetch_and_add(&ce->refcount, 1);
 	pom_mutex_unlock(&ct->locks[hash]);
 
 	s->ce = ce;
@@ -646,13 +646,10 @@ void conntrack_unlock(struct conntrack_entry *ce) {
 }
 
 void conntrack_refcount_dec(struct conntrack_entry *ce) {
-	pom_mutex_lock(&ce->lock);
-	if (!ce->refcount) {
+	if (!__sync_fetch_and_sub(&ce->refcount, 1)) {
 		pomlog(POMLOG_ERR "Reference count already 0 !");
 		abort();
 	}
-	ce->refcount--;
-	pom_mutex_unlock(&ce->lock);
 }
 
 int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv)) {
@@ -1007,7 +1004,7 @@ struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce) {
 			ce->session = NULL;
 			return NULL;
 		}
-		ce->session->refcount++;
+		conntrack_session_refcount_inc(ce->session);
 	}
 	
 	pom_mutex_lock(&ce->session->lock);
@@ -1033,24 +1030,13 @@ void conntrack_session_unlock(struct conntrack_session *session) {
 }
 
 void conntrack_session_refcount_inc(struct conntrack_session *session) {
-	pom_mutex_lock(&session->lock);
-	session->refcount++;
-	pom_mutex_unlock(&session->lock);
+	__sync_fetch_and_add(&session->refcount, 1);
 }
 
 int conntrack_session_refcount_dec(struct conntrack_session *session) {
 
-	pom_mutex_lock(&session->lock);
-	session->refcount--;
-
-	if (session->refcount) {
-		pom_mutex_unlock(&session->lock);
+	if (__sync_sub_and_fetch(&session->refcount, 1))
 		return POM_OK;
-	}
-
-	pom_mutex_unlock(&session->lock);
-
-	pthread_mutex_destroy(&session->lock);
 
 	while (session->privs) {
 		struct conntrack_priv_list *lst = session->privs;
