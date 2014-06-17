@@ -24,6 +24,7 @@
 			<item><name>rfc822</name><description>RFC822 compliant message</description><extension>txt</extension><class>document</class></item>
 			<item><name>text</name><description>Plain text</description><extension>txt</extension><class>document</class></item>
 			<item><name>multipart</name><description>Multipart payload as described in RFC2046</description><extension>multipart</extension><class>other</class></item>
+			<item><name>sdp</name><description>Session Description Protocol</description><extension>sdp</extension><class>other</class></item>
 
 		</dataset>
 
@@ -54,6 +55,7 @@
 			<item><name>multipart</name><mime>multipart/alternative</mime></item>
 			<item><name>multipart</name><mime>multipart/digest</mime></item>
 			<item><name>multipart</name><mime>multipart/parallel</mime></item>
+			<item><name>sdp</name><mime>application/sdp</mime></item>
 		</dataset>
 	</datasets>
 
