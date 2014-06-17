@@ -21,6 +21,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/event.h>
 #include <pom-ng/core.h>
+#include <pom-ng/pload.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
@@ -293,6 +294,17 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 					// Headers parsed
 					if (data_is_set(evt_data[proto_sip_msg_content_len])) {
 						priv->content_len[s->direction] = *PTYPE_UINT64_GETVAL(evt_data[proto_sip_msg_content_len].value);
+
+						if (priv->content_len[s->direction] > 0 && priv->event[s->direction] && event_has_listener(event_get_reg(priv->event[s->direction]))) {
+							priv->pload[s->direction] = pload_alloc(priv->event[s->direction], 0);
+							if (!priv->pload[s->direction]) {
+								res = PROTO_ERR;
+								goto end;
+							}
+
+							if (data_is_set(evt_data[proto_sip_msg_content_type]))
+								pload_set_mime_type(priv->pload[s->direction], PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_content_type].value));
+						}
 					}
 					priv->state[s->direction]++;
 					event_process_begin(priv->event[s->direction], stack, stack_index, p->ts);
@@ -355,6 +367,14 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 				
 				size_t pload_remaining = priv->content_len[s->direction] - priv->content_pos[s->direction];
 				if (pload_remaining < s_next->plen) {
+
+					if (priv->pload[s->direction]) {
+						if (pload_append(priv->pload[s->direction], s_next->pload, pload_remaining) != POM_OK) {
+							res = PROTO_ERR;
+							goto end;
+						}
+					}
+
 					if (packet_stream_parser_skip_bytes(parser, pload_remaining) != POM_OK) {
 						pomlog(POMLOG_DEBUG "Error while skipping %u bytes from the stream", pload_remaining);
 						res = PROTO_INVALID;
@@ -375,6 +395,12 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 					}
 
 				} else {
+					if (priv->pload[s->direction]) {
+						if (pload_append(priv->pload[s->direction], s_next->pload, s_next->plen) != POM_OK) {
+							res = PROTO_ERR;
+							goto end;
+						}
+					}
 					packet_stream_parser_empty(parser);
 					priv->content_pos[s->direction] += s_next->plen;
 					goto end;
@@ -407,6 +433,12 @@ static int proto_sip_post_process(void *proto_priv, struct packet *p, struct pro
 	struct proto_sip_conntrack_priv *priv = ce->priv;
 	if ((priv->state[direction] == SIP_STATE_BODY) && (priv->content_pos[direction] >= priv->content_len[direction])) {
 
+		if (priv->pload[direction]) {
+			pload_end(priv->pload[direction]);
+			priv->pload[direction] = NULL;
+		}
+
+
 		event_process_end(priv->event[direction]);
 		priv->event[direction] = NULL;
 
@@ -424,6 +456,16 @@ static int proto_sip_conntrack_reset(struct conntrack_entry *ce, int direction) 
 	priv->state[direction] = SIP_STATE_FIRST_LINE;
 	priv->content_len[direction] = 0;
 	priv->content_pos[direction] = 0;
+
+	if (priv->pload[direction]) {
+		pload_end(priv->pload[direction]);
+		priv->pload[direction] = NULL;
+	}
+
+	if (priv->event[direction]) {
+		event_cleanup(priv->event[direction]);
+		priv->event[direction] = NULL;
+	}
 
 	return POM_OK;
 }
@@ -660,6 +702,26 @@ static int proto_sip_parse_to_from(struct data *data, char *value, size_t value_
 }
 
 static int proto_sip_conntrack_cleanup(void *ce_priv) {
+
+	struct proto_sip_conntrack_priv *priv = ce_priv;
+
+	int i;
+
+	for (i = 0; i < POM_DIR_TOT; i++) {
+		if (priv->parser[i])
+			packet_stream_parser_cleanup(priv->parser[i]);
+
+		if (priv->pload[i])
+			pload_end(priv->pload[i]);
+
+		if (priv->event[i]) {
+			if (event_is_started(priv->event[i])) {
+				event_process_end(priv->event[i]);
+			} else {
+				event_cleanup(priv->event[i]);
+			}
+		}
+	}
 
 	return POM_OK;
 }

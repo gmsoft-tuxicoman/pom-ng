@@ -67,6 +67,7 @@ struct proto_sip_conntrack_priv {
 	struct packet_stream_parser *parser[POM_DIR_TOT];
 	unsigned int state[POM_DIR_TOT];
 	struct event *event[POM_DIR_TOT];
+	struct pload *pload[POM_DIR_TOT];
 	int is_invalid;
 	size_t content_len[POM_DIR_TOT];
 	size_t content_pos[POM_DIR_TOT];
