@@ -824,8 +824,13 @@ int pload_append(struct pload *p, void *data, size_t len) {
 				return POM_ERR;
 			}
 		}
+		struct pload_buffer pb = {
+			.data = data,
+			.data_len = len,
+			.buf_size = len
+		};
 
-		int res = a->analyze(p, &p->buf, a->priv);
+		int res = a->analyze(p, (p->buf.data ? &p->buf : &pb), a->priv);
 
 		if (res == PLOAD_ANALYSIS_ERR) {
 			// Something went wrong during the analysis
