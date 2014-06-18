@@ -21,6 +21,8 @@
 #ifndef __PROTO_SIP_H__
 #define __PROTO_SIP_H__
 
+#include <pom-ng/proto_sip.h>
+
 struct proto_sip_priv {
 
 	struct event_reg *evt_sip_req;
@@ -29,32 +31,6 @@ struct proto_sip_priv {
 };
 
 #define PROTO_SIP_EVT_MSG_DATA_COUNT 15
-
-enum {
-	proto_sip_req_method = 0,
-	proto_sip_req_uri
-};
-
-enum {
-	proto_sip_rsp_status = 0,
-	proto_sip_rsp_reason
-};
-
-enum {
-	proto_sip_msg_first_line = 2,
-	proto_sip_msg_call_id,
-	proto_sip_msg_cseq_num,
-	proto_sip_msg_cseq_method,
-	proto_sip_msg_content_type,
-	proto_sip_msg_content_len,
-	proto_sip_msg_from_display,
-	proto_sip_msg_from_uri,
-	proto_sip_msg_from_tag,
-	proto_sip_msg_to_display,
-	proto_sip_msg_to_uri,
-	proto_sip_msg_to_tag,
-	proto_sip_msg_other_headers,
-};
 
 #define SIP_STATE_FIRST_LINE	1 // First line of a query/response
 #define SIP_STATE_HEADERS	2 // Receving the haders
