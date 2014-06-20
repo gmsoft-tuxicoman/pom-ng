@@ -393,8 +393,8 @@ int pload_end(struct pload *pload) {
 	if (pload->buf.data)
 		free(pload->buf.data);
 
-	if (pload->priv && pload->type && pload->type->analyzer && pload->type->analyzer->cleanup)
-		pload->type->analyzer->cleanup(pload, pload->priv);
+	if (pload->analyzer_priv && pload->type && pload->type->analyzer && pload->type->analyzer->cleanup)
+		pload->type->analyzer->cleanup(pload, pload->analyzer_priv);
 	
 
 	if (pload->refcount)
@@ -832,22 +832,21 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 		int res = a->analyze(p, (p->buf.data ? &p->buf : &pb), a->priv);
 
+		if (res != PLOAD_ANALYSIS_MORE) {
+			if (a->cleanup) {
+				a->cleanup(p, p->analyzer_priv);
+				p->analyzer_priv = NULL;
+			}
+		}
+
 		if (res == PLOAD_ANALYSIS_ERR) {
 			// Something went wrong during the analysis
 			p->flags |= PLOAD_FLAG_IS_ERR;
-			if (a->cleanup) {
-				a->cleanup(p, p->priv);
-				p->priv = NULL;
-			}
 			return POM_OK;
 		} else if (res == PLOAD_ANALYSIS_FAILED) {
 			// Payload type wasn't recognized
 			p->type = NULL;
 			p->flags &= ~PLOAD_FLAG_NEED_ANALYSIS;
-			if (a->cleanup) {
-				a->cleanup(p, p->priv);
-				p->priv = NULL;
-			}
 			if (p->data) {
 				data_cleanup_table(p->data, a->data_reg);
 				p->data = NULL;
@@ -856,10 +855,6 @@ int pload_append(struct pload *p, void *data, size_t len) {
 		} else if (res == PLOAD_ANALYSIS_OK) {
 			// Analysis is done
 			p->flags &= ~PLOAD_FLAG_NEED_ANALYSIS;
-			if (a->cleanup) {
-				a->cleanup(p, p->priv);
-				p->priv = NULL;
-			}
 
 			registry_perf_inc(p->type->perf_analyzed, 1);
 
@@ -987,17 +982,15 @@ struct event *pload_get_related_event(struct pload *p) {
 }
 
 void pload_set_parent(struct pload* p, struct pload *parent) {
-
 	p->parent = parent;
-
 }
 
-void pload_set_priv(struct pload *p, void *priv) {
-	p->priv = priv;
+void pload_set_analyzer_priv(struct pload *p, void *priv) {
+	p->analyzer_priv = priv;
 }
 
-void *pload_get_priv(struct pload *p) {
-	return p->priv;
+void *pload_get_analyzer_priv(struct pload *p) {
+	return p->analyzer_priv;
 }
 
 int pload_set_analyzer(char *type, struct pload_analyzer *analyzer_reg) {

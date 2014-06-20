@@ -178,7 +178,7 @@ static void analyzer_jpeg_exif_content_process(ExifContent *content, void *pload
 static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb, void *apriv) {
 
 
-	struct analyzer_jpeg_pload_priv *priv = pload_get_priv(p);
+	struct analyzer_jpeg_pload_priv *priv = pload_get_analyzer_priv(p);
 
 	if (!priv) {
 		priv = malloc(sizeof(struct analyzer_jpeg_pload_priv));
@@ -233,7 +233,7 @@ static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb,
 		priv->cinfo.src = src;
 
 
-		pload_set_priv(p, priv);
+		pload_set_analyzer_priv(p, priv);
 
 	} else {
 		priv->pload_buff = pb->data;
@@ -292,14 +292,14 @@ static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb,
 	free(priv->cinfo.src);
 	jpeg_destroy_decompress(&priv->cinfo);
 	free(priv);
-	pload_set_priv(p, NULL);
+	pload_set_analyzer_priv(p, NULL);
 
 	return res;
 }
 
 static int analyzer_jpeg_pload_cleanup(struct pload *p, void *apriv) {
 
-	struct analyzer_jpeg_pload_priv *priv = pload_get_priv(p);
+	struct analyzer_jpeg_pload_priv *priv = pload_get_analyzer_priv(p);
 
 	if (!priv)
 		return POM_OK;

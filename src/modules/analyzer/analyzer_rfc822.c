@@ -91,14 +91,14 @@ static int analyzer_rfc822_cleanup(struct analyzer *analyzer) {
 static int analyzer_rfc822_pload_analyze(struct pload *pload, struct pload_buffer *pb, void *priv) {
 
 
-	size_t *pload_pos = pload_get_priv(pload);
+	size_t *pload_pos = pload_get_analyzer_priv(pload);
 	if (!pload_pos) {
 		pload_pos = malloc(sizeof(size_t));
 		if (!pload_pos) {
 			pom_oom(sizeof(size_t));
 			return POM_ERR;
 		}
-		pload_set_priv(pload, pload_pos);
+		pload_set_analyzer_priv(pload, pload_pos);
 	}
 	*pload_pos = 0;
 

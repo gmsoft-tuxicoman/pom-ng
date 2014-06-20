@@ -100,7 +100,7 @@ static int analyzer_sdp_pload_analyze(struct pload *p, struct pload_buffer *pb, 
 
 	struct data *pload_data = pload_get_data(p);
 
-	struct analyzer_sdp_pload_priv *ppriv = pload_get_priv(p);
+	struct analyzer_sdp_pload_priv *ppriv = pload_get_analyzer_priv(p);
 	if (ppriv) {
 		pos = ppriv->pos;
 		len -= pos;
@@ -127,6 +127,7 @@ static int analyzer_sdp_pload_analyze(struct pload *p, struct pload_buffer *pb, 
 			}
 
 			ppriv->pos = pos;
+			pload_set_analyzer_priv(p, ppriv);
 			return PLOAD_ANALYSIS_MORE;
 		}
 
@@ -213,7 +214,7 @@ static int analyzer_sdp_pload_analyze(struct pload *p, struct pload_buffer *pb, 
 
 static int analyzer_sdp_pload_cleanup(struct pload *p, void *apriv) {
 
-	struct analyzer_sip_pload_priv *priv = pload_get_priv(p);
+	struct analyzer_sip_pload_priv *priv = pload_get_analyzer_priv(p);
 
 
 	if (!priv)

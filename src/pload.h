@@ -103,7 +103,7 @@ struct pload {
 	size_t expected_size;
 	struct event *rel_event;
 	struct data *data;
-	void *priv;
+	void *analyzer_priv;
 	struct pload_listener *listeners;
 	struct pload *parent;
 	uint32_t refcount;
