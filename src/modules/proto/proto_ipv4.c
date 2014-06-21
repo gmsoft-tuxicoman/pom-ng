@@ -284,15 +284,20 @@ static int proto_ipv4_process(void *proto_priv, struct packet *p, struct proto_p
 	if (!(frag_off & IP_MORE_FRAG))
 		tmp->flags |= PROTO_IPV4_FLAG_GOT_LAST;
 
-	if ((tmp->flags & PROTO_IPV4_FLAG_GOT_LAST) && !tmp->multipart->gaps)
+	struct packet_multipart *m = NULL;
+
+	if ((tmp->flags & PROTO_IPV4_FLAG_GOT_LAST) && !tmp->multipart->gaps) {
 		tmp->flags |= PROTO_IPV4_FLAG_PROCESSED;
+		m = tmp->multipart;
+		tmp->multipart = NULL;
+	}
+
 
 
 	conntrack_unlock(s->ce);
 	
-	if ((tmp->flags & PROTO_IPV4_FLAG_PROCESSED)) {
-		int res = packet_multipart_process(tmp->multipart, stack, stack_index + 1);
-		tmp->multipart = NULL; // Multipart will be cleared automatically
+	if (m) {
+		int res = packet_multipart_process(m, stack, stack_index + 1);
 		if (res == PROTO_ERR) {
 			return PROTO_ERR;
 		} else if (res == PROTO_INVALID) {
