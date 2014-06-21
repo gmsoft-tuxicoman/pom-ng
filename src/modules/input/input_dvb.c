@@ -1559,7 +1559,7 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 
 		struct docsis_hdr *hdr = (struct docsis_hdr*)p->tpriv.d.docsis_buff;
 		size_t hdr_len = sizeof(struct docsis_hdr) + hdr->mac_parm;
-		char *tmplen = (char*)&hdr->len;
+		unsigned char *tmplen = (unsigned char*)&hdr->len;
 		size_t pkt_len = ((tmplen[0] << 8) + tmplen[1]) + sizeof(struct docsis_hdr);
 
 		p->tpriv.d.pkt = packet_alloc();
@@ -1647,7 +1647,7 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 
 			struct docsis_hdr *hdr = (struct docsis_hdr*)pload;
 			size_t hdr_len = sizeof(struct docsis_hdr) + hdr->mac_parm;
-			char *tmplen = (char*)&hdr->len;
+			unsigned char *tmplen = (unsigned char*)&hdr->len;
 			size_t pkt_len = ((tmplen[0] << 8) + tmplen[1]) + sizeof(struct docsis_hdr);
 
 			p->tpriv.d.pkt = packet_alloc();
