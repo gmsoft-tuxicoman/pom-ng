@@ -574,7 +574,7 @@ int analyzer_http_event_process_end(struct event *evt, void *obj) {
 
 	struct analyzer_http_ce_priv *cpriv = conntrack_get_priv(event_get_conntrack(evt), obj);
 	if (!cpriv) {
-		pomlog(POMLOG_WARN "Internal error, analyzer_http_event_process_end() called without _begin().");
+		// We started listening to this event after it was already started
 		return POM_OK;
 	}
 
@@ -696,8 +696,9 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 
 	struct analyzer_http_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
 	if (!cpriv || !cpriv->evt_head || !cpriv->evt_tail) {
-		pomlog(POMLOG_ERR "No private data attached to this connection. Ignoring payload.");
-		return POM_ERR;
+		// No private data attached to this connection. Ignoring payload
+		// This means the payload listening was started after the connection was processed
+		return POM_OK;
 	}
 	
 	int dir = s->direction;
