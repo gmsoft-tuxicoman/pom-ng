@@ -17,8 +17,7 @@ GITHUB_URI="git://github.com/gmsoft-tuxicoman"
 GIT_REPOS="pom-ng pom-ng-addons pom-ng-webui"
 inherit git-2
 KEYWORDS=""
-
-MY_S="${S}"
+MY_S="${WORKDIR}/${P}"
 S="${WORKDIR}/${P}/pom-ng"
 
 DEPEND="
@@ -68,7 +67,8 @@ src_configure() {
 src_install() {
 	default
 	insinto /usr/share/pom-ng/addons
-	doins ${MY_S}/pom-ng-addons/*
+	echo ${MY_S}
+	doins -r ${MY_S}/pom-ng-addons/*
 	insinto /usr/share/pom-ng/pom-ng-webui
-	doins ${MY_S}/pom-ng-webui/*
+	doins -r ${MY_S}/pom-ng-webui/*
 }
