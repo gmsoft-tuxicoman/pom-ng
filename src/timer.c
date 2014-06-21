@@ -476,6 +476,9 @@ int timer_sys_process() {
 			timer_sys_head->prev = NULL;
 		}
 
+		t->prev = NULL;
+		t->next = NULL;
+
 		pom_mutex_unlock(&timer_sys_lock);
 		if (t->handler(t->priv) != POM_OK)
 			pomlog(POMLOG_ERR "Error while running timer_sys handler");
