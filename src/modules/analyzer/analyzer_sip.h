@@ -24,12 +24,16 @@
 
 #include <pom-ng/analyzer.h>
 #include <pom-ng/pload.h>
+#include <pom-ng/telephony.h>
+#include <uthash.h>
 
-#define ANALYZER_SIP_CALL_DATA_COUNT 2
+#define ANALYZER_SIP_CALL_DATA_COUNT	3
+#define ANALYZER_SIP_SDP_PLOAD_TYPE	"sdp"
 
 enum {
 	analyzer_sip_call_from_display,
-	analyzer_sip_call_to_display
+	analyzer_sip_call_to_display,
+	analyzer_sip_call_id,
 };
 
 struct analyzer_sip_priv {
@@ -41,6 +45,25 @@ struct analyzer_sip_priv {
 	struct proto *proto_sip;
 	struct proto_packet_listener *sip_packet_listener;
 
+	int listening;
+
+};
+
+struct analyzer_sip_call {
+
+	char *call_id;
+	struct conntrack_session *sess;
+	struct analyzer_sip_rtp_stream *streams;
+
+	UT_hash_handle hh;
+};
+
+
+struct analyzer_sip_sdp_priv {
+
+	struct analyzer_sip_sdp_line_lst *line_head, *line_tail;
+	struct analyzer_sip_call *call;
+	struct telephony_sdp *sdp;
 };
 
 struct mod_reg_info* analyzer_sip_reg_info();
@@ -54,6 +77,9 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 static int analyzer_sip_event_process_end(struct event *evt, void *obj);
-int analyzer_sip_proto_packet_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+
+static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload);
+static int analyzer_sip_sdp_write(void *obj, void *priv, void *data, size_t len);
+static int analyzer_sip_sdp_close(void *obj, void *priv);
 
 #endif
