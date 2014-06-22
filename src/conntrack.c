@@ -1015,6 +1015,10 @@ struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce) {
 int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session) {
 
 	if (ce->session) {
+
+		if (ce->session == session)
+			return POM_OK;
+
 		pomlog(POMLOG_WARN "Warning, session already exists when trying to bind another session. TODO: implement merging");
 		conntrack_session_refcount_dec(ce->session);
 	}
