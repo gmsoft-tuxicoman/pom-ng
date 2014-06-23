@@ -725,6 +725,8 @@ static int proto_sip_conntrack_cleanup(void *ce_priv) {
 		}
 	}
 
+	free(priv);
+
 	return POM_OK;
 }
 
