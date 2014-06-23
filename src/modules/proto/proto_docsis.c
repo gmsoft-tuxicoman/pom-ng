@@ -156,8 +156,15 @@ static int proto_docsis_init(struct proto *proto, struct registry_instance *i) {
 
 static int proto_docsis_cleanup(void *proto_priv) {
 
-	if (proto_priv)
-		free(proto_priv);
+	if (!proto_priv)
+		return POM_OK;
+
+	struct proto_docsis_priv *priv = proto_priv;
+
+	if (priv->p_filter_split_traffic)
+		ptype_cleanup(priv->p_filter_split_traffic);
+
+	free(priv);
 	
 	return POM_OK;
 }
