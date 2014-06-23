@@ -129,6 +129,13 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer) {
 		event_listener_unregister(priv->evt_sip_rsp, analyzer);
 	}
 
+
+	struct analyzer_sip_call *cur_call, *tmp;
+	HASH_ITER(hh, analyzer_sip_calls, cur_call, tmp) {
+		HASH_DEL(analyzer_sip_calls, cur_call);
+		analyzer_sip_call_cleanup(analyzer, cur_call);
+	}
+
 	if (priv->evt_sip_call)
 		event_unregister(priv->evt_sip_call);
 
@@ -171,7 +178,6 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 	return POM_OK;
 }
 
-
 static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a, struct event *evt) {
 
 	struct data *evt_data = event_get_data(evt);
@@ -212,7 +218,7 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 
 	call->sess = sess;
 
-	if (conntrack_session_add_priv(sess, a, call, NULL) != POM_OK) {
+	if (conntrack_session_add_priv(sess, a, call, analyzer_sip_call_cleanup) != POM_OK) {
 		conntrack_session_unlock(sess);
 		free(call);
 		return NULL;
@@ -224,6 +230,19 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 
 
 	return call;
+}
+
+static int analyzer_sip_call_cleanup(void *obj, void *priv) {
+
+	struct analyzer_sip_call *call = priv;
+
+	HASH_DEL(analyzer_sip_calls, call);
+
+	if (call->call_id)
+		free(call->call_id);
+	free(call);
+
+	return POM_OK;
 }
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -307,6 +326,8 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 		return POM_ERR;
 
 	telephony_sdp_cleanup(p->sdp);
+
+	free(p);
 
 	return POM_OK;
 }

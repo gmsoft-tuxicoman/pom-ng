@@ -53,7 +53,6 @@ struct analyzer_sip_call {
 
 	char *call_id;
 	struct conntrack_session *sess;
-	struct analyzer_sip_rtp_stream *streams;
 
 	UT_hash_handle hh;
 };
@@ -75,6 +74,8 @@ static int analyzer_sip_init(struct analyzer *analyzer);
 static int analyzer_sip_cleanup(struct analyzer *analyzer);
 
 static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
+
+static int analyzer_sip_call_cleanup(void *obj, void *priv);
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 static int analyzer_sip_event_process_end(struct event *evt, void *obj);
