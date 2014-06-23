@@ -204,6 +204,8 @@ static int proto_sip_cleanup(void *proto_priv) {
 	if (priv->evt_sip_rsp)
 		event_unregister(priv->evt_sip_rsp);
 
+	free(priv);
+
 	return POM_OK;
 }
 
