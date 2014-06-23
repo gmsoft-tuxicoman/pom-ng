@@ -42,5 +42,6 @@ struct telephony_sdp *telephony_sdp_alloc();
 int telephony_sdp_parse(struct telephony_sdp *sdp, void *data, size_t len);
 int telephony_sdp_parse_end(struct telephony_sdp *sdp);
 int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_session *sess, ptime now);
+void telephony_sdp_cleanup(struct telephony_sdp *sdp);
 
 #endif

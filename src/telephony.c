@@ -684,3 +684,52 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 
 	return POM_OK;
 }
+
+void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
+
+	if (!sdp)
+		return;
+
+	if (sdp->parser)
+		packet_stream_parser_cleanup(sdp->parser);
+
+	while (sdp->addr) {
+		struct telephony_sdp_address *addr = sdp->addr;
+		sdp->addr = addr->next;
+
+		if (addr->addr)
+			ptype_cleanup(addr->addr);
+
+		free(addr);
+	}
+
+	while (sdp->streams) {
+		struct telephony_sdp_stream *stream = sdp->streams;
+		sdp->streams = stream->next;
+
+		while (stream->addrs) {
+			struct telephony_sdp_address *addr = stream->addrs;
+			stream->addrs = addr->next;
+
+			if (addr->addr)
+				ptype_cleanup(addr->addr);
+			free(addr);
+		}
+
+		while (stream->ploads) {
+			struct telephony_sdp_stream_payload *pload = stream->ploads;
+			stream->ploads = pload->next;
+			free(pload);
+		}
+		free(stream);
+	}
+
+	while (sdp->sess_attribs) {
+		struct telephony_sdp_sess_attrib *attr = sdp->sess_attribs;
+		sdp->sess_attribs = attr->next;
+		free(attr);
+	}
+
+	free(sdp);
+
+}
