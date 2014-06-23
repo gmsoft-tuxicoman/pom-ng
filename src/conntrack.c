@@ -430,8 +430,10 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	if (s->ce)
+	if (s->ce) {
+		conntrack_lock(s->ce);
 		return POM_OK;
+	}
 		
 	if (!s->proto || !s->proto->info->ct_info)
 		return POM_ERR;
