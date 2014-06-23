@@ -202,21 +202,22 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 		return NULL;
 	}
 
-	conntrack_lock(ce);
+	// The conntrack is already locked while processing the event
 	struct conntrack_session *sess = conntrack_session_get(ce);
 	if (!sess) {
-		conntrack_unlock(ce);
 		free(call);
 		return NULL;
 	}
+
+	call->sess = sess;
 
 	if (conntrack_session_add_priv(sess, a, call, NULL) != POM_OK) {
-		conntrack_unlock(ce);
+		conntrack_session_unlock(sess);
 		free(call);
 		return NULL;
 	}
 
-	conntrack_unlock(ce);
+	conntrack_session_unlock(sess);
 
 	HASH_ADD_STR(analyzer_sip_calls, call_id, call);
 
@@ -261,6 +262,7 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 
 	struct conntrack_session *sess = conntrack_session_get(ce);
 	struct analyzer_sip_call *call = conntrack_session_get_priv(sess, obj);
+	conntrack_session_unlock(sess);
 	if (!call) // Call not found or the current conntrack session
 		return PLOAD_OPEN_ERR;
 
@@ -279,6 +281,7 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	}
 
 	sdp_priv->call = call;
+	sdp_priv->ts = event_get_timestamp(evt);
 
 	*priv = sdp_priv;
 
@@ -297,6 +300,9 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 	struct analyzer_sip_sdp_priv *p = priv;
 
 	if (telephony_sdp_parse_end(p->sdp) != POM_OK)
+		return POM_ERR;
+
+	if (telephony_sdp_add_expectations(p->sdp, p->call->sess, p->ts) != POM_OK)
 		return POM_ERR;
 
 	return POM_OK;

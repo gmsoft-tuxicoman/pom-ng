@@ -64,6 +64,7 @@ struct analyzer_sip_sdp_priv {
 	struct analyzer_sip_sdp_line_lst *line_head, *line_tail;
 	struct analyzer_sip_call *call;
 	struct telephony_sdp *sdp;
+	ptime ts;
 };
 
 struct mod_reg_info* analyzer_sip_reg_info();
