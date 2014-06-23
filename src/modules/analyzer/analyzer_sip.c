@@ -51,6 +51,7 @@ static int analyzer_sip_mod_register(struct mod_reg *mod) {
 	analyzer_sip.name = "sip";
 	analyzer_sip.mod = mod;
 	analyzer_sip.init = analyzer_sip_init;
+	analyzer_sip.cleanup = analyzer_sip_cleanup;
 
 	return analyzer_register(&analyzer_sip);
 
@@ -304,6 +305,8 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 
 	if (telephony_sdp_add_expectations(p->sdp, p->call->sess, p->ts) != POM_OK)
 		return POM_ERR;
+
+	telephony_sdp_cleanup(p->sdp);
 
 	return POM_OK;
 }
