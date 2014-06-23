@@ -44,6 +44,7 @@
 #include "addon.h"
 #include "event.h"
 #include "pload.h"
+#include "telephony.h"
 
 #include <pom-ng/ptype.h>
 
@@ -380,6 +381,11 @@ int main(int argc, char *argv[]) {
 		goto err_addon;
 	}
 
+	if (telephony_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initialing telephony");
+		goto err_telephony;
+	}
+
 	// Main loop
 	
 	pomlog(PACKAGE_NAME " started ! You can now connect using pom-ng-console.");
@@ -436,7 +442,7 @@ int main(int argc, char *argv[]) {
 	
 	// Error path below
 
-
+err_telephony:
 err_addon:
 	addon_cleanup();
 err_dstore:

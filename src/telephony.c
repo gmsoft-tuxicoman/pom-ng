@@ -19,6 +19,7 @@
  */
 
 #include <pom-ng/proto.h>
+#include <pom-ng/ptype_uint16.h>
 
 #include "telephony.h"
 
@@ -30,6 +31,8 @@ static struct telephony_codec_reg telephony_codecs[] = {
 	{ 0, NULL, 0 },
 };
 
+static struct proto *telephony_proto_ipv4 = NULL, *telephony_proto_ipv6 = NULL, *telephony_proto_udp = NULL, *telephony_proto_rtp = NULL;
+
 static struct telephony_codec_reg *telephony_codec_get_by_name(char *name) {
 
 	int i;
@@ -40,6 +43,21 @@ static struct telephony_codec_reg *telephony_codec_get_by_name(char *name) {
 
 	return NULL;
 };
+
+int telephony_init() {
+
+	telephony_proto_ipv4 = proto_get("ipv4");
+	telephony_proto_ipv6 = proto_get("ipv6");
+	telephony_proto_udp = proto_get("udp");
+	telephony_proto_rtp = proto_get("rtp");
+
+	if (!telephony_proto_ipv4 || !telephony_proto_ipv6 || !telephony_proto_udp || !telephony_proto_rtp) {
+		pomlog(POMLOG_ERR "Failed to get hold of all the needed protocols");
+		return POM_ERR;
+	}
+
+	return POM_OK;
+}
 
 static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *line, size_t len) {
 
@@ -193,7 +211,6 @@ static int telephony_sdp_parse_line_a(struct telephony_sdp *sdp, char *line, siz
 			continue;
 		if (!strncasecmp(line, sendrecv[i], str_len)) {
 			dir = i + telephony_sdp_stream_direction_inactive;
-			return POM_OK;
 
 			if (sdp->streams) {
 				sdp->streams->dir = dir;
@@ -234,10 +251,10 @@ static int telephony_sdp_parse_line_c(struct telephony_sdp *sdp, char *line, siz
 	struct proto *proto = NULL;
 	struct ptype *addr = NULL;
 	if (!memcmp("IP4 ", line, 4)) {
-		proto = proto_get("ipv4");
+		proto = telephony_proto_ipv4;
 		addr = ptype_alloc("ipv4");
 	} else if (!memcmp("IP6 ", line, 4)) {
-		proto = proto_get("ipv6");
+		proto = telephony_proto_ipv6;
 		addr = ptype_alloc("ipv6");
 	} else {
 		return POM_OK;
@@ -314,7 +331,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	memset(stream, 0, sizeof(struct telephony_sdp_stream));
 	stream->next = sdp->streams;
 	sdp->streams = stream;
-
+	stream->port_num = 1;
 
 	// Get the codec type
 	int i;
@@ -395,7 +412,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	if (stream->type == telephony_stream_type_unknown)
 		return POM_OK;
 
-	stream->port_proto = proto_get("udp");
+	stream->port_proto = telephony_proto_udp;
 
 	// Parse the format
 	
@@ -493,7 +510,7 @@ int telephony_sdp_parse(struct telephony_sdp *sdp, void *data, size_t len) {
 		char line_type = *line;
 
 		line += 2;
-		len -= 2;
+		line_len -= 2;
 
 		switch (line_type) {
 			case 'a':
@@ -597,6 +614,73 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 		free(attr);
 	}
 
+
+	return POM_OK;
+}
+
+
+int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_session *sess, ptime now) {
+
+
+	struct telephony_sdp_stream *stream;
+
+	for (stream = sdp->streams; stream; stream = stream->next) {
+
+		// We only support RTP/AVP stream so far
+		if (stream->type != telephony_stream_type_rtp_avp)
+			continue;
+
+		// Protocol could not be determined
+		if (!stream->port_proto)
+			continue;
+
+		// Rejected stream
+		if (!stream->port)
+			continue;
+
+		// Inactive stream or unknown stream direction
+		if (stream->dir == telephony_sdp_stream_direction_inactive || stream->dir == telephony_sdp_stream_direction_unknown)
+			continue;
+
+		struct telephony_sdp_address *addr;
+		for (addr = stream->addrs; addr; addr = addr->next) {
+
+			int i;
+			for (i = 0; i < stream->port_num; i++) {
+				// Create an expecation for each address/port combination
+				// RTP use only pair ports
+
+				struct proto_expectation *e = proto_expectation_alloc(telephony_proto_rtp, NULL);
+				if (!e)
+					return POM_ERR;
+
+				if (proto_expectation_append(e, addr->proto, addr->addr, NULL) != POM_OK) {
+					proto_expectation_cleanup(e);
+					return POM_ERR;
+				}
+
+				struct ptype *port = ptype_alloc("uint16");
+				if (!port) {
+					proto_expectation_cleanup(e);
+					return POM_ERR;
+				}
+
+				PTYPE_UINT16_SETVAL(port, stream->port + (i * 2));
+
+				if (proto_expectation_append(e, stream->port_proto, port, NULL) != POM_OK) {
+					proto_expectation_cleanup(e);
+					ptype_cleanup(port);
+					return POM_ERR;
+				}
+				ptype_cleanup(port);
+
+				if (proto_expectation_add(e, sess, TELEPHONY_EXPECTATION_TIMEOUT, now) != POM_OK) {
+					proto_expectation_cleanup(e);
+					return POM_ERR;
+				}
+			}
+		}
+	}
 
 	return POM_OK;
 }

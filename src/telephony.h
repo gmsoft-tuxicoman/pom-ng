@@ -26,6 +26,7 @@
 #include <pom-ng/telephony.h>
 
 #define TELEPHONY_SDP_MAX_LINE_LEN	512
+#define TELEPHONY_EXPECTATION_TIMEOUT	60
 
 struct telephony_codec_reg {
 
@@ -126,5 +127,7 @@ struct telephony_sdp {
 
 
 };
+
+int telephony_init();
 
 #endif
