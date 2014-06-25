@@ -32,10 +32,15 @@
 #include <stdio.h>
 
 
-struct proto_sip_header_handler proto_sip_header_handlers[] = {
+struct proto_sip_header_handler {
+	char *header;
+	int (*handler) (struct data *data, char *value, size_t value_len, int field_id);
+	int field_id;
+} proto_sip_header_handlers[] = {
 
 	{ "cseq", proto_sip_parse_cseq, proto_sip_msg_cseq_num },
 	{ "call-id", proto_sip_parse_string_header, proto_sip_msg_call_id },
+	{ "via", proto_sip_parse_via, proto_sip_msg_top_branch },
 	{ "i", proto_sip_parse_string_header, proto_sip_msg_call_id },
 	{ "content-type", proto_sip_parse_string_header, proto_sip_msg_content_type },
 	{ "c", proto_sip_parse_string_header, proto_sip_msg_content_type },
@@ -121,6 +126,8 @@ static int proto_sip_init(struct proto *proto, struct registry_instance *ri) {
 	evt_req_data_items[proto_sip_msg_first_line].value_type = ptype_get_type("string");
 	evt_req_data_items[proto_sip_msg_call_id].name = "call_id";
 	evt_req_data_items[proto_sip_msg_call_id].value_type = ptype_get_type("string");
+	evt_req_data_items[proto_sip_msg_top_branch].name = "top_branch";
+	evt_req_data_items[proto_sip_msg_top_branch].value_type = ptype_get_type("string");
 	evt_req_data_items[proto_sip_msg_cseq_num].name = "cseq_num";
 	evt_req_data_items[proto_sip_msg_cseq_num].value_type = ptype_get_type("uint32");
 	evt_req_data_items[proto_sip_msg_cseq_method].name = "cseq_method";
@@ -335,15 +342,16 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 
 				int i;
 				for (i = 0; proto_sip_header_handlers[i].header; i++) {
-					if (!strncasecmp(proto_sip_header_handlers[i].header, line, name_len)) {
+					if (!data_is_set(evt_data[proto_sip_header_handlers[i].field_id]) && !strncasecmp(proto_sip_header_handlers[i].header, line, name_len)) {
 						res = (proto_sip_header_handlers[i].handler) (evt_data, colon, value_len, proto_sip_header_handlers[i].field_id);
 						if (res != PROTO_OK)
 							goto end;
 						break;
 					}
+
 				}
-				if (!proto_sip_header_handlers[i].header) {
-					// Add to other headers
+				if (!proto_sip_header_handlers[i].header || proto_sip_header_handlers[i].field_id == proto_sip_msg_top_branch) {
+					// Add to other headers if not parser or if it's the via header
 
 					char *name = strndup(line, name_len);
 					if (!name) {
@@ -700,6 +708,44 @@ static int proto_sip_parse_to_from(struct data *data, char *value, size_t value_
 	PTYPE_STRING_SETVAL_N(data[field_id + 1].value, uri, uri_len);
 	data_set(data[field_id + 1]);
 
+	return POM_OK;
+}
+
+static int proto_sip_parse_via(struct data *data, char *value, size_t value_len, int field_id) {
+
+	// Start at the first semicolon
+	char *sc = memchr(value, ';', value_len);
+	if (!sc) {
+		pomlog(POMLOG_DEBUG "No parameter found in Via header");
+		return POM_OK;
+	}
+
+
+	size_t branch_eq_len = strlen("branch=");
+
+	while (sc && value_len) {
+		value_len -= sc - value + 1;
+		value = sc + 1;
+
+
+		sc = memchr(value, ';', value_len);
+
+		size_t param_len = value_len;
+		if (sc)
+			param_len = sc - value;
+
+		if (!strncasecmp(value, "branch=", branch_eq_len)) {
+			param_len -= branch_eq_len;
+			value += branch_eq_len;
+
+			PTYPE_STRING_SETVAL_N(data[field_id].value, value, param_len);
+			data_set(data[field_id]);
+
+			return POM_OK;
+		}
+	}
+
+	pomlog(POMLOG_DEBUG "Parameter branch not found in Via header");
 	return POM_OK;
 }
 

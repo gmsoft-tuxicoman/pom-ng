@@ -35,6 +35,7 @@ enum {
 enum {
 	proto_sip_msg_first_line = 2,
 	proto_sip_msg_call_id,
+	proto_sip_msg_top_branch,
 	proto_sip_msg_cseq_num,
 	proto_sip_msg_cseq_method,
 	proto_sip_msg_content_type,

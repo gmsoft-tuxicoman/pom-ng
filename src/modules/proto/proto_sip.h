@@ -30,7 +30,7 @@ struct proto_sip_priv {
 
 };
 
-#define PROTO_SIP_EVT_MSG_DATA_COUNT 15
+#define PROTO_SIP_EVT_MSG_DATA_COUNT 16
 
 #define SIP_STATE_FIRST_LINE	1 // First line of a query/response
 #define SIP_STATE_HEADERS	2 // Receving the haders
@@ -50,12 +50,6 @@ struct proto_sip_conntrack_priv {
 
 };
 
-struct proto_sip_header_handler {
-	char *header;
-	int (*handler) (struct data *data, char *value, size_t value_len, int field_id);
-	int field_id;
-};
-
 static int proto_sip_mod_register(struct mod_reg *mod);
 static int proto_sip_mod_unregister();
 
@@ -72,6 +66,7 @@ static int proto_sip_parse_request_response(struct conntrack_entry *ce, char *li
 static int proto_sip_parse_cseq(struct data *data, char *value, size_t value_len, int field_id);
 static int proto_sip_parse_string_header(struct data *data, char *value, size_t value_len, int field_id);
 static int proto_sip_parse_content_len(struct data *data, char *value, size_t value_len, int field_id);
+static int proto_sip_parse_via(struct data *data, char *value, size_t value_len, int field_id);
 static int proto_sip_parse_to_from(struct data *data, char *value, size_t value_len, int field_id);
 
 static int proto_sip_conntrack_cleanup(void *ce_priv);
