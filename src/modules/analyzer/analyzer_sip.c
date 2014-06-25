@@ -24,7 +24,7 @@
 #include "analyzer_sip.h"
 
 
-#if 0
+#if 1
 #define debug_sip(x ...) pomlog(POMLOG_DEBUG x)
 #else
 #define debug_sip(x ...)
@@ -226,7 +226,7 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 
 	conntrack_session_unlock(sess);
 
-	HASH_ADD_STR(analyzer_sip_calls, call_id, call);
+	HASH_ADD_KEYPTR(hh, analyzer_sip_calls, call->call_id, strlen(call->call_id), call);
 
 
 	return call;
@@ -238,6 +238,20 @@ static int analyzer_sip_call_cleanup(void *obj, void *priv) {
 
 	HASH_DEL(analyzer_sip_calls, call);
 
+	while (call->dialogs) {
+		struct analyzer_sip_call_dialog *d = call->dialogs;
+		call->dialogs = d->next;
+
+		if (d->from_tag)
+			free(d->from_tag);
+		if (d->to_tag)
+			free(d->to_tag);
+		if (d->branch)
+			free(d->branch);
+
+		free(d);
+	}
+
 	if (call->call_id)
 		free(call->call_id);
 	free(call);
@@ -245,13 +259,161 @@ static int analyzer_sip_call_cleanup(void *obj, void *priv) {
 	return POM_OK;
 }
 
+static int analyzer_sip_process_invite(struct event *evt, struct analyzer_sip_call_dialog *d) {
+
+	if (!d) {
+		pomlog(POMLOG_DEBUG "SIP INVITE outside of a dialog, ignoring !");
+		return POM_OK;
+	}
+
+	return POM_OK;
+}
+
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
+	struct analyzer *analyzer = obj;
+	struct analyzer_sip_priv *priv = analyzer->priv;
+
+	struct event_reg *evt_reg = event_get_reg(evt);
+
+	if (evt_reg != priv->evt_sip_req && evt_reg != priv->evt_sip_rsp) {
+		pomlog(POMLOG_ERR "Received event is not a SIP request or response");
+		return POM_ERR;
+	}
+
+	// Get the call based on the call-id
 	struct analyzer_sip_call *call = analyzer_sip_event_get_call(obj, evt);
 	if (!call)
 		return POM_OK;
 
-	// TODO record some info about the call
+
+	struct data *evt_data = event_get_data(evt);
+
+	if (!data_is_set(evt_data[proto_sip_msg_top_branch])) {
+		pomlog(POMLOG_DEBUG "Received SIP event with branch");
+		return POM_OK;
+	}
+
+	// Find or create a dialog for this message
+
+	char *branch = PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_top_branch].value);
+	char *from_tag = NULL;
+	if (data_is_set(evt_data[proto_sip_msg_from_tag]))
+		from_tag = PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_from_tag].value);
+	char *to_tag = NULL;
+	if (data_is_set(evt_data[proto_sip_msg_to_tag]))
+		to_tag = PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_to_tag].value);
+
+	struct analyzer_sip_call_dialog *dialog = NULL;
+
+	if (from_tag) {
+		// We have a from tag, this means we are either in an half or complete dialog
+
+		if (to_tag) {
+			// This might be the first message creating an complete dialog or
+			// a message from the UAS like a re-invite
+			for (dialog = call->dialogs; dialog; dialog = dialog->next) {
+				// Try to match the from tag
+				if (!strcmp(from_tag, dialog->from_tag)) {
+					// From tag matched,
+					if (dialog->to_tag) {
+						if (!strcmp(to_tag, dialog->to_tag))
+							break; // Both from and to tag matched !
+					} else {
+						if (!strcmp(branch, dialog->branch)) {
+							// We matched both the from and the branch this means
+							// we are transitioning from half to full dialog
+							dialog->to_tag = strdup(to_tag);
+							if (!dialog->to_tag) {
+								pom_oom(strlen(to_tag) + 1);
+								return POM_ERR;
+							}
+							debug_sip("Half dialog for call id %s transitioned to full : from_tag %s, to_tag %s, branch %s", call->call_id, from_tag, to_tag, branch);
+							break;
+						}
+					}
+				} else if (!strcmp(to_tag, dialog->from_tag)) {
+					// The dialog matched in the reverse direction
+					// This means we are processing a request from the UAS or a response from the UAC
+					break;
+				}
+			}
+		} else {
+			// Early dialog
+			for (dialog = call->dialogs; dialog ; dialog = dialog->next) {
+				// Try to match the from tag
+				if (strcmp(from_tag, dialog->from_tag))
+					continue;
+
+				// If it matches, check the branch
+				if (!strcmp(branch, dialog->branch))
+					break; // Found it
+			}
+		}
+
+		if (!dialog) {
+			// No dialog was found, let's create one !
+			dialog = malloc(sizeof(struct analyzer_sip_call_dialog));
+			if (!dialog) {
+				pom_oom(sizeof(struct analyzer_sip_call_dialog));
+				return POM_ERR;
+			}
+			memset(dialog, 0, sizeof(struct analyzer_sip_call_dialog));
+
+			dialog->from_tag = strdup(from_tag);
+			if (!dialog->from_tag) {
+				free(dialog);
+				pom_oom(strlen(from_tag) + 1);
+				return POM_ERR;
+			}
+
+			dialog->branch = strdup(branch);
+			if (!dialog->branch) {
+				free(dialog->from_tag);
+				free(dialog);
+				pom_oom(strlen(branch) + 1);
+				return POM_ERR;
+			}
+
+			if (to_tag) {
+				dialog->to_tag = strdup(to_tag);
+				if (!dialog->to_tag) {
+					free(dialog->branch);
+					free(dialog->from_tag);
+					free(dialog);
+					pom_oom(strlen(to_tag) + 1);
+					return POM_ERR;
+				}
+			}
+
+			if (to_tag) {
+				debug_sip("New full dialog for call %s : from_tag %s, to_tag %s, branch %s", call->call_id, from_tag, to_tag, branch);
+			} else {
+				debug_sip("New half dialog for call %s : from_tag %s, branch %s", call->call_id, from_tag, branch);
+			}
+
+
+			dialog->next = call->dialogs;
+			if (dialog->next)
+				dialog->next->prev = dialog;
+			call->dialogs = dialog;
+		}
+	}
+
+
+	if (evt_reg == priv->evt_sip_req) {
+		char *method = PTYPE_STRING_GETVAL(evt_data[proto_sip_req_method].value);
+
+		if (!strcmp(method, "INVITE")) {
+			return analyzer_sip_process_invite(evt, dialog);
+		}
+
+
+	} else if (evt_reg == priv->evt_sip_rsp) {
+
+
+	}
+
 
 	return POM_OK;
 

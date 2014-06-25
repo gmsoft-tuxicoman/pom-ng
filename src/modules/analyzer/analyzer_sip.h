@@ -49,10 +49,38 @@ struct analyzer_sip_priv {
 
 };
 
+enum analyzer_sip_call_type {
+	analyzer_sip_call_type_unknown = 0,
+	analyzer_sip_call_type_unhandled,
+	analyzer_sip_call_type_invite,
+};
+
+enum analyzer_sip_call_state {
+	analyzer_sip_call_state_unknown = 0,
+	analyzer_sip_call_state_trying,
+	analyzer_sip_call_state_proceeding,
+	analyzer_sip_call_state_alerting,
+	analyzer_sip_call_state_connected,
+	analyzer_sip_call_state_terminated,
+};
+
+struct analyzer_sip_call_dialog {
+
+	char *from_tag, *to_tag;
+	char *branch;
+	uint32_t cseq;
+
+	struct analyzer_sip_call_dialog *prev, *next;
+
+};
+
 struct analyzer_sip_call {
 
 	char *call_id;
+	enum analyzer_sip_call_type type;
 	struct conntrack_session *sess;
+
+	struct analyzer_sip_call_dialog *dialogs;
 
 	UT_hash_handle hh;
 };
