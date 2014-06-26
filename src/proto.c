@@ -730,7 +730,6 @@ int proto_expectation_expiry(void *priv, ptime now) {
 	struct proto_expectation *e = priv;
 	struct proto *proto = e->tail->proto;
 
-	timer_cleanup(e->expiry);
 	pom_rwlock_wlock(&proto->expectation_lock);
 
 	if (e->next)
