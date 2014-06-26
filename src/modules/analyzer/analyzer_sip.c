@@ -18,6 +18,7 @@
  *
  */
 
+#include <pom-ng/analyzer_dtmf.h>
 #include <pom-ng/proto_sip.h>
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
@@ -129,8 +130,6 @@ static int analyzer_sip_init(struct analyzer *analyzer) {
 	analyzer_sip_evt_call.data_reg = &evt_sip_call_data;
 	analyzer_sip_evt_call.flags = EVENT_REG_FLAG_PAYLOAD;
 	analyzer_sip_evt_call.listeners_notify = analyzer_sip_event_listeners_notify;
-//	analyzer_sip_evt_call.cleanup = analyzer_sip_call_event_cleanup;
-
 
 	priv->evt_sip_call = event_register(&analyzer_sip_evt_call);
 	if (!priv->evt_sip_call)
@@ -184,6 +183,32 @@ static int analyzer_sip_init(struct analyzer *analyzer) {
 	if (!priv->evt_sip_call_hangup)
 		goto err;
 
+	static struct data_item_reg evt_sip_dtmf_data_items[ANALYZER_SIP_CALL_DTMF_DATA_COUNT] = { { 0 } };
+	memcpy(evt_sip_dtmf_data_items, evt_sip_call_common_data_items, sizeof(struct data_item_reg) * ANALYZER_SIP_CALL_COMMON_DATA_COUNT);
+
+	evt_sip_dtmf_data_items[analyzer_sip_dtmf_signal].name = "signal";
+	evt_sip_dtmf_data_items[analyzer_sip_dtmf_signal].value_type = ptype_get_type("string");
+
+	evt_sip_dtmf_data_items[analyzer_sip_dtmf_duration].name = "duration";
+	evt_sip_dtmf_data_items[analyzer_sip_dtmf_duration].value_type = ptype_get_type("uint16");
+
+	static struct data_reg evt_sip_dtmf_data = {
+		.items = evt_sip_dtmf_data_items,
+		.data_count = ANALYZER_SIP_CALL_DTMF_DATA_COUNT
+	};
+
+	static struct event_reg_info analyzer_sip_evt_dtmf = { 0 };
+	analyzer_sip_evt_dtmf.source_name = "analyzer_sip";
+	analyzer_sip_evt_dtmf.source_obj = analyzer;
+	analyzer_sip_evt_dtmf.name = "sip_dtmf";
+	analyzer_sip_evt_dtmf.description = "DTMF from SIP";
+	analyzer_sip_evt_dtmf.data_reg = &evt_sip_dtmf_data;
+	analyzer_sip_evt_dtmf.listeners_notify = analyzer_sip_event_listeners_notify;
+
+	priv->evt_sip_dtmf = event_register(&analyzer_sip_evt_dtmf);
+	if (!priv->evt_sip_dtmf)
+		goto err;
+
 	priv->proto_sip = proto_get("sip");
 	if (!priv->proto_sip)
 		goto err;
@@ -198,12 +223,6 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer) {
 
 	struct analyzer_sip_priv *priv = analyzer->priv;
 
-	if (priv->listening) {
-		pload_listen_stop(analyzer, ANALYZER_SIP_SDP_PLOAD_TYPE);
-		event_listener_unregister(priv->evt_sip_req, analyzer);
-		event_listener_unregister(priv->evt_sip_rsp, analyzer);
-	}
-
 
 	struct analyzer_sip_call *cur_call, *tmp;
 	HASH_ITER(hh, analyzer_sip_calls, cur_call, tmp) {
@@ -211,8 +230,34 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer) {
 		analyzer_sip_call_cleanup(analyzer, cur_call);
 	}
 
+	if (priv->listening) {
+		event_listener_unregister(priv->evt_sip_req, analyzer);
+		event_listener_unregister(priv->evt_sip_rsp, analyzer);
+	}
+
+	if (priv->sdp_listening)
+		pload_listen_stop(analyzer, ANALYZER_SIP_SDP_PLOAD_TYPE);
+
+	if (priv->dtmf_listening)
+		pload_listen_stop(analyzer, ANALYZER_SIP_DTMF_PLOAD_TYPE);
+
 	if (priv->evt_sip_call)
 		event_unregister(priv->evt_sip_call);
+
+	if (priv->evt_sip_call_dial)
+		event_unregister(priv->evt_sip_call_dial);
+
+	if (priv->evt_sip_call_ringing)
+		event_unregister(priv->evt_sip_call_ringing);
+
+	if (priv->evt_sip_call_connect)
+		event_unregister(priv->evt_sip_call_connect);
+
+	if (priv->evt_sip_call_hangup)
+		event_unregister(priv->evt_sip_call_hangup);
+
+	if (priv->evt_sip_dtmf)
+		event_unregister(priv->evt_sip_dtmf);
 
 	free(priv);
 
@@ -232,7 +277,7 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 	else
 		listening = __sync_sub_and_fetch(&priv->listening, 1);
 
-	if (listening == 1) {
+	if (has_listeners && listening == 1) {
 		if (event_listener_register(priv->evt_sip_req, analyzer, analyzer_sip_event_process_begin, analyzer_sip_event_process_end) != POM_OK) {
 			return POM_ERR;
 		} else if (event_listener_register(priv->evt_sip_rsp, analyzer, analyzer_sip_event_process_begin, analyzer_sip_event_process_end) != POM_OK) {
@@ -249,22 +294,32 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 	}
 
 	if (event_has_listener(priv->evt_sip_call)) {
-		if (!priv->rtp_listening) {
-			if (pload_listen_start(obj, ANALYZER_SIP_SDP_PLOAD_TYPE, NULL, analyzer_sip_sdp_open, analyzer_sip_sdp_write, analyzer_sip_sdp_close) != POM_OK) {
-				event_listener_unregister(priv->evt_sip_req, analyzer);
-				event_listener_unregister(priv->evt_sip_rsp, analyzer);
+		if (!priv->sdp_listening) {
+			if (pload_listen_start(obj, ANALYZER_SIP_SDP_PLOAD_TYPE, NULL, analyzer_sip_sdp_open, analyzer_sip_sdp_write, analyzer_sip_sdp_close) != POM_OK)
 				return POM_ERR;
-			}
-			priv->rtp_listening = 1;
+			priv->sdp_listening = 1;
 		}
 	} else {
-		if (priv->rtp_listening) {
-			priv->rtp_listening = 0;
+		if (priv->sdp_listening) {
 			if (pload_listen_stop(obj, ANALYZER_SIP_SDP_PLOAD_TYPE) != POM_OK)
 				return POM_ERR;
+			priv->sdp_listening = 0;
 		}
 	}
 
+	if (event_has_listener(priv->evt_sip_dtmf)) {
+		if (!priv->dtmf_listening) {
+			if (pload_listen_start(obj, ANALYZER_SIP_DTMF_PLOAD_TYPE, NULL, analyzer_sip_dtmf_open, NULL, NULL) != POM_OK)
+				return POM_ERR;
+			priv->dtmf_listening = 1;
+		}
+	} else {
+		if (priv->dtmf_listening) {
+			if (pload_listen_stop(obj, ANALYZER_SIP_DTMF_PLOAD_TYPE) != POM_OK)
+				return POM_ERR;
+			priv->dtmf_listening = 0;
+		}
+	}
 	return POM_OK;
 }
 
@@ -833,4 +888,41 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 	free(p);
 
 	return POM_OK;
+}
+
+static int analyzer_sip_dtmf_open(void *obj, void **priv, struct pload *pload) {
+
+	struct analyzer *analyzer = obj;
+	struct analyzer_sip_priv *apriv = analyzer->priv;
+
+	struct event *evt = pload_get_related_event(pload);
+	if (!evt)
+		return PLOAD_OPEN_STOP;
+
+	struct event_reg *evt_reg = event_get_reg(evt);
+	if (evt_reg != apriv->evt_sip_req && evt_reg != apriv->evt_sip_rsp)
+		return PLOAD_OPEN_STOP;
+
+	struct event *dtmf_evt = event_alloc(apriv->evt_sip_dtmf);
+	if (!dtmf_evt)
+		return PLOAD_OPEN_ERR;
+
+	struct data *evt_src_data = event_get_data(evt);
+	struct data *evt_dst_data = event_get_data(dtmf_evt);
+	analyzer_sip_event_common_data_copy(evt_dst_data, evt_src_data);
+
+	struct data *pload_data = pload_get_data(pload);
+
+	if (data_is_set(pload_data[analyzer_dtmf_pload_signal]))
+		if (ptype_copy(evt_dst_data[analyzer_sip_dtmf_signal].value, pload_data[analyzer_dtmf_pload_signal].value) == POM_OK)
+			data_set(evt_dst_data[analyzer_sip_dtmf_signal]);
+
+	if (data_is_set(pload_data[analyzer_dtmf_pload_duration]))
+		if (ptype_copy(evt_dst_data[analyzer_sip_dtmf_duration].value, pload_data[analyzer_dtmf_pload_duration].value) == POM_OK)
+			data_set(evt_dst_data[analyzer_sip_dtmf_duration]);
+
+	if (event_process(dtmf_evt, NULL, 0, event_get_timestamp(evt)) != POM_OK)
+		return PLOAD_OPEN_ERR;
+
+	return PLOAD_OPEN_STOP;
 }

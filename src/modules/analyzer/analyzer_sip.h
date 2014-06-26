@@ -27,16 +27,18 @@
 #include <pom-ng/telephony.h>
 #include <uthash.h>
 
-#define ANALYZER_SIP_CALL_COMMON_DATA_COUNT 5
-#define ANALYZER_SIP_CALL_DATA_COUNT	8
-#define ANALYZER_SIP_SDP_PLOAD_TYPE	"sdp"
+#define ANALYZER_SIP_CALL_COMMON_DATA_COUNT	5
+#define ANALYZER_SIP_CALL_DATA_COUNT		8
+#define ANALYZER_SIP_CALL_DTMF_DATA_COUNT	7
+#define ANALYZER_SIP_SDP_PLOAD_TYPE		"sdp"
+#define ANALYZER_SIP_DTMF_PLOAD_TYPE		"dtmf"
 
 enum {
 	analyzer_sip_call_common_from_display = 0,
 	analyzer_sip_call_common_from_uri,
 	analyzer_sip_call_common_to_display,
 	analyzer_sip_call_common_to_uri,
-	analyzer_sip_call_common_id,
+	analyzer_sip_call_common_id
 };
 
 enum {
@@ -45,19 +47,23 @@ enum {
 	analyzer_sip_call_connected_duration
 };
 
+enum {
+	analyzer_sip_dtmf_signal = 5,
+	analyzer_sip_dtmf_duration
+};
 
 
 struct analyzer_sip_priv {
 
 	struct event_reg *evt_sip_req, *evt_sip_rsp;
 
-	struct event_reg *evt_sip_call, *evt_sip_call_dial, *evt_sip_call_ringing, *evt_sip_call_connect, *evt_sip_call_hangup;
+	struct event_reg *evt_sip_call, *evt_sip_call_dial, *evt_sip_call_ringing, *evt_sip_call_connect, *evt_sip_call_hangup, *evt_sip_dtmf;
 
 	struct proto *proto_sip;
 	struct proto_packet_listener *sip_packet_listener;
 
 	int listening;
-	int rtp_listening;
+	int sdp_listening, dtmf_listening;
 
 };
 
@@ -137,5 +143,7 @@ static int analyzer_sip_event_process_end(struct event *evt, void *obj);
 static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload);
 static int analyzer_sip_sdp_write(void *obj, void *priv, void *data, size_t len);
 static int analyzer_sip_sdp_close(void *obj, void *priv);
+
+static int analyzer_sip_dtmf_open(void *obj, void **priv, struct pload *pload);
 
 #endif
