@@ -119,11 +119,11 @@ static int analyzer_sdp_pload_analyze(struct pload *p, struct pload_buffer *pb, 
 		if (!cr) {
 			if (!ppriv) {
 				ppriv = malloc(sizeof(struct analyzer_sdp_pload_priv));
-				if (!priv) {
+				if (!ppriv) {
 					pom_oom(sizeof(struct analyzer_sdp_pload_priv));
 					return PLOAD_ANALYSIS_ERR;
 				}
-				memset(priv, 0, sizeof(struct analyzer_sdp_pload_priv));
+				memset(ppriv, 0, sizeof(struct analyzer_sdp_pload_priv));
 			}
 
 			ppriv->pos = pos;
