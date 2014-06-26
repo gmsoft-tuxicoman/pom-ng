@@ -25,7 +25,7 @@
 			<item><name>text</name><description>Plain text</description><extension>txt</extension><class>document</class></item>
 			<item><name>multipart</name><description>Multipart payload as described in RFC2046</description><extension>multipart</extension><class>other</class></item>
 			<item><name>sdp</name><description>Session Description Protocol</description><extension>sdp</extension><class>other</class></item>
-
+			<item><name>dtmf</name><description>Dual-Tone Multi-Frequency event</description><extension>dtmf</extension><class>other</class></item>
 		</dataset>
 
 		<dataset name="mime_types">
@@ -56,6 +56,8 @@
 			<item><name>multipart</name><mime>multipart/digest</mime></item>
 			<item><name>multipart</name><mime>multipart/parallel</mime></item>
 			<item><name>sdp</name><mime>application/sdp</mime></item>
+			<item><name>dtmf</name><mime>application/dtmf</mime></item>
+			<item><name>dtmf</name><mime>application/dtmf-relay</mime></item>
 		</dataset>
 	</datasets>
 
