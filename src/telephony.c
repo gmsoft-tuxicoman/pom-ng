@@ -110,12 +110,12 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 	size_t clock_rate_len = len;
 	slash = memchr(line, '/', len);
 	if (slash)
-		clock_rate_len = line - slash;
+		clock_rate_len = slash - line;
 
 	char clock_rate_str[16] = { 0 };
 
 	if  (clock_rate_len > sizeof(clock_rate_str) - 1) {
-		pomlog(POMLOG_DEBUG "Clock rate lenght too long in SDP a= line");
+		pomlog(POMLOG_DEBUG "Clock rate length too long in SDP a= line");
 		return POM_OK;
 	}
 	
