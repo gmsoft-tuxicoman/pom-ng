@@ -27,60 +27,86 @@
 #include <pom-ng/telephony.h>
 #include <uthash.h>
 
-#define ANALYZER_SIP_CALL_DATA_COUNT	3
+#define ANALYZER_SIP_CALL_COMMON_DATA_COUNT 5
+#define ANALYZER_SIP_CALL_DATA_COUNT	8
 #define ANALYZER_SIP_SDP_PLOAD_TYPE	"sdp"
 
 enum {
-	analyzer_sip_call_from_display,
-	analyzer_sip_call_to_display,
-	analyzer_sip_call_id,
+	analyzer_sip_call_common_from_display = 0,
+	analyzer_sip_call_common_from_uri,
+	analyzer_sip_call_common_to_display,
+	analyzer_sip_call_common_to_uri,
+	analyzer_sip_call_common_id,
 };
+
+enum {
+	analyzer_sip_call_trying_duration = 5,
+	analyzer_sip_call_ringing_duration,
+	analyzer_sip_call_connected_duration
+};
+
+
 
 struct analyzer_sip_priv {
 
 	struct event_reg *evt_sip_req, *evt_sip_rsp;
 
-	struct event_reg *evt_sip_call;
+	struct event_reg *evt_sip_call, *evt_sip_call_dial, *evt_sip_call_ringing, *evt_sip_call_connect, *evt_sip_call_hangup;
 
 	struct proto *proto_sip;
 	struct proto_packet_listener *sip_packet_listener;
 
 	int listening;
+	int rtp_listening;
 
 };
 
-enum analyzer_sip_call_type {
-	analyzer_sip_call_type_unknown = 0,
-	analyzer_sip_call_type_unhandled,
-	analyzer_sip_call_type_invite,
-};
-
-enum analyzer_sip_call_state {
-	analyzer_sip_call_state_unknown = 0,
-	analyzer_sip_call_state_trying,
-	analyzer_sip_call_state_proceeding,
-	analyzer_sip_call_state_alerting,
-	analyzer_sip_call_state_connected,
-	analyzer_sip_call_state_terminated,
+enum analyzer_sip_method {
+	analyzer_sip_method_unknown = 0,
+	analyzer_sip_method_invite,
+	analyzer_sip_method_ack,
+	analyzer_sip_method_cancel,
+	analyzer_sip_method_bye,
 };
 
 struct analyzer_sip_call_dialog {
 
 	char *from_tag, *to_tag;
 	char *branch;
+	struct analyzer_sip_call *call;
 	uint32_t cseq;
-
+	enum analyzer_sip_method cseq_method;
 	struct analyzer_sip_call_dialog *prev, *next;
+	int terminated;
 
+};
+
+enum analyzer_sip_call_state {
+	analyzer_sip_call_state_unknown = 0,
+	analyzer_sip_call_state_trying,
+	analyzer_sip_call_state_alerting,
+	analyzer_sip_call_state_connected,
+	analyzer_sip_call_state_terminated,
+};
+
+enum analyzer_sip_call_usage {
+	analyzer_sip_call_usage_other = 0,
+	analyzer_sip_call_usage_invite,
 };
 
 struct analyzer_sip_call {
 
 	char *call_id;
-	enum analyzer_sip_call_type type;
 	struct conntrack_session *sess;
 
 	struct analyzer_sip_call_dialog *dialogs;
+
+	enum analyzer_sip_call_state state;
+	enum analyzer_sip_call_usage usage;
+
+	ptime start_ts, ringing_ts, connected_ts;
+
+	struct event *evt;
 
 	UT_hash_handle hh;
 };

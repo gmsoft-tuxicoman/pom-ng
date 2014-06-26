@@ -19,7 +19,10 @@
  */
 
 #include <pom-ng/proto_sip.h>
+#include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint32.h>
 
 #include "analyzer_sip.h"
 
@@ -79,16 +82,39 @@ static int analyzer_sip_init(struct analyzer *analyzer) {
 		goto err;
 
 
+	static struct data_item_reg evt_sip_call_common_data_items[ANALYZER_SIP_CALL_COMMON_DATA_COUNT] = { { 0 } };
+
+	evt_sip_call_common_data_items[analyzer_sip_call_common_from_display].name = "from_display";
+	evt_sip_call_common_data_items[analyzer_sip_call_common_from_display].value_type = ptype_get_type("string");
+
+	evt_sip_call_common_data_items[analyzer_sip_call_common_from_uri].name = "from_uri";
+	evt_sip_call_common_data_items[analyzer_sip_call_common_from_uri].value_type = ptype_get_type("string");
+
+	evt_sip_call_common_data_items[analyzer_sip_call_common_to_display].name = "to_display";
+	evt_sip_call_common_data_items[analyzer_sip_call_common_to_display].value_type = ptype_get_type("string");
+
+	evt_sip_call_common_data_items[analyzer_sip_call_common_to_uri].name = "to_uri";
+	evt_sip_call_common_data_items[analyzer_sip_call_common_to_uri].value_type = ptype_get_type("string");
+
+	evt_sip_call_common_data_items[analyzer_sip_call_common_id].name = "call_id";
+	evt_sip_call_common_data_items[analyzer_sip_call_common_id].value_type = ptype_get_type("string");
+
+	static struct data_reg evt_sip_call_common_data = {
+		.items = evt_sip_call_common_data_items,
+		.data_count = ANALYZER_SIP_CALL_COMMON_DATA_COUNT
+	};
+
 	static struct data_item_reg evt_sip_call_data_items[ANALYZER_SIP_CALL_DATA_COUNT] = { { 0 } };
+	memcpy(evt_sip_call_data_items, evt_sip_call_common_data_items, sizeof(struct data_item_reg) * ANALYZER_SIP_CALL_COMMON_DATA_COUNT);
 
-	evt_sip_call_data_items[analyzer_sip_call_from_display].name = "from_display";
-	evt_sip_call_data_items[analyzer_sip_call_from_display].value_type = ptype_get_type("string");
+	evt_sip_call_data_items[analyzer_sip_call_trying_duration].name = "trying_duration";
+	evt_sip_call_data_items[analyzer_sip_call_trying_duration].value_type = ptype_get_type("uint32");
 
-	evt_sip_call_data_items[analyzer_sip_call_to_display].name = "to_display";
-	evt_sip_call_data_items[analyzer_sip_call_to_display].value_type = ptype_get_type("string");
+	evt_sip_call_data_items[analyzer_sip_call_ringing_duration].name = "ringing_duration";
+	evt_sip_call_data_items[analyzer_sip_call_ringing_duration].value_type = ptype_get_type("uint32");
 
-	evt_sip_call_data_items[analyzer_sip_call_id].name = "call_id";
-	evt_sip_call_data_items[analyzer_sip_call_id].value_type = ptype_get_type("string");
+	evt_sip_call_data_items[analyzer_sip_call_connected_duration].name = "connected_duration";
+	evt_sip_call_data_items[analyzer_sip_call_connected_duration].value_type = ptype_get_type("uint32");
 
 	static struct data_reg evt_sip_call_data = {
 		.items = evt_sip_call_data_items,
@@ -105,8 +131,57 @@ static int analyzer_sip_init(struct analyzer *analyzer) {
 	analyzer_sip_evt_call.listeners_notify = analyzer_sip_event_listeners_notify;
 //	analyzer_sip_evt_call.cleanup = analyzer_sip_call_event_cleanup;
 
+
 	priv->evt_sip_call = event_register(&analyzer_sip_evt_call);
 	if (!priv->evt_sip_call)
+		goto err;
+
+	static struct event_reg_info analyzer_sip_evt_call_dial = { 0 };
+	analyzer_sip_evt_call_dial.source_name = "analyzer_sip";
+	analyzer_sip_evt_call_dial.source_obj = analyzer;
+	analyzer_sip_evt_call_dial.name = "sip_call_dial";
+	analyzer_sip_evt_call_dial.description = "A SIP call is dial";
+	analyzer_sip_evt_call_dial.data_reg = &evt_sip_call_common_data;
+	analyzer_sip_evt_call_dial.listeners_notify = analyzer_sip_event_listeners_notify;
+
+	priv->evt_sip_call_dial = event_register(&analyzer_sip_evt_call_dial);
+	if (!priv->evt_sip_call_dial)
+		goto err;
+
+	static struct event_reg_info analyzer_sip_evt_call_ringing = { 0 };
+	analyzer_sip_evt_call_ringing.source_name = "analyzer_sip";
+	analyzer_sip_evt_call_ringing.source_obj = analyzer;
+	analyzer_sip_evt_call_ringing.name = "sip_call_ringing";
+	analyzer_sip_evt_call_ringing.description = "A SIP call is ringing";
+	analyzer_sip_evt_call_ringing.data_reg = &evt_sip_call_common_data;
+	analyzer_sip_evt_call_ringing.listeners_notify = analyzer_sip_event_listeners_notify;
+
+	priv->evt_sip_call_ringing = event_register(&analyzer_sip_evt_call_ringing);
+	if (!priv->evt_sip_call_ringing)
+		goto err;
+
+	static struct event_reg_info analyzer_sip_evt_call_connect = { 0 };
+	analyzer_sip_evt_call_connect.source_name = "analyzer_sip";
+	analyzer_sip_evt_call_connect.source_obj = analyzer;
+	analyzer_sip_evt_call_connect.name = "sip_call_connect";
+	analyzer_sip_evt_call_connect.description = "A SIP call is connected";
+	analyzer_sip_evt_call_connect.data_reg = &evt_sip_call_common_data;
+	analyzer_sip_evt_call_connect.listeners_notify = analyzer_sip_event_listeners_notify;
+
+	priv->evt_sip_call_connect = event_register(&analyzer_sip_evt_call_connect);
+	if (!priv->evt_sip_call_connect)
+		goto err;
+
+	static struct event_reg_info analyzer_sip_evt_call_hangup = { 0 };
+	analyzer_sip_evt_call_hangup.source_name = "analyzer_sip";
+	analyzer_sip_evt_call_hangup.source_obj = analyzer;
+	analyzer_sip_evt_call_hangup.name = "sip_call_hangup";
+	analyzer_sip_evt_call_hangup.description = "A SIP call is hanged up";
+	analyzer_sip_evt_call_hangup.data_reg = &evt_sip_call_common_data;
+	analyzer_sip_evt_call_hangup.listeners_notify = analyzer_sip_event_listeners_notify;
+
+	priv->evt_sip_call_hangup = event_register(&analyzer_sip_evt_call_hangup);
+	if (!priv->evt_sip_call_hangup)
 		goto err;
 
 	priv->proto_sip = proto_get("sip");
@@ -151,7 +226,13 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 	struct analyzer *analyzer = obj;
 	struct analyzer_sip_priv *priv = analyzer->priv;
 
-	if (has_listeners) {
+	int listening;
+	if (has_listeners)
+		listening = __sync_add_and_fetch(&priv->listening, 1);
+	else
+		listening = __sync_sub_and_fetch(&priv->listening, 1);
+
+	if (listening == 1) {
 		if (event_listener_register(priv->evt_sip_req, analyzer, analyzer_sip_event_process_begin, analyzer_sip_event_process_end) != POM_OK) {
 			return POM_ERR;
 		} else if (event_listener_register(priv->evt_sip_rsp, analyzer, analyzer_sip_event_process_begin, analyzer_sip_event_process_end) != POM_OK) {
@@ -159,20 +240,29 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 			return POM_ERR;
 		}
 
-		if (pload_listen_start(obj, ANALYZER_SIP_SDP_PLOAD_TYPE, NULL, analyzer_sip_sdp_open, analyzer_sip_sdp_write, analyzer_sip_sdp_close) != POM_OK) {
-			event_listener_unregister(priv->evt_sip_req, analyzer);
-			event_listener_unregister(priv->evt_sip_rsp, analyzer);
-			return POM_ERR;
-		}
-		priv->listening = 1;
-	} else {
+	} else if (!listening) {
 		int res = POM_OK;
-		res += pload_listen_stop(obj, ANALYZER_SIP_SDP_PLOAD_TYPE);
 		res += event_listener_unregister(priv->evt_sip_req, analyzer);
 		res += event_listener_unregister(priv->evt_sip_rsp, analyzer);
 		if (res != POM_OK)
 			return POM_ERR;
-		priv->listening = 0;
+	}
+
+	if (event_has_listener(priv->evt_sip_call)) {
+		if (!priv->rtp_listening) {
+			if (pload_listen_start(obj, ANALYZER_SIP_SDP_PLOAD_TYPE, NULL, analyzer_sip_sdp_open, analyzer_sip_sdp_write, analyzer_sip_sdp_close) != POM_OK) {
+				event_listener_unregister(priv->evt_sip_req, analyzer);
+				event_listener_unregister(priv->evt_sip_rsp, analyzer);
+				return POM_ERR;
+			}
+			priv->rtp_listening = 1;
+		}
+	} else {
+		if (priv->rtp_listening) {
+			priv->rtp_listening = 0;
+			if (pload_listen_stop(obj, ANALYZER_SIP_SDP_PLOAD_TYPE) != POM_OK)
+				return POM_ERR;
+		}
 	}
 
 	return POM_OK;
@@ -188,12 +278,17 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 	struct analyzer_sip_call *call = NULL;
 	HASH_FIND_STR(analyzer_sip_calls, call_id, call);
 
-	if (call)
-		return call;
-
 	struct conntrack_entry *ce = event_get_conntrack(evt);
 	if (!ce)
 		return NULL;
+
+	if (call) {
+		// Bind this call to the session
+		if (conntrack_session_bind(ce, call->sess) != POM_OK)
+			return NULL;
+		return call;
+	}
+
 
 	call = malloc(sizeof(struct analyzer_sip_call));
 	if (!call) {
@@ -252,6 +347,13 @@ static int analyzer_sip_call_cleanup(void *obj, void *priv) {
 		free(d);
 	}
 
+	if (call->evt) {
+		if (event_is_started(call->evt))
+			event_process_end(call->evt);
+		else
+			event_cleanup(call->evt);
+	}
+
 	if (call->call_id)
 		free(call->call_id);
 	free(call);
@@ -259,13 +361,224 @@ static int analyzer_sip_call_cleanup(void *obj, void *priv) {
 	return POM_OK;
 }
 
-static int analyzer_sip_process_invite(struct event *evt, struct analyzer_sip_call_dialog *d) {
+static int analyzer_sip_call_dialog_terminate(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d) {
 
-	if (!d) {
-		pomlog(POMLOG_DEBUG "SIP INVITE outside of a dialog, ignoring !");
+	d->terminated = 1;
+	return POM_OK;
+}
+
+static void analyzer_sip_event_common_data_copy(struct data *dst_data, struct data *src_data) {
+
+	// Source data must be from a proto_sip event
+	// Destination data must be from an analyzer_sip event
+
+	if (data_is_set(src_data[proto_sip_msg_from_display]))
+		if (ptype_copy(dst_data[analyzer_sip_call_common_from_display].value, src_data[proto_sip_msg_from_display].value) == POM_OK)
+			data_set(dst_data[analyzer_sip_call_common_from_display]);
+	if (data_is_set(src_data[proto_sip_msg_from_uri]))
+		if (ptype_copy(dst_data[analyzer_sip_call_common_from_uri].value, src_data[proto_sip_msg_from_uri].value) == POM_OK)
+			data_set(dst_data[analyzer_sip_call_common_from_uri]);
+
+	if (data_is_set(src_data[proto_sip_msg_to_display]))
+		if (ptype_copy(dst_data[analyzer_sip_call_common_to_display].value, src_data[proto_sip_msg_to_display].value) == POM_OK)
+			data_set(dst_data[analyzer_sip_call_common_to_display]);
+
+	if (data_is_set(src_data[proto_sip_msg_to_uri]))
+		if (ptype_copy(dst_data[analyzer_sip_call_common_to_uri].value, src_data[proto_sip_msg_to_uri].value) == POM_OK)
+			data_set(dst_data[analyzer_sip_call_common_to_uri]);
+
+	if (ptype_copy(dst_data[analyzer_sip_call_common_id].value, src_data[proto_sip_msg_call_id].value) == POM_OK)
+		data_set(dst_data[analyzer_sip_call_common_id]);
+
+}
+
+static int analyzer_sip_call_set_state(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call *call, enum analyzer_sip_call_state state) {
+
+	if (call->usage != analyzer_sip_call_usage_invite) {
+		// We don't care about the state if it's not for a an INVITE
 		return POM_OK;
 	}
 
+	if (call->state == state)
+		return POM_OK; // Still the same state
+
+	if (state < call->state) {
+		debug_sip("Call state cannot go down !");
+		return POM_OK;
+	}
+
+	struct data *evt_src_data = event_get_data(evt);
+
+	if (state >= analyzer_sip_call_state_trying && call->state < analyzer_sip_call_state_trying) {
+		// We have a new call !
+		if (event_has_listener(priv->evt_sip_call_dial)) {
+			struct event *tmp_evt = event_alloc(priv->evt_sip_call_dial);
+			if (!tmp_evt)
+				return POM_ERR;
+			struct data *evt_dst_data = event_get_data(tmp_evt);
+			analyzer_sip_event_common_data_copy(evt_dst_data, evt_src_data);
+			if (event_process(tmp_evt, NULL, 0, event_get_timestamp(evt)) != POM_OK)
+				return POM_ERR;
+		}
+
+		if (event_has_listener(priv->evt_sip_call)) {
+			call->evt = event_alloc(priv->evt_sip_call);
+			if (!call->evt)
+				return POM_ERR;
+
+			struct data *evt_dst_data = event_get_data(call->evt);
+			analyzer_sip_event_common_data_copy(evt_dst_data, evt_src_data);
+
+			if (event_process_begin(call->evt, NULL, 0, event_get_timestamp(evt)) != POM_OK)
+				return POM_ERR;
+		}
+
+
+		call->start_ts = event_get_timestamp(evt);
+	}
+
+	if (state == analyzer_sip_call_state_alerting) {
+		call->ringing_ts = event_get_timestamp(evt);
+
+		if (call->evt) {
+			struct data *evt_data = event_get_data(call->evt);
+			PTYPE_UINT32_SETVAL(evt_data[analyzer_sip_call_trying_duration].value, pom_ptime_sec(call->ringing_ts - call->start_ts));
+			data_set(evt_data[analyzer_sip_call_trying_duration]);
+		}
+
+		if (event_has_listener(priv->evt_sip_call_ringing)) {
+			struct event *tmp_evt = event_alloc(priv->evt_sip_call_ringing);
+			if (!tmp_evt)
+				return POM_ERR;
+			struct data *evt_dst_data = event_get_data(tmp_evt);
+			analyzer_sip_event_common_data_copy(evt_dst_data, evt_src_data);
+			if (event_process(tmp_evt, NULL, 0, event_get_timestamp(evt)) != POM_OK)
+				return POM_ERR;
+		}
+
+	}
+
+	if (state == analyzer_sip_call_state_connected) {
+
+		call->connected_ts = event_get_timestamp(evt);
+
+		if (call->evt) {
+			struct data *evt_data = event_get_data(call->evt);
+
+			if (call->ringing_ts) {
+				PTYPE_UINT32_SETVAL(evt_data[analyzer_sip_call_ringing_duration].value, pom_ptime_sec(call->connected_ts - call->ringing_ts));
+				data_set(evt_data[analyzer_sip_call_ringing_duration]);
+			} else {
+				PTYPE_UINT32_SETVAL(evt_data[analyzer_sip_call_trying_duration].value, pom_ptime_sec(call->connected_ts - call->start_ts));
+				data_set(evt_data[analyzer_sip_call_trying_duration]);
+			}
+		}
+
+		if (event_has_listener(priv->evt_sip_call_connect)) {
+			struct event *tmp_evt = event_alloc(priv->evt_sip_call_connect);
+			if (!tmp_evt)
+				return POM_ERR;
+			struct data *evt_dst_data = event_get_data(tmp_evt);
+			analyzer_sip_event_common_data_copy(evt_dst_data, evt_src_data);
+			if (event_process(tmp_evt, NULL, 0, event_get_timestamp(evt)) != POM_OK)
+				return POM_ERR;
+		}
+
+	}
+
+	if (state == analyzer_sip_call_state_terminated) {
+		if (call->evt) {
+			ptime ts = event_get_timestamp(evt);
+			struct data *evt_data = event_get_data(call->evt);
+			if (call->connected_ts) {
+				PTYPE_UINT32_SETVAL(evt_data[analyzer_sip_call_connected_duration].value, pom_ptime_sec(ts - call->connected_ts));
+				data_set(evt_data[analyzer_sip_call_connected_duration]);
+			} else if (call->ringing_ts) {
+				PTYPE_UINT32_SETVAL(evt_data[analyzer_sip_call_ringing_duration].value, pom_ptime_sec(ts - call->ringing_ts));
+				data_set(evt_data[analyzer_sip_call_ringing_duration]);
+			} else {
+				PTYPE_UINT32_SETVAL(evt_data[analyzer_sip_call_trying_duration].value, pom_ptime_sec(ts - call->start_ts));
+				data_set(evt_data[analyzer_sip_call_trying_duration]);
+			}
+
+			event_process_end(call->evt);
+			call->evt = NULL;
+		}
+
+		if (event_has_listener(priv->evt_sip_call_hangup)) {
+			struct event *tmp_evt = event_alloc(priv->evt_sip_call_hangup);
+			if (!tmp_evt)
+				return POM_ERR;
+			struct data *evt_dst_data = event_get_data(tmp_evt);
+			analyzer_sip_event_common_data_copy(evt_dst_data, evt_src_data);
+			if (event_process(tmp_evt, NULL, 0, event_get_timestamp(evt)) != POM_OK)
+				return POM_ERR;
+		}
+	}
+
+	call->state = state;
+
+	return POM_OK;
+}
+
+static int analyzer_sip_process_request(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, enum analyzer_sip_method method, char *method_str) {
+
+	if (method == analyzer_sip_method_unknown)
+		return POM_OK;
+
+	if (!d) {
+		pomlog(POMLOG_DEBUG "SIP %s outside of a dialog, ignoring !", method_str);
+		return POM_OK;
+	}
+
+	if (d->call->usage == analyzer_sip_call_usage_other) {
+		d->call->usage = analyzer_sip_call_usage_invite;
+	} else if (d->call->usage != analyzer_sip_call_usage_invite) {
+		debug_sip("Received %s on a call not used for INVITE, ignoring", method_str);
+		return POM_OK;
+	}
+
+	if (method == analyzer_sip_method_invite) {
+		if (d->call->state > analyzer_sip_call_state_trying) {
+			debug_sip("Got re-INVITE for call id %s", d->call->call_id);
+			return POM_OK;
+		}
+		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_trying);
+	} else if (method == analyzer_sip_method_cancel) {
+		// The current dialog is canceled
+		return analyzer_sip_call_dialog_terminate(priv, evt, d);
+	} else if (method == analyzer_sip_method_bye) {
+		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_terminated);
+	}
+
+	return POM_OK;
+}
+
+static enum analyzer_sip_method analyzer_sip_method_get_id(char *method_str) {
+
+	if (!strcmp(method_str, "INVITE")) {
+		return analyzer_sip_method_invite;
+	} else if (!strcmp(method_str, "ACK")) {
+		return analyzer_sip_method_ack;
+	} else if (!strcmp(method_str, "CANCEL")) {
+		return analyzer_sip_method_cancel;
+	} else if (!strcmp(method_str, "BYE")) {
+		return analyzer_sip_method_bye;
+	}
+
+	pomlog(POMLOG_DEBUG "Unknown SIP method %s", method_str);
+
+	return analyzer_sip_method_unknown;
+}
+
+static int analyzer_sip_process_response(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, uint16_t status) {
+
+	if (status == 180) { // Ringing
+		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_alerting);
+	} else if (status == 200) {
+		if (d->cseq_method == analyzer_sip_method_invite)
+			return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_connected);
+	}
 	return POM_OK;
 }
 
@@ -303,6 +616,8 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 	char *to_tag = NULL;
 	if (data_is_set(evt_data[proto_sip_msg_to_tag]))
 		to_tag = PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_to_tag].value);
+
+	uint32_t cseq = *PTYPE_UINT32_GETVAL(evt_data[proto_sip_msg_cseq_num].value);
 
 	struct analyzer_sip_call_dialog *dialog = NULL;
 
@@ -392,6 +707,8 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 				debug_sip("New half dialog for call %s : from_tag %s, branch %s", call->call_id, from_tag, branch);
 			}
 
+			dialog->call = call;
+			dialog->cseq = cseq - 1;
 
 			dialog->next = call->dialogs;
 			if (dialog->next)
@@ -400,23 +717,47 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		}
 	}
 
-
-	if (evt_reg == priv->evt_sip_req) {
-		char *method = PTYPE_STRING_GETVAL(evt_data[proto_sip_req_method].value);
-
-		if (!strcmp(method, "INVITE")) {
-			return analyzer_sip_process_invite(evt, dialog);
-		}
-
-
-	} else if (evt_reg == priv->evt_sip_rsp) {
-
-
+	if (dialog && dialog->terminated) {
+		debug_sip("Ignoring event on terminated dialog for call %s", call->call_id);
+		return POM_OK;
 	}
 
 
-	return POM_OK;
+	int res = POM_OK;
+	if (evt_reg == priv->evt_sip_req) {
 
+		char *method_str = PTYPE_STRING_GETVAL(evt_data[proto_sip_req_method].value);
+
+		enum analyzer_sip_method method = analyzer_sip_method_get_id(method_str);
+
+		if (dialog && dialog->cseq >= cseq) {
+
+			if (dialog->cseq > cseq || (method != analyzer_sip_method_ack && method != analyzer_sip_method_cancel)) {
+				debug_sip("Ignoring %s because it's an old or retransmitted request : cur cseq %u, req cseq %u", method_str, dialog->cseq, cseq);
+				return POM_OK;
+			}
+		}
+
+		if (method != analyzer_sip_method_unknown)
+			res = analyzer_sip_process_request(priv, evt, dialog, method, method_str);
+
+		dialog->cseq = cseq;
+		dialog->cseq_method = method;
+
+
+	} else {
+
+		uint16_t status = *PTYPE_UINT16_GETVAL(evt_data[proto_sip_rsp_status].value);
+		if (dialog && dialog->cseq > cseq) {
+			debug_sip("Ignoring response %hu because it's an old or retransmitted response : cur cseq %u, rsp cseq %u", status, dialog->cseq, cseq);
+			return POM_OK;
+		}
+
+		res = analyzer_sip_process_response(priv, evt, dialog, status);
+
+	}
+
+	return res;
 }
 
 static int analyzer_sip_event_process_end(struct event *evt, void *obj) {
