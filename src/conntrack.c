@@ -1083,10 +1083,10 @@ int conntrack_session_add_priv(struct conntrack_session *s, void *obj, void *pri
 void *conntrack_session_get_priv(struct conntrack_session *s, void *obj) {
 
 	struct conntrack_priv_list *lst = s->privs;
-	while (lst) {
-		if (lst->obj == obj)
-			return lst->priv;
-	}
+	for (lst = s->privs; lst && lst->obj != obj; lst = lst->next);
+
+	if (lst)
+		return lst->priv;
 
 	return NULL;
 }
