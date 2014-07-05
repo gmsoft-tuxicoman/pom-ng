@@ -330,6 +330,8 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	}
 	memset(stream, 0, sizeof(struct telephony_sdp_stream));
 	stream->next = sdp->streams;
+	if (stream->next)
+		stream->next->prev = stream;
 	sdp->streams = stream;
 	stream->port_num = 1;
 
@@ -412,7 +414,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	if (stream->type == telephony_stream_type_unknown)
 		return POM_OK;
 
-	stream->port_proto = telephony_proto_udp;
+	stream->l4proto = telephony_proto_udp;
 
 	// Parse the format
 	
@@ -618,29 +620,119 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 	return POM_OK;
 }
 
+struct telephony_sdp_stream *telephony_sdp_stream_find(struct telephony_sdp_stream *streams, struct ptype *addr, struct proto *l4proto, uint16_t port) {
+
+	struct telephony_sdp_stream *tmp;
+	for (tmp = streams; tmp; tmp = tmp->next) {
+		if (tmp->l4proto != l4proto)
+			continue;
+
+		int match = 0, i;
+		for (i = 0; i < tmp->port_num; i++) {
+			if (port == (tmp->port * (i * 2))) {
+				match = 1;
+				break;
+			}
+		}
+
+		if (!match)
+			continue;
+
+		match = 0;
+		struct telephony_sdp_address *tmp_addr;
+		for (tmp_addr = tmp->addrs; tmp_addr; tmp_addr = tmp_addr->next) {
+			if (ptype_compare_val(PTYPE_OP_EQ, tmp_addr->addr, addr)) {
+				match = 1;
+				break;
+			}
+		}
+
+		if (match)
+			break;
+	}
+
+
+	return tmp;
+}
+
+static int telephony_session_priv_cleanup(void *obj, void *priv) {
+
+	if (!priv)
+		return POM_OK;
+
+	free(priv);
+
+	return POM_OK;
+}
 
 int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_session *sess, ptime now) {
 
+	struct telephony_session_priv *priv = conntrack_session_get_priv(sess, telephony_init);
 
-	struct telephony_sdp_stream *stream;
+	if (!priv) {
 
-	for (stream = sdp->streams; stream; stream = stream->next) {
+		priv = malloc(sizeof(struct telephony_session_priv));
+		if (!priv) {
+			pom_oom(sizeof(struct telephony_session_priv));
+			return POM_ERR;
+		}
+		memset(priv, 0, sizeof(struct telephony_session_priv));
+
+		if (conntrack_session_add_priv(sess, telephony_init, priv, telephony_session_priv_cleanup) != POM_OK) {
+			free(priv);
+			return POM_ERR;
+		}
+	}
+
+
+	struct telephony_sdp_stream *stream = sdp->streams;
+
+	while (stream) {
 
 		// We only support RTP/AVP stream so far
-		if (stream->type != telephony_stream_type_rtp_avp)
+		if (stream->type != telephony_stream_type_rtp_avp) {
+			stream = stream->next;
 			continue;
+		}
 
 		// Protocol could not be determined
-		if (!stream->port_proto)
+		if (!stream->l4proto) {
+			stream = stream->next;
 			continue;
+		}
+
+		// Unknown stream direction
+		if (stream->dir == telephony_sdp_stream_direction_unknown) {
+			stream = stream->next;
+			continue;
+		}
+
+		// No address defined
+		if (!stream->addrs) {
+			stream = stream->next;
+			continue;
+		}
+
+		// It should match the first address and port
+		struct telephony_sdp_stream *sess_stream = telephony_sdp_stream_find(priv->streams, stream->addrs->addr, stream->l4proto, stream->port);
+		if (sess_stream) {
+			// The expectation for this stream as already been added !
+			// TODO check if port is 0 or if stream is inactive
+			stream = stream->next;
+			continue;
+		}
 
 		// Rejected stream
-		if (!stream->port)
+		if (!stream->port) {
+			stream = stream->next;
 			continue;
+		}
 
-		// Inactive stream or unknown stream direction
-		if (stream->dir == telephony_sdp_stream_direction_inactive || stream->dir == telephony_sdp_stream_direction_unknown)
+		// Inactive stream
+		if (stream->dir == telephony_sdp_stream_direction_inactive) {
+			stream = stream->next;
 			continue;
+		}
 
 		struct telephony_sdp_address *addr;
 		for (addr = stream->addrs; addr; addr = addr->next) {
@@ -667,7 +759,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 
 				PTYPE_UINT16_SETVAL(port, stream->port + (i * 2));
 
-				if (proto_expectation_append(e, stream->port_proto, port, NULL) != POM_OK) {
+				if (proto_expectation_append(e, stream->l4proto, port, NULL) != POM_OK) {
 					proto_expectation_cleanup(e);
 					ptype_cleanup(port);
 					return POM_ERR;
@@ -680,9 +772,48 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 				}
 			}
 		}
+
+		// Move the stream to the session priv
+		sess_stream = stream;
+		stream = stream->next;
+		if (sess_stream->prev)
+			sess_stream->prev->next = sess_stream->next;
+		else
+			sdp->streams = sess_stream->next;
+
+		if (sess_stream->next)
+			sess_stream->next->prev = sess_stream;
+
+
+		sess_stream->next = priv->streams;
+		priv->streams = sess_stream;
+
+		if (sess_stream->next)
+			sess_stream->next->prev = sess_stream;
+		sess_stream->prev = NULL;
+
 	}
 
 	return POM_OK;
+}
+
+void telephony_sdp_stream_cleanup(struct telephony_sdp_stream *stream) {
+
+	while (stream->addrs) {
+		struct telephony_sdp_address *addr = stream->addrs;
+		stream->addrs = addr->next;
+
+		if (addr->addr)
+			ptype_cleanup(addr->addr);
+		free(addr);
+	}
+
+	while (stream->ploads) {
+		struct telephony_sdp_stream_payload *pload = stream->ploads;
+		stream->ploads = pload->next;
+		free(pload);
+	}
+	free(stream);
 }
 
 void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
@@ -706,22 +837,7 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 	while (sdp->streams) {
 		struct telephony_sdp_stream *stream = sdp->streams;
 		sdp->streams = stream->next;
-
-		while (stream->addrs) {
-			struct telephony_sdp_address *addr = stream->addrs;
-			stream->addrs = addr->next;
-
-			if (addr->addr)
-				ptype_cleanup(addr->addr);
-			free(addr);
-		}
-
-		while (stream->ploads) {
-			struct telephony_sdp_stream_payload *pload = stream->ploads;
-			stream->ploads = pload->next;
-			free(pload);
-		}
-		free(stream);
+		telephony_sdp_stream_cleanup(stream);
 	}
 
 	while (sdp->sess_attribs) {

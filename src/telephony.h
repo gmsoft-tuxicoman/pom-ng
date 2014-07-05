@@ -40,14 +40,6 @@ struct telephony_codec_reg {
 
 // SDP definitions
 
-struct telephony_sdp_port {
-
-	struct proto *proto;
-	struct ptype *port;
-	struct telephony_sdp_port *next;
-
-};
-
 struct telephony_sdp_address {
 
 	struct proto *proto;
@@ -86,9 +78,9 @@ struct telephony_sdp_stream {
 	struct telephony_sdp_stream_payload *ploads;
 	enum telephony_sdp_stream_direction dir;
 	enum telephony_codec_type pload_type;
-	struct proto *port_proto;
+	struct proto *l4proto;
 
-	struct telephony_sdp_stream *next;
+	struct telephony_sdp_stream *prev, *next;
 
 	uint16_t port, port_num;
 
@@ -125,6 +117,12 @@ struct telephony_sdp {
 
 	struct telephony_sdp_stream *streams;
 
+
+};
+
+struct telephony_session_priv {
+
+	struct telephony_sdp_stream *streams;
 
 };
 
