@@ -66,7 +66,6 @@ void *core_processing_thread_func(void *priv);
 int core_process_dump_pkt_info(struct proto_process_stack *s, struct packet *p, int res);
 int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
 int core_process_packet(struct packet *p);
-struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
 
 ptime core_get_clock();
 ptime core_get_clock_last();
