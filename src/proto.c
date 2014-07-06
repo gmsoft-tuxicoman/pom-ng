@@ -264,7 +264,15 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 			return PROTO_ERR;
 		}
 
-		s_next->ce->priv = e->priv;
+		if (s_next->ce->priv) {
+			if (e->priv && e->proto->info->ct_info->cleanup_handler) {
+				if (e->proto->info->ct_info->cleanup_handler(e->priv) != POM_OK) {
+					pomlog(POMLOG_WARN "Error while cleaning up duplicate expectation priv");
+				}
+			}
+		} else {
+			s_next->ce->priv = e->priv;
+		}
 
 		if (conntrack_session_bind(s_next->ce, e->session)) {
 			proto_expectation_cleanup(e);
