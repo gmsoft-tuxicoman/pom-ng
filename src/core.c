@@ -667,6 +667,15 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 	return new_stack;
 }
 
+void core_stack_release(struct proto_process_stack *stack) {
+
+	int i;
+	for (i = 1; i < CORE_PROTO_STACK_MAX && stack[i].proto; i++)
+		packet_info_pool_release(stack[i].pkt_info, stack[i].proto->id);
+
+	free(stack);
+}
+
 ptime core_get_clock() {
 
 	ptime now = core_clock[0];
