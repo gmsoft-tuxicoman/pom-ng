@@ -660,7 +660,14 @@ static int telephony_session_priv_cleanup(void *obj, void *priv) {
 	if (!priv)
 		return POM_OK;
 
-	free(priv);
+	struct telephony_session_priv *p = priv;
+
+	while (p->streams) {
+		struct telephony_sdp_stream *stream = p->streams;
+		p->streams = stream->next;
+		telephony_sdp_stream_cleanup(stream);
+	}
+	free(p);
 
 	return POM_OK;
 }
