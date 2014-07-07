@@ -61,7 +61,7 @@ struct mod_reg_info* proto_sip_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_sip_mod_register;
 	reg_info.unregister_func = proto_sip_mod_unregister;
-	reg_info.dependencies = "ptype_string, ptype_uint16, ptype_uint32, ptype_uint64";
+	reg_info.dependencies = "proto_udp, ptype_string, ptype_uint16, ptype_uint32, ptype_uint64";
 
 	return &reg_info;
 }
@@ -193,6 +193,23 @@ static int proto_sip_init(struct proto *proto, struct registry_instance *ri) {
 	if (!priv->evt_sip_rsp)
 		goto err;
 
+	priv->proto_udp = proto_get("udp");
+	if (!priv->proto_udp) {
+		pomlog(POMLOG_ERR "Could not find proto UDP");
+		goto err;
+	}
+
+	priv->p_udp_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!priv->p_udp_timeout)
+		goto err;
+
+	struct registry_param *p = registry_new_param("udp_timeout", "300", priv->p_udp_timeout, "Timeout for SIP over udp connections", 0);
+	if (proto_add_param(proto, p) != POM_OK) {
+		registry_cleanup_param(p);
+		goto err;
+	}
+
+
 	return POM_OK;
 err:
 	proto_sip_cleanup(priv);
@@ -210,6 +227,9 @@ static int proto_sip_cleanup(void *proto_priv) {
 
 	if (priv->evt_sip_rsp)
 		event_unregister(priv->evt_sip_rsp);
+
+	if (priv->p_udp_timeout)
+		ptype_cleanup(priv->p_udp_timeout);
 
 	free(priv);
 
@@ -247,6 +267,14 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 	if (priv->is_invalid) {
 		res = PROTO_INVALID;
 		goto end;
+	}
+
+	struct proto_sip_priv *ppriv = proto_priv;
+	if (stack[stack_index - 1].proto == ppriv->proto_udp) {
+		if (conntrack_delayed_cleanup(s->ce, *PTYPE_UINT32_GETVAL(ppriv->p_udp_timeout), p->ts) != POM_OK) {
+			res = PROTO_ERR;
+			goto end;
+		}
 	}
 
 	if (!priv->parser[s->direction]) {

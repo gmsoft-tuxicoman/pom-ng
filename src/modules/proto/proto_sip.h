@@ -28,6 +28,8 @@ struct proto_sip_priv {
 	struct event_reg *evt_sip_req;
 	struct event_reg *evt_sip_rsp;
 
+	struct proto *proto_udp;
+	struct ptype *p_udp_timeout;
 };
 
 #define PROTO_SIP_EVT_MSG_DATA_COUNT 16
@@ -47,7 +49,6 @@ struct proto_sip_conntrack_priv {
 	int is_invalid;
 	size_t content_len[POM_DIR_TOT];
 	size_t content_pos[POM_DIR_TOT];
-
 };
 
 static int proto_sip_mod_register(struct mod_reg *mod);
