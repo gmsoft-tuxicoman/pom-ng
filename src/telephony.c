@@ -721,8 +721,8 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 		}
 
 		// It should match the first address and port
-		struct telephony_sdp_stream *sess_stream = telephony_sdp_stream_find(priv->streams, stream->addrs->addr, stream->l4proto, stream->port);
-		if (sess_stream) {
+		struct telephony_sdp_stream *tmp_stream = telephony_sdp_stream_find(priv->streams, stream->addrs->addr, stream->l4proto, stream->port);
+		if (tmp_stream) {
 			// The expectation for this stream as already been added !
 			// TODO check if port is 0 or if stream is inactive
 			stream = stream->next;
@@ -781,24 +781,24 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 		}
 
 		// Move the stream to the session priv
-		sess_stream = stream;
+		tmp_stream = stream;
 		stream = stream->next;
-		if (sess_stream->prev)
-			sess_stream->prev->next = sess_stream->next;
+
+		// Remove the stream from the sdp list
+		if (tmp_stream->next)
+			tmp_stream->next->prev = tmp_stream->prev;
+
+		if (tmp_stream->prev)
+			tmp_stream->prev->next = tmp_stream->next;
 		else
-			sdp->streams = sess_stream->next;
+			sdp->streams = tmp_stream->next;
 
-		if (sess_stream->next)
-			sess_stream->next->prev = sess_stream;
+		tmp_stream->next = priv->streams;
+		if (tmp_stream->next)
+			tmp_stream->next->prev = tmp_stream;
+		priv->streams = tmp_stream;
 
-
-		sess_stream->next = priv->streams;
-		priv->streams = sess_stream;
-
-		if (sess_stream->next)
-			sess_stream->next->prev = sess_stream;
-		sess_stream->prev = NULL;
-
+		tmp_stream->prev = NULL;
 	}
 
 	return POM_OK;
