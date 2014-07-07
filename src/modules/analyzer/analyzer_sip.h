@@ -115,8 +115,14 @@ struct analyzer_sip_call {
 	struct event *evt;
 
 	UT_hash_handle hh;
+
+	struct analyzer_sip_call *sess_prev, *sess_next;
 };
 
+struct analyzer_sip_session_priv {
+
+	struct analyzer_sip_call *calls;
+};
 
 struct analyzer_sip_sdp_priv {
 
@@ -135,7 +141,8 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer);
 
 static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 
-static int analyzer_sip_call_cleanup(void *obj, void *priv);
+static int analyzer_sip_session_cleanup(void *obj, void *priv);
+static int analyzer_sip_call_cleanup(struct analyzer_sip_session_priv *priv, struct analyzer_sip_call *call);
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 static int analyzer_sip_event_process_end(struct event *evt, void *obj);

@@ -223,13 +223,6 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer) {
 
 	struct analyzer_sip_priv *priv = analyzer->priv;
 
-
-	struct analyzer_sip_call *cur_call, *tmp;
-	HASH_ITER(hh, analyzer_sip_calls, cur_call, tmp) {
-		HASH_DEL(analyzer_sip_calls, cur_call);
-		analyzer_sip_call_cleanup(analyzer, cur_call);
-	}
-
 	if (priv->listening) {
 		event_listener_unregister(priv->evt_sip_req, analyzer);
 		event_listener_unregister(priv->evt_sip_rsp, analyzer);
@@ -338,13 +331,13 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 		return NULL;
 
 	if (call) {
-		// Bind this call to the session
+		// Bind this connection to the call session (doesn't do anything if it's already bound)
 		if (conntrack_session_bind(ce, call->sess) != POM_OK)
 			return NULL;
 		return call;
 	}
 
-
+	// The call wasn't found, create it and bind it to the session
 	call = malloc(sizeof(struct analyzer_sip_call));
 	if (!call) {
 		pom_oom(sizeof(struct analyzer_sip_call));
@@ -354,37 +347,68 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 
 	call->call_id = strdup(call_id);
 	if (!call->call_id) {
-		free(call);
 		pom_oom(strlen(call_id) + 1);
-		return NULL;
+		goto err;
 	}
 
 	// The conntrack is already locked while processing the event
 	struct conntrack_session *sess = conntrack_session_get(ce);
-	if (!sess) {
-		free(call);
-		return NULL;
-	}
+	if (!sess)
+		goto err;
 
 	call->sess = sess;
 
-	if (conntrack_session_add_priv(sess, a, call, analyzer_sip_call_cleanup) != POM_OK) {
-		conntrack_session_unlock(sess);
-		free(call);
-		return NULL;
+	struct analyzer_sip_session_priv *spriv = conntrack_session_get_priv(sess, a);
+	if (!spriv) {
+		// No session priv, add one
+		spriv = malloc(sizeof(struct analyzer_sip_session_priv));
+		if (!spriv) {
+			conntrack_session_unlock(sess);
+			pom_oom(sizeof(struct analyzer_sip_session_priv));
+			goto err;
+		}
+		memset(spriv, 0, sizeof(struct analyzer_sip_session_priv));
+
+		if (conntrack_session_add_priv(sess, a, spriv, analyzer_sip_session_cleanup) != POM_OK) {
+			conntrack_session_unlock(sess);
+			free(spriv);
+			goto err;
+		}
 	}
+
+	call->sess_next = spriv->calls;
+	if (call->sess_next)
+		call->sess_next->sess_prev = call;
+	spriv->calls = call;
 
 	conntrack_session_unlock(sess);
 
 	HASH_ADD_KEYPTR(hh, analyzer_sip_calls, call->call_id, strlen(call->call_id), call);
 
-
 	return call;
+
+err:
+	if (call) {
+		if (call->call_id)
+			free(call->call_id);
+		free(call);
+	}
+
+	return NULL;
 }
 
-static int analyzer_sip_call_cleanup(void *obj, void *priv) {
+static int analyzer_sip_session_cleanup(void *obj, void *priv) {
 
-	struct analyzer_sip_call *call = priv;
+	struct analyzer_sip_session_priv *p = priv;
+	while (p->calls)
+		analyzer_sip_call_cleanup(p, p->calls);
+
+	free(p);
+
+	return POM_OK;
+}
+
+static int analyzer_sip_call_cleanup(struct analyzer_sip_session_priv *priv, struct analyzer_sip_call *call) {
 
 	HASH_DEL(analyzer_sip_calls, call);
 
@@ -408,6 +432,13 @@ static int analyzer_sip_call_cleanup(void *obj, void *priv) {
 		else
 			event_cleanup(call->evt);
 	}
+
+	if (call->sess_next)
+		call->sess_next->sess_prev = call->sess_prev;
+	if (call->sess_prev)
+		call->sess_prev->sess_next = call->sess_next;
+	else
+		priv->calls = call->sess_next;
 
 	if (call->call_id)
 		free(call->call_id);
@@ -838,10 +869,8 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	if (!ce)
 		return PLOAD_OPEN_STOP;
 
-	struct conntrack_session *sess = conntrack_session_get(ce);
-	struct analyzer_sip_call *call = conntrack_session_get_priv(sess, obj);
-	conntrack_session_unlock(sess);
-	if (!call) // Call not found or the current conntrack session
+	struct analyzer_sip_call *call = analyzer_sip_event_get_call(analyzer, evt);
+	if (!call) // Error while finding the call
 		return PLOAD_OPEN_ERR;
 
 	struct analyzer_sip_sdp_priv *sdp_priv = malloc(sizeof(struct analyzer_sip_sdp_priv));
