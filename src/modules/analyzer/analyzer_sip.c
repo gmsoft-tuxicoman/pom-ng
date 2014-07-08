@@ -894,7 +894,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 
 		if (dialog->cseq >= cseq) {
 
-			if (dialog->cseq > cseq || (method != analyzer_sip_method_ack && method != analyzer_sip_method_cancel)) {
+			if (dialog->cseq > cseq || (method != analyzer_sip_method_ack && method != analyzer_sip_method_cancel && method != analyzer_sip_method_bye)) {
 				pom_mutex_unlock(&call->lock);
 				debug_sip("Ignoring %s because it's an old or retransmitted request : cur cseq %u, req cseq %u", method_str, dialog->cseq, cseq);
 				return POM_OK;
