@@ -362,8 +362,11 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 
 	if (call) {
 		// Bind this connection to the call session (doesn't do anything if it's already bound)
-		if (conntrack_session_bind(ce, call->sess) != POM_OK)
+		if (conntrack_session_bind(ce, call->sess) != POM_OK) {
+			pom_rwlock_unlock(&analyzer_sip_calls_lock);
 			return NULL;
+		}
+
 		pom_mutex_lock(&call->lock);
 		pom_rwlock_unlock(&analyzer_sip_calls_lock);
 		return call;
@@ -939,22 +942,25 @@ static int analyzer_sip_dialog_timeout(void *priv, ptime now) {
 	if (!d->to_tag) {
 		debug_sip("Half dialog for call %s timed out : from_tag %s, branch %s", call->call_id, d->from_tag, d->branch);
 	} else {
-		debug_sip("Full dialog for call %s timeed out : from_tag %s, to_tag %s", call->call_id, d->from_tag, d->to_tag);
+		debug_sip("Full dialog for call %s timed out : from_tag %s, to_tag %s", call->call_id, d->from_tag, d->to_tag);
 	}
 
 	timer_cleanup(d->t);
 	free(d->from_tag);
+	free(d->branch);
 
 	if (d->to_tag)
 		free(d->to_tag);
 
 	if (d->prev)
 		d->prev->next = d->next;
-	if (d->next)
-		d->next->prev = d->prev;
 	else
 		call->dialogs = d->next;
 
+	if (d->next)
+		d->next->prev = d->prev;
+
+	free(d);
 
 	int cleanup = 0;
 
