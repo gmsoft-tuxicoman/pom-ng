@@ -62,6 +62,9 @@ struct analyzer_sip_priv {
 	struct proto *proto_sip;
 	struct proto_packet_listener *sip_packet_listener;
 
+	struct ptype *p_dialog_timeout;
+	struct ptype *p_call_max_duration;
+
 	int listening;
 	int sdp_listening, dtmf_listening;
 
@@ -83,6 +86,7 @@ struct analyzer_sip_call_dialog {
 	uint32_t cseq;
 	enum analyzer_sip_method cseq_method;
 	struct analyzer_sip_call_dialog *prev, *next;
+	struct timer *t;
 	int terminated;
 
 };
@@ -104,6 +108,8 @@ struct analyzer_sip_call {
 
 	char *call_id;
 	struct conntrack_session *sess;
+	struct analyzer_sip_session_priv *sess_priv;
+	pthread_mutex_t lock;
 
 	struct analyzer_sip_call_dialog *dialogs;
 
@@ -142,10 +148,11 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer);
 static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 
 static int analyzer_sip_session_cleanup(void *obj, void *priv);
-static int analyzer_sip_call_cleanup(struct analyzer_sip_session_priv *priv, struct analyzer_sip_call *call);
+static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call);
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
-static int analyzer_sip_event_process_end(struct event *evt, void *obj);
+
+static int analyzer_sip_dialog_timeout(void *priv, ptime now);
 
 static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload);
 static int analyzer_sip_sdp_write(void *obj, void *priv, void *data, size_t len);
