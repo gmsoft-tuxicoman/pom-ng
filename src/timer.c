@@ -194,8 +194,15 @@ int timer_queue_now(struct timer *t, unsigned int expiry, ptime now) {
 
 	pom_mutex_lock(&timer_main_lock);
 
+	struct timer_queue *tq = timer_queues;
+
 	// Timer is still queued, dequeue it
 	if (t->queue) {
+
+		// Start further in the list of queues if possible
+		if (expiry >= t->queue->expiry)
+			tq = t->queue;
+
 		if (t->prev) {
 			t->prev->next = t->next;
 		} else {
@@ -218,8 +225,6 @@ int timer_queue_now(struct timer *t, unsigned int expiry, ptime now) {
 	} else {
 		registry_perf_inc(perf_timer_queued, 1);
 	}
-
-	struct timer_queue *tq = timer_queues;
 
 	// First find the right queue or create it
 	
