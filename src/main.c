@@ -26,6 +26,7 @@
 #include <signal.h>
 #include <sys/msg.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 
 #include "main.h"
 #include "input.h"
@@ -295,6 +296,22 @@ int main(int argc, char *argv[]) {
 	sigaction(SIGCHLD, &mysigaction, NULL);
 
 	main_thread = pthread_self();
+
+	// Try to increase the maximum number of concurrent files
+
+	struct rlimit l_file = { 0 };
+	if (!getrlimit(RLIMIT_NOFILE, &l_file)) {
+		if (l_file.rlim_cur < l_file.rlim_max) {
+			l_file.rlim_cur = l_file.rlim_max;
+			if (setrlimit(RLIMIT_NOFILE, &l_file)) {
+				pomlog(POMLOG_DEBUG "Error while increaseing the number of concurrent files");
+			} else {
+				pomlog(POMLOG_DEBUG "Concurrent file limit increased to %u", l_file.rlim_max);
+			}
+		}
+	} else {
+		pomlog(POMLOG_WARN "Error while querying the maximum number of concurrent files.");
+	}
 
 	// Initialize components
 	
