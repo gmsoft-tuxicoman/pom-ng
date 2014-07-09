@@ -454,15 +454,15 @@ void *core_processing_thread_func(void *priv) {
 		if (core_clock[tpriv->thread_id] < pkt->ts) // Make sure we keep it monotonous
 			core_clock[tpriv->thread_id] = pkt->ts;
 
-		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
-		if (core_process_packet(pkt) == POM_ERR) {
-			core_run = 0;
+		// Process timers
+		if (timers_process() != POM_OK) {
 			pom_rwlock_unlock(&core_processing_lock);
 			break;
 		}
 
-		// Process timers
-		if (timers_process() != POM_OK) {
+		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
+		if (core_process_packet(pkt) == POM_ERR) {
+			core_run = 0;
 			pom_rwlock_unlock(&core_processing_lock);
 			break;
 		}
