@@ -143,17 +143,17 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 		// Apply parameters to the stream
 		
 		// First, find the corresponding pload
-		struct telephony_sdp_stream_payload *pload;
+		struct telephony_stream_payload *pload;
 		for (pload = sdp->streams->ploads; pload && pload->pload_type != pt; pload = pload->next);
 		if (!pload) {
 			// Not found, createa  new one
 			pomlog(POMLOG_DEBUG "Payload type %hhu not found while parsing SDP a= line", pt);
-			pload = malloc(sizeof(struct telephony_sdp_stream_payload));
+			pload = malloc(sizeof(struct telephony_stream_payload));
 			if (!pload) {
-				pom_oom(sizeof(struct telephony_sdp_stream_payload));
+				pom_oom(sizeof(struct telephony_stream_payload));
 				return POM_ERR;
 			}
-			memset(pload, 0, sizeof(struct telephony_sdp_stream_payload));
+			memset(pload, 0, sizeof(struct telephony_stream_payload));
 			pload->next = sdp->streams->ploads;
 			sdp->streams->ploads = pload;
 		}
@@ -202,7 +202,7 @@ static int telephony_sdp_parse_line_a(struct telephony_sdp *sdp, char *line, siz
 		NULL
 	};
 
-	enum telephony_sdp_stream_direction dir = telephony_sdp_stream_direction_unknown;
+	enum telephony_stream_direction dir = telephony_stream_direction_unknown;
 
 	int i;
 	for (i = 0; sendrecv[i]; i++) {
@@ -210,7 +210,7 @@ static int telephony_sdp_parse_line_a(struct telephony_sdp *sdp, char *line, siz
 		if (len < str_len)
 			continue;
 		if (!strncasecmp(line, sendrecv[i], str_len)) {
-			dir = i + telephony_sdp_stream_direction_inactive;
+			dir = i + telephony_stream_direction_inactive;
 
 			if (sdp->streams) {
 				sdp->streams->dir = dir;
@@ -283,13 +283,13 @@ static int telephony_sdp_parse_line_c(struct telephony_sdp *sdp, char *line, siz
 
 	free(addr_str);
 
-	struct telephony_sdp_address *sdp_addr = malloc(sizeof(struct telephony_sdp_address));
+	struct telephony_stream_address *sdp_addr = malloc(sizeof(struct telephony_stream_address));
 	if (!sdp_addr) {
-		pom_oom(sizeof(struct telephony_sdp_address));
+		pom_oom(sizeof(struct telephony_stream_address));
 		ptype_cleanup(addr);
 		return POM_ERR;
 	}
-	memset(sdp_addr, 0, sizeof(struct telephony_sdp_address));
+	memset(sdp_addr, 0, sizeof(struct telephony_stream_address));
 
 	sdp_addr->proto = proto;
 	sdp_addr->addr = addr;
@@ -323,12 +323,12 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 
 	// Add the stream to the SDP so additional attributes get added to it even if we can't parse it
 	
-	struct telephony_sdp_stream *stream = malloc(sizeof(struct telephony_sdp_stream));
+	struct telephony_stream *stream = malloc(sizeof(struct telephony_stream));
 	if (!stream) {
-		pom_oom(sizeof(struct telephony_sdp_stream));
+		pom_oom(sizeof(struct telephony_stream));
 		return POM_ERR;
 	}
-	memset(stream, 0, sizeof(struct telephony_sdp_stream));
+	memset(stream, 0, sizeof(struct telephony_stream));
 	stream->next = sdp->streams;
 	if (stream->next)
 		stream->next->prev = stream;
@@ -436,12 +436,12 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 		}
 		memcpy(fmt_str, line, fmt_len);
 
-		struct telephony_sdp_stream_payload *p = malloc(sizeof(struct telephony_sdp_stream_payload));
+		struct telephony_stream_payload *p = malloc(sizeof(struct telephony_stream_payload));
 		if (!p) {
-			pom_oom(sizeof(struct telephony_sdp_stream_payload));
+			pom_oom(sizeof(struct telephony_stream_payload));
 			return POM_ERR;
 		}
-		memset(p, 0, sizeof(struct telephony_sdp_stream_payload));
+		memset(p, 0, sizeof(struct telephony_stream_payload));
 
 		if (sscanf(fmt_str, "%hhu", &p->pload_type) != 1) {
 			pomlog(POMLOG_DEBUG "Failed to parse SDP format payload type");
@@ -449,7 +449,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 		}
 
 		// Make sure the payload is not a dupe
-		struct telephony_sdp_stream_payload *tmp;
+		struct telephony_stream_payload *tmp;
 		for (tmp = stream->ploads; tmp && tmp->pload_type != p->pload_type; tmp = tmp->next);
 		if (tmp) {
 			pomlog(POMLOG_DEBUG "Duplicate payload in SDP m= line format");
@@ -550,7 +550,7 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 
 	// Apply session parameters to each stream
 
-	struct telephony_sdp_stream *stream = NULL;
+	struct telephony_stream *stream = NULL;
 
 	// Apply the address
 	if (sdp->addr) {
@@ -559,12 +559,12 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 			if (stream->addrs)
 				continue;
 
-			struct telephony_sdp_address *addr = malloc(sizeof(struct telephony_sdp_address));
+			struct telephony_stream_address *addr = malloc(sizeof(struct telephony_stream_address));
 			if (!addr) {
-				pom_oom(sizeof(struct telephony_sdp_address));
+				pom_oom(sizeof(struct telephony_stream_address));
 				return POM_ERR;
 			}
-			memset(addr, 0, sizeof(struct telephony_sdp_address));
+			memset(addr, 0, sizeof(struct telephony_stream_address));
 			addr->proto = sdp->addr->proto;
 			addr->addr = ptype_alloc_from(sdp->addr->addr);
 			if (!addr->addr) {
@@ -584,20 +584,20 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 		struct telephony_sdp_sess_attrib *attr = sdp->sess_attribs;
 		sdp->sess_attribs = attr->next;
 
-		struct telephony_sdp_stream *stream;
+		struct telephony_stream *stream;
 		for (stream = sdp->streams; stream; stream = stream->next) {
 
 			if (attr->type == telephony_sdp_sess_attrib_rtpmap) {
 				// First, find the corresponding pload
-				struct telephony_sdp_stream_payload *pload;
+				struct telephony_stream_payload *pload;
 				for (pload = stream->ploads; pload && pload->pload_type != attr->rtpmap.pload_type; pload = pload->next);
 				if (!pload) {
-					pload = malloc(sizeof(struct telephony_sdp_stream_payload));
+					pload = malloc(sizeof(struct telephony_stream_payload));
 					if (!pload) {
-						pom_oom(sizeof(struct telephony_sdp_stream_payload));
+						pom_oom(sizeof(struct telephony_stream_payload));
 						return POM_ERR;
 					}
-					memset(pload, 0, sizeof(struct telephony_sdp_stream_payload));
+					memset(pload, 0, sizeof(struct telephony_stream_payload));
 					pload->next = sdp->streams->ploads;
 					stream->ploads = pload;
 				}
@@ -608,7 +608,7 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 					pload->chan_num = attr->rtpmap.chan_num;
 				}
 			} else if (attr->type == telephony_sdp_sess_attrib_direction) {
-				if (stream->dir == telephony_sdp_stream_direction_unknown)
+				if (stream->dir == telephony_stream_direction_unknown)
 					stream->dir = attr->direction;
 			}
 		}
@@ -620,9 +620,9 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 	return POM_OK;
 }
 
-struct telephony_sdp_stream *telephony_sdp_stream_find(struct telephony_sdp_stream *streams, struct ptype *addr, struct proto *l4proto, uint16_t port) {
+struct telephony_stream *telephony_stream_find(struct telephony_stream *streams, struct ptype *addr, struct proto *l4proto, uint16_t port) {
 
-	struct telephony_sdp_stream *tmp;
+	struct telephony_stream *tmp;
 	for (tmp = streams; tmp; tmp = tmp->next) {
 		if (tmp->l4proto != l4proto)
 			continue;
@@ -639,7 +639,7 @@ struct telephony_sdp_stream *telephony_sdp_stream_find(struct telephony_sdp_stre
 			continue;
 
 		match = 0;
-		struct telephony_sdp_address *tmp_addr;
+		struct telephony_stream_address *tmp_addr;
 		for (tmp_addr = tmp->addrs; tmp_addr; tmp_addr = tmp_addr->next) {
 			if (ptype_compare_val(PTYPE_OP_EQ, tmp_addr->addr, addr)) {
 				match = 1;
@@ -655,44 +655,12 @@ struct telephony_sdp_stream *telephony_sdp_stream_find(struct telephony_sdp_stre
 	return tmp;
 }
 
-static int telephony_session_priv_cleanup(void *obj, void *priv) {
+int telephony_sdp_add_expectations(struct telephony_call *call, struct telephony_sdp *sdp, ptime now) {
 
-	if (!priv)
-		return POM_OK;
+	if (!call || !sdp)
+		return POM_ERR;
 
-	struct telephony_session_priv *p = priv;
-
-	while (p->streams) {
-		struct telephony_sdp_stream *stream = p->streams;
-		p->streams = stream->next;
-		telephony_sdp_stream_cleanup(stream);
-	}
-	free(p);
-
-	return POM_OK;
-}
-
-int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_session *sess, ptime now) {
-
-	struct telephony_session_priv *priv = conntrack_session_get_priv(sess, telephony_init);
-
-	if (!priv) {
-
-		priv = malloc(sizeof(struct telephony_session_priv));
-		if (!priv) {
-			pom_oom(sizeof(struct telephony_session_priv));
-			return POM_ERR;
-		}
-		memset(priv, 0, sizeof(struct telephony_session_priv));
-
-		if (conntrack_session_add_priv(sess, telephony_init, priv, telephony_session_priv_cleanup) != POM_OK) {
-			free(priv);
-			return POM_ERR;
-		}
-	}
-
-
-	struct telephony_sdp_stream *stream = sdp->streams;
+	struct telephony_stream *stream = sdp->streams;
 
 	while (stream) {
 
@@ -709,7 +677,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 		}
 
 		// Unknown stream direction
-		if (stream->dir == telephony_sdp_stream_direction_unknown) {
+		if (stream->dir == telephony_stream_direction_unknown) {
 			stream = stream->next;
 			continue;
 		}
@@ -721,7 +689,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 		}
 
 		// It should match the first address and port
-		struct telephony_sdp_stream *tmp_stream = telephony_sdp_stream_find(priv->streams, stream->addrs->addr, stream->l4proto, stream->port);
+		struct telephony_stream *tmp_stream = telephony_stream_find(call->streams, stream->addrs->addr, stream->l4proto, stream->port);
 		if (tmp_stream) {
 			// The expectation for this stream as already been added !
 			// TODO check if port is 0 or if stream is inactive
@@ -736,12 +704,12 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 		}
 
 		// Inactive stream
-		if (stream->dir == telephony_sdp_stream_direction_inactive) {
+		if (stream->dir == telephony_stream_direction_inactive) {
 			stream = stream->next;
 			continue;
 		}
 
-		struct telephony_sdp_address *addr;
+		struct telephony_stream_address *addr;
 		for (addr = stream->addrs; addr; addr = addr->next) {
 
 			int i;
@@ -773,7 +741,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 				}
 				ptype_cleanup(port);
 
-				if (proto_expectation_add(e, sess, TELEPHONY_EXPECTATION_TIMEOUT, now) != POM_OK) {
+				if (proto_expectation_add(e) != POM_OK) {
 					proto_expectation_cleanup(e);
 					return POM_ERR;
 				}
@@ -793,10 +761,10 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 		else
 			sdp->streams = tmp_stream->next;
 
-		tmp_stream->next = priv->streams;
+		tmp_stream->next = call->streams;
 		if (tmp_stream->next)
 			tmp_stream->next->prev = tmp_stream;
-		priv->streams = tmp_stream;
+		call->streams = tmp_stream;
 
 		tmp_stream->prev = NULL;
 	}
@@ -804,10 +772,10 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_s
 	return POM_OK;
 }
 
-void telephony_sdp_stream_cleanup(struct telephony_sdp_stream *stream) {
+void telephony_stream_cleanup(struct telephony_stream *stream) {
 
 	while (stream->addrs) {
-		struct telephony_sdp_address *addr = stream->addrs;
+		struct telephony_stream_address *addr = stream->addrs;
 		stream->addrs = addr->next;
 
 		if (addr->addr)
@@ -816,7 +784,7 @@ void telephony_sdp_stream_cleanup(struct telephony_sdp_stream *stream) {
 	}
 
 	while (stream->ploads) {
-		struct telephony_sdp_stream_payload *pload = stream->ploads;
+		struct telephony_stream_payload *pload = stream->ploads;
 		stream->ploads = pload->next;
 		free(pload);
 	}
@@ -832,7 +800,7 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 		packet_stream_parser_cleanup(sdp->parser);
 
 	while (sdp->addr) {
-		struct telephony_sdp_address *addr = sdp->addr;
+		struct telephony_stream_address *addr = sdp->addr;
 		sdp->addr = addr->next;
 
 		if (addr->addr)
@@ -842,9 +810,9 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 	}
 
 	while (sdp->streams) {
-		struct telephony_sdp_stream *stream = sdp->streams;
+		struct telephony_stream *stream = sdp->streams;
 		sdp->streams = stream->next;
-		telephony_sdp_stream_cleanup(stream);
+		telephony_stream_cleanup(stream);
 	}
 
 	while (sdp->sess_attribs) {
@@ -855,4 +823,26 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 
 	free(sdp);
 
+}
+
+
+struct telephony_call *telephony_call_alloc() {
+
+	struct telephony_call *res = malloc(sizeof(struct telephony_call));
+	if (!res)
+		pom_oom(sizeof(struct telephony_call));
+	memset(res, 0, sizeof(struct telephony_call));
+
+	return res;
+}
+
+void telephony_call_cleanup(struct telephony_call *call) {
+
+	while (call->streams) {
+		struct telephony_stream *s = call->streams;
+		call->streams = s->next;
+		telephony_stream_cleanup(s);
+	}
+
+	free(call);
 }

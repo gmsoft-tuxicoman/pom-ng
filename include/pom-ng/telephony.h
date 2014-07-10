@@ -37,14 +37,18 @@ enum telephony_codec_type {
 
 };
 
+struct telephony_call;
 struct telephony_sdp;
-struct telephony_sdp_stream;
+struct telephony_stream;
 
 struct telephony_sdp *telephony_sdp_alloc();
 int telephony_sdp_parse(struct telephony_sdp *sdp, void *data, size_t len);
 int telephony_sdp_parse_end(struct telephony_sdp *sdp);
-int telephony_sdp_add_expectations(struct telephony_sdp *sdp, struct conntrack_session *sess, ptime now);
-void telephony_sdp_stream_cleanup(struct telephony_sdp_stream *stream);
+int telephony_sdp_add_expectations(struct telephony_call *call, struct telephony_sdp *sdp, ptime now);
+void telephony_stream_cleanup(struct telephony_stream *stream);
 void telephony_sdp_cleanup(struct telephony_sdp *sdp);
+
+struct telephony_call *telephony_call_alloc();
+void telephony_call_cleanup(struct telephony_call *call);
 
 #endif

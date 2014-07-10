@@ -38,23 +38,14 @@ struct telephony_codec_reg {
 
 };
 
-// SDP definitions
+// Call definitions
 
-struct telephony_sdp_address {
+struct telephony_call {
 
-	struct proto *proto;
-	struct ptype *addr;
-	struct telephony_sdp_address *next;
+	struct telephony_stream *streams;
 };
 
-
-struct telephony_sdp_stream_payload {
-
-	struct telephony_codec_reg *codec;
-	struct telephony_sdp_stream_payload *next;
-	unsigned int clock_rate;
-	uint8_t pload_type, chan_num;
-};
+// Media stream definitions
 
 enum telephony_stream_type {
 	telephony_stream_type_unknown = 0,
@@ -62,30 +53,45 @@ enum telephony_stream_type {
 	telephony_stream_type_rtp_savp,
 };
 
-enum telephony_sdp_stream_direction {
-	telephony_sdp_stream_direction_unknown = 0,
-	telephony_sdp_stream_direction_inactive,
-	telephony_sdp_stream_direction_sendonly,
-	telephony_sdp_stream_direction_recvonly,
-	telephony_sdp_stream_direction_sendrecv,
+enum telephony_stream_direction {
+	telephony_stream_direction_unknown = 0,
+	telephony_stream_direction_inactive,
+	telephony_stream_direction_sendonly,
+	telephony_stream_direction_recvonly,
+	telephony_stream_direction_sendrecv,
 };
 
-
-struct telephony_sdp_stream {
+struct telephony_stream {
 
 	enum telephony_stream_type type;
-	struct telephony_sdp_address *addrs;
-	struct telephony_sdp_stream_payload *ploads;
-	enum telephony_sdp_stream_direction dir;
+	struct telephony_stream_address *addrs;
+	struct telephony_stream_payload *ploads;
+	enum telephony_stream_direction dir;
 	enum telephony_codec_type pload_type;
 	struct proto *l4proto;
 
-	struct telephony_sdp_stream *prev, *next;
+	struct telephony_stream *prev, *next;
 
 	uint16_t port, port_num;
 
 };
 
+struct telephony_stream_address {
+
+	struct proto *proto;
+	struct ptype *addr;
+	struct telephony_stream_address *next;
+};
+
+struct telephony_stream_payload {
+
+	struct telephony_codec_reg *codec;
+	struct telephony_stream_payload *next;
+	unsigned int clock_rate;
+	uint8_t pload_type, chan_num;
+};
+
+// SDP definitions
 
 enum telephony_sdp_sess_attrib_type {
 	telephony_sdp_sess_attrib_direction,
@@ -101,7 +107,7 @@ struct telephony_sdp_sess_attrib {
 
 	enum telephony_sdp_sess_attrib_type type;
 	union {
-		enum telephony_sdp_stream_direction direction;
+		enum telephony_stream_direction direction;
 		struct telephony_sdp_sess_attrib_rtpmap rtpmap;
 	};
 
@@ -111,18 +117,12 @@ struct telephony_sdp_sess_attrib {
 struct telephony_sdp {
 
 	struct packet_stream_parser *parser;
-	struct telephony_sdp_address *addr;
+	struct telephony_stream_address *addr;
 
 	struct telephony_sdp_sess_attrib *sess_attribs;
 
-	struct telephony_sdp_stream *streams;
+	struct telephony_stream *streams;
 
-
-};
-
-struct telephony_session_priv {
-
-	struct telephony_sdp_stream *streams;
 
 };
 
