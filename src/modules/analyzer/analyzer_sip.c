@@ -391,6 +391,10 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 		return NULL;
 	}
 
+	call->t = timer_alloc(call, analyzer_sip_call_timeout);
+	if (!call->t)
+		goto err;
+
 	call->call_id = strdup(call_id);
 	if (!call->call_id) {
 		pom_oom(strlen(call_id) + 1);
@@ -444,6 +448,8 @@ err:
 		pthread_mutex_destroy(&call->lock);
 		if (call->call_id)
 			free(call->call_id);
+		if (call->t)
+			timer_cleanup(call->t);
 		free(call);
 	}
 
@@ -470,7 +476,6 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 
 	struct analyzer_sip_session_priv *priv = call->sess_priv;
 
-	debug_sip("Cleaning up call %s", call->call_id);
 
 	while (call->dialogs) {
 		struct analyzer_sip_call_dialog *d = call->dialogs;
@@ -478,15 +483,21 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 
 		timer_cleanup(d->t);
 
+		if (d->to_tag) {
+			debug_sip("Cleaning up full dialog for call %s : from_tag %s, to_tag %s", call->call_id, d->from_tag, d->to_tag);
+			free(d->to_tag);
+		} else {
+			debug_sip("Cleaning up half dialog for call %s : from_tag %s, branch %s", call->call_id, d->from_tag, d->branch);
+		}
 		if (d->from_tag)
 			free(d->from_tag);
-		if (d->to_tag)
-			free(d->to_tag);
 		if (d->branch)
 			free(d->branch);
 
 		free(d);
 	}
+
+	debug_sip("Cleaning up call %s", call->call_id);
 
 	if (call->evt) {
 		if (event_is_started(call->evt))
@@ -504,6 +515,12 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 
 	if (call->call_id)
 		free(call->call_id);
+
+	if (call->t)
+		timer_cleanup(call->t);
+
+	if (call->tel_call)
+		telephony_call_cleanup(call->tel_call);
 
 	pthread_mutex_destroy(&call->lock);
 
@@ -768,12 +785,18 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 
 	uint32_t cseq = *PTYPE_UINT32_GETVAL(evt_data[proto_sip_msg_cseq_num].value);
 
+	struct conntrack_entry *ce = event_get_conntrack(evt);
+
 	struct analyzer_sip_call_dialog *dialog = NULL;
 
 	if (to_tag) {
 		// This might be the first message creating an complete dialog or
 		// a message from the UAS like a re-invite
 		for (dialog = call->dialogs; dialog; dialog = dialog->next) {
+			// Make sure it belongs to this conntrack
+			if (dialog->ce != ce)
+				continue;
+
 			// Try to match the from tag
 			if (!strcmp(from_tag, dialog->from_tag)) {
 				// From tag matched,
@@ -803,6 +826,10 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 	} else {
 		// Half dialog
 		for (dialog = call->dialogs; dialog ; dialog = dialog->next) {
+			// Make sure it belongs to this conntrack
+			if (dialog->ce != ce)
+				continue;
+
 			// Try to match the from tag
 			if (strcmp(from_tag, dialog->from_tag))
 				continue;
@@ -822,6 +849,8 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 			return POM_ERR;
 		}
 		memset(dialog, 0, sizeof(struct analyzer_sip_call_dialog));
+
+		dialog->ce = ce;
 
 		dialog->t = timer_alloc(dialog, analyzer_sip_dialog_timeout);
 		if (!dialog->t) {
@@ -927,6 +956,14 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 	return res;
 }
 
+static int analyzer_sip_call_timeout(void *priv, ptime now) {
+
+	// An established call lasted more than our max duration
+
+
+	return POM_OK;
+}
+
 static int analyzer_sip_dialog_timeout(void *priv, ptime now) {
 
 	struct analyzer_sip_call_dialog *d = priv;
@@ -964,7 +1001,7 @@ static int analyzer_sip_dialog_timeout(void *priv, ptime now) {
 
 	int cleanup = 0;
 
-	if (!call->dialogs) {
+	if (!call->dialogs && call->state != analyzer_sip_call_state_connected) {
 		cleanup = 1;
 		HASH_DEL(analyzer_sip_calls, call);
 	}
@@ -997,6 +1034,15 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	struct analyzer_sip_call *call = analyzer_sip_event_get_call(analyzer, evt);
 	if (!call) // Error while finding the call
 		return PLOAD_OPEN_ERR;
+
+
+	if (!call->tel_call) {
+		call->tel_call = telephony_call_alloc();
+		if (!call->tel_call) {
+			pom_mutex_unlock(&call->lock);
+			return PLOAD_OPEN_ERR;
+		}
+	}
 
 	// We don't need to keep the lock on the call
 	pom_mutex_unlock(&call->lock);
@@ -1037,7 +1083,7 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 	if (telephony_sdp_parse_end(p->sdp) != POM_OK)
 		return POM_ERR;
 
-	if (telephony_sdp_add_expectations(p->sdp, p->call->sess, p->ts) != POM_OK)
+	if (telephony_sdp_add_expectations(p->call->tel_call, p->sdp, p->ts) != POM_OK)
 		return POM_ERR;
 
 	telephony_sdp_cleanup(p->sdp);

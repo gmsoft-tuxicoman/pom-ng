@@ -81,6 +81,7 @@ enum analyzer_sip_method {
 struct analyzer_sip_call_dialog {
 
 	char *from_tag, *to_tag;
+	struct conntrack_entry *ce;
 	char *branch;
 	struct analyzer_sip_call *call;
 	uint32_t cseq;
@@ -110,6 +111,9 @@ struct analyzer_sip_call {
 	struct conntrack_session *sess;
 	struct analyzer_sip_session_priv *sess_priv;
 	pthread_mutex_t lock;
+	struct timer *t;
+
+	struct telephony_call *tel_call;
 
 	struct analyzer_sip_call_dialog *dialogs;
 
@@ -152,6 +156,7 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call);
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 
+static int analyzer_sip_call_timeout(void *priv, ptime now);
 static int analyzer_sip_dialog_timeout(void *priv, ptime now);
 
 static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload);
