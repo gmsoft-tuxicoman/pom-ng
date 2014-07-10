@@ -82,13 +82,16 @@ struct analyzer_sip_call_dialog {
 
 	char *from_tag, *to_tag;
 	struct conntrack_entry *ce;
+	struct analyzer_sip_conntrack_priv *ce_priv;
 	char *branch;
 	struct analyzer_sip_call *call;
 	uint32_t cseq;
 	enum analyzer_sip_method cseq_method;
 	struct analyzer_sip_call_dialog *prev, *next;
-	struct timer *t;
+	struct conntrack_timer *t;
 	int terminated;
+
+	struct analyzer_sip_call_dialog *ce_prev, *ce_next;
 
 };
 
@@ -108,8 +111,6 @@ enum analyzer_sip_call_usage {
 struct analyzer_sip_call {
 
 	char *call_id;
-	struct conntrack_session *sess;
-	struct analyzer_sip_session_priv *sess_priv;
 	pthread_mutex_t lock;
 	struct timer *t;
 
@@ -129,11 +130,6 @@ struct analyzer_sip_call {
 	struct analyzer_sip_call *sess_prev, *sess_next;
 };
 
-struct analyzer_sip_session_priv {
-
-	struct analyzer_sip_call *calls;
-};
-
 struct analyzer_sip_sdp_priv {
 
 	struct analyzer_sip_sdp_line_lst *line_head, *line_tail;
@@ -142,22 +138,31 @@ struct analyzer_sip_sdp_priv {
 	ptime ts;
 };
 
+struct analyzer_sip_conntrack_priv {
+
+	struct analyzer_sip_call_dialog *dialogs;
+	struct analyzer_sip_call_dialog *cur_dialog;
+
+};
+
 struct mod_reg_info* analyzer_sip_reg_info();
 static int analyzer_sip_mod_register(struct mod_reg *mod);
 static int analyzer_sip_mod_unregister();
 
 static int analyzer_sip_init(struct analyzer *analyzer);
+static int analyzer_sip_finish(struct analyzer *analyzer);
 static int analyzer_sip_cleanup(struct analyzer *analyzer);
 
 static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 
-static int analyzer_sip_session_cleanup(void *obj, void *priv);
+static int analyzer_sip_conntrack_cleanup(void *obj, void *priv);
 static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call);
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 
 static int analyzer_sip_call_timeout(void *priv, ptime now);
-static int analyzer_sip_dialog_timeout(void *priv, ptime now);
+static int analyzer_sip_dialog_timeout(struct conntrack_entry *ce, void *priv, ptime now);
+static int analyzer_sip_dialog_cleanup(struct analyzer_sip_call_dialog *d);
 
 static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload);
 static int analyzer_sip_sdp_write(void *obj, void *priv, void *data, size_t len);
