@@ -180,115 +180,112 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 		
 	// Process the expectations !
 	pom_rwlock_rlock(&proto->expectation_lock);
-	struct proto_expectation *e = proto->expectations;
-	while (e) {
-		
-		int expt_dir = POM_DIR_UNK;
+	struct proto_expectation *e = NULL;
+	for (e = proto->expectations; e; e = e->next) {
 
-		struct proto_expectation_stack *es = e->tail;
-		struct ptype *fwd_value = s->pkt_info->fields_value[s->proto->info->ct_info->fwd_pkt_field_id];
-		struct ptype *rev_value = s->pkt_info->fields_value[s->proto->info->ct_info->rev_pkt_field_id];
-
-		if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) &&
-			(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
-			// Expectation matched the forward direction
-			expt_dir = POM_DIR_FWD;
-		} else if ((!es->fields[POM_DIR_FWD] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) &&
-			(!es->fields[POM_DIR_REV] || ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
-			// Expectation matched the reverse direction
-			expt_dir = POM_DIR_REV;
-		}
-
-		if (expt_dir == POM_DIR_UNK) {
-			// Expectation not matched
-			e = e->next;
+		if (e->matched) {
+			// Another thread already matched the expectation, continue
 			continue;
 		}
 		
-		es = es->prev;
-		int stack_index_tmp = stack_index - 1;
+		// Bit one means it matches the forward direction
+		// Bit two means it matches the reverse direction
+
+		int expt_dir = 3;
+
+		struct proto_expectation_stack *es = e->tail;
+		int stack_index_tmp = stack_index;
 		while (es) {
 
 			struct proto_process_stack *s_tmp = &stack[stack_index_tmp];
 
 			if (s_tmp->proto != es->proto) {
-				 e = e->next;
-				 continue;
+				expt_dir = 0;
+				break;
 			}
 
-			fwd_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->fwd_pkt_field_id];
-			rev_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->rev_pkt_field_id];
+			struct ptype *fwd_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->fwd_pkt_field_id];
+			struct ptype *rev_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->rev_pkt_field_id];
 
-			if (expt_dir == POM_DIR_FWD) {
+			if (expt_dir & 1) {
 				if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], fwd_value)) ||
 					(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], rev_value))) {
-					e = e->next;
-					continue;
+					expt_dir &= ~1; // It doesn't match in the forward direction
 				}
-			} else {
+			}
+
+			if (expt_dir & 2) {
 				if ((es->fields[POM_DIR_FWD] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_FWD], rev_value)) ||
 					(es->fields[POM_DIR_REV] && !ptype_compare_val(PTYPE_OP_EQ, es->fields[POM_DIR_REV], fwd_value))) {
-					e = e->next;
-					continue;
+					expt_dir &= ~2;
 				}
-
 			}
+
+			if (!expt_dir)
+				break;
 
 			es = es->prev;
 			stack_index_tmp--;
 		}
 
-		// Expectation matched !
-		// Relock with write access
-		pom_rwlock_unlock(&proto->expectation_lock);
-		pom_rwlock_wlock(&proto->expectation_lock);
-
-		debug_expectation("Expectation %p matched !", e);
-
-		// Remove it from the list
-		
-		if (e->next)
-			e->next->prev = e->prev;
-
-		if (e->prev)
-			e->prev->next = e->next;
-		else
-			proto->expectations = e->next;
-
-		struct proto_process_stack *s_next = &stack[stack_index + 1];
-		s_next->proto = e->proto;
-
-		
-		if (conntrack_get_unique_from_parent(stack, stack_index + 1) != POM_OK) {
-			proto_expectation_cleanup(e);
-			return PROTO_ERR;
-		}
-
-		if (s_next->ce->priv) {
-			if (e->priv && e->proto->info->ct_info->cleanup_handler) {
-				if (e->proto->info->ct_info->cleanup_handler(e->priv) != POM_OK) {
-					pomlog(POMLOG_WARN "Error while cleaning up duplicate expectation priv");
-				}
+		if (expt_dir) {
+			// It matched
+			if (!__sync_fetch_and_add(&e->matched, 1)) {
+				// The atomic variable prevent double matching of the expectation
+				break;
 			}
-		} else {
-			s_next->ce->priv = e->priv;
 		}
+	}
 
+	// Expectation matched !
+	// Relock with write access
+	pom_rwlock_unlock(&proto->expectation_lock);
+
+	if (!e)
+		return POM_OK;
+
+	debug_expectation("Expectation %p matched !", e);
+
+	// Remove the expectation from the list
+	proto_expectation_remove(e);
+
+	struct proto_process_stack *s_next = &stack[stack_index + 1];
+	s_next->proto = e->proto;
+
+	if (conntrack_get_unique_from_parent(stack, stack_index + 1) != POM_OK) {
+		proto_expectation_cleanup(e);
+		return PROTO_ERR;
+	}
+
+	if (!s_next->ce->priv) {
+		s_next->ce->priv = e->priv;
+		// Prevent cleanup of private data while cleaning the expectation
+		e->priv = NULL;
+	}
+
+
+	if (e->session) {
 		if (conntrack_session_bind(s_next->ce, e->session)) {
 			proto_expectation_cleanup(e);
 			return PROTO_ERR;
 		}
-
-		registry_perf_dec(e->proto->perf_expt_pending, 1);
-		registry_perf_inc(e->proto->perf_expt_matched, 1);
-
-		proto_expectation_cleanup(e);
-		conntrack_unlock(s_next->ce);
-
-		break;
-
 	}
-	pom_rwlock_unlock(&proto->expectation_lock);
+
+	registry_perf_dec(e->proto->perf_expt_pending, 1);
+	registry_perf_inc(e->proto->perf_expt_matched, 1);
+
+	if (e->match_callback) {
+		// Call the callback with the conntrack locked
+		e->match_callback(e, e->callback_priv, s_next->ce);
+	}
+
+	if (e->expiry) {
+		// The expectation was added using 'add_and_cleanup' function
+		proto_expectation_cleanup(e);
+	}
+
+	conntrack_unlock(s_next->ce);
+
 
 	return res;
 }
@@ -643,6 +640,9 @@ void proto_expectation_cleanup(struct proto_expectation *e) {
 	if (!e)
 		return;
 
+	if (!e->matched)
+		proto_expectation_remove(e);
+
 	debug_expectation("Cleaning up expectation %p", e);
 
 	while (e->head) {
@@ -657,10 +657,16 @@ void proto_expectation_cleanup(struct proto_expectation *e) {
 
 	}
 
+	if (e->priv && e->proto->info->ct_info->cleanup_handler) {
+		if (e->proto->info->ct_info->cleanup_handler(e->priv) != POM_OK)
+			pomlog(POMLOG_WARN "Unable to free the conntrack priv of the proto_expectation");
+	}
+
 	if (e->session)
 		conntrack_session_refcount_dec(e->session);
 
-	timer_cleanup(e->expiry);
+	if (e->expiry)
+		timer_cleanup(e->expiry);
 
 	free(e);
 }
@@ -700,23 +706,40 @@ int proto_expectation_set_field(struct proto_expectation *e, int stack_index, st
 	return POM_OK;
 }
 
-int proto_expectation_add(struct proto_expectation *e, struct conntrack_session *session, unsigned int expiry, ptime now) {
+void proto_expectation_set_session(struct proto_expectation *e, struct conntrack_session *session) {
 
-	if (!e || !e->tail || !e->tail->proto) {
-		pomlog(POMLOG_ERR "Cannot add expectation as it's incomplete");
+	conntrack_session_refcount_inc(session);
+	e->session = session;
+}
+
+int proto_expectation_add_and_cleanup(struct proto_expectation *e, unsigned int expiry, ptime now) {
+
+	if (e->matched)
 		return POM_ERR;
-	}
 
-	e->expiry = timer_alloc(e, proto_expectation_expiry);
+	if (proto_expectation_add(e) != POM_OK)
+		return POM_ERR;
+
+	e->expiry = timer_alloc(e, proto_expectation_timeout);
 	if (!e->expiry)
 		return POM_ERR;
 
 	if (timer_queue_now(e->expiry, expiry, now) != POM_OK)
 		return POM_ERR;
 
-	conntrack_session_refcount_inc(session);
-	e->session = session;
-	
+	return POM_OK;
+}
+
+int proto_expectation_add(struct proto_expectation *e) {
+
+	if (!e || !e->tail || !e->tail->proto) {
+		pomlog(POMLOG_ERR "Cannot add expectation as it's incomplete");
+		return POM_ERR;
+	}
+
+	if (e->matched)
+		return POM_ERR;
+
 	struct proto *proto = e->tail->proto;
 	pom_rwlock_wlock(&proto->expectation_lock);
 
@@ -733,16 +756,27 @@ int proto_expectation_add(struct proto_expectation *e, struct conntrack_session 
 	return POM_OK;
 }
 
-int proto_expectation_expiry(void *priv, ptime now) {
+int proto_expectation_remove(struct proto_expectation *e) {
 
-	struct proto_expectation *e = priv;
+	if (!e || !e->tail || !e->tail->proto) {
+		pomlog(POMLOG_ERR "Cannot remove expectation as it's incomplete");
+		return POM_ERR;
+	}
+
+	if (e->matched)
+		return POM_ERR;
+
 	struct proto *proto = e->tail->proto;
-
 	pom_rwlock_wlock(&proto->expectation_lock);
+
+	if (!e->next && !e->prev && proto->expectations != e) {
+		// The expectation is not queued
+		pom_rwlock_unlock(&proto->expectation_lock);
+		return POM_OK;
+	}
 
 	if (e->next)
 		e->next->prev = e->prev;
-
 	if (e->prev)
 		e->prev->next = e->next;
 	else
@@ -750,13 +784,15 @@ int proto_expectation_expiry(void *priv, ptime now) {
 
 	pom_rwlock_unlock(&proto->expectation_lock);
 
-	if (e->priv && proto->info->ct_info->cleanup_handler) {
-		if (proto->info->ct_info->cleanup_handler(e->priv) != POM_OK)
-			pomlog(POMLOG_WARN "Unable to free the conntrack priv of the proto_expectation");
-	}
-
 	registry_perf_dec(e->proto->perf_expt_pending, 1);
 
+	return POM_OK;
+}
+
+int proto_expectation_timeout(void *priv, ptime now) {
+
+	struct proto_expectation *e = priv;
+	proto_expectation_remove(e);
 	proto_expectation_cleanup(e);
 
 	return POM_OK;

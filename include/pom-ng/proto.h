@@ -120,7 +120,11 @@ int proto_expectation_prepend(struct proto_expectation *e, struct proto *p, stru
 struct proto_expectation *proto_expectation_alloc_from_conntrack(struct conntrack_entry *ce, struct proto *proto, void *priv);
 void proto_expectation_cleanup(struct proto_expectation *e);
 int proto_expectation_set_field(struct proto_expectation *e, int stack_index, struct ptype *value, int direction);
-int proto_expectation_add(struct proto_expectation *e, struct conntrack_session *session, unsigned int expiry, ptime now);
+void proto_expectation_set_session(struct proto_expectation *e, struct conntrack_session *session);
+
+int proto_expectation_add_and_cleanup(struct proto_expectation *e, unsigned int expiry, ptime now);
+int proto_expectation_add(struct proto_expectation *e);
+int proto_expectation_remove(struct proto_expectation *e);
 
 void proto_set_priv(struct proto *p, void *priv);
 void *proto_get_priv(struct proto *p);

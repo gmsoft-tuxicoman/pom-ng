@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -168,7 +168,9 @@ static int proto_tftp_process(void *proto_priv, struct packet *p, struct proto_p
 
 			proto_expectation_set_field(expt, -1, NULL, POM_DIR_REV);
 
-			if (proto_expectation_add(expt, session, PROTO_TFTP_EXPT_TIMER, p->ts) != POM_OK) {
+			proto_expectation_set_session(expt, session);
+
+			if (proto_expectation_add_and_cleanup(expt, PROTO_TFTP_EXPT_TIMER, p->ts) != POM_OK) {
 				conntrack_unlock(s->ce);
 				proto_expectation_cleanup(expt);
 				return PROTO_ERR;
