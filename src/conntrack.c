@@ -462,8 +462,16 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	if (ct->table[hash]) {
 		s->ce = conntrack_find(ct->table[hash], fwd_value, rev_value, s_prev->ce);
 		if (s->ce) {
-			s->direction = POM_DIR_FWD;
-			s_next->direction = POM_DIR_FWD;
+			int dir = POM_DIR_FWD;
+
+			if (fwd_value && rev_value && ptype_compare_val(PTYPE_OP_EQ, fwd_value, rev_value)) {
+				// The conntrack could match in both direction
+				// Use the previous stack for the direction
+				dir = s_prev->direction;
+			}
+
+			s->direction = dir;
+			s_next->direction = dir;
 			pom_mutex_lock(&s->ce->lock);
 			__sync_fetch_and_add(&s->ce->refcount, 1);
 			pom_mutex_unlock(&ct->locks[hash]);
