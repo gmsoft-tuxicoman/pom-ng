@@ -167,13 +167,13 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 
 	} else {
 		// This is a session attribute
-		struct telephony_sdp_sess_attrib *a = malloc(sizeof(struct telephony_sdp_sess_attrib));
+		struct telephony_sdp_attrib *a = malloc(sizeof(struct telephony_sdp_attrib));
 		if (!a) {
-			pom_oom(sizeof(struct telephony_sdp_sess_attrib));
+			pom_oom(sizeof(struct telephony_sdp_attrib));
 			return POM_ERR;
 		}
-		memset(a, 0, sizeof(struct telephony_sdp_sess_attrib));
-		a->type = telephony_sdp_sess_attrib_rtpmap;
+		memset(a, 0, sizeof(struct telephony_sdp_attrib));
+		a->type = telephony_sdp_attrib_rtpmap;
 		a->rtpmap.codec = codec;
 		a->rtpmap.pload_type = pt;
 		a->rtpmap.chan_num = chan_num;
@@ -215,17 +215,17 @@ static int telephony_sdp_parse_line_a(struct telephony_sdp *sdp, char *line, siz
 			if (sdp->streams) {
 				sdp->streams->dir = dir;
 			} else {
-				struct telephony_sdp_sess_attrib *a = malloc(sizeof(struct telephony_sdp_sess_attrib));
+				struct telephony_sdp_attrib *a = malloc(sizeof(struct telephony_sdp_attrib));
 				if (!a) {
-					pom_oom(sizeof(struct telephony_sdp_sess_attrib));
+					pom_oom(sizeof(struct telephony_sdp_attrib));
 					return POM_ERR;
 				}
-				memset(a, 0, sizeof(struct telephony_sdp_sess_attrib));
-				a->type = telephony_sdp_sess_attrib_direction;
+				memset(a, 0, sizeof(struct telephony_sdp_attrib));
+				a->type = telephony_sdp_attrib_direction;
 				a->direction = dir;
 
-				a->next = sdp->sess_attribs;
-				sdp->sess_attribs = a;
+				a->next = sdp->attribs;
+				sdp->attribs = a;
 			}
 		}
 	}
@@ -580,14 +580,14 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 
 	// Apply the session attributes
 
-	while (sdp->sess_attribs) {
-		struct telephony_sdp_sess_attrib *attr = sdp->sess_attribs;
-		sdp->sess_attribs = attr->next;
+	while (sdp->attribs) {
+		struct telephony_sdp_attrib *attr = sdp->attribs;
+		sdp->attribs = attr->next;
 
 		struct telephony_stream *stream;
 		for (stream = sdp->streams; stream; stream = stream->next) {
 
-			if (attr->type == telephony_sdp_sess_attrib_rtpmap) {
+			if (attr->type == telephony_sdp_attrib_rtpmap) {
 				// First, find the corresponding pload
 				struct telephony_stream_payload *pload;
 				for (pload = stream->ploads; pload && pload->pload_type != attr->rtpmap.pload_type; pload = pload->next);
@@ -607,7 +607,7 @@ int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
 					pload->codec = attr->rtpmap.codec;
 					pload->chan_num = attr->rtpmap.chan_num;
 				}
-			} else if (attr->type == telephony_sdp_sess_attrib_direction) {
+			} else if (attr->type == telephony_sdp_attrib_direction) {
 				if (stream->dir == telephony_stream_direction_unknown)
 					stream->dir = attr->direction;
 			}
@@ -815,9 +815,9 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 		telephony_stream_cleanup(stream);
 	}
 
-	while (sdp->sess_attribs) {
-		struct telephony_sdp_sess_attrib *attr = sdp->sess_attribs;
-		sdp->sess_attribs = attr->next;
+	while (sdp->attribs) {
+		struct telephony_sdp_attrib *attr = sdp->attribs;
+		sdp->attribs = attr->next;
 		free(attr);
 	}
 

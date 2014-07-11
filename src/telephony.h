@@ -93,25 +93,25 @@ struct telephony_stream_payload {
 
 // SDP definitions
 
-enum telephony_sdp_sess_attrib_type {
-	telephony_sdp_sess_attrib_direction,
-	telephony_sdp_sess_attrib_rtpmap,
+enum telephony_sdp_attrib_type {
+	telephony_sdp_attrib_direction,
+	telephony_sdp_attrib_rtpmap,
 };
 
-struct telephony_sdp_sess_attrib_rtpmap {
+struct telephony_sdp_attrib_rtpmap {
 	struct telephony_codec_reg *codec;
 	uint8_t pload_type, chan_num;
 };
 
-struct telephony_sdp_sess_attrib {
+struct telephony_sdp_attrib {
 
-	enum telephony_sdp_sess_attrib_type type;
+	enum telephony_sdp_attrib_type type;
 	union {
 		enum telephony_stream_direction direction;
-		struct telephony_sdp_sess_attrib_rtpmap rtpmap;
+		struct telephony_sdp_attrib_rtpmap rtpmap;
 	};
 
-	struct telephony_sdp_sess_attrib *next;
+	struct telephony_sdp_attrib *next;
 };
 
 struct telephony_sdp {
@@ -119,7 +119,7 @@ struct telephony_sdp {
 	struct packet_stream_parser *parser;
 	struct telephony_stream_address *addr;
 
-	struct telephony_sdp_sess_attrib *sess_attribs;
+	struct telephony_sdp_attrib *attribs;
 
 	struct telephony_stream *streams;
 
