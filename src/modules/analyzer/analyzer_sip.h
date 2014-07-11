@@ -76,6 +76,8 @@ enum analyzer_sip_method {
 	analyzer_sip_method_ack,
 	analyzer_sip_method_cancel,
 	analyzer_sip_method_bye,
+	analyzer_sip_method_register,
+	analyzer_sip_method_info,
 };
 
 struct analyzer_sip_call_dialog {
@@ -85,8 +87,8 @@ struct analyzer_sip_call_dialog {
 	struct analyzer_sip_conntrack_priv *ce_priv;
 	char *branch;
 	struct analyzer_sip_call *call;
-	uint32_t cseq;
-	enum analyzer_sip_method cseq_method;
+	uint32_t cseq[POM_DIR_TOT];
+	enum analyzer_sip_method cseq_method[POM_DIR_TOT];
 	struct analyzer_sip_call_dialog *prev, *next;
 	struct conntrack_timer *t;
 	int terminated;

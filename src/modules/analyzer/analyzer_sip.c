@@ -488,6 +488,12 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 
 static int analyzer_sip_call_dialog_terminate(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d) {
 
+	if (d->to_tag) {
+		debug_sip("Full dialog for call %s terminated : from_tag %s, to_tag %s", d->call->call_id, d->from_tag, d->to_tag);
+	} else {
+		debug_sip("Half dialog for call %s terminated : from_tag %s, branch %s", d->call->call_id, d->from_tag, d->branch);
+	}
+
 	d->terminated = 1;
 	return POM_OK;
 }
@@ -649,10 +655,49 @@ static int analyzer_sip_call_set_state(struct analyzer_sip_priv *priv, struct ev
 	return POM_OK;
 }
 
-static int analyzer_sip_process_request(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, enum analyzer_sip_method method, char *method_str) {
+static enum analyzer_sip_method analyzer_sip_method_get_id(char *method_str) {
+
+	if (!strcmp(method_str, "INVITE")) {
+		return analyzer_sip_method_invite;
+	} else if (!strcmp(method_str, "ACK")) {
+		return analyzer_sip_method_ack;
+	} else if (!strcmp(method_str, "CANCEL")) {
+		return analyzer_sip_method_cancel;
+	} else if (!strcmp(method_str, "BYE")) {
+		return analyzer_sip_method_bye;
+	} else if (!strcmp(method_str, "REGISTER")) {
+		return analyzer_sip_method_register;
+	} else if (!strcmp(method_str, "INFO")) {
+		return analyzer_sip_method_info;
+	}
+
+	pomlog(POMLOG_DEBUG "Unknown SIP method %s", method_str);
+
+	return analyzer_sip_method_unknown;
+}
+
+static int analyzer_sip_process_request(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, int direction, enum analyzer_sip_method method, char *method_str) {
 
 	if (method == analyzer_sip_method_unknown)
 		return POM_OK;
+
+	struct data *evt_data = event_get_data(evt);
+	uint32_t cseq = *PTYPE_UINT32_GETVAL(evt_data[proto_sip_msg_cseq_num].value);
+
+	// Check CSeq
+	if (d->cseq[direction] == cseq && (method != analyzer_sip_method_ack && method != analyzer_sip_method_cancel)) {
+
+		debug_sip("Ignoring %s because it's a retransmitted request : cseq %u", method_str, cseq);
+		return POM_OK;
+
+	} else if (d->cseq[direction] > cseq) {
+		debug_sip("Ignoring %s because it's a old request : cur cseq %u, req cseq %u", method_str, d->cseq[direction], cseq);
+		return POM_OK;
+	}
+
+
+	d->cseq[direction] = cseq;
+	d->cseq_method[direction] = method;
 
 	if (d->call->usage == analyzer_sip_call_usage_other) {
 		d->call->usage = analyzer_sip_call_usage_invite;
@@ -677,29 +722,35 @@ static int analyzer_sip_process_request(struct analyzer_sip_priv *priv, struct e
 	return POM_OK;
 }
 
-static enum analyzer_sip_method analyzer_sip_method_get_id(char *method_str) {
+static int analyzer_sip_process_response(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, int direction, uint16_t status) {
 
-	if (!strcmp(method_str, "INVITE")) {
-		return analyzer_sip_method_invite;
-	} else if (!strcmp(method_str, "ACK")) {
-		return analyzer_sip_method_ack;
-	} else if (!strcmp(method_str, "CANCEL")) {
-		return analyzer_sip_method_cancel;
-	} else if (!strcmp(method_str, "BYE")) {
-		return analyzer_sip_method_bye;
+	struct data *evt_data = event_get_data(evt);
+	uint32_t cseq = *PTYPE_UINT32_GETVAL(evt_data[proto_sip_msg_cseq_num].value);
+
+	char *cseq_method_str = PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_cseq_method].value);
+	enum analyzer_sip_method cseq_method = analyzer_sip_method_get_id(cseq_method_str);
+
+	int cseq_dir = POM_DIR_REVERSE(direction);
+
+	if (d->cseq[cseq_dir] > cseq) {
+		debug_sip("Ignoring response %hu because it's an old or retransmitted response : cur cseq %u, rsp cseq %u", status, d->cseq[direction], cseq);
+		return POM_OK;
+	} else if (d->cseq[cseq_dir] < cseq) {
+		debug_sip("Missed SIP request %s !", cseq_method_str);
+		d->cseq[cseq_dir] = cseq;
+		d->cseq_method[cseq_dir] = cseq_method;
+		// TODO process a fake request for that method
+
+	} else if (d->cseq_method[cseq_dir] != cseq_method) {
+		debug_sip("Got a response for the wrong method !");
+		// TODO fix the method ?
+		return POM_OK;
 	}
-
-	pomlog(POMLOG_DEBUG "Unknown SIP method %s", method_str);
-
-	return analyzer_sip_method_unknown;
-}
-
-static int analyzer_sip_process_response(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, uint16_t status) {
 
 	if (status == 180) { // Ringing
 		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_alerting);
 	} else if (status == 200) {
-		if (d->cseq_method == analyzer_sip_method_invite)
+		if (d->cseq_method[cseq_dir] == analyzer_sip_method_invite)
 			return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_connected);
 	}
 	return POM_OK;
@@ -716,6 +767,8 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		pomlog(POMLOG_ERR "Received event is not a SIP request or response");
 		return POM_ERR;
 	}
+
+	int direction = stack[stack_index].direction;
 
 	// Get the call based on the call-id
 	struct analyzer_sip_call *call = analyzer_sip_event_get_call(obj, evt);
@@ -743,7 +796,6 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 	if (data_is_set(evt_data[proto_sip_msg_to_tag]))
 		to_tag = PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_to_tag].value);
 
-	uint32_t cseq = *PTYPE_UINT32_GETVAL(evt_data[proto_sip_msg_cseq_num].value);
 
 	struct conntrack_entry *ce = event_get_conntrack(evt);
 
@@ -863,7 +915,6 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		}
 
 		dialog->call = call;
-		dialog->cseq = cseq - 1;
 
 		// Add the dialog to the call
 		dialog->next = call->dialogs;
@@ -898,32 +949,12 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 
 		enum analyzer_sip_method method = analyzer_sip_method_get_id(method_str);
 
-		if (dialog->cseq >= cseq) {
-
-			if (dialog->cseq > cseq || (method != analyzer_sip_method_ack && method != analyzer_sip_method_cancel && method != analyzer_sip_method_bye)) {
-				pom_mutex_unlock(&call->lock);
-				debug_sip("Ignoring %s because it's an old or retransmitted request : cur cseq %u, req cseq %u", method_str, dialog->cseq, cseq);
-				return POM_OK;
-			}
-		}
-
-		if (method != analyzer_sip_method_unknown)
-			res = analyzer_sip_process_request(priv, evt, dialog, method, method_str);
-
-		dialog->cseq = cseq;
-		dialog->cseq_method = method;
-
+		res = analyzer_sip_process_request(priv, evt, dialog, direction, method, method_str);
 
 	} else {
 
 		uint16_t status = *PTYPE_UINT16_GETVAL(evt_data[proto_sip_rsp_status].value);
-		if (dialog->cseq > cseq) {
-			pom_mutex_unlock(&call->lock);
-			debug_sip("Ignoring response %hu because it's an old or retransmitted response : cur cseq %u, rsp cseq %u", status, dialog->cseq, cseq);
-			return POM_OK;
-		}
-
-		res = analyzer_sip_process_response(priv, evt, dialog, status);
+		res = analyzer_sip_process_response(priv, evt, dialog, direction, status);
 
 	}
 	pom_mutex_unlock(&call->lock);
