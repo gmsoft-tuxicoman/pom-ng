@@ -29,6 +29,9 @@
 
 #define PROTO_REGISTRY "proto"
 
+#define PROTO_EXPECTATION_FLAG_QUEUED	0x1
+#define PROTO_EXPECTATION_FLAG_MATCHED	0x2
+
 struct proto {
 
 	struct proto_reg_info *info;
@@ -84,7 +87,7 @@ struct proto_expectation {
 	struct timer *expiry;
 	struct conntrack_session *session;
 	struct proto_expectation *prev, *next;
-	int matched;
+	int flags;
 	void (*match_callback) (struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce);
 };
 
