@@ -63,7 +63,7 @@ struct analyzer_sip_priv {
 	struct proto_packet_listener *sip_packet_listener;
 
 	struct ptype *p_dialog_timeout;
-	struct ptype *p_call_max_duration;
+	struct ptype *p_dialog_connected_timeout;
 
 	int listening;
 	int sdp_listening, dtmf_listening;
@@ -80,21 +80,40 @@ enum analyzer_sip_method {
 	analyzer_sip_method_info,
 };
 
+enum analyzer_sip_dialog_state {
+	analyzer_sip_dialog_state_init = 0,
+	analyzer_sip_dialog_state_connected,
+	analyzer_sip_dialog_state_terminated,
+};
+
 struct analyzer_sip_call_dialog {
 
+	// Dialog identifiers
 	char *from_tag, *to_tag;
 	struct conntrack_entry *ce;
-	struct analyzer_sip_conntrack_priv *ce_priv;
 	char *branch;
+
+	// Used to remove the dialog from a conntrack or match it back
+	struct analyzer_sip_conntrack_priv *ce_priv;
+	struct analyzer_sip_call_dialog *ce_prev, *ce_next;
+	struct proto_expectation *expt;
+
+	// Call the dialog belongs to
 	struct analyzer_sip_call *call;
+	struct analyzer_sip_call_dialog *prev, *next;
+
+	// Sequence info
 	uint32_t cseq[POM_DIR_TOT];
 	enum analyzer_sip_method cseq_method[POM_DIR_TOT];
-	struct analyzer_sip_call_dialog *prev, *next;
-	struct conntrack_timer *t;
-	int terminated;
 
-	struct analyzer_sip_call_dialog *ce_prev, *ce_next;
+	// Timer for expiring dialog
+	struct timer *t;
 
+	// State of the dialog
+	enum analyzer_sip_dialog_state state;
+
+	// SDP dialog associated with this dialog
+	struct telephony_sdp_dialog *sdp_dialog;
 };
 
 enum analyzer_sip_call_state {
@@ -114,7 +133,6 @@ struct analyzer_sip_call {
 
 	char *call_id;
 	pthread_mutex_t lock;
-	struct timer *t;
 
 	struct telephony_call *tel_call;
 
@@ -159,11 +177,13 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 
 static int analyzer_sip_conntrack_cleanup(void *obj, void *priv);
 static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call);
+static int analyzer_sip_call_dialog_set_state(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, enum analyzer_sip_dialog_state state);
 
 static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 
-static int analyzer_sip_call_timeout(void *priv, ptime now);
-static int analyzer_sip_dialog_timeout(struct conntrack_entry *ce, void *priv, ptime now);
+static void analyzer_sip_expectation_matched(struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce);
+static int analyzer_sip_dialog_timeout(void *priv, ptime now);
+static int analyzer_sip_dialog_remove(struct analyzer_sip_call_dialog *d);
 static int analyzer_sip_dialog_cleanup(struct analyzer_sip_call_dialog *d);
 
 static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload);

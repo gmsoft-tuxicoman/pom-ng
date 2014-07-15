@@ -87,15 +87,15 @@ static int analyzer_sip_init(struct analyzer *analyzer) {
 		goto err;
 
 	priv->p_dialog_timeout = ptype_alloc_unit("uint32", "seconds");
-	priv->p_call_max_duration = ptype_alloc_unit("uint32", "seconds");
-	if (!priv->p_dialog_timeout || !priv->p_call_max_duration)
+	priv->p_dialog_connected_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!priv->p_dialog_timeout || !priv->p_dialog_connected_timeout)
 		goto err;
 
 	p = registry_new_param("dialog_timeout", "300", priv->p_dialog_timeout, "Timeout for SIP dialogs", 0);
 	if (analyzer_add_param(analyzer, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("call_max_duration", "10800", priv->p_call_max_duration, "Maximum duration of established calls", 0);
+	p = registry_new_param("dialog_connected_timeout", "10800", priv->p_dialog_connected_timeout, "Timeout for dialogs which established a call (UDP only)", 0);
 	if (analyzer_add_param(analyzer, p) != POM_OK)
 		goto err;
 
@@ -246,6 +246,8 @@ static int analyzer_sip_finish(struct analyzer *analyzer) {
 	struct analyzer_sip_call *cur_call, *tmp;
 	HASH_ITER(hh, analyzer_sip_calls, cur_call, tmp) {
 		HASH_DEL(analyzer_sip_calls, cur_call);
+		while (cur_call->dialogs)
+			analyzer_sip_dialog_cleanup(cur_call->dialogs);
 		analyzer_sip_call_cleanup(cur_call);
 	}
 
@@ -288,8 +290,8 @@ static int analyzer_sip_cleanup(struct analyzer *analyzer) {
 	if (priv->p_dialog_timeout)
 		ptype_cleanup(priv->p_dialog_timeout);
 
-	if (priv->p_call_max_duration)
-		ptype_cleanup(priv->p_call_max_duration);
+	if (priv->p_dialog_connected_timeout)
+		ptype_cleanup(priv->p_dialog_connected_timeout);
 
 	free(priv);
 
@@ -409,10 +411,6 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 		return NULL;
 	}
 
-	call->t = timer_alloc(call, analyzer_sip_call_timeout);
-	if (!call->t)
-		goto err;
-
 	call->call_id = strdup(call_id);
 	if (!call->call_id) {
 		pom_oom(strlen(call_id) + 1);
@@ -432,8 +430,6 @@ err:
 		pthread_mutex_destroy(&call->lock);
 		if (call->call_id)
 			free(call->call_id);
-		if (call->t)
-			timer_cleanup(call->t);
 		free(call);
 	}
 
@@ -447,7 +443,19 @@ static int analyzer_sip_conntrack_cleanup(void *obj, void *priv) {
 	while (cpriv->dialogs) {
 		struct analyzer_sip_call_dialog *d = cpriv->dialogs;
 		cpriv->dialogs = d->ce_next;
-		analyzer_sip_dialog_cleanup(d);
+
+		if (d->state != analyzer_sip_dialog_state_connected) {
+			analyzer_sip_dialog_remove(d);
+		} else {
+			// The dialog is in a call, keep it
+			d->ce_next = NULL;
+			d->ce_prev = NULL;
+			d->ce = NULL;
+			d->ce_priv = NULL;
+
+			// Add the expectation to wait for the connection to come back
+			proto_expectation_add(d->expt);
+		}
 	}
 
 	free(cpriv);
@@ -473,9 +481,6 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 	if (call->call_id)
 		free(call->call_id);
 
-	if (call->t)
-		timer_cleanup(call->t);
-
 	if (call->tel_call)
 		telephony_call_cleanup(call->tel_call);
 
@@ -486,15 +491,47 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 	return POM_OK;
 }
 
-static int analyzer_sip_call_dialog_terminate(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d) {
+static int analyzer_sip_call_dialog_set_state(struct analyzer_sip_priv *priv, struct event *evt, struct analyzer_sip_call_dialog *d, enum analyzer_sip_dialog_state state) {
 
-	if (d->to_tag) {
-		debug_sip("Full dialog for call %s terminated : from_tag %s, to_tag %s", d->call->call_id, d->from_tag, d->to_tag);
-	} else {
-		debug_sip("Half dialog for call %s terminated : from_tag %s, branch %s", d->call->call_id, d->from_tag, d->branch);
+	if (d->state == state)
+		return POM_OK;
+
+	if (state < d->state) {
+		pomlog(POMLOG_WARN "Trying to decrease dialog state from %u to %u", d->state, state);
+		return POM_OK;
 	}
 
-	d->terminated = 1;
+	if (state == analyzer_sip_dialog_state_connected) {
+		if (d->to_tag) {
+			debug_sip("Full dialog for call %s connected : from_tag %s, to_tag %s", d->call->call_id, d->from_tag, d->to_tag);
+		} else {
+			debug_sip("Half dialog for call %s connected : from_tag %s, branch %s", d->call->call_id, d->from_tag, d->branch);
+		}
+
+		// Update the timer
+		if (timer_queue_now(d->t, *PTYPE_UINT32_GETVAL(priv->p_dialog_connected_timeout), event_get_timestamp(evt)) != POM_OK)
+			return POM_ERR;
+
+		// Create an expectation for our call
+		d->expt = proto_expectation_alloc_from_conntrack(event_get_conntrack(evt), priv->proto_sip, NULL);
+		if (!d->expt)
+			return POM_ERR;
+
+		proto_expectation_set_match_callback(d->expt, analyzer_sip_expectation_matched, d);
+
+	} else if (state == analyzer_sip_dialog_state_terminated) {
+		if (d->to_tag) {
+			debug_sip("Full dialog for call %s terminated : from_tag %s, to_tag %s", d->call->call_id, d->from_tag, d->to_tag);
+		} else {
+			debug_sip("Half dialog for call %s terminated : from_tag %s, branch %s", d->call->call_id, d->from_tag, d->branch);
+		}
+		// Update the timer
+		if (timer_queue_now(d->t, *PTYPE_UINT32_GETVAL(priv->p_dialog_timeout), event_get_timestamp(evt)) != POM_OK)
+			return POM_ERR;
+	}
+
+	d->state = state;
+
 	return POM_OK;
 }
 
@@ -590,9 +627,6 @@ static int analyzer_sip_call_set_state(struct analyzer_sip_priv *priv, struct ev
 	}
 
 	if (state == analyzer_sip_call_state_connected) {
-
-		// Start the connected timer
-		timer_queue_now(call->t, *PTYPE_UINT32_GETVAL(priv->p_call_max_duration), event_get_timestamp(evt));
 
 		call->connected_ts = event_get_timestamp(evt);
 
@@ -714,8 +748,9 @@ static int analyzer_sip_process_request(struct analyzer_sip_priv *priv, struct e
 		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_trying);
 	} else if (method == analyzer_sip_method_cancel) {
 		// The current dialog is canceled
-		return analyzer_sip_call_dialog_terminate(priv, evt, d);
+		return analyzer_sip_call_dialog_set_state(priv, evt, d, analyzer_sip_dialog_state_terminated);
 	} else if (method == analyzer_sip_method_bye) {
+		analyzer_sip_call_dialog_set_state(priv, evt, d, analyzer_sip_dialog_state_terminated);
 		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_terminated);
 	}
 
@@ -747,11 +782,19 @@ static int analyzer_sip_process_response(struct analyzer_sip_priv *priv, struct 
 		return POM_OK;
 	}
 
-	if (status == 180) { // Ringing
-		return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_alerting);
-	} else if (status == 200) {
-		if (d->cseq_method[cseq_dir] == analyzer_sip_method_invite)
-			return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_connected);
+	// TODO add more possible replies status
+	switch (status) {
+		case 180: // Ringing
+			return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_alerting);
+
+		case 200: // OK
+			if (d->cseq_method[cseq_dir] == analyzer_sip_method_invite) {
+				analyzer_sip_call_dialog_set_state(priv, evt, d, analyzer_sip_dialog_state_connected);
+				return analyzer_sip_call_set_state(priv, evt, d->call, analyzer_sip_call_state_connected);
+			}
+			break;
+		case 488: // Not acceptable here
+			return analyzer_sip_call_dialog_set_state(priv, evt, d, analyzer_sip_dialog_state_terminated);
 	}
 	return POM_OK;
 }
@@ -799,7 +842,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 
 	struct conntrack_entry *ce = event_get_conntrack(evt);
 
-	struct analyzer_sip_conntrack_priv *cpriv = conntrack_get_priv(ce, analyzer);
+	struct analyzer_sip_conntrack_priv *cpriv = conntrack_get_priv(ce, analyzer_sip_calls);
 
 	if (!cpriv) {
 		cpriv = malloc(sizeof(struct analyzer_sip_conntrack_priv));
@@ -809,11 +852,12 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 			return POM_ERR;
 		}
 		memset(cpriv, 0, sizeof(struct analyzer_sip_conntrack_priv));
-		conntrack_add_priv(ce, analyzer, cpriv, analyzer_sip_conntrack_cleanup);
+		conntrack_add_priv(ce, analyzer_sip_calls, cpriv, analyzer_sip_conntrack_cleanup);
 	}
 
 	struct analyzer_sip_call_dialog *dialog = NULL;
 
+	// Try to find the dialog in the list of dialog for this conntrack
 	if (to_tag) {
 		// This might be the first message creating an complete dialog or
 		// a message from the UAS like a re-invite
@@ -838,7 +882,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 						break;
 					}
 				}
-			} else if (!strcmp(to_tag, dialog->from_tag)) {
+			} else if (dialog->to_tag && !strcmp(to_tag, dialog->from_tag) && !strcmp(from_tag, dialog->to_tag)) {
 				// The dialog matched in the reverse direction
 				// This means we are processing a request from the UAS or a response from the UAC
 				break;
@@ -857,6 +901,21 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		}
 	}
 
+	if (!dialog && to_tag) {
+		// Nothing matched, check if it's an established dialog
+		// for which the conntrack expired, it must have a to and from tag
+		for (dialog = call->dialogs; dialog; dialog = dialog->next) {
+			if (dialog->ce || !dialog->to_tag) // Ignore dialogs assigned to a conntrack or without a to_tag
+				continue;
+			if (!strcmp(from_tag, dialog->from_tag) && !strcmp(to_tag, dialog->to_tag))
+				break; // Got you !
+
+			// If not, maybe the reverse direction ?
+			if (!strcmp(to_tag, dialog->from_tag) && !strcmp(from_tag, dialog->to_tag))
+				break; // Got you !
+		}
+	}
+
 	if (!dialog) {
 		// No dialog was found, let's create one !
 		dialog = malloc(sizeof(struct analyzer_sip_call_dialog));
@@ -869,7 +928,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 
 		dialog->ce = ce;
 
-		dialog->t = conntrack_timer_alloc(ce, analyzer_sip_dialog_timeout, dialog);
+		dialog->t = timer_alloc(dialog, analyzer_sip_dialog_timeout);
 		if (!dialog->t) {
 			pom_mutex_unlock(&call->lock);
 			return POM_ERR;
@@ -878,7 +937,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		dialog->from_tag = strdup(from_tag);
 		if (!dialog->from_tag) {
 			pom_mutex_unlock(&call->lock);
-			conntrack_timer_cleanup(dialog->t);
+			timer_cleanup(dialog->t);
 			free(dialog);
 			pom_oom(strlen(from_tag) + 1);
 			pom_mutex_unlock(&call->lock);
@@ -889,7 +948,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		if (!dialog->branch) {
 			pom_mutex_unlock(&call->lock);
 			free(dialog->from_tag);
-			conntrack_timer_cleanup(dialog->t);
+			timer_cleanup(dialog->t);
 			free(dialog);
 			pom_oom(strlen(branch) + 1);
 			return POM_ERR;
@@ -901,7 +960,7 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 				pom_mutex_unlock(&call->lock);
 				free(dialog->branch);
 				free(dialog->from_tag);
-				conntrack_timer_cleanup(dialog->t);
+				timer_cleanup(dialog->t);
 				free(dialog);
 				pom_oom(strlen(to_tag) + 1);
 				return POM_ERR;
@@ -931,13 +990,16 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 
 	cpriv->cur_dialog = dialog;
 
-	if (dialog->terminated) {
+	if (dialog->state == analyzer_sip_dialog_state_terminated) {
 		pom_mutex_unlock(&call->lock);
 		debug_sip("Ignoring event on terminated dialog for call %s", call->call_id);
 		return POM_OK;
 	}
 
-	if (conntrack_timer_queue(dialog->t, *PTYPE_UINT32_GETVAL(priv->p_dialog_timeout), event_get_timestamp(evt)) != POM_OK) {
+	uint32_t dialog_timeout = *PTYPE_UINT32_GETVAL(priv->p_dialog_timeout);
+	if (dialog->state == analyzer_sip_dialog_state_connected)
+		dialog_timeout =  *PTYPE_UINT32_GETVAL(priv->p_dialog_connected_timeout);
+	if (timer_queue_now(dialog->t, dialog_timeout, event_get_timestamp(evt)) != POM_OK) {
 		pom_mutex_unlock(&call->lock);
 		return POM_ERR;
 	}
@@ -961,40 +1023,59 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 	return res;
 }
 
-static int analyzer_sip_call_timeout(void *priv, ptime now) {
+static void analyzer_sip_expectation_matched(struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce) {
 
-	// An established call lasted more than our max duration
-	struct analyzer_sip_call *call = priv;
+	struct analyzer_sip_conntrack_priv *cpriv = conntrack_get_priv(ce, analyzer_sip_calls);
 
-	pom_rwlock_wlock(&analyzer_sip_calls_lock);
-	HASH_DEL(analyzer_sip_calls, call);
-	pom_mutex_lock(&call->lock);
-	pom_mutex_unlock(&call->lock);
-	pom_rwlock_unlock(&analyzer_sip_calls_lock);
+	if (!cpriv) {
+		cpriv = malloc(sizeof(struct analyzer_sip_conntrack_priv));
+		if (!cpriv) {
+			pom_oom(sizeof(struct analyzer_sip_conntrack_priv));
+			return;
+		}
+		memset(cpriv, 0, sizeof(struct analyzer_sip_conntrack_priv));
+		conntrack_add_priv(ce, analyzer_sip_calls, cpriv, analyzer_sip_conntrack_cleanup);
+	}
 
-	return analyzer_sip_call_cleanup(call);
+	// Re add the dialog to the conntrack
+	struct analyzer_sip_call_dialog *d = callback_priv;
+	pom_mutex_lock(&d->call->lock);
+
+	d->ce_next = cpriv->dialogs;
+	if (d->ce_next)
+		d->ce_next->ce_prev = d;
+	cpriv->dialogs = d;
+
+	pom_mutex_unlock(&d->call->lock);
+
 }
 
-static int analyzer_sip_dialog_timeout(struct conntrack_entry *ce, void *priv, ptime now) {
+static int analyzer_sip_dialog_timeout(void *priv, ptime now) {
 
 	struct analyzer_sip_call_dialog *d = priv;
-	struct analyzer_sip_conntrack_priv *cpriv = d->ce_priv;
 
-	// Remove the dialog from the conntrack_entry so we can release the conntrack
-	if (d->ce_prev)
-		d->ce_prev->ce_next = d->ce_next;
-	else
-		cpriv->dialogs = d->ce_next;
 
-	if (d->ce_next)
-		d->ce_next->ce_prev = d->ce_prev;
+	if (d->ce) {
+		conntrack_lock(d->ce);
 
-	conntrack_unlock(ce);
+		struct analyzer_sip_conntrack_priv *cpriv = d->ce_priv;
 
-	return analyzer_sip_dialog_cleanup(d);
+		// Remove the dialog from the conntrack_entry so we can release the conntrack
+		if (d->ce_prev)
+			d->ce_prev->ce_next = d->ce_next;
+		else
+			cpriv->dialogs = d->ce_next;
+
+		if (d->ce_next)
+			d->ce_next->ce_prev = d->ce_prev;
+
+		conntrack_unlock(d->ce);
+	}
+
+	return analyzer_sip_dialog_remove(d);
 }
 
-static int analyzer_sip_dialog_cleanup(struct analyzer_sip_call_dialog *d) {
+static int analyzer_sip_dialog_remove(struct analyzer_sip_call_dialog *d) {
 
 	// We need to acquire this lock first in case we need to cleanup the call
 	pom_rwlock_wlock(&analyzer_sip_calls_lock);
@@ -1004,33 +1085,11 @@ static int analyzer_sip_dialog_cleanup(struct analyzer_sip_call_dialog *d) {
 	// Make sure notbody else is using this call
 	pom_mutex_lock(&call->lock);
 
-	if (!d->to_tag) {
-		debug_sip("Cleaning up half dialog for call %s : from_tag %s, branch %s", call->call_id, d->from_tag, d->branch);
-	} else {
-		debug_sip("Cleaning up full dialog for call %s : from_tag %s, to_tag %s", call->call_id, d->from_tag, d->to_tag);
-	}
-
-	conntrack_timer_cleanup(d->t);
-	free(d->from_tag);
-	free(d->branch);
-
-	if (d->to_tag)
-		free(d->to_tag);
-
-	// Remove the dialog from the call
-	if (d->prev)
-		d->prev->next = d->next;
-	else
-		call->dialogs = d->next;
-
-	if (d->next)
-		d->next->prev = d->prev;
-
-	free(d);
+	analyzer_sip_dialog_cleanup(d);
 
 	int cleanup = 0;
 
-	if (!call->dialogs && call->state != analyzer_sip_call_state_connected) {
+	if (!call->dialogs) {
 		cleanup = 1;
 		HASH_DEL(analyzer_sip_calls, call);
 	}
@@ -1038,7 +1097,44 @@ static int analyzer_sip_dialog_cleanup(struct analyzer_sip_call_dialog *d) {
 	pom_rwlock_unlock(&analyzer_sip_calls_lock);
 
 	if (cleanup)
-		analyzer_sip_call_cleanup(call);
+		return analyzer_sip_call_cleanup(call);
+
+	return POM_OK;
+}
+
+static int analyzer_sip_dialog_cleanup(struct analyzer_sip_call_dialog *d) {
+
+
+	if (!d->to_tag) {
+		debug_sip("Cleaning up half dialog for call %s : from_tag %s, branch %s", d->call->call_id, d->from_tag, d->branch);
+	} else {
+		debug_sip("Cleaning up full dialog for call %s : from_tag %s, to_tag %s", d->call->call_id, d->from_tag, d->to_tag);
+	}
+
+	timer_cleanup(d->t);
+	free(d->from_tag);
+	free(d->branch);
+
+	if (d->to_tag)
+		free(d->to_tag);
+
+	if (d->expt)
+		proto_expectation_cleanup(d->expt);
+
+	if (d->sdp_dialog)
+		telephony_sdp_dialog_cleanup(d->sdp_dialog);
+
+	// Remove the dialog from the call
+	if (d->prev)
+		d->prev->next = d->next;
+	else
+		d->call->dialogs = d->next;
+
+	if (d->next)
+		d->next->prev = d->prev;
+
+	free(d);
+
 
 	return POM_OK;
 }
@@ -1060,10 +1156,18 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	if (!ce)
 		return PLOAD_OPEN_STOP;
 
-	struct analyzer_sip_call *call = analyzer_sip_event_get_call(analyzer, evt);
-	if (!call) // Error while finding the call
+	struct analyzer_sip_conntrack_priv *cpriv = conntrack_get_priv(ce, analyzer_sip_calls);
+	if (!cpriv)
 		return PLOAD_OPEN_ERR;
 
+	struct analyzer_sip_call_dialog *d = cpriv->cur_dialog;
+	if (!d) {
+		pomlog(POMLOG_WARN "Internal error, SDP from SIP packet does not have a dialog");
+		return PLOAD_OPEN_ERR;
+	}
+
+	struct analyzer_sip_call *call = d->call;
+	pom_mutex_lock(&call->lock);
 
 	if (!call->tel_call) {
 		call->tel_call = telephony_call_alloc();
@@ -1073,17 +1177,23 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 		}
 	}
 
-	// We don't need to keep the lock on the call
-	pom_mutex_unlock(&call->lock);
+	if (!d->sdp_dialog) {
+		d->sdp_dialog = telephony_sdp_dialog_alloc(call->tel_call);
+		if (!d->sdp_dialog) {
+			pom_mutex_unlock(&call->lock);
+			return PLOAD_OPEN_ERR;
+		}
+	}
 
 	struct analyzer_sip_sdp_priv *sdp_priv = malloc(sizeof(struct analyzer_sip_sdp_priv));
 	if (!sdp_priv) {
 		pom_oom(sizeof(struct analyzer_sip_sdp_priv));
+		pom_mutex_unlock(&call->lock);
 		return PLOAD_OPEN_ERR;
 	}
 	memset(sdp_priv, 0, sizeof(struct analyzer_sip_sdp_priv));
 
-	sdp_priv->sdp = telephony_sdp_alloc();
+	sdp_priv->sdp = telephony_sdp_alloc(d->sdp_dialog);
 
 	if (!sdp_priv->sdp) {
 		free(sdp_priv);
@@ -1094,6 +1204,8 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	sdp_priv->ts = event_get_timestamp(evt);
 
 	*priv = sdp_priv;
+
+	pom_mutex_unlock(&call->lock);
 
 	return PLOAD_OPEN_CONTINUE;
 }
@@ -1112,7 +1224,7 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 	if (telephony_sdp_parse_end(p->sdp) != POM_OK)
 		return POM_ERR;
 
-	if (telephony_sdp_add_expectations(p->call->tel_call, p->sdp, p->ts) != POM_OK)
+	if (telephony_sdp_add_expectations(p->sdp, p->ts) != POM_OK)
 		return POM_ERR;
 
 	telephony_sdp_cleanup(p->sdp);
