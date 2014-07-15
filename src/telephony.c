@@ -467,7 +467,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 }
 
 
-struct telephony_sdp *telephony_sdp_alloc() {
+struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d) {
 
 	struct telephony_sdp *sdp = malloc(sizeof(struct telephony_sdp));
 
@@ -482,6 +482,8 @@ struct telephony_sdp *telephony_sdp_alloc() {
 		free(sdp);
 		return NULL;
 	}
+
+	sdp->dialog = d;
 
 	return sdp;
 }
@@ -655,11 +657,12 @@ struct telephony_stream *telephony_stream_find(struct telephony_stream *streams,
 	return tmp;
 }
 
-int telephony_sdp_add_expectations(struct telephony_call *call, struct telephony_sdp *sdp, ptime now) {
+int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 
-	if (!call || !sdp)
+	if (!sdp)
 		return POM_ERR;
 
+	struct telephony_sdp_dialog *d = sdp->dialog;
 	struct telephony_stream *stream = sdp->streams;
 
 	while (stream) {
@@ -689,7 +692,7 @@ int telephony_sdp_add_expectations(struct telephony_call *call, struct telephony
 		}
 
 		// It should match the first address and port
-		struct telephony_stream *tmp_stream = telephony_stream_find(call->streams, stream->addrs->addr, stream->l4proto, stream->port);
+		struct telephony_stream *tmp_stream = telephony_stream_find(d->streams, stream->addrs->addr, stream->l4proto, stream->port);
 		if (tmp_stream) {
 			// The expectation for this stream as already been added !
 			// TODO check if port is 0 or if stream is inactive
@@ -741,7 +744,8 @@ int telephony_sdp_add_expectations(struct telephony_call *call, struct telephony
 				}
 				ptype_cleanup(port);
 
-				if (proto_expectation_add(e) != POM_OK) {
+				// FIXME will be improved after
+				if (proto_expectation_add_and_cleanup(e, 60, now) != POM_OK) {
 					proto_expectation_cleanup(e);
 					return POM_ERR;
 				}
@@ -761,10 +765,10 @@ int telephony_sdp_add_expectations(struct telephony_call *call, struct telephony
 		else
 			sdp->streams = tmp_stream->next;
 
-		tmp_stream->next = call->streams;
+		tmp_stream->next = d->streams;
 		if (tmp_stream->next)
 			tmp_stream->next->prev = tmp_stream;
-		call->streams = tmp_stream;
+		d->streams = tmp_stream;
 
 		tmp_stream->prev = NULL;
 	}
@@ -829,8 +833,10 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 struct telephony_call *telephony_call_alloc() {
 
 	struct telephony_call *res = malloc(sizeof(struct telephony_call));
-	if (!res)
+	if (!res) {
 		pom_oom(sizeof(struct telephony_call));
+		return NULL;
+	}
 	memset(res, 0, sizeof(struct telephony_call));
 
 	return res;
@@ -838,11 +844,36 @@ struct telephony_call *telephony_call_alloc() {
 
 void telephony_call_cleanup(struct telephony_call *call) {
 
-	while (call->streams) {
-		struct telephony_stream *s = call->streams;
-		call->streams = s->next;
-		telephony_stream_cleanup(s);
+	while (call->dialogs) {
+		struct telephony_sdp_dialog *d = call->dialogs;
+		call->dialogs = d->next;
+		telephony_sdp_dialog_cleanup(d);
 	}
 
 	free(call);
+}
+
+
+struct telephony_sdp_dialog *telephony_sdp_dialog_alloc(struct telephony_call *call) {
+
+	struct telephony_sdp_dialog *res = malloc(sizeof(struct telephony_sdp_dialog));
+	if (!res) {
+		pom_oom(sizeof(struct telephony_sdp_dialog));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct telephony_sdp_dialog));
+	res->call = call;
+
+	return res;
+}
+
+void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog) {
+
+	while (sdp_dialog->streams) {
+		struct telephony_stream *s = sdp_dialog->streams;
+		sdp_dialog->streams = s->next;
+		telephony_stream_cleanup(s);
+	}
+
+	free(sdp_dialog);
 }

@@ -42,7 +42,15 @@ struct telephony_codec_reg {
 
 struct telephony_call {
 
+	struct telephony_sdp_dialog *dialogs;
+};
+
+struct telephony_sdp_dialog {
+
+	struct telephony_call *call;
 	struct telephony_stream *streams;
+
+	struct telephony_sdp_dialog *prev, *next;
 };
 
 // Media stream definitions
@@ -123,6 +131,7 @@ struct telephony_sdp {
 
 	struct telephony_stream *streams;
 
+	struct telephony_sdp_dialog *dialog;
 
 };
 
