@@ -32,6 +32,9 @@
 
 #include "proto_rtp.h"
 
+static struct ptype *proto_rtp_p_buffer_timeout = NULL, *proto_rtp_p_stream_timeout = NULL;
+
+
 struct mod_reg_info* proto_rtp_reg_info() {
 
 	static struct mod_reg_info reg_info = { 0 };
@@ -87,25 +90,16 @@ static int proto_rtp_mod_register(struct mod_reg *mod) {
 static int proto_rtp_init(struct proto *proto, struct registry_instance *i) {
 
 
-	struct proto_rtp_priv *priv = malloc(sizeof(struct proto_rtp_priv));
-	if (!priv) {
-		pom_oom(sizeof(struct proto_rtp_priv));
-		return POM_ERR;
-	}
-	memset(priv, 0, sizeof(struct proto_rtp_priv));
-
-	proto_set_priv(proto, priv);
-
-	priv->p_buffer_timeout = ptype_alloc_unit("uint16", "seconds");
-	priv->p_conn_timeout = ptype_alloc_unit("uint32", "seconds");
-	if (!priv->p_buffer_timeout || !priv->p_conn_timeout)
+	proto_rtp_p_buffer_timeout = ptype_alloc_unit("uint16", "seconds");
+	proto_rtp_p_stream_timeout = ptype_alloc_unit("uint32", "seconds");
+	if (!proto_rtp_p_buffer_timeout || !proto_rtp_p_stream_timeout)
 		return POM_ERR;
 
-	struct registry_param *p = registry_new_param("connection_timeout", "180", priv->p_conn_timeout, "Timeout for RTP connections", 0);
+	struct registry_param *p = registry_new_param("stream_timeout", "180", proto_rtp_p_stream_timeout, "Timeout for RTP connections", 0);
 	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
-	p = registry_new_param("buffer_timeout", "1", priv->p_buffer_timeout, "Timeout for the jitter buffer", 0);
+	p = registry_new_param("buffer_timeout", "1", proto_rtp_p_buffer_timeout, "Timeout for the jitter buffer", 0);
 	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
@@ -120,14 +114,14 @@ err:
 
 static int proto_rtp_cleanup(void *proto_priv) {
 
-	struct proto_rtp_priv *priv = proto_priv;
-
-	if (priv->p_buffer_timeout)
-		ptype_cleanup(priv->p_buffer_timeout);
-	if (priv->p_conn_timeout)
-		ptype_cleanup(priv->p_conn_timeout);
-
-	free(priv);
+	if (proto_rtp_p_buffer_timeout) {
+		ptype_cleanup(proto_rtp_p_buffer_timeout);
+		proto_rtp_p_buffer_timeout = NULL;
+	}
+	if (proto_rtp_p_stream_timeout) {
+		ptype_cleanup(proto_rtp_p_stream_timeout);
+		proto_rtp_p_stream_timeout = NULL;
+	}
 
 	return POM_OK;
 }
@@ -182,11 +176,6 @@ static int proto_rtp_process(void *proto_priv, struct packet *p, struct proto_pr
 	if (conntrack_get_unique_from_parent(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
 
-	struct proto_rtp_priv *ppriv = proto_priv;
-	if (conntrack_delayed_cleanup(s->ce, *PTYPE_UINT32_GETVAL(ppriv->p_conn_timeout), p->ts) != POM_OK) {
-		conntrack_unlock(s->ce);
-		return PROTO_ERR;
-	}
 
 	struct proto_rtp_conntrack_priv *priv = s->ce->priv;
 
@@ -201,13 +190,26 @@ static int proto_rtp_process(void *proto_priv, struct packet *p, struct proto_pr
 		s->ce->priv = priv;
 	}
 
-	if (!priv->stream[s->direction]) {
-		priv->stream[s->direction] = proto_rtp_stream_alloc(s->ce, seq);
-		if (!priv->stream[s->direction])
+	if (!priv->streams) // Cancel any possible pending cleanup
+		conntrack_delayed_cleanup(s->ce, 0, p->ts);
+
+	struct proto_rtp_stream *stream;
+
+	for (stream = priv->streams; stream && stream->ssrc != hdr->ssrc; stream = stream->next);
+
+	if (!stream) {
+		stream = proto_rtp_stream_alloc(s->ce, hdr->ssrc, seq);
+		if (!stream)
 			goto err;
+
+		stream->next = priv->streams;
+		if (stream->next)
+			stream->next->prev = stream;
+		priv->streams = stream;
+
 	}
 
-	if (proto_rtp_stream_process_packet(priv->stream[s->direction], p, stack, stack_index, seq) != POM_OK)
+	if (proto_rtp_stream_process_packet(stream, p, stack, stack_index, seq) != POM_OK)
 		goto err;
 
 	conntrack_unlock(s->ce);
@@ -229,10 +231,10 @@ static int proto_rtp_conntrack_cleanup(void *ce_priv) {
 
 	struct proto_rtp_conntrack_priv *priv = ce_priv;
 
-	int i;
-	for (i = 0; i < POM_DIR_TOT; i++) {
-		if (priv->stream[i])
-			proto_rtp_stream_cleanup(priv->stream[i]);
+	while (priv->streams) {
+		struct proto_rtp_stream *tmp = priv->streams;
+		priv->streams = tmp->next;
+		proto_rtp_stream_cleanup(tmp);
 	}
 
 	free(priv);
@@ -240,7 +242,7 @@ static int proto_rtp_conntrack_cleanup(void *ce_priv) {
 	return POM_OK;
 }
 
-static struct proto_rtp_stream *proto_rtp_stream_alloc(struct conntrack_entry *ce, uint16_t init_seq) {
+static struct proto_rtp_stream *proto_rtp_stream_alloc(struct conntrack_entry *ce, uint32_t ssrc, uint16_t init_seq) {
 
 	struct proto_rtp_stream *res = malloc(sizeof(struct proto_rtp_stream));
 	if (!res) {
@@ -252,6 +254,7 @@ static struct proto_rtp_stream *proto_rtp_stream_alloc(struct conntrack_entry *c
 	res->t = conntrack_timer_alloc(ce, proto_rtp_stream_timeout, res);
 
 	res->next_seq = init_seq;
+	res->ssrc = ssrc;
 
 	return res;
 }
@@ -278,7 +281,9 @@ static int proto_rtp_stream_process_queue(struct proto_rtp_stream *stream, ptime
 	}
 
 	if (stream->head)
-		conntrack_timer_queue(stream->t, 1, now);
+		conntrack_timer_queue(stream->t, *PTYPE_UINT32_GETVAL(proto_rtp_p_buffer_timeout), now);
+	else
+		conntrack_timer_queue(stream->t, *PTYPE_UINT32_GETVAL(proto_rtp_p_stream_timeout), now);
 
 	return POM_OK;
 }
@@ -288,6 +293,20 @@ static int proto_rtp_stream_timeout(struct conntrack_entry *ce, void *priv, ptim
 	struct proto_rtp_stream *stream = priv;
 
 	if (!stream->head) {
+		// This stream has timed out, remove it
+		struct proto_rtp_conntrack_priv *cpriv = ce->priv;
+		if (stream->next)
+			stream->next->prev = stream->prev;
+		if (stream->prev)
+			stream->prev->next = stream->next;
+		else
+			cpriv->streams = stream->next;
+		proto_rtp_stream_cleanup(stream);
+
+		if (!cpriv->streams) {
+			// Timeout the conntrack shortly after
+			conntrack_delayed_cleanup(ce, 1, now);
+		}
 		conntrack_unlock(ce);
 		return POM_OK;
 	}
@@ -315,11 +334,10 @@ static int proto_rtp_stream_process_packet(struct proto_rtp_stream *stream, stru
 			return POM_ERR;
 
 		int res = POM_OK;
-		if (stream->head) {
+		if (stream->head)
 			res = proto_rtp_stream_process_queue(stream, pkt->ts);
-			if (!stream->head)
-				conntrack_timer_dequeue(stream->t);
-		}
+		else
+			conntrack_timer_queue(stream->t, *PTYPE_UINT32_GETVAL(proto_rtp_p_stream_timeout), pkt->ts);
 		return res;
 	}
 
@@ -355,7 +373,7 @@ static int proto_rtp_stream_process_packet(struct proto_rtp_stream *stream, stru
 	p->seq = seq;
 
 	if (!stream->head)
-		conntrack_timer_queue(stream->t, 1, pkt->ts);
+		conntrack_timer_queue(stream->t, *PTYPE_UINT32_GETVAL(proto_rtp_p_buffer_timeout), pkt->ts);
 
 	if (!tmp) {
 		// Packet goes at the head
@@ -375,7 +393,6 @@ static int proto_rtp_stream_process_packet(struct proto_rtp_stream *stream, stru
 		else
 			stream->tail = p;
 		tmp->next = p;
-
 	}
 
 	return POM_OK;
