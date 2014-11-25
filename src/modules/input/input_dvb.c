@@ -906,28 +906,28 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 				}
 
 				// Avoid repeating the status if it's always the same
-				if (status == last_status)
-					continue;
+				if (status != last_status) {
 
-				char status_str[128];
-				memset(status_str, 0, sizeof(status_str));
-				if (status) {
-					strcat(status_str, "Status : " );
-					last_status = status;
+					char status_str[128];
+					memset(status_str, 0, sizeof(status_str));
+					if (status) {
+						strcat(status_str, "Status : " );
+						last_status = status;
+					}
+
+					if (status & FE_HAS_SIGNAL)
+						strcat(status_str, "SIGNAL ");
+					if (status & FE_HAS_CARRIER)
+						strcat(status_str, "CARRIER ");
+					if (status & FE_HAS_VITERBI)
+						strcat(status_str, "VITERBI ");
+					if (status & FE_HAS_SYNC)
+						strcat(status_str, "VSYNC ");
+					if (status & FE_HAS_LOCK)
+						strcat(status_str, "LOCK ");
+					if (status)
+						pomlog(POMLOG_DEBUG "%s", status_str);
 				}
-
-				if (status & FE_HAS_SIGNAL)
-					strcat(status_str, "SIGNAL ");
-				if (status & FE_HAS_CARRIER)
-					strcat(status_str, "CARRIER ");
-				if (status & FE_HAS_VITERBI)
-					strcat(status_str, "VITERBI ");
-				if (status & FE_HAS_SYNC)
-					strcat(status_str, "VSYNC ");
-				if (status & FE_HAS_LOCK)
-					strcat(status_str, "LOCK ");
-				if (status)
-					pomlog(POMLOG_DEBUG "%s", status_str);
 
 				if (status & FE_HAS_LOCK) {
 					return 1;
