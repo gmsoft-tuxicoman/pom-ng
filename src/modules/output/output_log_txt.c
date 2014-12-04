@@ -191,7 +191,7 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 			struct data_reg *dreg = evt_info->data_reg;
 			for (field_id = 0; field_id < dreg->data_count && strcmp(dreg->items[field_id].name, field_name); field_id++);
 
-			if (!dreg->items[field_id].name) {
+			if (field_id >= dreg->data_count) {
 				pomlog(POMLOG_WARN "Field %s not found in event %s", field_name, evt_info->name);
 				free(field_name);
 				sep = cur + 1;
