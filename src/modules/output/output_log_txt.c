@@ -230,7 +230,7 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 				key++;
 
 				cur = key;
-				while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || (*cur >= 'A' && *cur <= 'Z') || *cur == '_')
+				while ((*cur >= '0' && *cur <= '9') || (*cur >= 'a' && *cur <= 'z') || (*cur >= 'A' && *cur <= 'Z') || *cur == '_' || *cur == '*')
 					cur++;
 				
 				if (*cur != ']') {
@@ -241,12 +241,16 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 					continue;
 				}
 				unsigned int key_len = cur - key;
-				field->key = strndup(key, key_len);
-				if (!field->key) {
-					pom_oom(key_len + 1);
-					free(field_name);
-					free(fields);
-					return NULL;
+				if (key_len == 1 && *key == '*') {
+					field->key = OUTPUT_LOG_TXT_FIELD_KEY_WILDCARD;
+				} else {
+					field->key = strndup(key, key_len);
+					if (!field->key) {
+						pom_oom(key_len + 1);
+						free(field_name);
+						free(fields);
+						return NULL;
+					}
 				}
 
 				end_off = cur - format + 1;
@@ -276,7 +280,7 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 			if (!field->ptype_format) {
 				pom_oom(ptype_format_len + 1);
 				free(field_name);
-				if (field->key)
+				if (field->key && field->key != OUTPUT_LOG_TXT_FIELD_KEY_WILDCARD)
 					free(fields->key);
 				free(fields);
 				return NULL;
@@ -515,7 +519,7 @@ int output_log_txt_close(void *output_priv) {
 		if (evt->fields) {
 			int i;
 			for (i = 0; evt->fields[i].id != -1; i++) {
-				if (evt->fields[i].key)
+				if (evt->fields[i].key && evt->fields[i].key != OUTPUT_LOG_TXT_FIELD_KEY_WILDCARD)
 					free(evt->fields[i].key);
 				if (evt->fields[i].ptype_format)
 					free(evt->fields[i].ptype_format);
@@ -639,6 +643,41 @@ int output_log_txt_process(struct event *evt, void *obj) {
 
 			struct data *evt_data = event_get_data(evt);
 			if (field->key) {
+
+				// Special handling for the wildcard '*'
+				if (field->key == OUTPUT_LOG_TXT_FIELD_KEY_WILDCARD) {
+					struct data_item *item;
+					for (item = evt_data[field->id].items; item; item = item->next) {
+						value = ptype_print_val_alloc(item->value, field->ptype_format);
+						if (!value) {
+							pom_mutex_unlock(&file->lock);
+							return POM_ERR;
+						}
+
+						if ((pom_write(file->fd, item->key, strlen(item->key)) != POM_OK) || (pom_write(file->fd, ": \"", strlen(": \"")) != POM_OK)) {
+							free(value);
+							goto write_err;
+						}
+						char *quote = NULL;
+						char *tmp = value;
+						while ((quote = strchr(tmp, '"'))) {
+							if ((pom_write(file->fd, tmp, quote - tmp) != POM_OK) || (pom_write(file->fd, "\\\"", strlen("\\\"")) != POM_OK)) {
+								free(value);
+								goto write_err;
+							}
+							tmp = quote + 1;
+						}
+						if (pom_write(file->fd, tmp, strlen(tmp)) != POM_OK || (pom_write(file->fd, "\"", 1) != POM_OK)) {
+							free(value);
+							goto write_err;
+						}
+
+						free(value);
+					}
+
+					continue;
+				}
+
 				// Find the right item in the list
 				struct data_item *item;
 				for (item = evt_data[field->id].items; item; item = item->next) {
@@ -670,7 +709,8 @@ int output_log_txt_process(struct event *evt, void *obj) {
 			if (allocated)
 				free(value);
 		} else {
-			pom_write(file->fd, "-", 1);
+			if (pom_write(file->fd, "-", 1) != POM_OK)
+				goto write_err;
 		}
 	}
 

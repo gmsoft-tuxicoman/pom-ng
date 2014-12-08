@@ -24,6 +24,7 @@
 #include "output_log.h"
 
 #define OUTPUT_LOG_TXT_RESOURCE "output_log_txt"
+#define OUTPUT_LOG_TXT_FIELD_KEY_WILDCARD	(void*)-1
 
 enum output_log_txt_field_type {
 	output_log_txt_event_field,
