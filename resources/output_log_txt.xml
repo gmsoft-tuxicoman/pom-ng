@@ -8,6 +8,7 @@
 			<item><name>docsis_monitor</name><description>Monitor DOCSIS cable modems</description></item>
 			<item><name>john_mschapv2</name><description>Output MSCHAPv2 hash for john the ripper</description></item>
 			<item><name>hashcat_md5chap</name><description>Output MD5(Chap) hash for hashcat</description></item>
+			<item><name>dns_record</name><description>Log DNS records</description></item>
 		</dataset>
 
 		<dataset name="events">
@@ -30,6 +31,9 @@
 			<item><template>hashcat_md5chap</template><event>ppp_chap_md5_auth</event><format>$response:$challenge:$identifier{%02X}</format><file>hashcat_md5chap_log</file></item>
 			<item><template>hashcat_md5chap</template><event>eap_md5_auth</event><format>$response:$challenge:$identifier{%02X}</format><file>hashcat_md5chap_log</file></item>
 
+			<!-- dns_record -->
+			<item><template>dns_record</template><event>dns_record</event><format>$name $class $type -> $values[*]</format><file>dns_record_log</file></item>
+
 		</dataset>
 
 		<dataset name="files">
@@ -38,6 +42,7 @@
 			<item><template>docsis_monitor</template><name>docsis_monitor_log</name><path>docsis.log</path></item>
 			<item><template>john_mschapv2</template><name>john_mschapv2_log</name><path>mschapv2.john</path></item>
 			<item><template>hashcat_md5chap</template><name>hashcat_md5chap_log</name><path>md5chap_4800.hashcat</path></item>
+			<item><template>dns_record</template><name>dns_record_log</name><path>dns_record.log</path></item>
 		</dataset>
 	</datasets>
 
