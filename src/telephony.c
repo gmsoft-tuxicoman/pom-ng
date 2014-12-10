@@ -146,7 +146,7 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 		struct telephony_stream_payload *pload;
 		for (pload = sdp->streams->ploads; pload && pload->pload_type != pt; pload = pload->next);
 		if (!pload) {
-			// Not found, createa  new one
+			// Not found, create a new one
 			pomlog(POMLOG_DEBUG "Payload type %hhu not found while parsing SDP a= line", pt);
 			pload = malloc(sizeof(struct telephony_stream_payload));
 			if (!pload) {
@@ -467,7 +467,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 }
 
 
-struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d) {
+struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d, ptime ts) {
 
 	struct telephony_sdp *sdp = malloc(sizeof(struct telephony_sdp));
 
@@ -484,6 +484,7 @@ struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d) {
 	}
 
 	sdp->dialog = d;
+	sdp->ts = ts;
 
 	return sdp;
 }
@@ -536,7 +537,7 @@ int telephony_sdp_parse(struct telephony_sdp *sdp, void *data, size_t len) {
 
 }
 
-int telephony_sdp_parse_end(struct telephony_sdp *sdp) {
+int telephony_sdp_end(struct telephony_sdp *sdp) {
 
 	// Free up the parser
 	

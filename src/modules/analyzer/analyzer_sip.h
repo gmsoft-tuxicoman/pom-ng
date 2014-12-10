@@ -150,14 +150,6 @@ struct analyzer_sip_call {
 	struct analyzer_sip_call *sess_prev, *sess_next;
 };
 
-struct analyzer_sip_sdp_priv {
-
-	struct analyzer_sip_sdp_line_lst *line_head, *line_tail;
-	struct analyzer_sip_call *call;
-	struct telephony_sdp *sdp;
-	ptime ts;
-};
-
 struct analyzer_sip_conntrack_priv {
 
 	struct analyzer_sip_call_dialog *dialogs;

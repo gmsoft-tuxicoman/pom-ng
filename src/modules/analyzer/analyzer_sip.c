@@ -1185,25 +1185,11 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 		}
 	}
 
-	struct analyzer_sip_sdp_priv *sdp_priv = malloc(sizeof(struct analyzer_sip_sdp_priv));
-	if (!sdp_priv) {
-		pom_oom(sizeof(struct analyzer_sip_sdp_priv));
-		pom_mutex_unlock(&call->lock);
+	struct telephony_sdp *sdp = telephony_sdp_alloc(d->sdp_dialog, event_get_timestamp(evt));
+	if (!sdp)
 		return PLOAD_OPEN_ERR;
-	}
-	memset(sdp_priv, 0, sizeof(struct analyzer_sip_sdp_priv));
 
-	sdp_priv->sdp = telephony_sdp_alloc(d->sdp_dialog);
-
-	if (!sdp_priv->sdp) {
-		free(sdp_priv);
-		return PLOAD_OPEN_ERR;
-	}
-
-	sdp_priv->call = call;
-	sdp_priv->ts = event_get_timestamp(evt);
-
-	*priv = sdp_priv;
+	*priv = sdp;
 
 	pom_mutex_unlock(&call->lock);
 
@@ -1212,25 +1198,16 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 
 static int analyzer_sip_sdp_write(void *obj, void *priv, void *data, size_t len) {
 
-	struct analyzer_sip_sdp_priv *p = priv;
-	return telephony_sdp_parse(p->sdp, data, len);
+	struct telephony_sdp *sdp = priv;
+	return telephony_sdp_parse(sdp, data, len);
 }
 
 
 static int analyzer_sip_sdp_close(void *obj, void *priv) {
 
-	struct analyzer_sip_sdp_priv *p = priv;
-
-	if (telephony_sdp_parse_end(p->sdp) != POM_OK)
-		return POM_ERR;
-
-	if (telephony_sdp_add_expectations(p->sdp, p->ts) != POM_OK)
-		return POM_ERR;
-
-	telephony_sdp_cleanup(p->sdp);
-
-	free(p);
-
+	struct telephony_sdp *sdp = priv;
+	telephony_sdp_end(sdp);
+	telephony_sdp_cleanup(sdp);
 	return POM_OK;
 }
 

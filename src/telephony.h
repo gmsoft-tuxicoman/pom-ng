@@ -78,6 +78,8 @@ struct telephony_stream {
 	enum telephony_codec_type pload_type;
 	struct proto *l4proto;
 
+	struct proto_expectation *expt;
+
 	struct telephony_stream *prev, *next;
 
 	uint16_t port, port_num;
@@ -132,6 +134,8 @@ struct telephony_sdp {
 	struct telephony_stream *streams;
 
 	struct telephony_sdp_dialog *dialog;
+
+	ptime ts;
 
 };
 

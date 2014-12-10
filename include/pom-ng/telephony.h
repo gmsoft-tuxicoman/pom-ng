@@ -42,9 +42,9 @@ struct telephony_sdp;
 struct telephony_sdp_dialog;
 struct telephony_stream;
 
-struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d);
+struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d, ptime ts);
 int telephony_sdp_parse(struct telephony_sdp *sdp, void *data, size_t len);
-int telephony_sdp_parse_end(struct telephony_sdp *sdp);
+int telephony_sdp_end(struct telephony_sdp *sdp);
 int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now);
 void telephony_stream_cleanup(struct telephony_stream *stream);
 void telephony_sdp_cleanup(struct telephony_sdp *sdp);
