@@ -478,6 +478,9 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 			event_cleanup(call->evt);
 	}
 
+	if (call->evt)
+		event_process_end(call->evt);
+
 	if (call->call_id)
 		free(call->call_id);
 
@@ -1170,7 +1173,7 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	pom_mutex_lock(&call->lock);
 
 	if (!call->tel_call) {
-		call->tel_call = telephony_call_alloc();
+		call->tel_call = telephony_call_alloc(call->evt);
 		if (!call->tel_call) {
 			pom_mutex_unlock(&call->lock);
 			return PLOAD_OPEN_ERR;
@@ -1207,6 +1210,8 @@ static int analyzer_sip_sdp_close(void *obj, void *priv) {
 
 	struct telephony_sdp *sdp = priv;
 	telephony_sdp_end(sdp);
+	// FIXME: There's got to be a better way to get the clock ...
+	telephony_sdp_add_expectations(sdp, core_get_clock_last());
 	telephony_sdp_cleanup(sdp);
 	return POM_OK;
 }

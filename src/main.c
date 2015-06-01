@@ -413,6 +413,7 @@ int main(int argc, char *argv[]) {
 
 	core_cleanup(shutdown_in_error);
 
+	telephony_cleanup();
 	input_cleanup();
 	xmlrpcsrv_stop();
 	pomlog_finish();
@@ -443,6 +444,7 @@ int main(int argc, char *argv[]) {
 	// Error path below
 
 err_telephony:
+	telephony_cleanup();
 err_addon:
 	addon_cleanup();
 err_dstore:

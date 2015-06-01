@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@
  */
 
 #include <pom-ng/proto.h>
+#include <pom-ng/pload.h>
 #include <pom-ng/ptype_uint16.h>
 
 #include "telephony.h"
@@ -32,6 +33,7 @@ static struct telephony_codec_reg telephony_codecs[] = {
 };
 
 static struct proto *telephony_proto_ipv4 = NULL, *telephony_proto_ipv6 = NULL, *telephony_proto_udp = NULL, *telephony_proto_rtp = NULL;
+static struct proto_packet_listener *telephony_rtp_listener = NULL;
 
 static struct telephony_codec_reg *telephony_codec_get_by_name(char *name) {
 
@@ -56,7 +58,18 @@ int telephony_init() {
 		return POM_ERR;
 	}
 
+	// Start to listen to RTP payload
+	telephony_rtp_listener = proto_packet_listener_register(telephony_proto_rtp, PROTO_PACKET_LISTENER_PLOAD_ONLY, telephony_init, telephony_rtp_pload_process, NULL);
+	if (!telephony_rtp_listener)
+		return POM_ERR;
+
+
 	return POM_OK;
+}
+
+int telephony_cleanup() {
+
+	return proto_packet_listener_unregister(telephony_rtp_listener);
 }
 
 static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *line, size_t len) {
@@ -666,6 +679,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 	struct telephony_sdp_dialog *d = sdp->dialog;
 	struct telephony_stream *stream = sdp->streams;
 
+	// Check each stream present in the SDP and find out if we are already monitoring it
 	while (stream) {
 
 		// We only support RTP/AVP stream so far
@@ -692,6 +706,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 			continue;
 		}
 
+		// Find if the stream already exist in the dialog
 		// It should match the first address and port
 		struct telephony_stream *tmp_stream = telephony_stream_find(d->streams, stream->addrs->addr, stream->l4proto, stream->port);
 		if (tmp_stream) {
@@ -713,12 +728,14 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 			continue;
 		}
 
+		// At this point the stream is unknown to us and we need to create an expectation for it
+
 		struct telephony_stream_address *addr;
 		for (addr = stream->addrs; addr; addr = addr->next) {
 
 			int i;
 			for (i = 0; i < stream->port_num; i++) {
-				// Create an expecation for each address/port combination
+				// Create an expectation for each address/port combination
 				// RTP use only pair ports
 
 				struct proto_expectation *e = proto_expectation_alloc(telephony_proto_rtp, NULL);
@@ -745,6 +762,12 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 				}
 				ptype_cleanup(port);
 
+				struct event *evt = sdp->dialog->call->evt;
+				if (evt)
+					event_refcount_inc(evt);
+
+				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, evt);
+
 				// FIXME will be improved after
 				if (proto_expectation_add_and_cleanup(e, 60, now) != POM_OK) {
 					proto_expectation_cleanup(e);
@@ -753,7 +776,6 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 			}
 		}
 
-		// Move the stream to the session priv
 		tmp_stream = stream;
 		stream = stream->next;
 
@@ -766,6 +788,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 		else
 			sdp->streams = tmp_stream->next;
 
+		// Add the stream to the SDP dialog
 		tmp_stream->next = d->streams;
 		if (tmp_stream->next)
 			tmp_stream->next->prev = tmp_stream;
@@ -831,7 +854,7 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 }
 
 
-struct telephony_call *telephony_call_alloc() {
+struct telephony_call *telephony_call_alloc(struct event *evt) {
 
 	struct telephony_call *res = malloc(sizeof(struct telephony_call));
 	if (!res) {
@@ -839,6 +862,8 @@ struct telephony_call *telephony_call_alloc() {
 		return NULL;
 	}
 	memset(res, 0, sizeof(struct telephony_call));
+
+	res->evt = evt;
 
 	return res;
 }
@@ -877,4 +902,66 @@ void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog) {
 	}
 
 	free(sdp_dialog);
+}
+
+void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce) {
+
+	struct telephony_rtp_ce_priv *p = malloc(sizeof(struct telephony_rtp_ce_priv));
+	if (!p) {
+		pom_oom(sizeof(struct telephony_rtp_ce_priv));
+		return;
+	}
+	memset(p, 0, sizeof(struct telephony_rtp_ce_priv));
+	p->evt = priv;
+
+	if (conntrack_add_priv(ce, telephony_init, p, telephony_cleanup_rtp_priv) != POM_OK) {
+		free(p);
+		return;
+	}
+}
+
+int telephony_cleanup_rtp_priv(void *obj, void *priv) {
+
+	struct telephony_rtp_ce_priv *p = priv;
+	if (p->evt)
+		event_refcount_dec(p->evt);
+
+	int i;
+	for (i = 0; i < POM_DIR_TOT; i++) {
+		if (p->pload[i])
+			pload_end(p->pload[i]);
+	}
+	free(p);
+	return POM_OK;
+}
+
+int telephony_rtp_pload_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct proto_process_stack *pload_stack = &stack[stack_index];
+	struct proto_process_stack *s = &stack[stack_index - 1];
+	if (!s->ce)
+		return POM_ERR;
+
+	struct telephony_rtp_ce_priv *cp = conntrack_get_priv(s->ce, telephony_init);
+	if (!cp) {
+		return POM_ERR;
+	}
+
+	if (!cp->evt) // Nothing to do if no event is associated
+		return POM_OK;
+
+	int dir = s->direction;
+
+	if (!cp->pload[dir]) {
+		cp->pload[dir] = pload_alloc(cp->evt, 0);
+		if (!cp->pload[dir])
+			return POM_ERR;
+	}
+
+
+	if (pload_append(cp->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
+		return POM_ERR;
+
+
+	return POM_OK;
 }

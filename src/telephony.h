@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 
 
 #include <pom-ng/telephony.h>
+#include <pom-ng/mime.h>
 
 #define TELEPHONY_SDP_MAX_LINE_LEN	512
 #define TELEPHONY_EXPECTATION_TIMEOUT	60
@@ -34,8 +35,6 @@ struct telephony_codec_reg {
 	char *name;
 	int default_rtp_pload_type;
 
-	struct telephony_codec_reg *prev, *next;
-
 };
 
 // Call definitions
@@ -43,6 +42,7 @@ struct telephony_codec_reg {
 struct telephony_call {
 
 	struct telephony_sdp_dialog *dialogs;
+	struct event *evt;
 };
 
 struct telephony_sdp_dialog {
@@ -139,6 +139,16 @@ struct telephony_sdp {
 
 };
 
+// Private stuff for RTP connections
+struct telephony_rtp_ce_priv {
+	struct event *evt;
+	struct pload *pload[POM_DIR_TOT];
+};
+
 int telephony_init();
+int telephony_cleanup();
+void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce);
+int telephony_cleanup_rtp_priv(void *obj, void *priv);
+int telephony_rtp_pload_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif

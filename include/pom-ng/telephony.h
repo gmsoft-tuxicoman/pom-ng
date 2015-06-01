@@ -23,6 +23,7 @@
 #define __POM_NG_TELEPHONY_H__
 
 #include <pom-ng/ptype.h>
+#include <pom-ng/event.h>
 
 
 // Codec definitions
@@ -49,7 +50,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now);
 void telephony_stream_cleanup(struct telephony_stream *stream);
 void telephony_sdp_cleanup(struct telephony_sdp *sdp);
 
-struct telephony_call *telephony_call_alloc();
+struct telephony_call *telephony_call_alloc(struct event *evt);
 void telephony_call_cleanup(struct telephony_call *call);
 
 struct telephony_sdp_dialog *telephony_sdp_dialog_alloc(struct telephony_call *call);
