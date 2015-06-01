@@ -67,8 +67,6 @@ int core_process_dump_pkt_info(struct proto_process_stack *s, struct packet *p, 
 int core_process_packet_stack(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
 int core_process_packet(struct packet *p);
 
-ptime core_get_clock();
-ptime core_get_clock_last();
 void core_wait_state(enum core_state state);
 enum core_state core_get_state();
 int core_set_state(enum core_state state);

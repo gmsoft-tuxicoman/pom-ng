@@ -34,5 +34,7 @@ int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_
 int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity);
 struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
 void core_stack_release(struct proto_process_stack *stack);
+ptime core_get_clock();
+ptime core_get_clock_last();
 
 #endif

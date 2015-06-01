@@ -24,6 +24,7 @@
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/ptype_uint32.h>
+#include <pom-ng/core.h>
 
 #include "analyzer_sip.h"
 
