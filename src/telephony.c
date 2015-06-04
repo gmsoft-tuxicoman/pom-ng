@@ -915,6 +915,7 @@ void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv,
 	p->evt = priv;
 
 	if (conntrack_add_priv(ce, telephony_init, p, telephony_cleanup_rtp_priv) != POM_OK) {
+		event_refcount_dec(priv);
 		free(p);
 		return;
 	}
