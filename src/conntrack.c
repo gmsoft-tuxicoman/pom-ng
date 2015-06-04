@@ -701,6 +701,11 @@ void conntrack_remove_priv(struct conntrack_entry *ce, void *obj) {
 	if (!priv_lst)
 		return;
 
+	if (priv_lst->cleanup) {
+		if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
+			pomlog(POMLOG_WARN "Error while cleaning up private objects in conntrack_entry");
+	}
+
 	if (priv_lst->next)
 		priv_lst->next->prev = priv_lst->prev;
 	
