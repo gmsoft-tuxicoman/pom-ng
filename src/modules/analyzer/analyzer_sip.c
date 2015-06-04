@@ -479,9 +479,6 @@ static int analyzer_sip_call_cleanup(struct analyzer_sip_call *call) {
 			event_cleanup(call->evt);
 	}
 
-	if (call->evt)
-		event_process_end(call->evt);
-
 	if (call->call_id)
 		free(call->call_id);
 
