@@ -84,6 +84,7 @@ struct proto_expectation {
 	struct proto_expectation_stack *head, *tail;
 	struct proto *proto;
 	void *priv, *callback_priv;
+	void (*callback_priv_cleanup) (void *priv);
 	struct timer *expiry;
 	struct conntrack_session *session;
 	struct proto_expectation *prev, *next;

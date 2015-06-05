@@ -295,6 +295,8 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 		if (cur->match_callback) {
 			// Call the callback with the conntrack locked
 			cur->match_callback(cur, cur->callback_priv, s_next->ce);
+			// Nullify callback_priv so it doesn't get cleaned up
+			cur->callback_priv = NULL;
 		}
 
 		if (cur->expiry) {
@@ -693,6 +695,9 @@ void proto_expectation_cleanup(struct proto_expectation *e) {
 	if (e->expiry)
 		timer_cleanup(e->expiry);
 
+	if (e->callback_priv && e->callback_priv_cleanup)
+		e->callback_priv_cleanup(e->callback_priv);
+
 	free(e);
 }
 
@@ -737,10 +742,11 @@ void proto_expectation_set_session(struct proto_expectation *e, struct conntrack
 	e->session = session;
 }
 
-void proto_expectation_set_match_callback(struct proto_expectation *e, void (*match_callback) (struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce), void *callback_priv) {
+void proto_expectation_set_match_callback(struct proto_expectation *e, void (*match_callback) (struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce), void *callback_priv, void (*callback_priv_cleanup) (void *priv)) {
 
 	e->match_callback = match_callback;
 	e->callback_priv = callback_priv;
+	e->callback_priv_cleanup = callback_priv_cleanup;
 }
 
 int proto_expectation_add_and_cleanup(struct proto_expectation *e, unsigned int expiry, ptime now) {
@@ -824,6 +830,7 @@ int proto_expectation_remove(struct proto_expectation *e) {
 int proto_expectation_timeout(void *priv, ptime now) {
 
 	struct proto_expectation *e = priv;
+
 	proto_expectation_remove(e);
 	proto_expectation_cleanup(e);
 

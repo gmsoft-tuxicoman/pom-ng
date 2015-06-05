@@ -671,6 +671,11 @@ struct telephony_stream *telephony_stream_find(struct telephony_stream *streams,
 	return tmp;
 }
 
+void telephony_sdp_expectation_callback_cleanup(void *priv) {
+
+	event_refcount_dec(priv);
+}
+
 int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 
 	if (!sdp)
@@ -766,7 +771,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 				if (evt)
 					event_refcount_inc(evt);
 
-				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, evt);
+				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, evt, telephony_sdp_expectation_callback_cleanup);
 
 				// FIXME will be improved after
 				if (proto_expectation_add_and_cleanup(e, 60, now) != POM_OK) {

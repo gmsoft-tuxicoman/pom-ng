@@ -518,7 +518,7 @@ static int analyzer_sip_call_dialog_set_state(struct analyzer_sip_priv *priv, st
 		if (!d->expt)
 			return POM_ERR;
 
-		proto_expectation_set_match_callback(d->expt, analyzer_sip_expectation_matched, d);
+		proto_expectation_set_match_callback(d->expt, analyzer_sip_expectation_matched, d, NULL);
 
 	} else if (state == analyzer_sip_dialog_state_terminated) {
 		if (d->to_tag) {

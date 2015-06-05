@@ -121,7 +121,7 @@ struct proto_expectation *proto_expectation_alloc_from_conntrack(struct conntrac
 void proto_expectation_cleanup(struct proto_expectation *e);
 int proto_expectation_set_field(struct proto_expectation *e, int stack_index, struct ptype *value, int direction);
 void proto_expectation_set_session(struct proto_expectation *e, struct conntrack_session *session);
-void proto_expectation_set_match_callback(struct proto_expectation *e, void (*match_callback) (struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce), void *callback_priv);
+void proto_expectation_set_match_callback(struct proto_expectation *e, void (*match_callback) (struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce), void *callback_priv, void (*callback_priv_cleanup) (void *priv));
 
 int proto_expectation_add_and_cleanup(struct proto_expectation *e, unsigned int expiry, ptime now);
 int proto_expectation_add(struct proto_expectation *e);
