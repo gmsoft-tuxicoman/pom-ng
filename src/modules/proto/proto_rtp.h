@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,14 +21,9 @@
 #ifndef __PROTO_RTP_H__
 #define __PROTO_RTP_H__
 
-#define PROTO_RTP_FIELD_NUM 4
+#include <pom-ng/proto_rtp.h>
 
-enum proto_rtp_fields {
-	proto_rtp_field_pt = 0,
-	proto_rtp_field_ssrc,
-	proto_rtp_field_seq,
-	proto_rtp_field_timestamp,
-};
+#define PROTO_RTP_FIELD_NUM 4
 
 struct proto_rtp_priv {
 
