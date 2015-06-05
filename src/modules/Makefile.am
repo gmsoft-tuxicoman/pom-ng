@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_dtmf.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_sdp.la analyzer_sip.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_dtmf.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_rtp.la analyzer_sdp.la analyzer_sip.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 DECODER_SRC = decoder_base64.la decoder_percent.la decoder_quoted_printable.la @DECODER_OBJS@
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
@@ -71,6 +71,9 @@ analyzer_ppp_pap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_rfc822_la_SOURCES = analyzer/analyzer_rfc822.c analyzer/analyzer_rfc822.h
 analyzer_rfc822_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_rfc822_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_rtp_la_SOURCES = analyzer/analyzer_rtp.c analyzer/analyzer_rtp.h
+analyzer_rtp_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_rtp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_sdp_la_SOURCES = analyzer/analyzer_sdp.c analyzer/analyzer_sdp.h
 analyzer_sdp_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_sdp_la_LIBADD = $(top_builddir)/src/libpom-ng.la

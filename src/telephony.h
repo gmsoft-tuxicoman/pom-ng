@@ -142,13 +142,11 @@ struct telephony_sdp {
 // Private stuff for RTP connections
 struct telephony_rtp_ce_priv {
 	struct event *evt;
-	struct pload *pload[POM_DIR_TOT];
 };
 
 int telephony_init();
 int telephony_cleanup();
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce);
 int telephony_cleanup_rtp_priv(void *obj, void *priv);
-int telephony_rtp_pload_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif

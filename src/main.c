@@ -383,7 +383,7 @@ int main(int argc, char *argv[]) {
 
 	if (telephony_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initialing telephony");
-		goto err_telephony;
+		goto err_addon;
 	}
 
 	// Main loop
@@ -413,7 +413,6 @@ int main(int argc, char *argv[]) {
 
 	core_cleanup(shutdown_in_error);
 
-	telephony_cleanup();
 	input_cleanup();
 	xmlrpcsrv_stop();
 	pomlog_finish();
@@ -443,8 +442,6 @@ int main(int argc, char *argv[]) {
 	
 	// Error path below
 
-err_telephony:
-	telephony_cleanup();
 err_addon:
 	addon_cleanup();
 err_dstore:

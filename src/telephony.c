@@ -33,7 +33,6 @@ static struct telephony_codec_reg telephony_codecs[] = {
 };
 
 static struct proto *telephony_proto_ipv4 = NULL, *telephony_proto_ipv6 = NULL, *telephony_proto_udp = NULL, *telephony_proto_rtp = NULL;
-static struct proto_packet_listener *telephony_rtp_listener = NULL;
 
 static struct telephony_codec_reg *telephony_codec_get_by_name(char *name) {
 
@@ -58,18 +57,8 @@ int telephony_init() {
 		return POM_ERR;
 	}
 
-	// Start to listen to RTP payload
-	telephony_rtp_listener = proto_packet_listener_register(telephony_proto_rtp, PROTO_PACKET_LISTENER_PLOAD_ONLY, telephony_init, telephony_rtp_pload_process, NULL);
-	if (!telephony_rtp_listener)
-		return POM_ERR;
-
 
 	return POM_OK;
-}
-
-int telephony_cleanup() {
-
-	return proto_packet_listener_unregister(telephony_rtp_listener);
 }
 
 static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *line, size_t len) {
@@ -932,42 +921,7 @@ int telephony_cleanup_rtp_priv(void *obj, void *priv) {
 	if (p->evt)
 		event_refcount_dec(p->evt);
 
-	int i;
-	for (i = 0; i < POM_DIR_TOT; i++) {
-		if (p->pload[i])
-			pload_end(p->pload[i]);
-	}
 	free(p);
 	return POM_OK;
 }
 
-int telephony_rtp_pload_process(void *object, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
-
-	struct proto_process_stack *pload_stack = &stack[stack_index];
-	struct proto_process_stack *s = &stack[stack_index - 1];
-	if (!s->ce)
-		return POM_ERR;
-
-	struct telephony_rtp_ce_priv *cp = conntrack_get_priv(s->ce, telephony_init);
-	if (!cp) {
-		return POM_ERR;
-	}
-
-	if (!cp->evt) // Nothing to do if no event is associated
-		return POM_OK;
-
-	int dir = s->direction;
-
-	if (!cp->pload[dir]) {
-		cp->pload[dir] = pload_alloc(cp->evt, 0);
-		if (!cp->pload[dir])
-			return POM_ERR;
-	}
-
-
-	if (pload_append(cp->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
-		return POM_ERR;
-
-
-	return POM_OK;
-}
