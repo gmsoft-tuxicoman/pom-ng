@@ -42,6 +42,7 @@ struct telephony_call;
 struct telephony_sdp;
 struct telephony_sdp_dialog;
 struct telephony_stream;
+struct telephony_rtp_info;
 
 struct telephony_sdp *telephony_sdp_alloc(struct telephony_sdp_dialog *d, ptime ts);
 int telephony_sdp_parse(struct telephony_sdp *sdp, void *data, size_t len);
@@ -50,10 +51,13 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now);
 void telephony_stream_cleanup(struct telephony_stream *stream);
 void telephony_sdp_cleanup(struct telephony_sdp *sdp);
 
-struct telephony_call *telephony_call_alloc(struct proto *sess_proto, struct ptype *call_id);
+struct telephony_call *telephony_call_alloc(struct proto *sess_proto, char *call_id);
 void telephony_call_cleanup(struct telephony_call *call);
 
 struct telephony_sdp_dialog *telephony_sdp_dialog_alloc(struct telephony_call *call);
 void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog);
 
+struct telephony_rtp_info *telephony_rtp_get_info(struct conntrack_entry *ce);
+struct proto *telephony_rtp_info_get_sess_proto(struct telephony_rtp_info *info);
+char *telephony_rtp_info_get_call_id(struct telephony_rtp_info *info);
 #endif

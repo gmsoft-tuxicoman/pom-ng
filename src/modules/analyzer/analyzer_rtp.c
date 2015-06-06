@@ -24,6 +24,7 @@
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
 #include <pom-ng/proto_rtp.h>
+#include <pom-ng/telephony.h>
 
 
 #if 0
@@ -230,6 +231,22 @@ static int analyzer_rtp_pload_process(void *obj, struct packet *p, struct proto_
 				}
 			}
 
+		}
+
+		struct telephony_rtp_info *info = telephony_rtp_get_info(s->ce);
+		if (info) {
+			struct proto *sess_proto = telephony_rtp_info_get_sess_proto(info);
+			if (sess_proto) {
+				struct proto_reg_info *proto_reg = proto_get_info(sess_proto);
+				PTYPE_STRING_SETVAL(evt_data[analyzer_rtp_stream_sess_proto].value, proto_reg->name);
+				data_set(evt_data[analyzer_rtp_stream_sess_proto]);
+			}
+
+			char *call_id = telephony_rtp_info_get_call_id(info);
+			if (call_id) {
+				PTYPE_STRING_SETVAL(evt_data[analyzer_rtp_stream_call_id].value, call_id);
+				data_set(evt_data[analyzer_rtp_stream_call_id]);
+			}
 		}
 
 		if (event_process_begin(cp->evt[dir], stack, stack_index, p->ts) != POM_OK)

@@ -1175,7 +1175,7 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	pom_mutex_lock(&call->lock);
 
 	if (!call->tel_call) {
-		call->tel_call = telephony_call_alloc(apriv->proto_sip, evt_data[analyzer_sip_call_common_id].value);
+		call->tel_call = telephony_call_alloc(apriv->proto_sip, call->call_id);
 		if (!call->tel_call) {
 			pom_mutex_unlock(&call->lock);
 			return PLOAD_OPEN_ERR;

@@ -660,8 +660,8 @@ struct telephony_stream *telephony_stream_find(struct telephony_stream *streams,
 	return tmp;
 }
 
-void telephony_callback_cleanup_rtp_priv(void *priv) {
-	telephony_cleanup_rtp_priv(NULL, priv);
+void telephony_callback_cleanup_rtp_info(void *priv) {
+	telephony_cleanup_rtp_info(NULL, priv);
 }
 
 int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
@@ -756,19 +756,19 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 				ptype_cleanup(port);
 
 
-				struct telephony_rtp_ce_priv *p = malloc(sizeof(struct telephony_rtp_ce_priv));
+				struct telephony_rtp_info *p = malloc(sizeof(struct telephony_rtp_info));
 				if (!p) {
-					pom_oom(sizeof(struct telephony_rtp_ce_priv));
+					pom_oom(sizeof(struct telephony_rtp_info));
 					return POM_ERR;
 				}
-				memset(p, 0, sizeof(struct telephony_rtp_ce_priv));
+				memset(p, 0, sizeof(struct telephony_rtp_info));
 				p->sess_proto = sdp->dialog->call->sess_proto;
-				p->call_id = ptype_alloc_from(sdp->dialog->call->call_id);
+				p->call_id = strdup(sdp->dialog->call->call_id);
 				if (!p->call_id) {
 					free(p);
 					return POM_ERR;
 				}
-				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, p, telephony_callback_cleanup_rtp_priv);
+				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, p, telephony_callback_cleanup_rtp_info);
 
 				if (proto_expectation_add_and_cleanup(e, 60, now) != POM_OK) {
 					proto_expectation_cleanup(e);
@@ -855,7 +855,7 @@ void telephony_sdp_cleanup(struct telephony_sdp *sdp) {
 }
 
 
-struct telephony_call *telephony_call_alloc(struct proto *sess_proto, struct ptype *call_id) {
+struct telephony_call *telephony_call_alloc(struct proto *sess_proto, char *call_id) {
 
 	struct telephony_call *res = malloc(sizeof(struct telephony_call));
 	if (!res) {
@@ -866,7 +866,7 @@ struct telephony_call *telephony_call_alloc(struct proto *sess_proto, struct pty
 
 	res->sess_proto = sess_proto;
 
-	res->call_id = ptype_alloc_from(call_id);
+	res->call_id = strdup(call_id);
 	if (!res->call_id) {
 		free(res);
 		return NULL;
@@ -884,7 +884,7 @@ void telephony_call_cleanup(struct telephony_call *call) {
 	}
 
 	if (call->call_id)
-		ptype_cleanup(call->call_id);
+		free(call->call_id);
 
 	free(call);
 }
@@ -916,21 +916,35 @@ void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog) {
 
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce) {
 
-	struct telephony_rtp_ce_priv *p = priv;
+	struct telephony_rtp_info *p = priv;
 
-	if (conntrack_add_priv(ce, telephony_init, p, telephony_cleanup_rtp_priv) != POM_OK) {
-		telephony_cleanup_rtp_priv(NULL, p);
+	if (conntrack_add_priv(ce, telephony_init, p, telephony_cleanup_rtp_info) != POM_OK) {
+		telephony_cleanup_rtp_info(NULL, p);
 		return;
 	}
 }
 
-int telephony_cleanup_rtp_priv(void *obj, void *priv) {
+int telephony_cleanup_rtp_info(void *obj, void *priv) {
 
-	struct telephony_rtp_ce_priv *p = priv;
+	struct telephony_rtp_info *p = priv;
 	if (p->call_id)
-		ptype_cleanup(p->call_id);
+		free(p->call_id);
 
 	free(p);
 	return POM_OK;
+}
+
+
+struct telephony_rtp_info *telephony_rtp_get_info(struct conntrack_entry *ce) {
+
+	return conntrack_get_priv(ce, telephony_init);
+}
+
+struct proto *telephony_rtp_info_get_sess_proto(struct telephony_rtp_info *info) {
+	return info->sess_proto;
+}
+
+char *telephony_rtp_info_get_call_id(struct telephony_rtp_info *info) {
+	return info->call_id;
 }
 

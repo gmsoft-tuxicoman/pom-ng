@@ -43,7 +43,7 @@ struct telephony_call {
 
 	struct telephony_sdp_dialog *dialogs;
 	struct proto *sess_proto;
-	struct ptype *call_id;
+	char *call_id;
 };
 
 struct telephony_sdp_dialog {
@@ -141,14 +141,14 @@ struct telephony_sdp {
 };
 
 // Private stuff for RTP connections
-struct telephony_rtp_ce_priv {
+struct telephony_rtp_info {
 	struct proto *sess_proto;
-	struct ptype *call_id;
+	char *call_id;
 };
 
 int telephony_init();
 int telephony_cleanup();
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce);
-int telephony_cleanup_rtp_priv(void *obj, void *priv);
+int telephony_cleanup_rtp_info(void *obj, void *priv);
 
 #endif
