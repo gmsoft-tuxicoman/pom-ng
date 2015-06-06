@@ -1153,6 +1153,10 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	if (evt_reg != apriv->evt_sip_req && evt_reg != apriv->evt_sip_rsp)
 		return PLOAD_OPEN_STOP;
 
+	struct data *evt_data = event_get_data(evt);
+	if (!data_is_set(evt_data[analyzer_sip_call_common_id]))
+		return PLOAD_OPEN_STOP;
+
 	struct conntrack_entry *ce = event_get_conntrack(evt);
 	if (!ce)
 		return PLOAD_OPEN_STOP;
@@ -1171,7 +1175,7 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	pom_mutex_lock(&call->lock);
 
 	if (!call->tel_call) {
-		call->tel_call = telephony_call_alloc(call->evt);
+		call->tel_call = telephony_call_alloc(apriv->proto_sip, evt_data[analyzer_sip_call_common_id].value);
 		if (!call->tel_call) {
 			pom_mutex_unlock(&call->lock);
 			return PLOAD_OPEN_ERR;

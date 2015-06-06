@@ -50,7 +50,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now);
 void telephony_stream_cleanup(struct telephony_stream *stream);
 void telephony_sdp_cleanup(struct telephony_sdp *sdp);
 
-struct telephony_call *telephony_call_alloc(struct event *evt);
+struct telephony_call *telephony_call_alloc(struct proto *sess_proto, struct ptype *call_id);
 void telephony_call_cleanup(struct telephony_call *call);
 
 struct telephony_sdp_dialog *telephony_sdp_dialog_alloc(struct telephony_call *call);

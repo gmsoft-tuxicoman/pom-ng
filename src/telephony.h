@@ -42,7 +42,8 @@ struct telephony_codec_reg {
 struct telephony_call {
 
 	struct telephony_sdp_dialog *dialogs;
-	struct event *evt;
+	struct proto *sess_proto;
+	struct ptype *call_id;
 };
 
 struct telephony_sdp_dialog {
@@ -141,7 +142,8 @@ struct telephony_sdp {
 
 // Private stuff for RTP connections
 struct telephony_rtp_ce_priv {
-	struct event *evt;
+	struct proto *sess_proto;
+	struct ptype *call_id;
 };
 
 int telephony_init();
