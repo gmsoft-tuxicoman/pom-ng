@@ -756,13 +756,19 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 				}
 				ptype_cleanup(port);
 
-				struct event *evt = sdp->dialog->call->evt;
-				if (evt)
-					event_refcount_inc(evt);
 
-				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, evt, telephony_sdp_expectation_callback_cleanup);
+				struct telephony_rtp_ce_priv *p = malloc(sizeof(struct telephony_rtp_ce_priv));
+				if (!p) {
+					pom_oom(sizeof(struct telephony_rtp_ce_priv));
+					return POM_ERR;
+				}
+				memset(p, 0, sizeof(struct telephony_rtp_ce_priv));
+				p->evt = sdp->dialog->call->evt;
+				if (p->evt)
+					event_refcount_inc(p->evt);
 
-				// FIXME will be improved after
+				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, p, telephony_sdp_expectation_callback_cleanup);
+
 				if (proto_expectation_add_and_cleanup(e, 60, now) != POM_OK) {
 					proto_expectation_cleanup(e);
 					return POM_ERR;
@@ -900,17 +906,10 @@ void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog) {
 
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce) {
 
-	struct telephony_rtp_ce_priv *p = malloc(sizeof(struct telephony_rtp_ce_priv));
-	if (!p) {
-		pom_oom(sizeof(struct telephony_rtp_ce_priv));
-		return;
-	}
-	memset(p, 0, sizeof(struct telephony_rtp_ce_priv));
-	p->evt = priv;
+	struct telephony_rtp_ce_priv *p = priv;
 
 	if (conntrack_add_priv(ce, telephony_init, p, telephony_cleanup_rtp_priv) != POM_OK) {
-		event_refcount_dec(priv);
-		free(p);
+		telephony_cleanup_rtp_priv(NULL, p);
 		return;
 	}
 }
