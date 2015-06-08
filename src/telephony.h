@@ -50,6 +50,9 @@ struct telephony_sdp_dialog {
 
 	struct telephony_call *call;
 	struct telephony_stream *streams;
+	struct telephony_stream_conntrack *sc;
+
+	pthread_rwlock_t lock;
 
 	struct telephony_sdp_dialog *prev, *next;
 };
@@ -84,6 +87,15 @@ struct telephony_stream {
 	struct telephony_stream *prev, *next;
 
 	uint16_t port, port_num;
+
+};
+
+struct telephony_stream_conntrack {
+
+	struct telephony_sdp_dialog *dialog;
+	struct proto_expectation *expt;
+	struct conntrack_entry *ce;
+	struct telephony_stream_conntrack *prev, *next;
 
 };
 
@@ -140,15 +152,10 @@ struct telephony_sdp {
 
 };
 
-// Private stuff for RTP connections
-struct telephony_rtp_info {
-	struct proto *sess_proto;
-	char *call_id;
-};
 
 int telephony_init();
 int telephony_cleanup();
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce);
-int telephony_cleanup_rtp_info(void *obj, void *priv);
+int telephony_cleanup_stream_conntrack(void *obj, void *priv);
 
 #endif

@@ -660,8 +660,10 @@ struct telephony_stream *telephony_stream_find(struct telephony_stream *streams,
 	return tmp;
 }
 
-void telephony_callback_cleanup_rtp_info(void *priv) {
-	telephony_cleanup_rtp_info(NULL, priv);
+void telephony_sdp_exectation_callback_cleanup(void *priv) {
+
+	telephony_cleanup_stream_conntrack(NULL, priv);
+
 }
 
 int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
@@ -671,6 +673,8 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 
 	struct telephony_sdp_dialog *d = sdp->dialog;
 	struct telephony_stream *stream = sdp->streams;
+
+	pom_rwlock_wlock(&d->lock);
 
 	// Check each stream present in the SDP and find out if we are already monitoring it
 	while (stream) {
@@ -704,7 +708,6 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 		struct telephony_stream *tmp_stream = telephony_stream_find(d->streams, stream->addrs->addr, stream->l4proto, stream->port);
 		if (tmp_stream) {
 			// The expectation for this stream as already been added !
-			// TODO check if port is 0 or if stream is inactive
 			stream = stream->next;
 			continue;
 		}
@@ -723,6 +726,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 
 		// At this point the stream is unknown to us and we need to create an expectation for it
 
+
 		struct telephony_stream_address *addr;
 		for (addr = stream->addrs; addr; addr = addr->next) {
 
@@ -732,16 +736,20 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 				// RTP use only pair ports
 
 				struct proto_expectation *e = proto_expectation_alloc(telephony_proto_rtp, NULL);
-				if (!e)
+				if (!e) {
+					pom_rwlock_unlock(&d->lock);
 					return POM_ERR;
+				}
 
 				if (proto_expectation_append(e, addr->proto, addr->addr, NULL) != POM_OK) {
+					pom_rwlock_unlock(&d->lock);
 					proto_expectation_cleanup(e);
 					return POM_ERR;
 				}
 
 				struct ptype *port = ptype_alloc("uint16");
 				if (!port) {
+					pom_rwlock_unlock(&d->lock);
 					proto_expectation_cleanup(e);
 					return POM_ERR;
 				}
@@ -749,28 +757,32 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 				PTYPE_UINT16_SETVAL(port, stream->port + (i * 2));
 
 				if (proto_expectation_append(e, stream->l4proto, port, NULL) != POM_OK) {
+					pom_rwlock_unlock(&d->lock);
 					proto_expectation_cleanup(e);
 					ptype_cleanup(port);
 					return POM_ERR;
 				}
 				ptype_cleanup(port);
 
+				struct telephony_stream_conntrack *sc = malloc(sizeof(struct telephony_stream_conntrack));
+				if (!sc) {
+					pom_rwlock_unlock(&d->lock);
+					pom_oom(sizeof(struct telephony_stream_conntrack));
+					proto_expectation_cleanup(e);
+				}
+				memset(sc, 0, sizeof(struct telephony_stream_conntrack));
+				sc->expt = e;
+				sc->dialog = d;
 
-				struct telephony_rtp_info *p = malloc(sizeof(struct telephony_rtp_info));
-				if (!p) {
-					pom_oom(sizeof(struct telephony_rtp_info));
-					return POM_ERR;
-				}
-				memset(p, 0, sizeof(struct telephony_rtp_info));
-				p->sess_proto = sdp->dialog->call->sess_proto;
-				p->call_id = strdup(sdp->dialog->call->call_id);
-				if (!p->call_id) {
-					free(p);
-					return POM_ERR;
-				}
-				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, p, telephony_callback_cleanup_rtp_info);
+				sc->next = d->sc;
+				if (sc->next)
+					sc->next->prev = sc;
+				d->sc = sc;
+
+				proto_expectation_set_match_callback(e, telephony_sdp_expectation_callback, sc, telephony_sdp_exectation_callback_cleanup);
 
 				if (proto_expectation_add_and_cleanup(e, 60, now) != POM_OK) {
+					pom_rwlock_unlock(&d->lock);
 					proto_expectation_cleanup(e);
 					return POM_ERR;
 				}
@@ -797,6 +809,8 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 
 		tmp_stream->prev = NULL;
 	}
+
+	pom_rwlock_unlock(&d->lock);
 
 	return POM_OK;
 }
@@ -900,51 +914,98 @@ struct telephony_sdp_dialog *telephony_sdp_dialog_alloc(struct telephony_call *c
 	memset(res, 0, sizeof(struct telephony_sdp_dialog));
 	res->call = call;
 
+	int ret = pthread_rwlock_init(&res->lock, NULL);
+	if (ret) {
+		free(res);
+		pomlog(POMLOG_ERR "Error while initializing the SDP dialog lock : %s", pom_strerror(ret));
+		return NULL;
+	}
+
 	return res;
 }
 
-void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog) {
+void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *d) {
 
-	while (sdp_dialog->streams) {
-		struct telephony_stream *s = sdp_dialog->streams;
-		sdp_dialog->streams = s->next;
+	while (d->streams) {
+		struct telephony_stream *s = d->streams;
+		d->streams = s->next;
 		telephony_stream_cleanup(s);
 	}
+	while (d->sc) {
+		if (d->sc->ce) {
+			conntrack_remove_priv(d->sc->ce, telephony_init);
+		} else {
+			struct telephony_stream_conntrack *sc = d->sc;
+			d->sc = sc->next;
+			free(sc);
+		}
+	}
 
-	free(sdp_dialog);
+	int res = pthread_rwlock_destroy(&d->lock);
+	if (res)
+		pomlog(POMLOG_ERR "Error while destroying the SDP dialog lock : %s", pom_strerror(errno));
+	free(d);
 }
 
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce) {
 
-	struct telephony_rtp_info *p = priv;
+	struct telephony_stream_conntrack *sc = priv;
+	sc->expt = NULL;
 
-	if (conntrack_add_priv(ce, telephony_init, p, telephony_cleanup_rtp_info) != POM_OK) {
-		telephony_cleanup_rtp_info(NULL, p);
+	if (conntrack_add_priv(ce, telephony_init, sc, telephony_cleanup_stream_conntrack) != POM_OK) {
+		telephony_cleanup_stream_conntrack(NULL, sc);
 		return;
 	}
+
+	sc->ce = ce;
 }
 
-int telephony_cleanup_rtp_info(void *obj, void *priv) {
+int telephony_cleanup_stream_conntrack(void *obj, void *priv) {
 
-	struct telephony_rtp_info *p = priv;
-	if (p->call_id)
-		free(p->call_id);
+	struct telephony_stream_conntrack *sc = priv;
 
-	free(p);
+	pom_rwlock_wlock(&sc->dialog->lock);
+	if (sc->prev) {
+		sc->prev->next = sc->next;
+	} else {
+		sc->dialog->sc = sc->next;
+	}
+
+	if (sc->next) {
+		sc->next->prev = sc->prev;
+	}
+	pom_rwlock_unlock(&sc->dialog->lock);
+
+	free(sc);
 	return POM_OK;
 }
 
 
-struct telephony_rtp_info *telephony_rtp_get_info(struct conntrack_entry *ce) {
+struct proto *telephony_stream_info_get_sess_proto(struct conntrack_entry *ce) {
+	struct telephony_stream_conntrack *sc = conntrack_get_priv(ce, telephony_init);
+	if (!sc)
+		return NULL;
 
-	return conntrack_get_priv(ce, telephony_init);
+	pom_rwlock_rlock(&sc->dialog->lock);
+
+	struct proto *sess_proto = sc->dialog->call->sess_proto;
+
+	pom_rwlock_unlock(&sc->dialog->lock);
+
+	return sess_proto;
 }
 
-struct proto *telephony_rtp_info_get_sess_proto(struct telephony_rtp_info *info) {
-	return info->sess_proto;
-}
+char *telephony_stream_info_get_call_id(struct conntrack_entry *ce) {
+	struct telephony_stream_conntrack *sc = conntrack_get_priv(ce, telephony_init);
+	if (!sc)
+		return NULL;
 
-char *telephony_rtp_info_get_call_id(struct telephony_rtp_info *info) {
-	return info->call_id;
+	pom_rwlock_rlock(&sc->dialog->lock);
+
+	char *call_id = strdup(sc->dialog->call->call_id);
+
+	pom_rwlock_unlock(&sc->dialog->lock);
+
+	return call_id;
 }
 

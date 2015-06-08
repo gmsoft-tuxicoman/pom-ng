@@ -57,7 +57,6 @@ void telephony_call_cleanup(struct telephony_call *call);
 struct telephony_sdp_dialog *telephony_sdp_dialog_alloc(struct telephony_call *call);
 void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog);
 
-struct telephony_rtp_info *telephony_rtp_get_info(struct conntrack_entry *ce);
-struct proto *telephony_rtp_info_get_sess_proto(struct telephony_rtp_info *info);
-char *telephony_rtp_info_get_call_id(struct telephony_rtp_info *info);
+struct proto *telephony_stream_info_get_sess_proto(struct conntrack_entry *ce);
+char *telephony_stream_info_get_call_id(struct conntrack_entry *ce);
 #endif
