@@ -935,6 +935,8 @@ void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *d) {
 		if (d->sc->ce) {
 			conntrack_remove_priv(d->sc->ce, telephony_init);
 		} else {
+			if (d->sc->expt)
+				proto_expectation_cleanup(d->sc->expt);
 			struct telephony_stream_conntrack *sc = d->sc;
 			d->sc = sc->next;
 			free(sc);
