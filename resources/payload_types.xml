@@ -26,6 +26,10 @@
 			<item><name>multipart</name><description>Multipart payload as described in RFC2046</description><extension>multipart</extension><class>other</class></item>
 			<item><name>sdp</name><description>Session Description Protocol</description><extension>sdp</extension><class>other</class></item>
 			<item><name>dtmf</name><description>Dual-Tone Multi-Frequency event</description><extension>dtmf</extension><class>other</class></item>
+			<item><name>g711a</name><description>G.711A</description><extension>alaw</extension><class>audio</class></item>
+			<item><name>g711u</name><description>G.711U</description><extension>ulaw</extension><class>audio</class></item>
+			<item><name>g723</name><description>G.723</description><extension>g723</extension><class>audio</class></item>
+			<item><name>g729</name><description>G.729</description><extension>g729</extension><class>audio</class></item>
 		</dataset>
 
 		<dataset name="mime_types">
@@ -58,6 +62,10 @@
 			<item><name>sdp</name><mime>application/sdp</mime></item>
 			<item><name>dtmf</name><mime>application/dtmf</mime></item>
 			<item><name>dtmf</name><mime>application/dtmf-relay</mime></item>
+			<item><name>g711a</name><mime>audio/pcma</mime></item>
+			<item><name>g711u</name><mime>audio/pcmu</mime></item>
+			<item><name>g723</name><mime>audio/g723</mime></item>
+			<item><name>g729</name><mime>audio/g729</mime></item>
 		</dataset>
 	</datasets>
 
