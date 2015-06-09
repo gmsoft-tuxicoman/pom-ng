@@ -205,10 +205,7 @@ static int stream_is_packet_next(struct stream *stream, struct stream_pkt *pkt, 
 
 static void stream_free_packet(struct stream_pkt *p) {
 
-	int i;
-	for (i = 1; i < CORE_PROTO_STACK_MAX && p->stack[i].proto; i++)
-		packet_info_pool_release(p->stack[i].pkt_info, p->stack[i].proto->id);
-	free(p->stack);
+	core_stack_release(p->stack);
 	packet_release(p->pkt);
 	free(p);
 }

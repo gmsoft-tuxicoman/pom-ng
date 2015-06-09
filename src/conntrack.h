@@ -71,7 +71,6 @@ int conntrack_cleanup(struct conntrack_tables *ct, uint32_t hash, struct conntra
 
 int conntrack_timer_process(void *priv, ptime now);
 
-int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session);
 void conntrack_session_refcount_inc(struct conntrack_session *session);
 int conntrack_session_refcount_dec(struct conntrack_session *session);
 

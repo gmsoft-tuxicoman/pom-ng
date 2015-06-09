@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,22 +19,29 @@
  */
 
 
-#ifndef __POM_NG_CORE_H__
-#define __POM_NG_CORE_H__
+#ifndef __ANALYZER_DTMF_H__
+#define __ANALYZER_DTMF_H__
 
-#include <pom-ng/proto.h>
+#include <pom-ng/analyzer.h>
+#include <pom-ng/pload.h>
+#include <pom-ng/analyzer_dtmf.h>
 
-#define CORE_QUEUE_HAS_THREAD_AFFINITY	0x1
-#define CORE_QUEUE_DROP_IF_FULL		0x2
+#define ANALYZER_DTMF_PLOAD_TYPE "dtmf"
 
-#define CORE_PROTO_STACK_START		1
-#define CORE_PROTO_STACK_MAX		16
+#define ANALYZER_DTMF_PLOAD_DATA_COUNT 2
 
-int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
-int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity);
-struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
-void core_stack_release(struct proto_process_stack *stack);
-ptime core_get_clock();
-ptime core_get_clock_last();
+struct analyzer_dtmf_pload_priv {
+
+	size_t pos;
+
+};
+
+struct mod_reg_info* analyzer_dtmf_reg_info();
+static int analyzer_dtmf_mod_register(struct mod_reg *mod);
+static int analyzer_dtmf_mod_unregister();
+
+static int analyzer_dtmf_init(struct analyzer *analyzer);
+static int analyzer_dtmf_pload_analyze(struct pload *p, struct pload_buffer *pb, void *priv);
+static int analyzer_dtmf_pload_cleanup(struct pload *p, void *apriv);
 
 #endif

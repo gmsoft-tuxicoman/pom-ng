@@ -29,6 +29,9 @@
 
 #define PROTO_REGISTRY "proto"
 
+#define PROTO_EXPECTATION_FLAG_QUEUED	0x1
+#define PROTO_EXPECTATION_FLAG_MATCHED	0x2
+
 struct proto {
 
 	struct proto_reg_info *info;
@@ -80,10 +83,13 @@ struct proto_expectation_stack {
 struct proto_expectation {
 	struct proto_expectation_stack *head, *tail;
 	struct proto *proto;
-	void *priv;
+	void *priv, *callback_priv;
+	void (*callback_priv_cleanup) (void *priv);
 	struct timer *expiry;
 	struct conntrack_session *session;
 	struct proto_expectation *prev, *next;
+	int flags;
+	void (*match_callback) (struct proto_expectation *e, void *callback_priv, struct conntrack_entry *ce);
 };
 
 struct proto_number {
@@ -106,7 +112,7 @@ int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *
 int proto_finish();
 int proto_cleanup();
 
-int proto_expectation_expiry(void *priv, ptime now);
+int proto_expectation_timeout(void *priv, ptime now);
 
 unsigned int proto_get_count();
 struct proto_number_class *proto_number_class_get(char *name);

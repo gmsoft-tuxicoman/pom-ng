@@ -82,6 +82,7 @@ int conntrack_timer_dequeue(struct conntrack_timer *t);
 int conntrack_timer_cleanup(struct conntrack_timer *t);
 
 struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce);
+int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session);
 void conntrack_session_unlock(struct conntrack_session *session);
 int conntrack_session_add_priv(struct conntrack_session *s, void *obj, void *priv, int (*cleanup_handler) (void *obj, void *priv));
 void *conntrack_session_get_priv(struct conntrack_session *s, void *obj);

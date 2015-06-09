@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,23 +18,35 @@
  *
  */
 
+#ifndef __POM_NG_PROTO_SIP_H__
+#define __POM_NG_PROTO_SIP_H__
 
-#ifndef __POM_NG_CORE_H__
-#define __POM_NG_CORE_H__
 
-#include <pom-ng/proto.h>
+enum {
+	proto_sip_req_method = 0,
+	proto_sip_req_uri
+};
 
-#define CORE_QUEUE_HAS_THREAD_AFFINITY	0x1
-#define CORE_QUEUE_DROP_IF_FULL		0x2
+enum {
+	proto_sip_rsp_status = 0,
+	proto_sip_rsp_reason
+};
 
-#define CORE_PROTO_STACK_START		1
-#define CORE_PROTO_STACK_MAX		16
-
-int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
-int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity);
-struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
-void core_stack_release(struct proto_process_stack *stack);
-ptime core_get_clock();
-ptime core_get_clock_last();
+enum {
+	proto_sip_msg_first_line = 2,
+	proto_sip_msg_call_id,
+	proto_sip_msg_top_branch,
+	proto_sip_msg_cseq_num,
+	proto_sip_msg_cseq_method,
+	proto_sip_msg_content_type,
+	proto_sip_msg_content_len,
+	proto_sip_msg_from_display,
+	proto_sip_msg_from_uri,
+	proto_sip_msg_from_tag,
+	proto_sip_msg_to_display,
+	proto_sip_msg_to_uri,
+	proto_sip_msg_to_tag,
+	proto_sip_msg_other_headers,
+};
 
 #endif

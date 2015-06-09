@@ -281,7 +281,7 @@ int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_i
 	}
 
 	conntrack_lock(s->ce);
-	s->ce->refcount++;
+	__sync_fetch_and_add(&s->ce->refcount, 1);
 
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 	s_next->direction = s->direction;
@@ -402,7 +402,7 @@ int conntrack_get_unique_from_parent(struct proto_process_stack *stack, unsigned
 	conntrack_unlock(parent);
 
 	conntrack_lock(res);
-	res->refcount++;
+	__sync_fetch_and_add(&res->refcount, 1);
 	s->ce = res;
 	s->direction = s_prev->direction;
 
@@ -430,8 +430,10 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	struct proto_process_stack *s_prev = &stack[stack_index - 1];
 	struct proto_process_stack *s_next = &stack[stack_index + 1];
 
-	if (s->ce)
+	if (s->ce) {
+		conntrack_lock(s->ce);
 		return POM_OK;
+	}
 		
 	if (!s->proto || !s->proto->info->ct_info)
 		return POM_ERR;
@@ -460,10 +462,18 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	if (ct->table[hash]) {
 		s->ce = conntrack_find(ct->table[hash], fwd_value, rev_value, s_prev->ce);
 		if (s->ce) {
-			s->direction = POM_DIR_FWD;
-			s_next->direction = POM_DIR_FWD;
+			int dir = POM_DIR_FWD;
+
+			if (fwd_value && rev_value && ptype_compare_val(PTYPE_OP_EQ, fwd_value, rev_value)) {
+				// The conntrack could match in both direction
+				// Use the previous stack for the direction
+				dir = s_prev->direction;
+			}
+
+			s->direction = dir;
+			s_next->direction = dir;
 			pom_mutex_lock(&s->ce->lock);
-			s->ce->refcount++;
+			__sync_fetch_and_add(&s->ce->refcount, 1);
 			pom_mutex_unlock(&ct->locks[hash]);
 			return POM_OK;;
 		}
@@ -477,7 +487,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 			s->direction = POM_DIR_REV;
 			s_next->direction = POM_DIR_REV;
 			pom_mutex_lock(&s->ce->lock);
-			s->ce->refcount++;
+			__sync_fetch_and_add(&s->ce->refcount, 1);
 			pom_mutex_unlock(&ct->locks[hash]);
 			return POM_OK;
 		}
@@ -599,7 +609,7 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 		debug_conntrack("Allocated conntrack %p with no parent", ce);
 	}
 	pom_mutex_lock(&ce->lock);
-	ce->refcount++;
+	__sync_fetch_and_add(&ce->refcount, 1);
 	pom_mutex_unlock(&ct->locks[hash]);
 
 	s->ce = ce;
@@ -646,13 +656,10 @@ void conntrack_unlock(struct conntrack_entry *ce) {
 }
 
 void conntrack_refcount_dec(struct conntrack_entry *ce) {
-	pom_mutex_lock(&ce->lock);
-	if (!ce->refcount) {
+	if (!__sync_fetch_and_sub(&ce->refcount, 1)) {
 		pomlog(POMLOG_ERR "Reference count already 0 !");
 		abort();
 	}
-	ce->refcount--;
-	pom_mutex_unlock(&ce->lock);
 }
 
 int conntrack_add_priv(struct conntrack_entry *ce, void *obj, void *priv, int (*cleanup) (void *obj, void *priv)) {
@@ -693,6 +700,11 @@ void conntrack_remove_priv(struct conntrack_entry *ce, void *obj) {
 
 	if (!priv_lst)
 		return;
+
+	if (priv_lst->cleanup) {
+		if (priv_lst->cleanup(priv_lst->obj, priv_lst->priv) != POM_OK)
+			pomlog(POMLOG_WARN "Error while cleaning up private objects in conntrack_entry");
+	}
 
 	if (priv_lst->next)
 		priv_lst->next->prev = priv_lst->prev;
@@ -1007,7 +1019,7 @@ struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce) {
 			ce->session = NULL;
 			return NULL;
 		}
-		ce->session->refcount++;
+		conntrack_session_refcount_inc(ce->session);
 	}
 	
 	pom_mutex_lock(&ce->session->lock);
@@ -1018,6 +1030,10 @@ struct conntrack_session *conntrack_session_get(struct conntrack_entry *ce) {
 int conntrack_session_bind(struct conntrack_entry *ce, struct conntrack_session *session) {
 
 	if (ce->session) {
+
+		if (ce->session == session)
+			return POM_OK;
+
 		pomlog(POMLOG_WARN "Warning, session already exists when trying to bind another session. TODO: implement merging");
 		conntrack_session_refcount_dec(ce->session);
 	}
@@ -1033,24 +1049,13 @@ void conntrack_session_unlock(struct conntrack_session *session) {
 }
 
 void conntrack_session_refcount_inc(struct conntrack_session *session) {
-	pom_mutex_lock(&session->lock);
-	session->refcount++;
-	pom_mutex_unlock(&session->lock);
+	__sync_fetch_and_add(&session->refcount, 1);
 }
 
 int conntrack_session_refcount_dec(struct conntrack_session *session) {
 
-	pom_mutex_lock(&session->lock);
-	session->refcount--;
-
-	if (session->refcount) {
-		pom_mutex_unlock(&session->lock);
+	if (__sync_sub_and_fetch(&session->refcount, 1))
 		return POM_OK;
-	}
-
-	pom_mutex_unlock(&session->lock);
-
-	pthread_mutex_destroy(&session->lock);
 
 	while (session->privs) {
 		struct conntrack_priv_list *lst = session->privs;
@@ -1091,10 +1096,10 @@ int conntrack_session_add_priv(struct conntrack_session *s, void *obj, void *pri
 void *conntrack_session_get_priv(struct conntrack_session *s, void *obj) {
 
 	struct conntrack_priv_list *lst = s->privs;
-	while (lst) {
-		if (lst->obj == obj)
-			return lst->priv;
-	}
+	for (lst = s->privs; lst && lst->obj != obj; lst = lst->next);
+
+	if (lst)
+		return lst->priv;
 
 	return NULL;
 }

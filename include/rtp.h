@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2006-2008 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -19,22 +19,42 @@
  */
 
 
-#ifndef __POM_NG_CORE_H__
-#define __POM_NG_CORE_H__
+#ifndef __RTP_H__
+#define __RTP_H__
 
-#include <pom-ng/proto.h>
+#include <stdint.h>
 
-#define CORE_QUEUE_HAS_THREAD_AFFINITY	0x1
-#define CORE_QUEUE_DROP_IF_FULL		0x2
+struct rtphdr {
+	
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	uint8_t csrc_count:4;
+	uint8_t extension:1;
+	uint8_t padding:1;
+	uint8_t version:2;
 
-#define CORE_PROTO_STACK_START		1
-#define CORE_PROTO_STACK_MAX		16
+	uint8_t payload_type:7;
+	uint8_t marker:1;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	uint8_t version:2;
+	uint8_t padding:1;
+	uint8_t extension:1;
+	uint8_t csrc_count:4;
 
-int core_process_multi_packet(struct proto_process_stack *s, unsigned int stack_index, struct packet *p);
-int core_queue_packet(struct packet *p, unsigned int flags, unsigned int thread_affinity);
-struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack, struct packet* old_pkt, struct packet *new_pkt);
-void core_stack_release(struct proto_process_stack *stack);
-ptime core_get_clock();
-ptime core_get_clock_last();
+	uint8_t marker:1;
+	uint8_t payload_type:7;
+#else
+# error "Please fix <endian.h>"
+#endif
+	uint16_t seq_num;
+	uint32_t timestamp;
+	uint32_t ssrc;
+
+};
+
+struct rtphdrext {
+	uint16_t profile_defined;
+	uint16_t length;
+	uint8_t *header_extension;
+};
 
 #endif

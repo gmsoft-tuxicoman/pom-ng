@@ -454,15 +454,15 @@ void *core_processing_thread_func(void *priv) {
 		if (core_clock[tpriv->thread_id] < pkt->ts) // Make sure we keep it monotonous
 			core_clock[tpriv->thread_id] = pkt->ts;
 
-		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
-		if (core_process_packet(pkt) == POM_ERR) {
-			core_run = 0;
+		// Process timers
+		if (timers_process() != POM_OK) {
 			pom_rwlock_unlock(&core_processing_lock);
 			break;
 		}
 
-		// Process timers
-		if (timers_process() != POM_OK) {
+		//pomlog(POMLOG_DEBUG "Thread %u processing ...", pthread_self());
+		if (core_process_packet(pkt) == POM_ERR) {
+			core_run = 0;
 			pom_rwlock_unlock(&core_processing_lock);
 			break;
 		}
@@ -665,6 +665,15 @@ struct proto_process_stack *core_stack_backup(struct proto_process_stack *stack,
 	}
 
 	return new_stack;
+}
+
+void core_stack_release(struct proto_process_stack *stack) {
+
+	int i;
+	for (i = 1; i < CORE_PROTO_STACK_MAX && stack[i].proto; i++)
+		packet_info_pool_release(stack[i].pkt_info, stack[i].proto->id);
+
+	free(stack);
 }
 
 ptime core_get_clock() {
