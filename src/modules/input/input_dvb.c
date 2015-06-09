@@ -1404,8 +1404,12 @@ static int input_dvb_docsis_process_docsis_mdd(struct input *i,unsigned char *bu
 			}
 
 			default:
-				len -= tlvlen + 2;
-				buff += tlvlen + 2;
+				if (tlvlen + 2 <= len) {
+					len -= tlvlen + 2;
+					buff += tlvlen + 2;
+				} else {
+					len = 0;
+				}
 				break;
 		}
 	}
