@@ -34,6 +34,7 @@ struct telephony_codec_reg {
 	enum telephony_codec_type type;
 	char *name;
 	int default_rtp_pload_type;
+	char *pom_pload_type;
 
 };
 
@@ -157,5 +158,6 @@ int telephony_init();
 int telephony_cleanup();
 void telephony_sdp_expectation_callback(struct proto_expectation *e, void *priv, struct conntrack_entry *ce);
 int telephony_cleanup_stream_conntrack(void *obj, void *priv);
+struct telephony_stream *telephony_stream_find(struct telephony_stream *streams, struct ptype *addr, struct proto *l4proto, uint16_t port);
 
 #endif

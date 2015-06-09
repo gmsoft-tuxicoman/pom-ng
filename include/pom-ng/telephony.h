@@ -38,6 +38,12 @@ enum telephony_codec_type {
 
 };
 
+struct telephony_codec_info {
+	struct telephony_codec_reg *codec;
+	unsigned int clock_rate;
+	uint8_t pload_type, chan_num;
+};
+
 struct telephony_call;
 struct telephony_sdp;
 struct telephony_sdp_dialog;
@@ -59,4 +65,7 @@ void telephony_sdp_dialog_cleanup(struct telephony_sdp_dialog *sdp_dialog);
 
 struct proto *telephony_stream_info_get_sess_proto(struct conntrack_entry *ce);
 char *telephony_stream_info_get_call_id(struct conntrack_entry *ce);
+int telephony_stream_info_get_codec(struct telephony_codec_info *info, struct proto_process_stack *stack, int stack_index);
+
+char *telephony_codec_info_get_pload_type(struct telephony_codec_info *info);
 #endif

@@ -20,15 +20,17 @@
 
 #include <pom-ng/proto.h>
 #include <pom-ng/pload.h>
+#include <pom-ng/ptype_uint8.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/proto_rtp.h>
 
 #include "telephony.h"
 
 static struct telephony_codec_reg telephony_codecs[] = {
-	{ telephony_codec_type_audio, "PCMU", 0 },
-	{ telephony_codec_type_audio, "G723", 4 },
-	{ telephony_codec_type_audio, "PCMA", 8 },
-	{ telephony_codec_type_audio, "G729", 18 },
+	{ telephony_codec_type_audio, "PCMU", 0, "g711u" },
+	{ telephony_codec_type_audio, "G723", 4, "g723" },
+	{ telephony_codec_type_audio, "PCMA", 8, "g711a" },
+	{ telephony_codec_type_audio, "G729", 18, "g729" },
 	{ 0, NULL, 0 },
 };
 
@@ -38,7 +40,7 @@ static struct telephony_codec_reg *telephony_codec_get_by_name(char *name) {
 
 	int i;
 	for (i = 0; telephony_codecs[i].name; i++) {
-		if (strcasecmp(telephony_codecs[i].name, name))
+		if (!strcasecmp(telephony_codecs[i].name, name))
 			return &telephony_codecs[i];
 	}
 
@@ -634,7 +636,7 @@ struct telephony_stream *telephony_stream_find(struct telephony_stream *streams,
 
 		int match = 0, i;
 		for (i = 0; i < tmp->port_num; i++) {
-			if (port == (tmp->port * (i * 2))) {
+			if (port == (tmp->port + (i * 2))) {
 				match = 1;
 				break;
 			}
@@ -1011,3 +1013,80 @@ char *telephony_stream_info_get_call_id(struct conntrack_entry *ce) {
 	return call_id;
 }
 
+int telephony_stream_info_get_codec(struct telephony_codec_info *info, struct proto_process_stack *stack, int stack_index) {
+
+	struct proto_process_stack *s = &stack[stack_index];
+
+	if (!s->ce)
+		return POM_ERR;
+
+	struct telephony_stream_conntrack *sc = conntrack_get_priv(s->ce, telephony_init);
+	if (!sc)
+		return POM_ERR;
+
+	if (stack_index < 3)
+		return POM_ERR;
+
+	int i;
+
+	struct proto_process_stack *l4_stack = &stack[stack_index - 1];
+	struct ptype *dport = NULL;
+	char *port_str = (s->direction == POM_DIR_FWD ? "dport" : "sport");
+	for (i = 0; !dport; i++) {
+		struct proto_reg_info *l4_info = proto_get_info(l4_stack->proto);
+		char *name = l4_info->pkt_fields[i].name;
+		if (!name)
+			break;
+		if (!strcmp(name, port_str))
+			dport = l4_stack->pkt_info->fields_value[i];
+	}
+
+	struct proto_process_stack *l3_stack = &stack[stack_index - 2];
+	struct ptype *dst = NULL;
+	char *addr_str = (s->direction == POM_DIR_FWD ? "dst" : "src");
+	for (i = 0; !dst; i++) {
+		struct proto_reg_info *l3_info = proto_get_info(l3_stack->proto);
+		char *name = l3_info->pkt_fields[i].name;
+		if (!name)
+			break;
+		if (!strcmp(name, addr_str))
+			dst = l3_stack->pkt_info->fields_value[i];
+	}
+
+	// We expect to have an RTP stream here
+	struct ptype *pt = s->pkt_info->fields_value[proto_rtp_field_pt];
+
+	pom_rwlock_rlock(&sc->dialog->lock);
+
+	struct telephony_stream *stream = telephony_stream_find(sc->dialog->streams, dst, l4_stack->proto, *PTYPE_UINT16_GETVAL(dport));
+	if (!stream) {
+		pom_rwlock_unlock(&sc->dialog->lock);
+		return POM_ERR;
+	}
+
+	struct telephony_stream_payload *pload = NULL;
+	uint8_t pload_type = *PTYPE_UINT8_GETVAL(pt);
+	for (pload = stream->ploads; pload && pload->pload_type != pload_type; pload = pload->next);
+
+	if (pload) {
+		// We've found the pload !
+		info->codec = pload->codec;
+		info->clock_rate = pload->clock_rate;
+		info->chan_num = pload->chan_num;
+	}
+
+	pom_rwlock_unlock(&sc->dialog->lock);
+
+	if (!pload)
+		return POM_ERR;
+
+	return POM_OK;
+}
+
+char *telephony_codec_info_get_pload_type(struct telephony_codec_info *info) {
+
+	if (!info->codec)
+		return NULL;
+
+	return info->codec->pom_pload_type;
+}
