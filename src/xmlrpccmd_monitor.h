@@ -29,6 +29,9 @@
 #define XMLRPCCMD_MONITOR_TIMEOUT_MAX	3600
 #define XMLRPCCMD_MONITOR_POLL_TIMEOUT	180
 
+#define XMLRPCCMD_MONITOR_EVT_LISTEN_BEGIN	0x1
+#define XMLRPCCMD_MONITOR_EVT_LISTEN_END	0x2
+
 struct xmlrpccmd_monitor_session {
 
 	unsigned int id;
@@ -75,6 +78,7 @@ struct xmlrpccmd_monitor_pload_listener {
 
 struct xmlrpccmd_monitor_evt_listener {
 	uint64_t id;
+	unsigned int flags;
 	struct filter_node *filter;
 	struct xmlrpccmd_monitor_evt_listener *prev, *next;
 };
@@ -84,6 +88,7 @@ struct xmlrpccmd_monitor_evtreg {
 	struct xmlrpccmd_monitor_session *sess;
 	struct event_reg *evt_reg;
 	struct xmlrpccmd_monitor_evt_listener *listeners;
+	unsigned int flags;
 	struct xmlrpccmd_monitor_evtreg *prev, *next;
 };
 
@@ -97,7 +102,9 @@ struct xmlrpccmd_monitor_event {
 };
 
 int xmlrpccmd_monitor_register_all();
+int xmlrpccmd_monitor_evt_process_begin (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj);
+int xmlrpccmd_monitor_evt_process(struct event *evt, void *obj, unsigned int flags);
 int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload);
 int xmlrpccmd_monitor_pload_write(void *obj, void *priv, void *data, size_t len);
 int xmlrpccmd_monitor_pload_close(void *obj, void *priv);

@@ -22,7 +22,6 @@
 #include "xmlrpcsrv.h"
 #include "filter.h"
 #include "httpd.h"
-#include <pom-ng/event.h>
 
 #include "xmlrpccmd.h"
 #include "xmlrpccmd_monitor.h"
@@ -46,7 +45,7 @@ static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM
 	{
 		.name = "monitor.eventAddListener",
 		.callback_func = xmlrpccmd_monitor_event_add_listener,
-		.signature = "I:iss",
+		.signature = "I:issbb",
 		.help = "Add an event listener to a monitoring session",
 	},
 
@@ -112,7 +111,17 @@ int xmlrpccmd_monitor_register_all() {
 	return POM_OK;
 }
 
+int xmlrpccmd_monitor_evt_process_begin (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	return xmlrpccmd_monitor_evt_process(evt, obj, XMLRPCCMD_MONITOR_EVT_LISTEN_END);
+}
+
 int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj) {
+
+	return xmlrpccmd_monitor_evt_process(evt, obj, XMLRPCCMD_MONITOR_EVT_LISTEN_END);
+}
+
+int xmlrpccmd_monitor_evt_process(struct event *evt, void *obj, unsigned int flags) {
 
 	struct xmlrpccmd_monitor_evtreg *evtreg = obj;
 	struct xmlrpccmd_monitor_session *sess = evtreg->sess;
@@ -126,6 +135,7 @@ int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj) {
 	
 	lst->evt = evt;
 	lst->event_reg = evtreg;
+	evtreg->flags = flags;
 
 	pom_mutex_lock(&sess->lock);
 
@@ -133,6 +143,9 @@ int xmlrpccmd_monitor_evt_process_end(struct event *evt, void *obj) {
 	struct xmlrpccmd_monitor_evt_listener *listeners;
 
 	for (listeners = evtreg->listeners; listeners; listeners = listeners->next) {
+
+		if (!(listeners->flags & flags))
+			continue;
 			
 		if (listeners->filter && (filter_event_match(listeners->filter, evt) != FILTER_MATCH_YES))
 			continue;
@@ -637,8 +650,10 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 	xmlrpc_int id = -1;
 	char *evt_name = NULL;
 	char *filter_expr = NULL;
+	xmlrpc_bool begin = 0;
+	xmlrpc_bool end = 0;
 
-	xmlrpc_decompose_value(envP, paramArrayP, "(iss)", &id, &evt_name, &filter_expr);
+	xmlrpc_decompose_value(envP, paramArrayP, "(issbb)", &id, &evt_name, &filter_expr, &begin, &end);
 	if (envP->fault_occurred)
 		return NULL;
 
@@ -646,6 +661,13 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		free(evt_name);
 		free(filter_expr);
 		xmlrpc_faultf(envP, "Invalid session id");
+		return NULL;
+	}
+
+	if (!begin && !end) {
+		free(evt_name);
+		free(filter_expr);
+		xmlrpc_faultf(envP, "Either begining and/or end of the event must be listened to.");
 		return NULL;
 	}
 
@@ -685,6 +707,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 	free(filter_expr);
 
 	l->filter = filter;
+	l->flags = (begin ? XMLRPCCMD_MONITOR_EVT_LISTEN_BEGIN : 0) | (end ? XMLRPCCMD_MONITOR_EVT_LISTEN_END : 0);
 
 	// Find the right session and lock it
 
@@ -701,13 +724,13 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 	pom_mutex_lock(&sess->lock);
 	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 
-
 	// Check if we already monitor this event
 
+	int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) = NULL;
 	struct xmlrpccmd_monitor_evtreg *lst;
 	
 	for (lst = sess->events_reg; lst && lst->evt_reg != evt; lst = lst->next);
-	
+
 	if (!lst) {
 
 		// In case we are not listening to this event yet, do it
@@ -725,8 +748,13 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		lst->evt_reg = evt;
 		lst->sess = sess;
 
+		if (l->flags & XMLRPCCMD_MONITOR_EVT_LISTEN_BEGIN)
+			process_begin = xmlrpccmd_monitor_evt_process_begin;
+		int (*process_end) (struct event *evt, void *obj) = NULL;
+		if (l->flags & XMLRPCCMD_MONITOR_EVT_LISTEN_END)
+			process_end = xmlrpccmd_monitor_evt_process_end;
 		
-		if (event_listener_register(evt, lst, NULL, xmlrpccmd_monitor_evt_process_end) != POM_OK) {
+		if (event_listener_register(evt, lst, process_begin, process_end) != POM_OK) {
 			pom_mutex_unlock(&sess->lock);
 			filter_cleanup(filter);
 			free(l);
@@ -740,6 +768,35 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		if (lst->next)
 			lst->next->prev = lst;
 		sess->events_reg = lst;
+	} else if ((lst->flags & l->flags) != l->flags) {
+		// Add the begin or end process function to the event if needed
+		unsigned int all_flags = l->flags | lst->flags;
+		if (all_flags & XMLRPCCMD_MONITOR_EVT_LISTEN_BEGIN)
+			process_begin = xmlrpccmd_monitor_evt_process_begin;
+		int (*process_end) (struct event *evt, void *obj) = NULL;
+		if (all_flags & XMLRPCCMD_MONITOR_EVT_LISTEN_END)
+			process_end = xmlrpccmd_monitor_evt_process_end;
+
+		// FIXME : hopefully we won't miss events in between those two
+		if (event_listener_unregister(evt, lst) != POM_OK) {
+			pom_mutex_unlock(&sess->lock);
+			free(l);
+			free(lst);
+			xmlrpc_faultf(envP, "Error while stopping to listen to the event.");
+			return NULL;
+
+		}
+		lst->flags = 0;
+		if (event_listener_register(evt, lst, process_begin, process_end) != POM_OK) {
+			pom_mutex_unlock(&sess->lock);
+			filter_cleanup(filter);
+			free(l);
+			free(lst);
+			xmlrpc_faultf(envP, "Error while listening to the event.");
+			return NULL;
+
+		}
+		lst->flags = all_flags;
 	}
 
 
@@ -1162,10 +1219,11 @@ xmlrpc_value *xmlrpccmd_monitor_build_event(xmlrpc_env * const envP, struct even
 	ptime evt_timestamp = event_get_timestamp(evt);
 	xmlrpc_value *timestamp = xmlrpc_build_value(envP, "{s:i,s:i}", "sec", pom_ptime_sec(evt_timestamp), "usec", pom_ptime_usec(evt_timestamp));
 
-	xmlrpc_value *xml_evt = xmlrpc_build_value(envP, "{s:s,s:S,s:S}",
+	xmlrpc_value *xml_evt = xmlrpc_build_value(envP, "{s:s,s:S,s:S,s:b}",
 					"event", evt_reg_info->name,
 					"timestamp", timestamp,
-					"data", data);
+					"data", data,
+					"done", event_is_done(evt));
 	xmlrpc_DECREF(timestamp);
 	xmlrpc_DECREF(data);
 
