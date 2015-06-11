@@ -987,6 +987,8 @@ static int analyzer_sip_event_process_begin(struct event *evt, void *obj, struct
 		if (dialog->ce_next)
 			dialog->ce_next->ce_prev = dialog;
 		cpriv->dialogs = dialog;
+
+		dialog->ce_priv = cpriv;
 	}
 
 	cpriv->cur_dialog = dialog;
