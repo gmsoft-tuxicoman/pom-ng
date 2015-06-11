@@ -217,8 +217,6 @@ fi
 if test "x$INPUT_OBJS" = "x"
 then
 	AC_MSG_ERROR([No input could be compiled.])
-else
-	echo $INPUT_OBJS
 fi
 
 # Check for xmlrpc-c
