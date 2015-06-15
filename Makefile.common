@@ -16,7 +16,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 
-CFLAGS += -Wall -I$(top_srcdir)/include -D_FILE_OFFSET_BITS=64
+AM_CFLAGS = -Wall -I$(top_srcdir)/include -D_FILE_OFFSET_BITS=64
 
 mod_dir=$(exec_prefix)/lib/pom-ng
 
