@@ -375,12 +375,12 @@ AC_SUBST(lua_CFLAGS)
 
 # Check for libexif
 PKG_CHECK_MODULES(libexif, [libexif], [has_exif=yes], [has_exif=no])
-AC_ARG_WITH([exif], AS_HELP_STRING([--with-exif], [enable exif database support]))
+AC_ARG_WITH([exif], AS_HELP_STRING([--with-exif], [enable exif support]))
 if test "x$with_exif" = "xyes"
 then
 	if test "x$has_exif" = "xno"
 	then
-		AC_MSG_ERROR([exif was requested but the headers were not found])
+		AC_MSG_ERROR([exif was requested but the package were not found])
 	fi
 else
 	if test "x$with_exif" = "xno"
