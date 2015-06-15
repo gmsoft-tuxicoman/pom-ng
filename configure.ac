@@ -22,7 +22,7 @@
 AC_PREREQ(2.61)
 AC_INIT([pom-ng], [0.0.17], [gmsoft@tuxicoman.be], , [http://www.packet-o-matic.org])
 AC_CONFIG_AUX_DIR([build-aux])
-AM_INIT_AUTOMAKE([-Wall foreign])
+AM_INIT_AUTOMAKE([-Wall foreign subdir-objects])
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([m4])
@@ -30,6 +30,7 @@ AC_CONFIG_MACRO_DIR([m4])
 # Checks for programs.
 AC_PROG_CC
 AM_PROG_CC_C_O
+AM_PROG_AR
 
 AC_DISABLE_STATIC
 AC_LIBTOOL_DLOPEN
