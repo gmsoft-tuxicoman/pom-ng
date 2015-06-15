@@ -391,10 +391,33 @@ fi
 if test "x$has_exif" = "xyes"
 then
 	AC_DEFINE(HAVE_LIBEXIF, , [libexif])
-	AC_SUBST(libexit_LIBS)
+	AC_SUBST(libexif_LIBS)
 	AC_SUBST(libexif_CFLAGS)
 fi
 
+# Check for gstreamer
+PKG_CHECK_MODULES(gstreamer, [gstreamer-1.0], [has_gstreamer=yes], [has_gstreamer=no])
+AC_ARG_WITH([gstreamer], AS_HELP_STRING([--with-gstreamer], [enable gstreamer support]))
+if test "x$with_gstreamer" = "xyes"
+then
+	if test "x$has_gstreamer" = "xno"
+	then
+		AC_MSG_ERROR([gstreamer was requested but the package were not found])
+	fi
+else
+	if test "x$with_gstreamer" = "xno"
+	then
+		has_gstreamer=no
+	fi
+fi
+if test "x$has_gstreamer" = "xyes"
+then
+	AC_DEFINE(HAVE_GSTREAMER, , [gstreamer])
+	AC_DEFINE(MEDIA, [], [Has media support])
+	AC_SUBST(gstreamer_LIBS)
+	AC_SUBST(gstreamer_CFLAGS)
+fi
+AM_CONDITIONAL([MEDIA], [test "x$has_gstreamer" = "xyes"])
 
 AC_SUBST(ANALYZER_OBJS)
 AC_SUBST(DATASTORE_OBJS)
@@ -423,6 +446,7 @@ echo " * JPEG             : $has_jpeg"
 echo " * Sqlite3          : $has_sqlite3"
 echo " * Postgresql       : $has_postgres"
 echo " * libexif          : $has_exif"
+echo " * gstreamer        : $has_gstreamer"
 echo ""
 echo "Author : Guy Martin <gmsoft@tuxicoman.be>"
 

@@ -31,4 +31,10 @@ libpom_ng_la_SOURCES = analyzer.c analyzer.h common.c common.h core.c core.h dns
 libpom_ng_la_CFLAGS = $(AM_CFLAGS) @libxml2_CFLAGS@ @lua_CFLAGS@ -DDATAROOT='"$(pkgdatadir)"'
 libpom_ng_la_LDFLAGS = @libxml2_LIBS@
 
+if MEDIA
+libpom_ng_la_SOURCES += media.c media.h
+libpom_ng_la_CFLAGS += @gstreamer_CFLAGS@
+libpom_ng_la_LDFLAGS += @gstreamer_LIBS@
+endif
+
 lib_LTLIBRARIES = libpom-ng.la

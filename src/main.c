@@ -47,6 +47,10 @@
 #include "pload.h"
 #include "telephony.h"
 
+#ifdef MEDIA
+#include "media.h"
+#endif
+
 #include <pom-ng/ptype.h>
 
 static char* shutdown_reason = NULL;
@@ -400,7 +404,12 @@ int main(int argc, char *argv[]) {
 
 	if (telephony_init() != POM_OK) {
 		pomlog(POMLOG_ERR "Error while initialing telephony");
-		goto err_addon;
+		goto err_telephony;
+	}
+
+	if (media_init() != POM_OK) {
+		pomlog(POMLOG_ERR "Error while initializing media");
+		goto err_media;
 	}
 
 	// Main loop
@@ -441,6 +450,7 @@ int main(int argc, char *argv[]) {
 	pload_cleanup();
 	proto_cleanup();
 	addon_cleanup();
+	media_cleanup();
 	datastore_close(system_store);
 	datastore_cleanup();
 	event_finish();
@@ -459,8 +469,11 @@ int main(int argc, char *argv[]) {
 	
 	// Error path below
 
-err_addon:
+err_media:
+	media_cleanup();
+err_telephony:
 	addon_cleanup();
+err_addon:
 err_dstore:
 err_timer:
 err_packet:
