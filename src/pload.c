@@ -1198,6 +1198,9 @@ struct pload_store *pload_store_get(struct pload *pload) {
 			pomlog(POMLOG_ERR "Error while initializing the pload condition : %s", pom_strerror(res));
 			abort();
 		}
+
+		pload->store->rel_event = pload->rel_event;
+		event_refcount_inc(pload->store->rel_event);
 	}
 
 	pload_store_get_ref(pload->store);
@@ -1287,6 +1290,10 @@ void pload_store_end(struct pload_store *ps) {
 
 }
 
+struct event *pload_store_get_related_event(struct pload_store *ps) {
+	return ps->rel_event;
+}
+
 void pload_store_get_ref(struct pload_store *ps) {
 	__sync_add_and_fetch(&ps->refcount, 1);
 }
@@ -1298,18 +1305,22 @@ void pload_store_release(struct pload_store *ps) {
 
 	// Refcount is 0 !
 
+	event_refcount_dec(ps->rel_event);
+
 	if (ps->fd != -1) {
 		if (close(ps->fd)) {
 			pomlog(POMLOG_WARN "Error while closing file \"%s\" : %s", ps->filename, pom_strerror(errno));
 		}
 	}
 
-	if (unlink(ps->filename)) {
-		pomlog(POMLOG_WARN "Error while removing temporary file \"%s\" : %s", ps->filename);
-	}
+	if (ps->filename) {
+
+		if (unlink(ps->filename)) {
+			pomlog(POMLOG_WARN "Error while removing temporary file \"%s\" : %s", ps->filename);
+		}
 		
-	if (ps->filename)
 		free(ps->filename);
+	}
 
 	int res = pthread_mutex_destroy(&ps->lock);
 	if (res) {

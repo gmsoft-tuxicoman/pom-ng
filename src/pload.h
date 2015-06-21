@@ -94,6 +94,8 @@ struct pload_store {
 	struct pload_store_map *write_map;
 	struct pload_store_map *read_maps;
 
+	struct event *rel_event;
+
 	unsigned int flags;
 
 	pthread_mutex_t lock;
