@@ -1,6 +1,6 @@
 
 # This file is part of pom-ng.
-# Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
+# Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -396,7 +396,7 @@ then
 fi
 
 # Check for gstreamer
-PKG_CHECK_MODULES(gstreamer, [gstreamer-1.0], [has_gstreamer=yes], [has_gstreamer=no])
+PKG_CHECK_MODULES(gstreamer, [gstreamer-1.0, gstreamer-app-1.0], [has_gstreamer=yes], [has_gstreamer=no])
 AC_ARG_WITH([gstreamer], AS_HELP_STRING([--with-gstreamer], [enable gstreamer support]))
 if test "x$with_gstreamer" = "xyes"
 then
