@@ -1,5 +1,5 @@
 # This file is part of pom-ng.
-# Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
+# Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@ if MEDIA
 libpom_ng_la_SOURCES += media.c media.h
 libpom_ng_la_CFLAGS += @gstreamer_CFLAGS@
 libpom_ng_la_LDFLAGS += @gstreamer_LIBS@
+pom_ng_CFLAGS += @gstreamer_CFLAGS@
 endif
 
 lib_LTLIBRARIES = libpom-ng.la
