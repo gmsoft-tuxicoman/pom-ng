@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -786,6 +786,8 @@ int filter_packet_match(struct filter_node *n, struct proto_process_stack *stack
 int filter_event_match(struct filter_node *n, struct event *evt) {
 
 	int res = FILTER_MATCH_NO;
+	struct ptype *values[2] = { 0 };
+	int i;
 
 	if (n->type[0] == filter_value_type_node && n->type[1] == filter_value_type_node) {
 		int res_a, res_b;
@@ -815,8 +817,45 @@ int filter_event_match(struct filter_node *n, struct event *evt) {
 	}
 
 	if (n->type[0] == filter_value_type_evt_prop || n->type[1] == filter_value_type_evt_prop) {
-		pomlog(POMLOG_WARN "Event property matching not implemented yet");
-		return POM_ERR;
+		struct event_reg_info *info = event_get_info(evt);
+		for (i = 0; i < 2; i++) {
+			if (n->type[i] == filter_value_type_evt_prop) {
+				switch (n->value[i].integer) {
+					case filter_evt_prop_name:
+						values[i] = ptype_alloc("string");
+						if (!values[i] || (ptype_parse_val(values[i], info->name) != POM_OK)) {
+							res = POM_ERR;
+							goto err;
+						}
+						break;
+					case filter_evt_prop_source:
+						values[i] = ptype_alloc("string");
+						if (!values[i] || (ptype_parse_val(values[i], info->source_name) != POM_OK)) {
+							res = POM_ERR;
+							goto err;
+						}
+					default:
+						pomlog(POMLOG_WARN "Filtering on this event property is not implemented");
+						break;
+				}
+			} else if (n->type[i] == filter_value_type_string) {
+				values[i] = ptype_alloc("string");
+				if (!values[i]) {
+					res = POM_ERR;
+					goto err;
+				}
+
+				if (ptype_parse_val(values[i], n->value[i].string) != POM_OK) {
+					pomlog(POMLOG_ERR "Error while parsing filter value '%s'\n", n->value[i].string);
+					res = POM_ERR;
+					goto err;
+				}
+			}
+		}
+
+		if (values[0] && values[1])
+			res = ptype_compare_val(n->op, values[0], values[1]);
+
 	} else if (n->type[0] == filter_value_type_data || n->type[1] == filter_value_type_data) {
 			struct data *d = event_get_data(evt);
 			res = filter_node_data_match(n, d);
@@ -831,7 +870,12 @@ int filter_event_match(struct filter_node *n, struct event *evt) {
 
 	if (n->not)
 		return !res;
-
+err:
+	for (i = 0; i < 2; i++) {
+		if (values[i]) {
+			ptype_cleanup(values[i]);
+		}
+	}
 	return res;
 }
 
@@ -870,7 +914,7 @@ int filter_pload_match(struct filter_node *n, struct pload *p) {
 	struct ptype *values[2] = { 0 };
 	int i;
 
-	// Get the value for pload_data or pload_evt_data
+	// Get the value for pload_data, pload_evt_data or evt_prop
 	for (i = 0; i < 2; i++) {
 
 		if (n->type[i] == filter_value_type_pload_data || n->type[i] == filter_value_type_pload_evt_data) {
@@ -919,6 +963,28 @@ int filter_pload_match(struct filter_node *n, struct pload *p) {
 			} else {
 				values[i] = data[j].value;
 			}
+		} else if (n->type[i] == filter_value_type_evt_prop) {
+			struct event *evt = pload_get_related_event(p);
+			struct event_reg_info *info = event_get_info(evt);
+			switch (n->value[i].integer) {
+				case filter_evt_prop_name:
+					values[i] = ptype_alloc("string");
+					if (!values[i] || (ptype_parse_val(values[i], info->name) != POM_OK)) {
+						res = POM_ERR;
+						goto err;
+					}
+					break;
+				case filter_evt_prop_source:
+					values[i] = ptype_alloc("string");
+					if (!values[i] || (ptype_parse_val(values[i], info->source_name) != POM_OK)) {
+						res = POM_ERR;
+						goto err;
+					}
+				default:
+					pomlog(POMLOG_WARN "Filtering on this event property is not implemented");
+					break;
+			}
+
 		}
 	}
 
