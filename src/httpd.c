@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -610,6 +610,23 @@ uint64_t httpd_pload_add(struct pload *pload) {
 	return p->id;
 }
 
+struct pload_store *httpd_pload_get_store(uint64_t id) {
+
+	struct httpd_pload *p = NULL;
+
+	pom_rwlock_wlock(&httpd_ploads_lock);
+
+	HASH_FIND(hh, httpd_ploads, &id, sizeof(id), p);
+	if (!p) {
+		pomlog(POMLOG_WARN "Payload %"PRIu64" not found", id);
+		pom_rwlock_unlock(&httpd_ploads_lock);
+		return NULL;
+	}
+	struct pload_store *store = p->store;;
+	pom_rwlock_unlock(&httpd_ploads_lock);
+
+	return store;
+}
 
 void httpd_pload_remove(uint64_t id) {
 

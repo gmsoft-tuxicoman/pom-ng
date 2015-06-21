@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -84,6 +84,7 @@ int httpd_cleanup();
 void httpd_logger(void *arg, const char *fmt, va_list ap);
 
 uint64_t httpd_pload_add(struct pload *pload);
+struct pload_store *httpd_pload_get_store(uint64_t id);
 void httpd_pload_remove(uint64_t id);
 
 ssize_t httpd_pload_response_callback(void *cls, uint64_t pos, char *buf, size_t max);
