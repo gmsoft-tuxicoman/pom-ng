@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -83,6 +83,8 @@ struct pload_store {
 	unsigned int refcount;
 	struct pload_store_map *write_map;
 	struct pload_store_map *read_maps;
+
+	struct event *rel_event;
 
 	unsigned int flags;
 

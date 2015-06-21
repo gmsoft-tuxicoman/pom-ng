@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -114,6 +114,7 @@ void pload_refcount_dec(struct pload *pload);
 struct pload_store *pload_store_get(struct pload *pload);
 void pload_store_get_ref(struct pload_store *ps);
 void pload_store_release(struct pload_store *ps);
+struct event *pload_store_get_related_event(struct pload_store *ps);
 
 struct pload_store_map *pload_store_read_start(struct pload_store *ps);
 ssize_t pload_store_read(struct pload_store_map *map, void **buff, size_t count);
