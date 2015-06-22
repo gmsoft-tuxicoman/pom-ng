@@ -59,9 +59,12 @@ struct mime_type {
 };
 
 
+struct mime_type *mime_type_alloc(enum mime_top_type, char *name);
+enum mime_top_type mime_top_type_parse(char *top_type);
 struct mime_type *mime_type_parse(char *content_type);
 void mime_type_cleanup(struct mime_type *mime);
 
+int mime_type_set_param(struct mime_type *mime_type, char *param_name, char* param_value);
 char *mime_type_get_param(struct mime_type *mime, char *param_name);
 
 int mime_header_parse(struct data *data, char *line, size_t line_len);

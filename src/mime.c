@@ -43,6 +43,48 @@ static struct mime_top_type_str mime_top_types_str[] = {
 	{ mime_top_type_unknown, NULL },
 };
 
+
+struct mime_type *mime_type_alloc(enum mime_top_type top_type, char *name) {
+
+	struct mime_type *mime_type = malloc(sizeof(struct mime_type));
+	if (!mime_type) {
+		pom_oom(sizeof(struct mime_type));
+		return NULL;
+	}
+
+	memset(mime_type, 0, sizeof(struct mime_type));
+	mime_type->top_type = top_type;
+	mime_type->name = strdup(name);
+
+	if (!mime_type->name) {
+		pom_oom(strlen(name) + 1);
+		free(mime_type);
+		return NULL;
+	}
+
+	// Lowercase the name
+	int i;
+	size_t type_len = strlen(mime_type->name);
+	for (i = 0; i < type_len; i++) {
+		if (mime_type->name[i] >= 'A' && mime_type->name[i] <= 'Z')
+			mime_type->name[i] += 'a' - 'A';
+	}
+
+	return mime_type;
+}
+
+enum mime_top_type mime_top_type_parse(char *top_type) {
+
+	int i;
+	for (i = 0; mime_top_types_str[i].str; i++) {
+		if (!strncmp(mime_top_types_str[i].str, top_type, strlen(mime_top_types_str[i].str))) {
+			return mime_top_types_str[i].top_type;
+		}
+	}
+
+	return mime_top_type_unknown;
+}
+
 struct mime_type *mime_type_parse(char *content_type) {
 
 	if (!content_type)
@@ -86,21 +128,7 @@ struct mime_type *mime_type_parse(char *content_type) {
 			mime_type->name[i] += 'a' - 'A';
 	}
 	
-
-	// Find the top type
-	int found = 0;
-	for (i = 0; mime_top_types_str[i].str; i++) {
-		if (!strncmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
-			mime_type->top_type = mime_top_types_str[i].top_type;
-			found = 1;
-			break;
-		}
-	}
-
-	if (!found) {
-		mime_type->top_type = mime_top_type_unknown;
-		pomlog(POMLOG_DEBUG "Top type of '%s' now known", mime_type->name);
-	}
+	mime_type->top_type = mime_top_type_parse(mime_type->name);
 
 	if (!sc) // No parameters
 		return mime_type;
@@ -171,6 +199,45 @@ void mime_type_cleanup(struct mime_type *mime_type) {
 	}
 
 	free(mime_type);
+}
+
+int mime_type_set_param(struct mime_type *mime_type, char *param_name, char* param_value) {
+
+	int i;
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
+		if (!strcmp(mime_type->params[i].name, param_name))
+			break;
+	}
+	if (i == MIME_MAX_PARAMETERS) {
+		pomlog(POMLOG_ERR "Maximum number of parameters reached for a mime-type.");
+		return POM_ERR;
+	}
+
+	struct mime_type_parameter *param = &mime_type->params[i];
+
+	if (!param->name) {
+		param->name = strdup(param_name);
+		if (!param->name) {
+			pom_oom(strlen(param_name) + 1);
+			return POM_ERR;
+		}
+	}
+
+	char *oldval = param->value;
+
+	param->value = strdup(param_value);
+	if (!param->value) {
+		pom_oom(strlen(param_value) + 1);
+		if (oldval) {
+			param->value = oldval;
+		} else {
+			free(param->name);
+			param->name = NULL;
+		}
+		return POM_ERR;
+	}
+
+	return POM_OK;
 }
 
 char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
