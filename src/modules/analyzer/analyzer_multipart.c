@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -162,7 +162,7 @@ static int analyzer_multipart_pload_process_line(struct analyzer_multipart_pload
 				priv->pload_data.items = itm->next;
 
 				if (!strcasecmp(itm->key, "Content-Type")) {
-					pload_set_mime_type(priv->pload, PTYPE_STRING_GETVAL(itm->value));
+					pload_set_mime_type_str(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
 					pload_set_encoding(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				}

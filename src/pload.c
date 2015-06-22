@@ -441,7 +441,7 @@ void pload_refcount_dec(struct pload *pload) {
 
 }
 
-int pload_set_mime_type(struct pload *p, char *mime_type) {
+int pload_set_mime_type_str(struct pload *p, char *mime_type) {
 
 	if (!mime_type)
 		return POM_ERR;
@@ -449,12 +449,20 @@ int pload_set_mime_type(struct pload *p, char *mime_type) {
 	if (!(p->flags & PLOAD_FLAG_NEED_ANALYSIS))
 		return POM_ERR;
 
-	p->mime_type = mime_type_parse(mime_type);
-	if (!p->mime_type)
+	struct mime_type *m = mime_type_parse(mime_type);
+	if (!m)
 		return POM_ERR;
 
+	return pload_set_mime_type(p, m);
+
+}
+
+int pload_set_mime_type(struct pload *p, struct mime_type *mime_type) {
+
+	p->mime_type = mime_type;
+
 	struct pload_mime_type *pmt = NULL;
-	HASH_FIND(hh, pload_mime_types_hash, p->mime_type->name, strlen(p->mime_type->name), pmt);
+	HASH_FIND(hh, pload_mime_types_hash, mime_type->name, strlen(mime_type->name), pmt);
 
 	if (pmt)
 		p->type = pmt->type;

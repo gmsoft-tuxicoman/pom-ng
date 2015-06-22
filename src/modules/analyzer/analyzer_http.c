@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -729,7 +729,7 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 			return POM_ERR;
 
 		if (epriv->content_type[dir])
-			pload_set_mime_type(epriv->pload[dir], epriv->content_type[dir]);
+			pload_set_mime_type_str(epriv->pload[dir], epriv->content_type[dir]);
 
 		if (epriv->content_encoding[dir])
 			pload_set_encoding(epriv->pload[dir], epriv->content_encoding[dir]);

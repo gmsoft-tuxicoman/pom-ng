@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -340,7 +340,7 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 							}
 
 							if (data_is_set(evt_data[proto_sip_msg_content_type]))
-								pload_set_mime_type(priv->pload[s->direction], PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_content_type].value));
+								pload_set_mime_type_str(priv->pload[s->direction], PTYPE_STRING_GETVAL(evt_data[proto_sip_msg_content_type].value));
 						}
 					}
 					priv->state[s->direction]++;

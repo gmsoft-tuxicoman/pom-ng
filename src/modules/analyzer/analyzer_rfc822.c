@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -201,7 +201,7 @@ static int analyzer_rfc822_pload_write(void *obj, void *priv, void *data, size_t
 		while (itm && (!content_type_found && !content_encoding_found)) {
 			if (!strcasecmp(itm->key, "Content-Type")) {
 				content_type_found = 1;
-				pload_set_mime_type(p->sub_pload, PTYPE_STRING_GETVAL(itm->value));
+				pload_set_mime_type_str(p->sub_pload, PTYPE_STRING_GETVAL(itm->value));
 			} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
 				content_encoding_found = 1;
 				pload_set_encoding(p->sub_pload, PTYPE_STRING_GETVAL(itm->value));
@@ -211,7 +211,7 @@ static int analyzer_rfc822_pload_write(void *obj, void *priv, void *data, size_t
 		}
 
 		if (!content_type_found) // Set the default according to the RFC
-			pload_set_mime_type(p->sub_pload, "text/plain; charset=US-ASCII");
+			pload_set_mime_type_str(p->sub_pload, "text/plain; charset=US-ASCII");
 
 		p->state = analyzer_rfc822_pload_state_processing;
 

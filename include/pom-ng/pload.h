@@ -39,6 +39,7 @@
 #include <uthash.h>
 #include <pom-ng/filter.h>
 #include <pom-ng/event.h>
+#include <pom-ng/mime.h>
 
 enum pload_class {
 	pload_class_unknown = 0,
@@ -91,7 +92,8 @@ struct pload_analyzer {
 struct pload *pload_alloc(struct event *rel_event, int flags);
 int pload_end(struct pload *p);
 
-int pload_set_mime_type(struct pload *p, char *mime_type);
+int pload_set_mime_type_str(struct pload *p, char *mime_type);
+int pload_set_mime_type(struct pload *p, struct mime_type *mime_type);
 struct mime_type *pload_get_mime_type(struct pload *p);
 int pload_set_type(struct pload *p, char *type);
 int pload_set_encoding(struct pload *p, char *encoding);

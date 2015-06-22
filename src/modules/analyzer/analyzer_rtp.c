@@ -257,9 +257,9 @@ static int analyzer_rtp_pload_process(void *obj, struct packet *p, struct proto_
 
 		struct telephony_codec_info info = { 0 };
 		if (telephony_stream_info_get_codec(&info, stack, stack_index - 1) == POM_OK) {
-			char *pload_type = telephony_codec_info_get_pload_type(&info);
-			if (pload_type)
-				pload_set_type(cp->pload[dir], pload_type);
+			struct mime_type *mime = telephony_codec_info_get_mime_type(&info);
+			if (mime)
+				pload_set_mime_type(cp->pload[dir], mime);
 		}
 	}
 
