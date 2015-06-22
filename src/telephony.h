@@ -31,10 +31,10 @@
 
 struct telephony_codec_reg {
 
-	enum telephony_codec_type type;
+	enum mime_top_type type;
 	char *name;
 	int default_rtp_pload_type;
-	char *pom_pload_type;
+	char *mime_type;
 
 };
 
@@ -80,7 +80,7 @@ struct telephony_stream {
 	struct telephony_stream_address *addrs;
 	struct telephony_stream_payload *ploads;
 	enum telephony_stream_direction dir;
-	enum telephony_codec_type pload_type;
+	enum mime_top_type pload_type;
 	struct proto *l4proto;
 
 	struct proto_expectation *expt;
@@ -125,6 +125,7 @@ enum telephony_sdp_attrib_type {
 struct telephony_sdp_attrib_rtpmap {
 	struct telephony_codec_reg *codec;
 	uint8_t pload_type, chan_num;
+	unsigned int clock_rate;
 };
 
 struct telephony_sdp_attrib {

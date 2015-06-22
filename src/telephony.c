@@ -27,10 +27,10 @@
 #include "telephony.h"
 
 static struct telephony_codec_reg telephony_codecs[] = {
-	{ telephony_codec_type_audio, "PCMU", 0, "g711u" },
-	{ telephony_codec_type_audio, "G723", 4, "g723" },
-	{ telephony_codec_type_audio, "PCMA", 8, "g711a" },
-	{ telephony_codec_type_audio, "G729", 18, "g729" },
+	{ mime_top_type_audio, "PCMU", 0, "x-ulaw" },
+	{ mime_top_type_audio, "G723", 4, "g723" },
+	{ mime_top_type_audio, "PCMA", 8, "x-alaw" },
+	{ mime_top_type_audio, "G729", 18, "g729" },
 	{ 0, NULL, 0 },
 };
 
@@ -131,7 +131,6 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 		return POM_OK;
 	}
 
-
 	uint8_t chan_num = 1;
 	
 	// Parse possible encoding parameter (channel number)
@@ -168,6 +167,7 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 			pload->codec = codec;
 		}
 		pload->chan_num = chan_num;
+		pload->clock_rate = clock_rate;
 
 	} else {
 		// This is a session attribute
@@ -181,6 +181,7 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 		a->rtpmap.codec = codec;
 		a->rtpmap.pload_type = pt;
 		a->rtpmap.chan_num = chan_num;
+		a->rtpmap.clock_rate = clock_rate;
 
 	}
 
@@ -316,15 +317,6 @@ static int telephony_sdp_parse_line_c(struct telephony_sdp *sdp, char *line, siz
 
 static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, size_t len) {
 
-	char *media_str[] = {
-		"audio",
-		"video",
-		"text",
-		"application",
-		"message",
-		NULL
-	};
-
 	// Add the stream to the SDP so additional attributes get added to it even if we can't parse it
 	
 	struct telephony_stream *stream = malloc(sizeof(struct telephony_stream));
@@ -339,23 +331,15 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	sdp->streams = stream;
 	stream->port_num = 1;
 
-	// Get the codec type
-	int i;
-	for (i = 0; media_str[i]; i++) {
-		size_t str_len = strlen(media_str[i]);
-		if (len < str_len + 1)
-			continue;
-		
-		if (!strncasecmp(line, media_str[i], str_len)) {
-			stream->pload_type = i + telephony_codec_type_audio;
-			line += str_len + 1;
-			len -= str_len + 1;
-			break;
-		}
-	}
+	stream->pload_type = mime_top_type_parse(line);
 
-	if (stream->pload_type == telephony_codec_type_unknown)
+	if (stream->pload_type == mime_top_type_unknown)
 		return POM_OK;
+
+	line = strchr(line, ' ');
+	if (!line)
+		return POM_OK;
+	line++;
 	
 	// Parse the port
 
@@ -401,7 +385,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 		NULL,
 	};
 	
-
+	int i;
 	for (i = 0; proto_str[i]; i++) {
 		size_t str_len = strlen(proto_str[i]);
 		if (len < str_len)
@@ -613,6 +597,7 @@ int telephony_sdp_end(struct telephony_sdp *sdp) {
 					// Apply only if this particular rtpmap line wasn't specified for the media
 					pload->codec = attr->rtpmap.codec;
 					pload->chan_num = attr->rtpmap.chan_num;
+					pload->clock_rate = attr->rtpmap.clock_rate;
 				}
 			} else if (attr->type == telephony_sdp_attrib_direction) {
 				if (stream->dir == telephony_stream_direction_unknown)
@@ -1083,10 +1068,33 @@ int telephony_stream_info_get_codec(struct telephony_codec_info *info, struct pr
 	return POM_OK;
 }
 
-char *telephony_codec_info_get_pload_type(struct telephony_codec_info *info) {
+struct mime_type *telephony_codec_info_get_mime_type(struct telephony_codec_info *info) {
 
-	if (!info->codec)
+	if (!info)
 		return NULL;
 
-	return info->codec->pom_pload_type;
+	struct mime_type *m = mime_type_alloc(info->pload_type, info->codec->mime_type);
+
+	if (!m)
+		return NULL;
+
+	if (info->clock_rate) {
+		char rate[16] = {0};
+		snprintf(rate, sizeof(rate), "%u", info->clock_rate);
+		if (mime_type_set_param(m, "rate", rate) != POM_OK)
+			goto err;
+	}
+
+	if (info->chan_num) {
+		char chan[4] = { 0 };
+		snprintf(chan, sizeof(chan), "%hhu", info->chan_num);
+		if (mime_type_set_param(m, "channels", chan) != POM_OK)
+			goto err;
+	}
+	return m;
+
+err:
+
+	mime_type_cleanup(m);
+	return NULL;
 }

@@ -28,16 +28,6 @@
 
 // Codec definitions
 
-enum telephony_codec_type {
-	telephony_codec_type_unknown = 0,
-	telephony_codec_type_audio,
-	telephony_codec_type_video,
-	telephony_codec_type_text,
-	telephony_codec_type_application,
-	telephony_codec_type_message,
-
-};
-
 struct telephony_codec_info {
 	struct telephony_codec_reg *codec;
 	unsigned int clock_rate;
@@ -67,5 +57,5 @@ struct proto *telephony_stream_info_get_sess_proto(struct conntrack_entry *ce);
 char *telephony_stream_info_get_call_id(struct conntrack_entry *ce);
 int telephony_stream_info_get_codec(struct telephony_codec_info *info, struct proto_process_stack *stack, int stack_index);
 
-char *telephony_codec_info_get_pload_type(struct telephony_codec_info *info);
+struct mime_type *telephony_codec_info_get_mime_type(struct telephony_codec_info *info);
 #endif
