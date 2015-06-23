@@ -29,9 +29,6 @@
 // From RFC 2046
 
 enum mime_top_type {
-	// Unknown type
-	mime_top_type_unknown,
-
 	// Discrete types
 	mime_top_type_text,
 	mime_top_type_image,
@@ -42,7 +39,11 @@ enum mime_top_type {
 
 	// Composite top-level types
 	mime_top_type_multipart,
-	mime_top_type_message
+	mime_top_type_message,
+
+	// Unknown type
+	mime_top_type_unknown,
+
 };
 
 struct mime_type_parameter {
@@ -69,6 +70,7 @@ char *mime_type_get_param(struct mime_type *mime, char *param_name);
 
 int mime_header_parse(struct data *data, char *line, size_t line_len);
 
+char *mime_top_type_str(enum mime_top_type type);
 
 #endif
 

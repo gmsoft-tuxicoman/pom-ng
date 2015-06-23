@@ -32,14 +32,16 @@ struct mime_top_type_str {
 };
 
 static struct mime_top_type_str mime_top_types_str[] = {
-	{ mime_top_type_binary, "binary" },
 	{ mime_top_type_text, "text" },
 	{ mime_top_type_image, "image" },
 	{ mime_top_type_audio, "audio" },
 	{ mime_top_type_video, "video" },
 	{ mime_top_type_application, "application" },
+	{ mime_top_type_binary, "binary" },
+
 	{ mime_top_type_multipart, "multipart" },
 	{ mime_top_type_message, "message" },
+
 	{ mime_top_type_unknown, NULL },
 };
 
@@ -473,4 +475,8 @@ int mime_header_parse(struct data *data, char *line, size_t line_len) {
 	return POM_OK;
 }
 
-
+char *mime_top_type_str(enum mime_top_type type) {
+	if (type > mime_top_type_unknown)
+		return NULL;
+	return mime_top_types_str[type].str;
+}
