@@ -397,10 +397,8 @@ int pload_end(struct pload *pload) {
 		free(tmp);
 	}
 
-	if (pload->store) {
+	if (pload->store)
 		pload_store_end(pload->store);
-		pload->store = NULL;
-	}
 
 	if (pload->decoder)
 		decoder_cleanup(pload->decoder);
@@ -1199,8 +1197,8 @@ struct pload_store *pload_store_get(struct pload *pload) {
 			abort();
 		}
 
-		pload->store->rel_event = pload->rel_event;
-		event_refcount_inc(pload->store->rel_event);
+		pload->store->p = pload;
+		pload_refcount_inc(pload);
 	}
 
 	pload_store_get_ref(pload->store);
@@ -1263,9 +1261,9 @@ void pload_store_end(struct pload_store *ps) {
 	if (ftruncate(ps->fd, ps->file_size)) {
 		pomlog(POMLOG_ERR "Error while shrinking file \"%s\" : %s", ps->filename, pom_strerror(errno));
 	}
-
-	pload_store_map_cleanup(ps->write_map);
 	
+	if (ps->write_map)
+		pload_store_map_cleanup(ps->write_map);
 
 	pom_mutex_lock(&ps->lock);
 
@@ -1290,8 +1288,8 @@ void pload_store_end(struct pload_store *ps) {
 
 }
 
-struct event *pload_store_get_related_event(struct pload_store *ps) {
-	return ps->rel_event;
+struct pload *pload_store_get_pload(struct pload_store *ps) {
+	return ps->p;
 }
 
 void pload_store_get_ref(struct pload_store *ps) {
@@ -1305,7 +1303,8 @@ void pload_store_release(struct pload_store *ps) {
 
 	// Refcount is 0 !
 
-	event_refcount_dec(ps->rel_event);
+	ps->p->store = NULL;
+	pload_refcount_dec(ps->p);
 
 	if (ps->fd != -1) {
 		if (close(ps->fd)) {
@@ -1333,7 +1332,7 @@ void pload_store_release(struct pload_store *ps) {
 		pomlog(POMLOG_ERR "Error while destroying the pload_store cond : %s", pom_strerror(res));
 		abort();
 	}
-	
+
 	free(ps);
 }
 
