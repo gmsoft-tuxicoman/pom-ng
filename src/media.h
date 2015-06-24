@@ -22,9 +22,21 @@
 #define __MEDIA_H__
 
 
+#include <gst/gst.h>
 #include <pom-ng/pload.h>
+
+struct media_pload_priv {
+	GstElement *gst_pipeline, *gst_src, *gst_dst;
+	struct pload_store *src;
+	struct pload_store_map *srcmap;
+	struct pload *out;
+};
 
 int media_init();
 int media_cleanup();
+
+void media_debug(GstDebugCategory *category, GstDebugLevel level, const gchar *file, const gchar *function, gint line, GObject *object, GstDebugMessage *message, gpointer user_data) G_GNUC_NO_INSTRUMENT;
+
+struct pload *media_pload_to_container(struct pload_store *p, char *format);
 
 #endif
