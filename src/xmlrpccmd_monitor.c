@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "xmlrpcsrv.h"
 #include "filter.h"
 #include "httpd.h"
+#include "media.h"
 
 #include "xmlrpccmd.h"
 #include "xmlrpccmd_monitor.h"
@@ -32,7 +33,7 @@ static struct xmlrpccmd_monitor_session *xmlrpccmd_monitor_sessions[XMLRPCCMD_MO
 
 static int xmlrpccmd_monitor_pload_listeners_count = 0;
 
-#define XMLRPCCMD_MONITOR_NUM 9
+#define XMLRPCCMD_MONITOR_NUM 10
 static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM] = {
 
 	{
@@ -82,6 +83,13 @@ static struct xmlrpcsrv_command xmlrpccmd_monitor_commands[XMLRPCCMD_MONITOR_NUM
 		.callback_func = xmlrpccmd_monitor_pload_discard,
 		.signature = "i:iII",
 		.help = "Discard a payload that has been received",
+	},
+
+	{
+		.name = "monitor.mediaPloadToContainer",
+		.callback_func = xmlrpccmd_monitor_media_pload_to_container,
+		.signature = "I:iIIs",
+		.help = "Put a media payload in a container",
 	},
 
 	{
@@ -1003,7 +1011,7 @@ xmlrpc_value *xmlrpccmd_monitor_pload_discard(xmlrpc_env * const envP, xmlrpc_va
 	if (!tmp) {
 		xmlrpc_faultf(envP, "Pload id %"PRIu64" not found", pload_id);
 		pom_mutex_unlock(&sess->lock);
-		return xmlrpc_int_new(envP, 0);
+		return NULL;
 	}
 
 	int i;
@@ -1011,7 +1019,7 @@ xmlrpc_value *xmlrpccmd_monitor_pload_discard(xmlrpc_env * const envP, xmlrpc_va
 	if (i >= tmp->listeners_count) {
 		xmlrpc_faultf(envP, "Listener %"PRIu64" not monitoring pload %"PRIu64, listener_id, pload_id);
 		pom_mutex_unlock(&sess->lock);
-		return xmlrpc_int_new(envP, 0);
+		return NULL;
 	}
 
 	if (tmp->listeners_count > 1) {
@@ -1023,15 +1031,134 @@ xmlrpc_value *xmlrpccmd_monitor_pload_discard(xmlrpc_env * const envP, xmlrpc_va
 		free(tmp->listeners);
 		free(tmp);
 		httpd_pload_remove(pload_id);
-		tmp = NULL;
-		HASH_FIND(hh, sess->httpd_ploads, &pload_id, sizeof(pload_id), tmp);
-		if (tmp)
-			printf("WTF\n");
 	}
 
 	pom_mutex_unlock(&sess->lock);
 
 	return xmlrpc_int_new(envP, 0);
+}
+
+xmlrpc_value *xmlrpccmd_monitor_media_pload_to_container(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
+
+	xmlrpc_int sess_id = -1;
+	uint64_t listener_id = 0, pload_id = 0;
+	char *format = NULL;
+
+	xmlrpc_decompose_value(envP, paramArrayP, "(iIIs)", &sess_id, &listener_id, &pload_id, &format);
+
+	if (sess_id < 0 || sess_id >= XMLRPCCMD_MONITOR_MAX_SESSION) {
+		xmlrpc_faultf(envP, "Invalsess_id session sess_id");
+		return NULL;
+	}
+
+	pom_mutex_lock(&xmlrpccmd_monitor_session_lock);
+	struct xmlrpccmd_monitor_session *sess = xmlrpccmd_monitor_sessions[sess_id];
+	if (!sess) {
+		pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+		free(format);
+		xmlrpc_faultf(envP, "Session %u not found", sess_id);
+		return NULL;
+	}
+	pom_mutex_lock(&sess->lock);
+	pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
+
+	struct xmlrpccmd_monitor_httpd_pload *tmp = NULL;
+	HASH_FIND(hh, sess->httpd_ploads, &pload_id, sizeof(pload_id), tmp);
+
+	if (!tmp) {
+		pom_mutex_unlock(&sess->lock);
+		free(format);
+		xmlrpc_faultf(envP, "Pload id %"PRIu64" not found", pload_id);
+		return NULL;
+	}
+
+	int i;
+	for (i = 0; i < tmp->listeners_count && tmp->listeners[i] != listener_id; i++);
+	if (i >= tmp->listeners_count) {
+		pom_mutex_unlock(&sess->lock);
+		free(format);
+		xmlrpc_faultf(envP, "Listener %"PRIu64" not monitoring pload %"PRIu64, listener_id, pload_id);
+		return NULL;
+	}
+
+	struct pload_store *ps = httpd_pload_get_store(pload_id);
+	if (!ps) {
+		pom_mutex_unlock(&sess->lock);
+		free(format);
+		xmlrpc_faultf(envP, "Error while getting the playload store for payload %"PRIu64, pload_id);
+		return NULL;
+	}
+	struct pload *container = media_pload_to_container(ps, NULL);
+	if (!container) {
+		pom_mutex_unlock(&sess->lock);
+		free(format);
+		xmlrpc_faultf(envP, "Error while creating container for payload %"PRIu64, pload_id);
+		return NULL;
+	}
+	free(format);
+
+	pload_id = httpd_pload_add(container);
+	if (pload_id == -1) {
+		pom_mutex_unlock(&sess->lock);
+		xmlrpc_faultf(envP, "Error while adding the container payload to httpd.");;
+		return NULL;
+	}
+
+
+	struct xmlrpccmd_monitor_pload *lst = malloc(sizeof(struct xmlrpccmd_monitor_pload));
+	if (!lst) {
+		pom_mutex_unlock(&sess->lock);
+		httpd_pload_remove(pload_id);
+		xmlrpc_faultf(envP, "Error while adding the container payload to httpd.");;
+		return NULL;
+	}
+	memset(lst, 0, sizeof(struct xmlrpccmd_monitor_pload));
+	lst->pload_id = pload_id;
+	lst->pload = container;
+	lst->listeners_count = 1;
+
+	// Save this payload in the session with all it's listeners
+	struct xmlrpccmd_monitor_httpd_pload *httpd_lst = malloc(sizeof(struct xmlrpccmd_monitor_httpd_pload));
+	if (!httpd_lst) {
+		pom_mutex_unlock(&sess->lock);
+		free(lst);
+		pom_oom(sizeof(struct xmlrpccmd_monitor_httpd_pload));
+		httpd_pload_remove(pload_id);
+		xmlrpc_faultf(envP, "Not enough memory");
+		return NULL;
+	}
+	memset(httpd_lst, 0, sizeof(struct xmlrpccmd_monitor_httpd_pload));
+
+	lst->listeners = malloc(sizeof(uint64_t));
+	if (!lst->listeners) {
+		pom_mutex_unlock(&sess->lock);
+		free(httpd_lst);
+		free(lst);
+		pom_oom(sizeof(struct xmlrpccmd_monitor_httpd_pload));
+		httpd_pload_remove(pload_id);
+		xmlrpc_faultf(envP, "Not enough memory");
+		return NULL;
+	}
+	lst->listeners[0] = listener_id;
+
+	httpd_lst->listeners = lst->listeners;
+	httpd_lst->listeners_count = 1;
+	httpd_lst->pload_id = pload_id;
+
+	pload_refcount_inc(container);
+
+	HASH_ADD(hh, sess->httpd_ploads, pload_id, sizeof(httpd_lst->pload_id), httpd_lst);
+
+	lst->next = sess->ploads;
+	sess->ploads = lst;
+
+	pom_mutex_unlock(&sess->lock);
+
+	xmlrpc_value *xml_pload = xmlrpccmd_monitor_build_pload(envP, container);
+	xmlrpc_value *xml_pload_id = xmlrpc_i8_new(envP, pload_id);
+	xmlrpc_struct_set_value(envP, xml_pload, "id", xml_pload_id);
+	xmlrpc_DECREF(xml_pload_id);
+	return xml_pload;
 }
 
 
