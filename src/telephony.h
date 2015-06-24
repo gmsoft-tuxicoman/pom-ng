@@ -80,7 +80,7 @@ struct telephony_stream {
 	struct telephony_stream_address *addrs;
 	struct telephony_stream_payload *ploads;
 	enum telephony_stream_direction dir;
-	enum mime_top_type pload_type;
+	enum mime_top_type pload_mime_type;
 	struct proto *l4proto;
 
 	struct proto_expectation *expt;

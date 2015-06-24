@@ -331,9 +331,9 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	sdp->streams = stream;
 	stream->port_num = 1;
 
-	stream->pload_type = mime_top_type_parse(line);
+	stream->pload_mime_type = mime_top_type_parse(line);
 
-	if (stream->pload_type == mime_top_type_unknown)
+	if (stream->pload_mime_type == mime_top_type_unknown)
 		return POM_OK;
 
 	line = strchr(line, ' ');
@@ -1073,7 +1073,7 @@ struct mime_type *telephony_codec_info_get_mime_type(struct telephony_codec_info
 	if (!info)
 		return NULL;
 
-	struct mime_type *m = mime_type_alloc(info->pload_type, info->codec->mime_type);
+	struct mime_type *m = mime_type_alloc(info->codec->type, info->codec->mime_type);
 
 	if (!m)
 		return NULL;
