@@ -398,6 +398,9 @@ int pload_end(struct pload *pload) {
 	if (pload->refcount)
 		return POM_OK;
 
+	if (pload->store)
+		pload_store_release(pload->store);
+
 	if (pload->data)
 		data_cleanup_table(pload->data, pload->type->analyzer->data_reg);
 
@@ -1232,8 +1235,6 @@ void pload_store_end(struct pload_store *ps) {
 		abort();
 	}
 	pom_mutex_unlock(&ps->lock);
-
-	pload_store_release(ps);
 
 }
 
