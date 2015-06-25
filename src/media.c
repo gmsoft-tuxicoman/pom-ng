@@ -21,29 +21,55 @@
 #include "config.h"
 #include "media.h"
 #include "pload.h"
+#include "registry.h"
+
+#include <pom-ng/ptype_uint8.h>
 
 
 #include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
 
-#define MEDIA_DEFAULT_GST_LOG GST_LEVEL_LOG
 #define MEDIA_DEBUG_FORMAT "x%s"
 
 static GMainLoop *loop = NULL;
 
+static struct registry_class *media_registry_class = NULL;
+
+static struct ptype *media_param_gst_debug_level = NULL;
 
 int media_init() {
+
+	struct registry_param *param = NULL;
+
+	media_registry_class = registry_add_class(MEDIA_REGISTRY);
+
+	media_param_gst_debug_level = ptype_alloc("uint8");
+	if (!media_param_gst_debug_level)
+		return POM_ERR;
+
+	param = registry_new_param("gst_debug_level", "0", media_param_gst_debug_level, "GStreamer debug level", REGISTRY_PARAM_FLAG_CLEANUP_VAL);
+	if (registry_class_add_param(media_registry_class, param) != POM_OK) {
+		registry_cleanup_param(param);
+		return POM_ERR;
+	}
+
+	if (registry_param_info_set_min_max(param, GST_LEVEL_NONE, GST_LEVEL_COUNT - 1) != POM_OK)
+		return POM_ERR;
+
+	if (registry_param_set_callbacks(param, NULL, NULL, media_param_gst_debug_level_cb) != POM_OK)
+		return POM_ERR;
 
 	gst_init(NULL, NULL);
 
 	// Setup our own debugging function
-	gst_debug_set_default_threshold(MEDIA_DEFAULT_GST_LOG);
+	gst_debug_set_default_threshold(GST_LEVEL_NONE);
 	gst_debug_remove_log_function(gst_debug_log_default);
 	gst_debug_add_log_function(media_debug, NULL, NULL);
 
 	loop = g_main_loop_new(NULL, TRUE);
 
 	return POM_OK;
+
 }
 
 int media_cleanup() {
@@ -55,6 +81,20 @@ int media_cleanup() {
 	return POM_OK;
 }
 
+int media_param_gst_debug_level_cb(void *priv, struct registry_param *p, struct ptype *value) {
+
+	uint8_t level = *PTYPE_UINT8_GETVAL(value);
+
+	if (level >= GST_LEVEL_COUNT) {
+		pomlog(POMLOG_ERR "GStreamer debug level cannot be higher than %hhu", GST_LEVEL_COUNT - 1);
+		return POM_ERR;
+	}
+
+	gst_debug_set_default_threshold(level);
+
+	return POM_OK;
+
+}
 
 void media_debug(GstDebugCategory *category, GstDebugLevel level, const gchar *file, const gchar *function, gint line, GObject *object, GstDebugMessage *message, gpointer user_data) {
 
