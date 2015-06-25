@@ -1258,10 +1258,6 @@ int pload_store_open(struct pload_store *ps) {
 
 void pload_store_end(struct pload_store *ps) {
 
-	if (ftruncate(ps->fd, ps->file_size)) {
-		pomlog(POMLOG_ERR "Error while shrinking file \"%s\" : %s", ps->filename, pom_strerror(errno));
-	}
-	
 	if (ps->write_map)
 		pload_store_map_cleanup(ps->write_map);
 
@@ -1271,6 +1267,10 @@ void pload_store_end(struct pload_store *ps) {
 	ps->flags |= PLOAD_STORE_FLAG_COMPLETE;
 
 	if (ps->fd != -1 && !ps->read_maps) {
+		if (ftruncate(ps->fd, ps->file_size)) {
+			pomlog(POMLOG_ERR "Error while shrinking file \"%s\" : %s", ps->filename, pom_strerror(errno));
+		}
+
 		if (close(ps->fd)) {
 			pomlog(POMLOG_WARN "Error while closing file \"%s\" : %s", ps->filename, pom_strerror(errno));
 		}
