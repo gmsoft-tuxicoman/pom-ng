@@ -1104,24 +1104,10 @@ xmlrpc_value *xmlrpccmd_monitor_media_pload_to_container(xmlrpc_env * const envP
 		return NULL;
 	}
 
-
-	struct xmlrpccmd_monitor_pload *lst = malloc(sizeof(struct xmlrpccmd_monitor_pload));
-	if (!lst) {
-		pom_mutex_unlock(&sess->lock);
-		httpd_pload_remove(pload_id);
-		xmlrpc_faultf(envP, "Error while adding the container payload to httpd.");;
-		return NULL;
-	}
-	memset(lst, 0, sizeof(struct xmlrpccmd_monitor_pload));
-	lst->pload_id = pload_id;
-	lst->pload = container;
-	lst->listeners_count = 1;
-
 	// Save this payload in the session with all it's listeners
 	struct xmlrpccmd_monitor_httpd_pload *httpd_lst = malloc(sizeof(struct xmlrpccmd_monitor_httpd_pload));
 	if (!httpd_lst) {
 		pom_mutex_unlock(&sess->lock);
-		free(lst);
 		pom_oom(sizeof(struct xmlrpccmd_monitor_httpd_pload));
 		httpd_pload_remove(pload_id);
 		xmlrpc_faultf(envP, "Not enough memory");
@@ -1129,28 +1115,22 @@ xmlrpc_value *xmlrpccmd_monitor_media_pload_to_container(xmlrpc_env * const envP
 	}
 	memset(httpd_lst, 0, sizeof(struct xmlrpccmd_monitor_httpd_pload));
 
-	lst->listeners = malloc(sizeof(uint64_t));
-	if (!lst->listeners) {
+	httpd_lst->listeners = malloc(sizeof(uint64_t));
+	if (!httpd_lst->listeners) {
 		pom_mutex_unlock(&sess->lock);
 		free(httpd_lst);
-		free(lst);
 		pom_oom(sizeof(struct xmlrpccmd_monitor_httpd_pload));
 		httpd_pload_remove(pload_id);
 		xmlrpc_faultf(envP, "Not enough memory");
 		return NULL;
 	}
-	lst->listeners[0] = listener_id;
-
-	httpd_lst->listeners = lst->listeners;
+	httpd_lst->listeners[0] = listener_id;
 	httpd_lst->listeners_count = 1;
 	httpd_lst->pload_id = pload_id;
 
 	pload_refcount_inc(container);
 
 	HASH_ADD(hh, sess->httpd_ploads, pload_id, sizeof(httpd_lst->pload_id), httpd_lst);
-
-	lst->next = sess->ploads;
-	sess->ploads = lst;
 
 	pom_mutex_unlock(&sess->lock);
 
