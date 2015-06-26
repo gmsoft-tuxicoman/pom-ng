@@ -716,12 +716,9 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 
 	// Allright, let's see what to do. There a multiple scenario
-	
 
-	// First, do we have a storage attached ? If so process it
-	// Note that a store can only be attached once the analysis
-	// has been performed
-	if (p->store) {
+	// If the pload is open and a pload_store is attached, use that
+	if ((p->flags & PLOAD_FLAG_OPENED) && p->store) {
 		struct pload_store_map *write_map = p->store->write_map;
 		// Remember where we left off
 		off_t start_off = write_map->off_start + write_map->off_cur;
@@ -1359,6 +1356,12 @@ struct pload_store_map *pload_store_read_start(struct pload_store *ps) {
 	map->store = ps;
 	
 	pom_mutex_lock(&ps->lock);
+
+	if (!ps->filename) {
+		pomlog(POMLOG_ERR "Unable to read empty pload store");
+		pom_mutex_unlock(&ps->lock);
+		return NULL;
+	}
 
 	map->next = ps->read_maps;
 	if (map->next)
