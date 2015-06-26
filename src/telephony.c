@@ -336,16 +336,18 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 	if (stream->pload_mime_type == mime_top_type_unknown)
 		return POM_OK;
 
-	line = strchr(line, ' ');
-	if (!line)
+	char *space = strchr(line, ' ');
+	if (!space)
 		return POM_OK;
-	line++;
 	
+	len -= space - line + 1;
+	line = space + 1;
+
 	// Parse the port
 
 	char port_str[6] = { 0 };
 
-	char *space = memchr(line, ' ', len);
+	space = memchr(line, ' ', len);
 	if (!space)
 		return POM_OK;
 
