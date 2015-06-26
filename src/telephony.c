@@ -200,14 +200,14 @@ static int telephony_sdp_parse_line_a(struct telephony_sdp *sdp, char *line, siz
 	
 	// Test for the inactive/sendonly/recvonly/sendrecv
 	char *sendrecv[] = {
-		"inactive",
-		"sendonly",
-		"recvonly",
 		"sendrecv",
+		"recvonly",
+		"sendonly",
+		"inactive",
 		NULL
 	};
 
-	enum telephony_stream_direction dir = telephony_stream_direction_unknown;
+	enum telephony_stream_direction dir = telephony_stream_direction_sendrecv;
 
 	int i;
 	for (i = 0; sendrecv[i]; i++) {
@@ -215,7 +215,7 @@ static int telephony_sdp_parse_line_a(struct telephony_sdp *sdp, char *line, siz
 		if (len < str_len)
 			continue;
 		if (!strncasecmp(line, sendrecv[i], str_len)) {
-			dir = i + telephony_stream_direction_inactive;
+			dir = i + telephony_stream_direction_sendrecv;
 
 			if (sdp->streams) {
 				sdp->streams->dir = dir;
@@ -602,8 +602,7 @@ int telephony_sdp_end(struct telephony_sdp *sdp) {
 					pload->clock_rate = attr->rtpmap.clock_rate;
 				}
 			} else if (attr->type == telephony_sdp_attrib_direction) {
-				if (stream->dir == telephony_stream_direction_unknown)
-					stream->dir = attr->direction;
+				stream->dir = attr->direction;
 			}
 		}
 
@@ -676,12 +675,6 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 
 		// Protocol could not be determined
 		if (!stream->l4proto) {
-			stream = stream->next;
-			continue;
-		}
-
-		// Unknown stream direction
-		if (stream->dir == telephony_stream_direction_unknown) {
 			stream = stream->next;
 			continue;
 		}

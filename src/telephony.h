@@ -67,11 +67,10 @@ enum telephony_stream_type {
 };
 
 enum telephony_stream_direction {
-	telephony_stream_direction_unknown = 0,
-	telephony_stream_direction_inactive,
-	telephony_stream_direction_sendonly,
+	telephony_stream_direction_sendrecv = 0,
 	telephony_stream_direction_recvonly,
-	telephony_stream_direction_sendrecv,
+	telephony_stream_direction_sendonly,
+	telephony_stream_direction_inactive,
 };
 
 struct telephony_stream {
