@@ -27,6 +27,13 @@
 
 #define MEDIA_REGISTRY "media"
 
+#define MEDIA_PLOAD_TO_CONTAINER_DATA_COUNT 2
+
+enum {
+	media_pload_to_container_src_mime_type = 0,
+	media_pload_to_container_dst_mime_type
+};
+
 struct media_pload_priv {
 	GstElement *gst_pipeline, *gst_src, *gst_dst;
 	struct pload_store *src;

@@ -24,6 +24,7 @@
 #include "registry.h"
 
 #include <pom-ng/ptype_uint8.h>
+#include <pom-ng/ptype_string.h>
 
 
 #include <gst/app/gstappsrc.h>
@@ -36,6 +37,7 @@ static GMainLoop *loop = NULL;
 static struct registry_class *media_registry_class = NULL;
 
 static struct ptype *media_param_gst_debug_level = NULL;
+static struct event_reg *evt_media_pload_to_container = NULL;
 
 int media_init() {
 
@@ -59,6 +61,31 @@ int media_init() {
 	if (registry_param_set_callbacks(param, NULL, NULL, media_param_gst_debug_level_cb) != POM_OK)
 		return POM_ERR;
 
+	static struct data_item_reg evt_media_pload_to_container_data_items[MEDIA_PLOAD_TO_CONTAINER_DATA_COUNT] = { { 0 } };
+
+	evt_media_pload_to_container_data_items[media_pload_to_container_src_mime_type].name = "src_mime_type";
+	evt_media_pload_to_container_data_items[media_pload_to_container_src_mime_type].value_type = ptype_get_type("string");
+
+	evt_media_pload_to_container_data_items[media_pload_to_container_dst_mime_type].name = "dst_mime_type";
+	evt_media_pload_to_container_data_items[media_pload_to_container_dst_mime_type].value_type = ptype_get_type("string");
+
+	static struct data_reg evt_media_pload_to_container_data = {
+		.items = evt_media_pload_to_container_data_items,
+		.data_count = MEDIA_PLOAD_TO_CONTAINER_DATA_COUNT
+	};
+
+	static struct event_reg_info media_evt_pload_to_container = { 0 };
+	media_evt_pload_to_container.source_name = "media";
+	media_evt_pload_to_container.source_obj = media_init;
+	media_evt_pload_to_container.name = "media_pload_to_container";
+	media_evt_pload_to_container.description = "A pload muxed in a media container";
+	media_evt_pload_to_container.data_reg = &evt_media_pload_to_container_data;
+	media_evt_pload_to_container.flags = EVENT_REG_FLAG_PAYLOAD;
+
+	evt_media_pload_to_container = event_register(&media_evt_pload_to_container);
+	if (!evt_media_pload_to_container)
+		return POM_ERR;
+
 	gst_init(NULL, NULL);
 
 	// Setup our own debugging function
@@ -77,6 +104,9 @@ int media_cleanup() {
 	g_main_loop_quit(loop);
 	g_main_loop_unref(loop);
 	gst_deinit();
+
+	if (evt_media_pload_to_container)
+		event_unregister(evt_media_pload_to_container);
 
 	return POM_OK;
 }
@@ -225,8 +255,10 @@ struct pload *media_pload_to_container(struct pload_store *ps, char *format) {
 
 	struct pload *pload = pload_store_get_pload(ps);
 	struct mime_type *m = pload_get_mime_type(pload);
-	if (!m)
+	if (!m) {
+		pomlog(POMLOG_ERR "Cannot put pload in a container as it has no mime-type.");
 		goto err;
+	}
 
 	char mime_type_str[20] = { 0 };
 	snprintf(mime_type_str, sizeof(mime_type_str), "%s/%s", mime_top_type_str(m->top_type), m->name);
@@ -255,7 +287,14 @@ struct pload *media_pload_to_container(struct pload_store *ps, char *format) {
 	g_signal_connect(priv->gst_dst, "eos", G_CALLBACK(media_pload_eos), priv);
 
 
-	struct event *evt = pload_get_related_event(pload);
+	struct event *evt = event_alloc(evt_media_pload_to_container);
+	if (!evt)
+		goto err;
+
+	struct data *evt_data = event_get_data(evt);
+	PTYPE_STRING_SETVAL(evt_data[media_pload_to_container_src_mime_type].value, mime_type_str);
+	data_set(evt_data[media_pload_to_container_src_mime_type]);
+
 	priv->out = pload_alloc(evt, 0);
 	if (!priv->out)
 		goto err;
