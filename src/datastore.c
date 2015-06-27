@@ -158,12 +158,8 @@ int datastore_instance_add(char *type, char *name) {
 
 	res->reg = reg;
 	res->name = strdup(name);
-	if (!res->name) {
-		free(res);
-		pom_oom(strlen(name) + 1);
+	if (!res->name)
 		goto err;
-	}
-
 
 	res->reg_instance = registry_add_instance(datastore_registry_class, name);
 
