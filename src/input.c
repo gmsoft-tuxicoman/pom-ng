@@ -248,6 +248,8 @@ err:
 	if (res->reg_instance)
 		registry_remove_instance(res->reg_instance);
 
+	free(res);
+
 	return POM_ERR;
 }
 
