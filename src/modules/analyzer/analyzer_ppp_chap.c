@@ -374,11 +374,15 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 
 		evt_data = event_get_data(evt);
 
-		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK) {
+			event_cleanup(evt);
 			return POM_ERR;
+		}
 		data_set(evt_data[analyzer_ppp_chap_md5_challenge]);
-		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_response].value, evt_rsp_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+		if (ptype_copy(evt_data[analyzer_ppp_chap_md5_response].value, evt_rsp_data[evt_ppp_chap_challenge_response_value].value) != POM_OK) {
+			event_cleanup(evt);
 			return POM_ERR;
+		}
 		data_set(evt_data[analyzer_ppp_chap_md5_response]);
 		
 	} else if (len == 49 && !value[16] && !value[17] && !value[18] && !value[19] &&
@@ -391,8 +395,10 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 
 		evt_data = event_get_data(evt);
 
-		if (ptype_copy(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK)
+		if (ptype_copy(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge].value, evt_chl_data[evt_ppp_chap_challenge_response_value].value) != POM_OK) {
+			event_cleanup(evt);
 			return POM_ERR;
+		}
 		data_set(evt_data[analyzer_ppp_chap_mschapv2_auth_challenge]);
 
 		PTYPE_BYTES_SETLEN(evt_data[analyzer_ppp_chap_mschapv2_response].value, 24);
