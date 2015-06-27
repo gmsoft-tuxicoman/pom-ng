@@ -227,6 +227,7 @@ static int addon_plugin_pload_process(lua_State *L) {
 	if (!params) {
 		free(pload_plugin);
 		addon_oom(L, params_size);
+		return 0;
 	}
 
 	memset(params, 0, params_size);
