@@ -113,21 +113,17 @@ struct mod_reg *mod_load(char *name) {
 	}
 	pom_mutex_unlock(&mod_reg_lock);
 
-	char filename[FILENAME_MAX];
-	memset(filename, 0, FILENAME_MAX);
 
+	char filename[FILENAME_MAX + 1];
 	char *env_libdir = getenv(MOD_LIBDIR_ENV_VAR);
 
-	if (env_libdir)
-		strcpy(filename, env_libdir);
+	if (!env_libdir)
+		env_libdir = POM_LIBDIR;
+
+	if (env_libdir[strlen(env_libdir) - 1] != '/')
+		snprintf(filename, FILENAME_MAX, "%s/%s"POM_LIB_EXT, env_libdir, name);
 	else
-		strcpy(filename, POM_LIBDIR);
-
-	if (filename[strlen(filename) - 1] != '/')
-		strcat(filename, "/");
-
-	strcat(filename, name);
-	strcat(filename, POM_LIB_EXT);
+		snprintf(filename, FILENAME_MAX, "%s%s"POM_LIB_EXT, env_libdir, name);
 
 	void *dl_handle = dlopen(filename, RTLD_FLAGS);
 
