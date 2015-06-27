@@ -260,8 +260,10 @@ static int proto_ppp_pap_process(void *proto_priv, struct packet *p, struct prot
 		data_set(evt_data[evt_ppp_pap_ack_nack_identifier]);
 
 		uint8_t *msg_len = s->pload + sizeof(struct ppp_pap_header);
-		if (*msg_len > len - 1)
+		if (*msg_len > len - 1) {
+			event_cleanup(evt);
 			return PROTO_INVALID;
+		}
 
 		PTYPE_STRING_SETVAL_N(evt_data[evt_ppp_pap_ack_nack_message].value, (char *)msg_len + 1, *msg_len);
 		data_set(evt_data[evt_ppp_pap_ack_nack_message]);
