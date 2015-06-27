@@ -736,7 +736,7 @@ struct dataset *datastore_dataset_open(struct datastore *d, char *name, struct d
 		i++;
 
 		size_t size = sizeof(struct datavalue_template) * i;
-		struct datavalue_template *new_dt = malloc(size);
+		new_dt = malloc(size);
 		if (!new_dt) {
 			pom_oom(size);
 			return NULL;
