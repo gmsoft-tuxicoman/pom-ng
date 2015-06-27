@@ -405,8 +405,10 @@ static int input_kismet_drone_read(struct input *i) {
 				pkt->datalink = datalink;
 				pkt->ts = (ntohll(data_pkt.tv_sec) *  1000000UL) + ntohll(data_pkt.tv_usec);
 
-				if (pom_read(priv->fd, pkt->buff, pkt_len) != POM_OK)
+				if (pom_read(priv->fd, pkt->buff, pkt_len) != POM_OK) {
+					packet_release(pkt);
 					return POM_ERR;
+				}
 
 				return core_queue_packet(pkt, 0, 0);
 			}
