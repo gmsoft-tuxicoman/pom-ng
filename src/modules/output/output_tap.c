@@ -206,7 +206,7 @@ int output_tap_open(void *output_priv) {
 	struct ifreq ifr;
 	memset(&ifr, 0, sizeof(struct ifreq));
 	ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-	strncpy(ifr.ifr_name, PTYPE_STRING_GETVAL(priv->p_ifname), IFNAMSIZ);
+	strncpy(ifr.ifr_name, PTYPE_STRING_GETVAL(priv->p_ifname), IFNAMSIZ - 1);
 	if (ioctl(priv->fd, TUNSETIFF, (void *) &ifr) < 0) {
 		pomlog(POMLOG_ERR "Unable to setup tap device %s : %s", PTYPE_STRING_GETVAL(priv->p_ifname), pom_strerror(errno));
 		return POM_ERR;
