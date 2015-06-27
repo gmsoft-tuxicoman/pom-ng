@@ -1345,8 +1345,10 @@ static int input_dvb_docsis_process_docsis_mdd(struct input *i,unsigned char *bu
 							realsublen = sizeof(uint8_t);
 							break;
 						case 2: { // Frequency
-							if (subtlvlen < sizeof(uint32_t))
+							if (subtlvlen < sizeof(uint32_t)) {
+								free(s);
 								return POM_OK;
+							}
 							uint32_t val;
 							memcpy(&val, buff + 2, sizeof(val));
 							s->freq = ntohl(val);
