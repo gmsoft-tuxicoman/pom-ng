@@ -254,6 +254,7 @@ int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_i
 
 		if (pom_mutex_init_type(&res->lock, PTHREAD_MUTEX_ERRORCHECK) != POM_OK) {
 			pom_mutex_unlock(&ct->locks[0]);
+			free(res);
 			return POM_ERR;
 		}
 
@@ -262,6 +263,8 @@ int conntrack_get_unique(struct proto_process_stack *stack, unsigned int stack_i
 		if (!lst) {
 			pom_oom(sizeof(struct conntrack_list));
 			pom_mutex_unlock(&ct->locks[0]);
+			pthread_mutex_destroy(&res->lock);
+			free(res);
 			return POM_ERR;
 		}
 		memset(lst, 0, sizeof(struct conntrack_list));
