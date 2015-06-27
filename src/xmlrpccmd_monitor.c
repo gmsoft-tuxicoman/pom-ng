@@ -1128,8 +1128,6 @@ xmlrpc_value *xmlrpccmd_monitor_media_pload_to_container(xmlrpc_env * const envP
 	httpd_lst->listeners_count = 1;
 	httpd_lst->pload_id = pload_id;
 
-	pload_refcount_inc(container);
-
 	HASH_ADD(hh, sess->httpd_ploads, pload_id, sizeof(httpd_lst->pload_id), httpd_lst);
 
 	pom_mutex_unlock(&sess->lock);
