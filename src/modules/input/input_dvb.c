@@ -349,8 +349,10 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 			return POM_ERR;
 
 		p = registry_new_param("device", "/dev/dvb/adapterX/dvrY", priv->frontend, "Device to read packets from", 0);
-		if (input_add_param(i, p) != POM_OK)
+		if (input_add_param(i, p) != POM_OK) {
+			registry_param_cleanup(p);
 			return POM_ERR;
+		}
 
 		return POM_OK;
 	}
@@ -408,8 +410,10 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 			return POM_ERR;
 
 		p = registry_new_param("symbol_rate", "0", priv->symbol_rate, "Symbols per seconds", 0);
-		if (input_add_param(i, p) != POM_OK)
+		if (input_add_param(i, p) != POM_OK) {
+			registry_param_cleanup(p);
 			return POM_ERR;
+		}
 
 	}
 
@@ -420,11 +424,15 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 			return POM_ERR;
 
 		p = registry_new_param("modulation", "QAM256", priv->modulation, "Modulation either QAM64 or QAM256", 0);
-		if (registry_param_info_add_value(p, "QAM256") != POM_OK || registry_param_info_add_value(p, "QAM64") != POM_OK)
+		if (registry_param_info_add_value(p, "QAM256") != POM_OK || registry_param_info_add_value(p, "QAM64") != POM_OK) {
+			registry_param_cleanup(p);
 			return POM_ERR;
+		}
 
-		if (input_add_param(i, p) != POM_OK)
+		if (input_add_param(i, p) != POM_OK) {
+			registry_param_cleanup(p);
 			return POM_ERR;
+		}
 	}
 
 	if (type == input_dvb_type_s) {
@@ -438,8 +446,10 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 			return POM_ERR;
 
 		p = registry_new_param("lnb_type", "universal", priv->tpriv.s.lnb_type, "LNB type", 0);
-		if (input_add_param(i, p) != POM_OK)
+		if (input_add_param(i, p) != POM_OK) {
+			registry_param_cleanup(p);
 			return POM_ERR;
+		}
 
 	}
 
