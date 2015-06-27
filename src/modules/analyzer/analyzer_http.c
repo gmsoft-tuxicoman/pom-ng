@@ -548,8 +548,10 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 		char *server_name = dns_reverse_lookup_ptype(dst_data[analyzer_http_request_server_addr].value);
 		if (server_name) {
 			dst_data[analyzer_http_request_server_name].value = ptype_alloc("string");
-			if (!dst_data[analyzer_http_request_server_name].value)
+			if (!dst_data[analyzer_http_request_server_name].value) {
+				free(server_name);
 				return POM_ERR;
+			}
 			PTYPE_STRING_SETVAL_P(dst_data[analyzer_http_request_server_name].value, server_name);
 			data_do_clean(dst_data[analyzer_http_request_server_name]);
 			data_set(dst_data[analyzer_http_request_server_name]);
