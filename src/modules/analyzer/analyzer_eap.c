@@ -320,11 +320,15 @@ int analyzer_eap_finalize(struct analyzer_eap_priv *apriv, struct analyzer_eap_c
 
 	evt_data = event_get_data(evt);
 
-	if (ptype_copy(evt_data[analyzer_eap_md5_challenge].value, evt_req_data[evt_eap_md5_challenge_value].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_eap_md5_challenge].value, evt_req_data[evt_eap_md5_challenge_value].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_eap_md5_challenge]);
-	if (ptype_copy(evt_data[analyzer_eap_md5_response].value, evt_rsp_data[evt_eap_md5_challenge_value].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_eap_md5_response].value, evt_rsp_data[evt_eap_md5_challenge_value].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_eap_md5_response]);
 		
 
@@ -355,15 +359,21 @@ int analyzer_eap_finalize(struct analyzer_eap_priv *apriv, struct analyzer_eap_c
 		data_set(evt_data[analyzer_eap_common_top_proto]);
 	}
 
-	if (ptype_copy(evt_data[analyzer_eap_common_identifier].value, evt_req_data[evt_eap_common_identifier].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_eap_common_identifier].value, evt_req_data[evt_eap_common_identifier].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_eap_common_identifier]);
 
-	if (!data_is_set(evt_rsp_data[evt_eap_md5_challenge_name]))
+	if (!data_is_set(evt_rsp_data[evt_eap_md5_challenge_name])) {
+		event_cleanup(evt);
 		return POM_OK;
+	}
 
-	if (ptype_copy(evt_data[analyzer_eap_common_username].value, evt_rsp_data[evt_eap_md5_challenge_name].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_eap_common_username].value, evt_rsp_data[evt_eap_md5_challenge_name].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_eap_common_username]);
 
 	if (cpriv->evt_result) {
