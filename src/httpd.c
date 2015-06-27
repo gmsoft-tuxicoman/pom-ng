@@ -99,12 +99,15 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 		httpd_ssl_key = malloc(s.st_size + 1);
 		if (!httpd_ssl_key) {
+			close(fd);
 			pom_oom(s.st_size);
 			goto err;
 		}
 		
-		if (pom_read(fd, httpd_ssl_key, s.st_size) != POM_OK)
+		if (pom_read(fd, httpd_ssl_key, s.st_size) != POM_OK) {
+			close(fd);
 			goto err;
+		}
 
 		close(fd);
 
