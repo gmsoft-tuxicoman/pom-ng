@@ -440,7 +440,6 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 	if (packet_buffer_alloc(p, multipart->cur, multipart->align_offset)) {
 		packet_release(p);
 		packet_multipart_cleanup(multipart);
-		pom_oom(multipart->cur);
 		return PROTO_ERR;
 	}
 
