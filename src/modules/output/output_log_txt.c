@@ -438,7 +438,7 @@ int output_log_txt_open(void *output_priv) {
 		struct output_log_txt_event *log_evt = malloc(sizeof(struct output_log_txt_event));
 		if (!log_evt) {
 			pom_oom(sizeof(struct output_log_txt_event));
-			return POM_ERR;
+			goto err;
 		}
 		memset(log_evt, 0, sizeof(struct output_log_txt_event));
 		log_evt->p_prefix = priv->p_prefix;
