@@ -159,6 +159,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 			if (tmpres->ai_family == AF_INET6) {
 				flags |= MHD_USE_IPv6;
 			} else if (tmpres->ai_family != AF_INET) {
+				free(lst);
 				continue;
 			}
 
