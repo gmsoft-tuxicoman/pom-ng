@@ -65,6 +65,7 @@ int mod_load_all() {
 			char *name = strdup(dp->d_name);
 			if (!name) {
 				pom_oom(strlen(dp->d_name));
+				closedir(d);
 				return POM_ERR;
 			}
 			*(name + strlen(dp->d_name) - strlen(POM_LIB_EXT)) = 0;
