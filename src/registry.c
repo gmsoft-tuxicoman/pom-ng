@@ -733,8 +733,9 @@ static int registry_uid_add(struct registry_instance *instance, uint32_t uid) {
 	registry_uid_table_size++;
 	uint32_t *new_uid_table = realloc(registry_uid_table, sizeof(uint32_t) * registry_uid_table_size);
 	if (!new_uid_table) {
-		pom_oom(sizeof(uint32_t) * registry_uid_table_size);
+		registry_cleanup_param(uid_param);
 		ptype_cleanup(uid_ptype);
+		pom_oom(sizeof(uint32_t) * registry_uid_table_size);
 		return POM_ERR;
 	}
 	registry_uid_table = new_uid_table;
