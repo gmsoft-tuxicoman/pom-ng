@@ -575,7 +575,6 @@ int conntrack_get(struct proto_process_stack *stack, unsigned int stack_index) {
 	// Alloc the list node
 	lst = malloc(sizeof(struct conntrack_list));
 	if (!lst) {
-		ptype_cleanup(ce->fwd_value);
 		pom_oom(sizeof(struct conntrack_list));
 		goto err;
 	}
