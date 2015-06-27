@@ -223,6 +223,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				struct proto_reg_info *pinfo = proto_get_info(s_l4->proto);
 				char *name = pinfo->pkt_fields[i].name;
 				if (!name) {
+					free(fq);
 					pomlog(POMLOG_ERR "Source port not found in RRQ/WRQ packets");
 					goto err;
 				}
