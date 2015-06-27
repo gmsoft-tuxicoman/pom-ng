@@ -313,18 +313,18 @@ int output_log_txt_open(void *output_priv) {
 	struct resource *r = NULL;
 	struct resource_dataset *r_templates = NULL, *r_events = NULL, *r_files = NULL;
 
-	r = resource_open(OUTPUT_LOG_TXT_RESOURCE, output_log_txt_templates);
-
-	if (!r)
-		goto err;
-
-	// Check that the given template exists
 	char *template_name = PTYPE_STRING_GETVAL(priv->p_template);
 	if (!strlen(template_name)) {
 		pomlog(POMLOG_ERR "You need to specify a log template");
 		return POM_ERR;
 	}
 
+	r = resource_open(OUTPUT_LOG_TXT_RESOURCE, output_log_txt_templates);
+
+	if (!r)
+		goto err;
+
+	// Check that the given template exists
 	r_templates = resource_dataset_open(r, "templates");
 	if (!r_templates)
 		goto err;
