@@ -540,7 +540,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 
 	// Browse the given directory
-	struct dirent *buf, *de;
+	struct dirent *buf, *de = NULL;
 	size_t len = offsetof(struct dirent, d_name) + pathconf(path, _PC_NAME_MAX) + 1;
 	buf = malloc(len);
 
@@ -587,6 +587,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		struct input_pcap_dir_file *cur = malloc(sizeof(struct input_pcap_dir_file));
 		if (!cur) {
 			free(cur->full_path);
+			free(buf);
 			regfree(&preg);
 			pom_oom(sizeof(struct input_pcap_dir_file));
 			return POM_ERR;
@@ -595,6 +596,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 		cur->full_path = malloc(strlen(path) + strlen(buf->d_name) + 2);
 		if (!cur->full_path) {
+			free(buf);
 			regfree(&preg);
 			pom_oom(strlen(path) + strlen(buf->d_name) + 2);
 			return POM_ERR;
