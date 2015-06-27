@@ -570,15 +570,14 @@ int output_log_txt_process(struct event *evt, void *obj) {
 	// Open the log file
 	struct output_log_txt_file *file = log_evt->file;
 
+	char fname[FILENAME_MAX + 1] = {0};
 	pom_mutex_lock(&file->lock);
 	if (file->fd == -1) {
 		// File is not open, let's do it
 		char *filename = NULL;
 		if (log_evt->p_prefix) {
-			char fname[FILENAME_MAX + 1] = {0};
 			char *prefix = PTYPE_STRING_GETVAL(log_evt->p_prefix);
-			strcpy(fname, prefix);
-			strncat(fname, file->path, FILENAME_MAX - strlen(fname));
+			snprintf(fname, FILENAME_MAX, "%s%s", prefix, file->path);
 			filename = fname;
 		} else {
 			filename = file->path;
