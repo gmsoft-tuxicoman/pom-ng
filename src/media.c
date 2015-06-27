@@ -32,8 +32,6 @@
 
 #define MEDIA_DEBUG_FORMAT "x%s"
 
-static GMainLoop *loop = NULL;
-
 static struct registry_class *media_registry_class = NULL;
 
 static struct ptype *media_param_gst_debug_level = NULL;
@@ -93,16 +91,12 @@ int media_init() {
 	gst_debug_remove_log_function(gst_debug_log_default);
 	gst_debug_add_log_function(media_debug, NULL, NULL);
 
-	loop = g_main_loop_new(NULL, TRUE);
-
 	return POM_OK;
 
 }
 
 int media_cleanup() {
 
-	g_main_loop_quit(loop);
-	g_main_loop_unref(loop);
 	gst_deinit();
 
 	if (evt_media_pload_to_container)
@@ -178,6 +172,7 @@ void media_pload_need_data(GstElement *appsrc, guint unused_size, gpointer user_
 	if (gst_app_src_push_buffer(GST_APP_SRC(priv->gst_src), gst_buf) != GST_FLOW_OK) {
 		pomlog(POMLOG_ERR "Error while pushing buffer to gstreamer");
 	}
+
 }
 
 GstFlowReturn media_pload_new_sample(GstAppSink *appsink, gpointer user_data) {
@@ -203,12 +198,22 @@ GstFlowReturn media_pload_new_sample(GstAppSink *appsink, gpointer user_data) {
 	GstMapInfo info = { 0 };
 	if (gst_memory_map(mem, &info, GST_MEMORY_FLAG_READONLY) == FALSE) {
 		pomlog(POMLOG_ERR "Error while mapping memory");
+		gst_memory_unref(mem);
 		gst_sample_unref(sample);
+		return GST_FLOW_ERROR;
 	}
 
 	// FIXME there is probably a better way than copying this memory
 	int res = pload_append(priv->out, info.data, info.size);
-	//gst_sample_unref(sample);
+	gst_memory_unmap(mem, &info);
+//	gst_memory_unref(mem);
+	gst_sample_unref(sample);
+
+
+	if (gst_app_sink_is_eos(appsink)) {
+		pomlog(POMLOG_DEBUG "Sink is EOS !");
+		pload_end(priv->out);
+	}
 
 	if (res != POM_OK)
 		return GST_FLOW_ERROR;
@@ -219,7 +224,12 @@ GstFlowReturn media_pload_new_sample(GstAppSink *appsink, gpointer user_data) {
 void media_pload_eos(GstAppSink *appsink, gpointer user_data) {
 
 	struct media_pload_priv *priv = user_data;
+	pomlog(POMLOG_DEBUG "App sink is EOS !!!");
 	pload_end(priv->out);
+
+	gst_element_set_state(priv->gst_pipeline, GST_STATE_NULL);
+
+	free(priv);
 }
 
 struct pload *media_pload_to_container(struct pload_store *ps, char *format) {
@@ -283,9 +293,11 @@ struct pload *media_pload_to_container(struct pload_store *ps, char *format) {
 	g_object_set (G_OBJECT (priv->gst_src), "caps", caps, NULL);
 
 	// Setup appsink
-	g_signal_connect(priv->gst_dst, "new_sample", G_CALLBACK(media_pload_new_sample), priv);
-	g_signal_connect(priv->gst_dst, "eos", G_CALLBACK(media_pload_eos), priv);
 
+	GstAppSinkCallbacks cbs = { 0 };
+	cbs.new_sample = media_pload_new_sample;
+	cbs.eos = media_pload_eos;
+	gst_app_sink_set_callbacks(GST_APP_SINK(priv->gst_dst), &cbs, priv, NULL);
 
 	struct event *evt = event_alloc(evt_media_pload_to_container);
 	if (!evt)
@@ -299,11 +311,11 @@ struct pload *media_pload_to_container(struct pload_store *ps, char *format) {
 	if (!priv->out)
 		goto err;
 
+	pload_set_mime_type_str(priv->out, "audio/wav");
 
 	// Start the gstreamer magic
 	gst_element_set_state(priv->gst_pipeline, GST_STATE_PLAYING);
 
-	pload_store_get_ref(ps);
 
 	return priv->out;
 
