@@ -709,8 +709,11 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					}
 
 					priv->event[direction] = event_alloc(ppriv->evt_response);
-					if (!priv->event[direction])
+					if (!priv->event[direction]) {
+						if (response_proto)
+							free(response_proto);
 						return PROTO_ERR;
+					}
 
 					struct data *evt_data = event_get_data(priv->event[direction]);
 					PTYPE_UINT16_SETVAL(evt_data[proto_http_response_status].value, err_code);
