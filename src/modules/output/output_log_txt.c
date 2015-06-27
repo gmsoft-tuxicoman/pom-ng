@@ -264,7 +264,6 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 
 			}
 		}
-		free(field_name);
 
 		// Parse the ptype print format
 
@@ -300,6 +299,7 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 		field->start_off = start_off;
 		field->end_off = end_off;
 
+		free(field_name);
 	}
 
 	return fields;
