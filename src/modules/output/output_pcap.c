@@ -135,6 +135,8 @@ static int output_pcap_file_init(struct output *o) {
 
 	output_set_priv(o, priv);
 
+	struct registry_param *p = NULL;
+
 	priv->p_filename = ptype_alloc("string");
 	priv->p_snaplen = ptype_alloc_unit("uint16", "bytes");
 	priv->p_link_type = ptype_alloc("string");
@@ -151,7 +153,7 @@ static int output_pcap_file_init(struct output *o) {
 	if (!priv->perf_pkts_out || !priv->perf_bytes_out)
 		goto err;
 
-	struct registry_param *p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
+	p = registry_new_param("filename", "out.pcap", priv->p_filename, "Output PCAP file", 0);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
@@ -184,6 +186,10 @@ static int output_pcap_file_init(struct output *o) {
 	return POM_OK;
 
 err:
+
+	if (p)
+		registry_param_cleanup(p);
+
 	output_pcap_file_cleanup(priv);
 	return POM_ERR;
 
