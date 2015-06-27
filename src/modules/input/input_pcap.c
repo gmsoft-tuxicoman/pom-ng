@@ -531,6 +531,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 	int errcode = regcomp(&preg, match, REG_NOSUB);
 
 	if (errcode) {
+		closedir(dir);
 		char errbuf[256] = { 0 };
 		regerror(errcode, &preg, errbuf, sizeof(errbuf) - 1);
 		pomlog(POMLOG_ERR "Error while compiling regex \"%s\" : %s", match, errbuf);
