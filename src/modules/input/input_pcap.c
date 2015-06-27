@@ -586,7 +586,6 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		// Alloc the new file
 		struct input_pcap_dir_file *cur = malloc(sizeof(struct input_pcap_dir_file));
 		if (!cur) {
-			free(cur->full_path);
 			free(buf);
 			regfree(&preg);
 			pom_oom(sizeof(struct input_pcap_dir_file));
@@ -596,6 +595,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 		cur->full_path = malloc(strlen(path) + strlen(buf->d_name) + 2);
 		if (!cur->full_path) {
+			free(cur);
 			free(buf);
 			regfree(&preg);
 			pom_oom(strlen(path) + strlen(buf->d_name) + 2);
