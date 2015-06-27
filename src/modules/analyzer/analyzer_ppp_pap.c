@@ -298,12 +298,16 @@ int analyzer_ppp_pap_finalize(struct analyzer_ppp_pap_priv *apriv, struct analyz
 
 	evt_data = event_get_data(evt);
 
-	if (ptype_copy(evt_data[analyzer_ppp_pap_auth_peer_id].value, evt_req_data[evt_ppp_pap_request_peer_id].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_ppp_pap_auth_peer_id].value, evt_req_data[evt_ppp_pap_request_peer_id].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_ppp_pap_auth_peer_id]);
 
-	if (ptype_copy(evt_data[analyzer_ppp_pap_auth_password].value, evt_req_data[evt_ppp_pap_request_password].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_ppp_pap_auth_password].value, evt_req_data[evt_ppp_pap_request_password].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_ppp_pap_auth_password]);
 	
 
@@ -333,8 +337,10 @@ int analyzer_ppp_pap_finalize(struct analyzer_ppp_pap_priv *apriv, struct analyz
 		data_set(evt_data[analyzer_ppp_pap_auth_top_proto]);
 	}
 
-	if (ptype_copy(evt_data[analyzer_ppp_pap_auth_identifier].value, evt_req_data[evt_ppp_pap_request_identifier].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_ppp_pap_auth_identifier].value, evt_req_data[evt_ppp_pap_request_identifier].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_ppp_pap_auth_identifier]);
 
 	if (cpriv->evt_ack_nack) {
