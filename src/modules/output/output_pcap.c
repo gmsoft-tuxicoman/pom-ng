@@ -188,7 +188,7 @@ static int output_pcap_file_init(struct output *o) {
 err:
 
 	if (p)
-		registry_param_cleanup(p);
+		registry_cleanup_param(p);
 
 	output_pcap_file_cleanup(priv);
 	return POM_ERR;
@@ -393,6 +393,7 @@ static int output_pcap_flow_unregister() {
 
 static int output_pcap_flow_init(struct output *o) {
 
+	struct registry_param *p = NULL;
 
 	struct output_pcap_flow_priv *priv = malloc(sizeof(struct output_pcap_flow_priv));
 	if (!priv) {
@@ -427,7 +428,7 @@ static int output_pcap_flow_init(struct output *o) {
 	if (!priv->perf_pkts_out || !priv->perf_bytes_out || !priv->perf_flows_cur || !priv->perf_flows_tot)
 		goto err;
 
-	struct registry_param *p = registry_new_param("flow_proto", "tcp", priv->p_flow_proto, "Protocol to use for flows", 0);
+	p = registry_new_param("flow_proto", "tcp", priv->p_flow_proto, "Protocol to use for flows", 0);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
@@ -455,6 +456,9 @@ static int output_pcap_flow_init(struct output *o) {
 
 	return POM_OK;
 err:
+
+	if (p)
+		registry_cleanup_param(p);
 
 	output_pcap_flow_cleanup(priv);
 	return POM_ERR;
