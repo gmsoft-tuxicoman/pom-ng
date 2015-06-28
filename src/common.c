@@ -55,7 +55,10 @@ int pom_mkdir(const char *path) {
 		if (stat(buffer, &stats)) {
 			switch (errno) {
 				case ENOENT:
-					mkdir(buffer, 00777);
+					if (mkdir(buffer, 00777)) {
+						pomlog(POMLOG_ERR "Error creating directory %s : %s", buffer, pom_strerror(errno));
+						return POM_ERR;
+					}
 					break;
 				default:
 					return POM_ERR;
