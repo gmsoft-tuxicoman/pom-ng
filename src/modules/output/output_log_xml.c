@@ -133,7 +133,7 @@ int addon_log_xml_open(void *output_priv) {
 	}
 
 	priv->fd = open(filename, O_CREAT | O_WRONLY | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP);
-	if (!priv->fd == -1) {
+	if (priv->fd == -1) {
 		pomlog(POMLOG_ERR "Error while opening log file \"%s\" : %s", filename, pom_strerror(errno));
 		return POM_ERR;
 	}
