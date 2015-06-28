@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -207,8 +207,10 @@ int analyzer_ppp_pap_event_process_begin(struct event *evt, void *obj, struct pr
 			struct proto_reg_info *info = proto_get_info(prev_stack->proto);
 			if (!strcmp(info->name, "vlan")) {
 				cpriv->vlan = ptype_alloc_from(prev_stack->pkt_info->fields_value[proto_vlan_field_vid]);
-				if (!cpriv->vlan)
+				if (!cpriv->vlan) {
+					conntrack_unlock(s->ce);
 					return POM_ERR;
+				}
 			}
 
 			unsigned int j;
