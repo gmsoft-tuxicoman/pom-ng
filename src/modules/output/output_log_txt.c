@@ -618,6 +618,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 				case output_log_txt_event_property_ts: {
 					value = malloc(20);
 					if (!value) {
+						pom_mutex_unlock(&file->lock);
 						pom_oom(20);
 						return POM_ERR;
 					}
