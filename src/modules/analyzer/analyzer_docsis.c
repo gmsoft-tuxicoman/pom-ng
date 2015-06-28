@@ -326,6 +326,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 
 		cm->t = timer_alloc(cm, analyzer_docsis_cm_timeout);
 		if (!cm->t) {
+			pom_mutex_unlock(&priv->lock);
 			free(cm);
 			return POM_ERR;
 		}
