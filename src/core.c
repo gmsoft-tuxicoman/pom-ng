@@ -382,10 +382,10 @@ void *core_processing_thread_func(void *priv) {
 
 	registry_perf_inc(perf_thread_active, 1);
 
-	pom_mutex_lock(&tpriv->pkt_queue_lock);
 
 	while (core_run) {
 		
+		pom_mutex_lock(&tpriv->pkt_queue_lock);
 		while (!tpriv->pkt_queue_head) {
 			// We are not active while waiting for a packet
 			registry_perf_dec(perf_thread_active, 1);
@@ -475,10 +475,6 @@ void *core_processing_thread_func(void *priv) {
 			pomlog(POMLOG_ERR "Error while releasing the packet");
 			break;
 		}
-		
-		// Re-lock our queue for the next run
-		pom_mutex_lock(&tpriv->pkt_queue_lock);
-
 	}
 
 	halt("Processing thread encountered an error", 1);
