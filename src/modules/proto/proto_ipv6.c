@@ -94,6 +94,8 @@ static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
 		proto_number_register("ppp", 0x57, proto) != POM_OK)
 		return POM_ERR;
 
+	struct registry_param *p = NULL;
+
 	perf_frags = registry_instance_add_perf(i, "fragments", registry_perf_type_counter, "Number of fragments received", "pkts");
 	perf_frags_dropped = registry_instance_add_perf(i, "dropped_fragments", registry_perf_type_counter, "Number of fragments dropped", "pkts");
 	perf_reassembled_pkts = registry_instance_add_perf(i, "reassembled_pkts", registry_perf_type_counter, "Number of reassembled packets", "pkts");
@@ -103,13 +105,13 @@ static int proto_ipv6_init(struct proto *proto, struct registry_instance *i) {
 
 	param_frag_timeout = ptype_alloc_unit("uint32", "seconds");
 	if (!param_frag_timeout)
-		return POM_ERR;
+		goto err;
 
 	param_conntrack_timeout = ptype_alloc_unit("uint32", "seconds");
 	if (!param_conntrack_timeout)
-		return POM_ERR;
+		goto err;
 
-	struct registry_param *p = registry_new_param("fragment_timeout", "60", param_frag_timeout, "Timeout for incomplete ipv6 fragments", 0);
+	p = registry_new_param("fragment_timeout", "60", param_frag_timeout, "Timeout for incomplete ipv6 fragments", 0);
 	if (proto_add_param(proto, p) != POM_OK)
 		goto err;
 
