@@ -894,6 +894,9 @@ static int analyzer_smtp_event_process_end(struct event *evt, void *obj) {
 	
 	struct analyzer_smtp_ce_priv *cpriv = conntrack_get_priv(event_get_conntrack(evt), analyzer);
 
+	if (!cpriv)
+		return POM_ERR;
+
 	if (event_is_started(cpriv->evt_msg)) {
 		event_process_end(cpriv->evt_msg);
 		cpriv->evt_msg = NULL;
