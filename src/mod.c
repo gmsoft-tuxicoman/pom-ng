@@ -321,9 +321,9 @@ void mod_refcount_inc(struct mod_reg *mod) {
 	if (!mod)
 		return;
 
-	pthread_mutex_lock(&mod->lock);
+	pom_mutex_lock(&mod->lock);
 	mod->refcount++;
-	pthread_mutex_unlock(&mod->lock);
+	pom_mutex_unlock(&mod->lock);
 }
 
 void mod_refcount_dec(struct mod_reg *mod) {
@@ -331,9 +331,9 @@ void mod_refcount_dec(struct mod_reg *mod) {
 	if (!mod)
 		return;
 
-	pthread_mutex_lock(&mod->lock);
+	pom_mutex_lock(&mod->lock);
 	mod->refcount--;
-	pthread_mutex_unlock(&mod->lock);
+	pom_mutex_unlock(&mod->lock);
 }
 
 int mod_unload(struct mod_reg *mod) {
@@ -443,4 +443,3 @@ int mod_unload_all() {
 
 	return POM_OK;
 }
-
