@@ -126,7 +126,7 @@ struct datastore *system_datastore_open(char *dstore_uri) {
 	}
 
 	// Set the parameters
-	char *str, *token, *saveptr = NULL;
+	char *str, *token, *saveptr;
 	for (str = params; ; str = NULL) {
 		token = strtok_r(str, "&", &saveptr);
 		if (!token)
