@@ -589,6 +589,7 @@ static int input_dvb_card_open(struct input_dvb_priv *priv) {
 				pomlog(POMLOG_ERR "The frontend %s is not a DVB-ATSC adapter", frontend);
 				goto err;
 			}
+			break;
 
 		case input_dvb_type_docsis:
 			if (priv->fe_type != FE_QAM && priv->fe_type != FE_ATSC) {
