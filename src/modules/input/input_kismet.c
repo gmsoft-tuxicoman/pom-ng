@@ -225,7 +225,7 @@ static int input_kismet_drone_discard_bytes(struct input_kismet_drone_priv *priv
 		size_t rlen = sizeof(buffer);
 		if (rlen > r)
 			rlen = r;
-		size_t res = read(priv->fd, buffer, rlen);
+		ssize_t res = read(priv->fd, buffer, rlen);
 		if (res < 0) {
 			pomlog(POMLOG_ERR "Read error : %s", pom_strerror(errno));
 			return POM_ERR;
