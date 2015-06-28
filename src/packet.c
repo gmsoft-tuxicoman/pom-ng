@@ -291,18 +291,17 @@ int packet_info_pool_cleanup() {
 
 struct packet_multipart *packet_multipart_alloc(struct proto *proto, unsigned int flags, unsigned int align_offset) {
 
+	if (!proto) {
+		pomlog(POMLOG_ERR "Cannot allocate multipart with NULL proto");
+		return NULL;
+	}
+
 	struct packet_multipart *res = malloc(sizeof(struct packet_multipart));
 	if (!res) {
 		pom_oom(sizeof(struct packet_multipart));
 		return NULL;
 	}
 	memset(res, 0, sizeof(struct packet_multipart));
-
-	res->proto = proto;
-	if (!res->proto) {
-		free(res);
-		res = NULL;
-	}
 
 	res->flags = flags;
 	res->align_offset = align_offset;
