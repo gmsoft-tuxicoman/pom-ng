@@ -589,6 +589,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 			free(buf);
 			regfree(&preg);
 			pom_oom(sizeof(struct input_pcap_dir_file));
+			closedir(dir);
 			return POM_ERR;
 		}
 		memset(cur, 0, sizeof(struct input_pcap_dir_file));
@@ -599,6 +600,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 			pom_oom(strlen(path) + strlen(buf->d_name) + 2);
 			free(buf);
 			regfree(&preg);
+			closedir(dir);
 			return POM_ERR;
 		}
 		strcpy(cur->full_path, path);
