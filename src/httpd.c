@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -70,11 +70,14 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 		httpd_ssl_cert = malloc(s.st_size + 1);
 		if (!httpd_ssl_cert) {
 			pom_oom(s.st_size);
+			close(fd);
 			goto err;
 		}
 		
-		if (pom_read(fd, httpd_ssl_cert, s.st_size) != POM_OK)
+		if (pom_read(fd, httpd_ssl_cert, s.st_size) != POM_OK) {
+			close(fd);
 			goto err;
+		}
 
 		close(fd);
 
