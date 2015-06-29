@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -440,15 +440,21 @@ int analyzer_ppp_chap_finalize(struct analyzer_ppp_chap_priv *apriv, struct anal
 		data_set(evt_data[analyzer_ppp_chap_common_top_proto]);
 	}
 
-	if (ptype_copy(evt_data[analyzer_ppp_chap_common_identifier].value, evt_chl_data[evt_ppp_chap_challenge_response_identifier].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_ppp_chap_common_identifier].value, evt_chl_data[evt_ppp_chap_challenge_response_identifier].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_ppp_chap_common_identifier]);
 
-	if (!data_is_set(evt_rsp_data[evt_ppp_chap_challenge_response_name]))
+	if (!data_is_set(evt_rsp_data[evt_ppp_chap_challenge_response_name])) {
+		event_cleanup(evt);
 		return POM_OK;
+	}
 
-	if (ptype_copy(evt_data[analyzer_ppp_chap_common_username].value, evt_rsp_data[evt_ppp_chap_challenge_response_name].value) != POM_OK)
+	if (ptype_copy(evt_data[analyzer_ppp_chap_common_username].value, evt_rsp_data[evt_ppp_chap_challenge_response_name].value) != POM_OK) {
+		event_cleanup(evt);
 		return POM_ERR;
+	}
 	data_set(evt_data[analyzer_ppp_chap_common_username]);
 
 	if (cpriv->evt_result) {
