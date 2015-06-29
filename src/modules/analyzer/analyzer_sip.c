@@ -407,6 +407,7 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 
 	int res = pthread_mutex_init(&call->lock, NULL);
 	if (res) {
+		pom_rwlock_unlock(&analyzer_sip_calls_lock);
 		free(call);
 		pomlog(POMLOG_ERR "Error while initializing the call lock : %s", pom_strerror(res));
 		return NULL;
@@ -1193,8 +1194,10 @@ static int analyzer_sip_sdp_open(void *obj, void **priv, struct pload *pload) {
 	}
 
 	struct telephony_sdp *sdp = telephony_sdp_alloc(d->sdp_dialog, event_get_timestamp(evt));
-	if (!sdp)
+	if (!sdp) {
+		pom_mutex_unlock(&call->lock);
 		return PLOAD_OPEN_ERR;
+	}
 
 	*priv = sdp;
 
