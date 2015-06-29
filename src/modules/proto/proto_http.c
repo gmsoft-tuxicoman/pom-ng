@@ -697,6 +697,8 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 					errcode[3] = 0;
 					strncpy(errcode, token, 3);
 					if (sscanf(errcode, "%hu", &err_code) != 1 || err_code == 0) {
+						if (response_proto)
+							free(response_proto);
 						pomlog(POMLOG_DEBUG "Invalid code in HTTP response");
 						return PROTO_INVALID;
 					}
