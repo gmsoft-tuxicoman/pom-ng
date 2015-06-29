@@ -182,6 +182,8 @@ static int telephony_sdp_parse_line_a_rtpmap(struct telephony_sdp *sdp, char *li
 		a->rtpmap.pload_type = pt;
 		a->rtpmap.chan_num = chan_num;
 
+		a->next = sdp->attribs;
+		sdp->attribs = a;
 	}
 
 	return POM_OK;
