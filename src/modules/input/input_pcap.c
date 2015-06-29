@@ -596,9 +596,9 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		cur->full_path = malloc(strlen(path) + strlen(buf->d_name) + 2);
 		if (!cur->full_path) {
 			free(cur);
+			pom_oom(strlen(path) + strlen(buf->d_name) + 2);
 			free(buf);
 			regfree(&preg);
-			pom_oom(strlen(path) + strlen(buf->d_name) + 2);
 			return POM_ERR;
 		}
 		strcpy(cur->full_path, path);
