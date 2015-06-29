@@ -448,6 +448,7 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 		memset(p, 0, sizeof(struct telephony_stream_payload));
 
 		if (sscanf(fmt_str, "%hhu", &p->pload_type) != 1) {
+			free(p);
 			pomlog(POMLOG_DEBUG "Failed to parse SDP format payload type");
 			return POM_OK;
 		}
@@ -456,8 +457,8 @@ static int telephony_sdp_parse_line_m(struct telephony_sdp *sdp, char *line, siz
 		struct telephony_stream_payload *tmp;
 		for (tmp = stream->ploads; tmp && tmp->pload_type != p->pload_type; tmp = tmp->next);
 		if (tmp) {
-			pomlog(POMLOG_DEBUG "Duplicate payload in SDP m= line format");
 			free(p);
+			pomlog(POMLOG_DEBUG "Duplicate payload in SDP m= line format");
 		} else {
 			p->next = stream->ploads;
 			stream->ploads = p;
