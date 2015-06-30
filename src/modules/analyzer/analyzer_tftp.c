@@ -290,7 +290,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				}
 
 				// Find the file in the session list
-				for (f = spriv->files; ; f = f->next) {
+				for (f = spriv->files; f ; f = f->next) {
 					evt_data = event_get_data(f->evt);
 					if (*PTYPE_BOOL_GETVAL(evt_data[analyzer_tftp_file_write].value)) {
 						if (f->port == sport)
