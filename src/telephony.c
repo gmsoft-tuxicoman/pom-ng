@@ -1044,6 +1044,11 @@ int telephony_stream_info_get_codec(struct telephony_codec_info *info, struct pr
 			dport = l4_stack->pkt_info->fields_value[i];
 	}
 
+	if (!dport) {
+		pomlog(POMLOG_ERR "Destination port not found");
+		return POM_ERR;
+	}
+
 	struct proto_process_stack *l3_stack = &stack[stack_index - 2];
 	struct ptype *dst = NULL;
 	char *addr_str = (s->direction == POM_DIR_FWD ? "dst" : "src");
