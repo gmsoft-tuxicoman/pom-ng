@@ -135,8 +135,7 @@ struct mod_reg *mod_load(char *name) {
 	dlerror();
 
 	char func_name[FILENAME_MAX];
-	strcpy(func_name, name);
-	strcat(func_name, "_reg_info");
+	snprintf(func_name, FILENAME_MAX, "%s_reg_info", name);
 
 	struct mod_reg_info* (*mod_reg_func) () = NULL;
 	mod_reg_func = dlsym(dl_handle, func_name);
