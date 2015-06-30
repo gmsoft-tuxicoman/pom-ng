@@ -648,6 +648,10 @@ int addon_output_init(struct output *o) {
 	// Create the private data
 	// TODO make __priv read-only
 	struct addon_instance_priv *p = lua_newuserdata(L, sizeof(struct addon_instance_priv)); // Stack : output, priv
+	if (!p) {
+		pom_oom(sizeof(struct addon_instance_priv));
+		return POM_ERR;
+	}
 	memset(p, 0, sizeof(struct addon_instance_priv));
 	o->priv = p;
 	p->instance = o;
@@ -737,7 +741,7 @@ int addon_output_init(struct output *o) {
 		struct registry_param *reg_param = registry_new_param((char*)name, (char*)defval, param->value, (char*)descr, 0);
 		if (output_add_param(o, reg_param) != POM_OK) {
 			pomlog(POMLOG_ERR "Error while adding parameter to the output instance");
-			if (p)
+			if (reg_param)
 				registry_cleanup_param(reg_param);
 			free(param->name);
 			ptype_cleanup(param->value);
