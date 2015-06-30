@@ -164,9 +164,8 @@ static int analyzer_smtp_cleanup(struct analyzer *analyzer) {
 
 	struct analyzer_smtp_priv *priv = analyzer->priv;
 
-	if (priv->pkt_listener) {
-		proto_packet_listener_unregister(priv->pkt_listener);
-	}
+	if (priv->pkt_listener && (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK))
+		return POM_ERR;
 
 	if (priv->listening) {
 		event_listener_unregister(priv->evt_cmd, analyzer);
