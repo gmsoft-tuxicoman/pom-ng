@@ -469,7 +469,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 							return PROTO_ERR;
 						}
 						s_next->plen = pload_remaining;
-						priv->info[s->direction].content_pos = priv->info[s->direction].content_pos;
+						priv->info[s->direction].content_pos = priv->info[s->direction].content_len;
 						debug_http("entry %p, got %u bytes of payload", s->ce, s_next->plen);
 
 						if (core_process_multi_packet(stack, stack_index + 1, p) == PROTO_ERR)
