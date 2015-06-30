@@ -392,9 +392,8 @@ int mod_unload_all() {
 
 	pom_mutex_lock(&mod_reg_lock);
 
-	struct mod_reg *mod;
-	while (mod_reg_head) {
-		mod = mod_reg_head;
+	struct mod_reg *mod = mod_reg_head;
+	while (mod) {
 		mod_reg_head = mod->next;
 
 		pomlog(POMLOG_DEBUG "Unloading module %s", mod->name);
@@ -402,7 +401,7 @@ int mod_unload_all() {
 		if (mod->info->unregister_func) {
 			if (mod->info->unregister_func() != POM_OK) {
 				pomlog(POMLOG_ERR "Unable to unregister module %s", mod->name);
-				mod = mod->next;
+				mod = mod_reg_head;
 				continue;
 			}
 		}
@@ -411,8 +410,7 @@ int mod_unload_all() {
 		if (mod->refcount) {
 			pomlog(POMLOG_WARN "Cannot unload module %s as it's still in use", mod->name);
 			pom_mutex_unlock(&mod->lock);
-			pom_mutex_unlock(&mod_reg_lock);
-			mod = mod->next;
+			mod = mod_reg_head;
 			continue;
 		}
 
@@ -434,8 +432,8 @@ int mod_unload_all() {
 
 		free(mod->filename);
 		free(mod->name);
-
 		free(mod);
+		mod = mod_reg_head;
 	}
 
 	pom_mutex_unlock(&mod_reg_lock);
