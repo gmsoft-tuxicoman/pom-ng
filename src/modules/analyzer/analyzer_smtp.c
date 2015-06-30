@@ -658,14 +658,17 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 					cpriv->evt_auth = NULL;
 				}
 
+
 				if (strlen(arg)) {
+					cpriv->evt_auth = event_alloc(apriv->evt_auth);
+					if (!cpriv->evt_auth)
+						return POM_ERR;
 					if (analyzer_smtp_parse_auth_plain(apriv, cpriv, arg) == POM_OK) {
 						event_process_begin(cpriv->evt_auth, stack, stack_index, event_get_timestamp(evt));
 						cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain_creds;
 					}
 				} else {
 					cpriv->last_cmd = analyzer_smtp_last_cmd_auth_plain;
-					
 				}
 
 			} else if (!strncasecmp(arg, "LOGIN", strlen("LOGIN"))) {
