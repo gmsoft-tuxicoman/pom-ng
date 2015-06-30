@@ -236,6 +236,9 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 
 	struct analyzer_smtp_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
 
+	if (!cpriv)
+		return POM_ERR;
+
 	if (!event_is_started(cpriv->evt_msg)) {
 		pomlog(POMLOG_ERR "Payload received while data event not found");
 		return POM_OK;
