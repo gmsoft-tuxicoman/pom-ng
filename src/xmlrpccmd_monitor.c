@@ -269,6 +269,7 @@ int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload) {
 			struct xmlrpccmd_monitor_httpd_pload *httpd_lst = malloc(sizeof(struct xmlrpccmd_monitor_httpd_pload));
 			if (!httpd_lst) {
 				pom_mutex_unlock(&sess->lock);
+				pom_mutex_unlock(&xmlrpccmd_monitor_session_lock);
 				pom_oom(sizeof(struct xmlrpccmd_monitor_httpd_pload));
 				httpd_pload_remove(pload_id);
 				free(lst->listeners);
