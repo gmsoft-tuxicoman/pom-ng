@@ -337,7 +337,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 			}
 			memset(buffer, 0, buffsize);
 
-			snprintf(buffer, buffsize - 1, replystr, geteuid(), getegid());
+			snprintf(buffer, buffsize, replystr, geteuid(), getegid());
 
 			response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
 			mime_type = "text/html";
