@@ -212,8 +212,10 @@ int analyzer_eap_event_process_begin(struct event *evt, void *obj, struct proto_
 			struct proto_reg_info *info = proto_get_info(prev_stack->proto);
 			if (!strcmp(info->name, "vlan")) {
 				cpriv->vlan = ptype_alloc_from(prev_stack->pkt_info->fields_value[proto_vlan_field_vid]);
-				if (!cpriv->vlan)
+				if (!cpriv->vlan) {
+					conntrack_unlock(s->ce);
 					return POM_ERR;
+				}
 			}
 
 			unsigned int j;
