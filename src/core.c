@@ -505,7 +505,7 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 
 	static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
 
-	pthread_mutex_lock(&debug_lock);
+	pom_mutex_lock(&debug_lock);
 	printf("thread %u | %u.%u | ", (unsigned int)pthread_self(), (int)pom_ptime_sec(p->ts), (int)pom_ptime_usec(p->ts));
 
 	// Dump packet info
@@ -531,7 +531,7 @@ int core_process_dump_info(struct proto_process_stack *s, struct packet *p, int 
 		printf("}; ");
 	}
 	printf(": %s\n", res_str);
-	pthread_mutex_unlock(&debug_lock);
+	pom_mutex_unlock(&debug_lock);
 
 	return POM_OK;
 }
