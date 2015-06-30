@@ -232,7 +232,8 @@ int output_tap_close(void *output_priv) {
 	
 	struct output_tap_priv *priv = output_priv;
 
-	proto_packet_listener_unregister(priv->listener);
+	if (proto_packet_listener_unregister(priv->listener) != POM_OK)
+		return POM_ERR;
 
 	if (priv->fd != -1) {
 		close(priv->fd);
