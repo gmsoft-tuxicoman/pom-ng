@@ -632,9 +632,6 @@ err:
 	if (child)
 		free(child);
 
-	if (lst)
-		free(lst);
-
 	if (ce->parent)
 		free(ce->parent);
 	
