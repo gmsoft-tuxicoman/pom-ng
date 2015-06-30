@@ -270,6 +270,7 @@ int stream_process_packet(struct stream *stream, struct packet *pkt, struct prot
 			memset(lst, 0, sizeof(struct stream_thread_wait));
 			
 			if (pthread_cond_init(&lst->cond, NULL)) {
+				pom_mutex_unlock(&stream->wait_lock);
 				pomlog(POMLOG_ERR "Error while initializing wait list condition : %s", pom_strerror(errno));
 				free(lst);
 				return POM_ERR;
