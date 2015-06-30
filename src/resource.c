@@ -102,7 +102,7 @@ struct resource_dataset *resource_dataset_open(struct resource *r, char *dset_na
 	struct resource_template *t;
 	for (t = r->tmplt; t->dataset_name && strcmp(t->dataset_name, dset_name); t++);
 
-	if (!t) {
+	if (!t->dataset_name) {
 		pomlog(POMLOG_ERR "Dataset %s doesn't exists in the provided template", dset_name);
 		return NULL;
 	}
