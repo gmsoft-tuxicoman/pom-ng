@@ -347,10 +347,10 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			struct httpd_pload *pload = NULL;
 
-			sscanf(url, "%"PRIu64, &pload_id);
-
-			pom_rwlock_rlock(&httpd_ploads_lock);
-			HASH_FIND(hh, httpd_ploads, &pload_id, sizeof(pload_id), pload);
+			if (sscanf(url, "%"PRIu64, &pload_id) == 1) {
+				pom_rwlock_rlock(&httpd_ploads_lock);
+				HASH_FIND(hh, httpd_ploads, &pload_id, sizeof(pload_id), pload);
+			}
 
 			if (!pload) {
 				char *replystr = "<html><head><title>Not found</title></head><body>payload not found</body></html>";
