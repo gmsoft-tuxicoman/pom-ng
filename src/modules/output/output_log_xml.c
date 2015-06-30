@@ -373,7 +373,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 
 	xmlBufferFree(buff);
 
-	if (priv && priv->perf_events)
+	if (priv->perf_events)
 		registry_perf_inc(priv->perf_events, 1);
 
 	return POM_OK;
