@@ -34,3 +34,10 @@
   ...
 }
 
+{
+   pcap_break_loop
+   Helgrind:Race
+   fun:pcap_breakloop
+   ...
+}
+

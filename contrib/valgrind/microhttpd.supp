@@ -20,6 +20,21 @@
    libmicrohttpd MHD_quiesce_daemon
    Helgrind:Race
    fun:MHD_quiesce_daemon
-   fun:httpd_stop
-   fun:main
+   ...
 }
+{
+   libmicrohttpd MHD_stop_daemon
+   Helgrind:Race
+   fun:MHD_stop_daemon
+   ...
+}
+
+{
+   libmicrohttpd start_thread
+   Helgrind:Race
+   obj:/usr/lib*/libmicrohttpd.so.*
+   ...
+   fun:start_thread
+   ...
+}
+
