@@ -348,7 +348,6 @@ static int addon_output_pload_close(void *output_priv, void *pload_instance_priv
 	if (lua_isnil(p->L, -1)) {
 		// There is no pload_priv_table, the payload doesn't need to be processed
 		lua_pop(p->L, 3);
-		pom_mutex_unlock(&p->lock);
 		goto cleanup;
 	}
 
