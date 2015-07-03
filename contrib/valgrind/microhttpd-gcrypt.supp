@@ -14,4 +14,12 @@
    ...
    fun:gcry_control
    ...
+} 
+
+{
+   libmicrohttpd MHD_quiesce_daemon
+   Helgrind:Race
+   fun:MHD_quiesce_daemon
+   fun:httpd_stop
+   fun:main
 }
