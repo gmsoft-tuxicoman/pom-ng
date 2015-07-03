@@ -283,8 +283,7 @@ static int proto_http_process(void *proto_priv, struct packet *p, struct proto_p
 							}
 
 							// Process the event
-							event_process_begin(priv->event[s->direction], stack, stack_index, p->ts);
-							event_process_end(priv->event[s->direction]);
+							event_process(priv->event[s->direction], stack, stack_index, p->ts);
 							priv->event[s->direction] = NULL;
 						
 							proto_http_conntrack_reset(s->ce, s->direction);
