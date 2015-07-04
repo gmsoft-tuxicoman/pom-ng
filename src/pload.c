@@ -49,7 +49,7 @@ static struct ptype *pload_store_mmap_block_size = NULL;
 static size_t pload_page_size = 0;
 
 static struct pload_listener_reg *pload_listeners = NULL;
-static pthread_rwlock_t pload_listeners_lock = PTHREAD_RWLOCK_INITIALIZER;
+static pthread_mutex_t pload_listeners_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct pload_type *pload_types = NULL;
 static struct pload_mime_type *pload_mime_types_hash = NULL, *pload_mime_types_head = NULL;
@@ -371,16 +371,30 @@ struct pload *pload_alloc(struct event *rel_event, int flags) {
 
 int pload_end(struct pload *pload) {
 
+	pom_mutex_lock(&pload_listeners_lock);
 	while (pload->listeners) {
 		struct pload_listener *tmp = pload->listeners;
+		pload->listeners = tmp->next;
+
 		if (tmp->reg->close) {
 			if (tmp->reg->close(tmp->reg->obj, tmp->priv) != POM_OK) {
 				pomlog(POMLOG_WARN "Error while closing a payload listener");
 			}
 		}
-		pload->listeners = tmp->next;
+		struct pload_listener_ploads *plst;
+		HASH_FIND(hh, tmp->reg->ploads, &pload, sizeof(pload), plst);
+		if (!plst) {
+			pom_mutex_unlock(&pload_listeners_lock);
+			pomlog(POMLOG_ERR "Pload nost found in the listener pload list.");
+			return POM_ERR;
+		}
+		HASH_DEL(tmp->reg->ploads, plst);
+
+		free(plst);
+
 		free(tmp);
 	}
+	pom_mutex_unlock(&pload_listeners_lock);
 
 	if (pload->store) {
 		pload_store_end(pload->store);
@@ -871,7 +885,7 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 	if (!(p->flags & PLOAD_FLAG_OPENED)) {
 		
-		pom_rwlock_rlock(&pload_listeners_lock);
+		pom_mutex_lock(&pload_listeners_lock);
 
 		struct pload_listener_reg *listeners[2] = { pload_listeners, NULL };
 		if (p->type)
@@ -896,10 +910,21 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 				struct pload_listener *lst = malloc(sizeof(struct pload_listener));
 				if (!lst) {
+					pom_mutex_unlock(&pload_listeners_lock);
 					pom_oom(sizeof(struct pload_listener));
 					return POM_ERR;
 				}
 				memset(lst, 0, sizeof(struct pload_listener));
+
+				struct pload_listener_ploads *plst = malloc(sizeof(struct pload_listener_ploads));
+				if (!plst) {
+					pom_mutex_unlock(&pload_listeners_lock);
+					free(lst);
+					pom_oom(sizeof(struct pload_listener_ploads));
+					return POM_ERR;
+				}
+				memset(plst, 0, sizeof(struct pload_listener_ploads));
+
 				lst->reg = reg;
 				lst->priv = pload_priv;
 			
@@ -907,11 +932,13 @@ int pload_append(struct pload *p, void *data, size_t len) {
 				if (lst->next)
 					lst->next->prev = lst;
 				p->listeners = lst;
-	
+
+				plst->p = p;
+				HASH_ADD(hh, reg->ploads, p, sizeof(p), plst);
 			}
 		}
 
-		pom_rwlock_unlock(&pload_listeners_lock);
+		pom_mutex_unlock(&pload_listeners_lock);
 
 		p->flags |= PLOAD_FLAG_OPENED;
 
@@ -1040,12 +1067,14 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 	reg->write = write;
 	reg->close = close;
 
+	pom_mutex_lock(&pload_listeners_lock);
 
 	struct pload_listener_reg **head = &pload_listeners;
 	if (pload_type) {
 		struct pload_type *def;
 		HASH_FIND(hh, pload_types, pload_type, strlen(pload_type), def);
 		if (!def) {
+			pom_mutex_unlock(&pload_listeners_lock);
 			pomlog(POMLOG_ERR "Cannot find payload type %s", pload_type);
 			return POM_ERR;
 		}
@@ -1053,27 +1082,27 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 		head = &def->listeners;
 	}
 
-
-	pom_rwlock_wlock(&pload_listeners_lock);
-
 	reg->next = *head;
 	if (reg->next)
 		reg->next->prev = reg;
 
 	*head = reg;
 
-	pom_rwlock_unlock(&pload_listeners_lock);
+	pom_mutex_unlock(&pload_listeners_lock);
 
 	return POM_OK;
 }
 
 int pload_listen_stop(void *obj, char *pload_type) {
 
+	pom_mutex_lock(&pload_listeners_lock);
+
 	struct pload_listener_reg **head = &pload_listeners;
 	if (pload_type) {
 		struct pload_type *def;
 		HASH_FIND(hh, pload_types, pload_type, strlen(pload_type), def);
 		if (!def) {
+			pom_mutex_unlock(&pload_listeners_lock);
 			pomlog(POMLOG_ERR "Cannot find payload type %s", pload_type);
 			return POM_ERR;
 		}
@@ -1083,17 +1112,40 @@ int pload_listen_stop(void *obj, char *pload_type) {
 		pload_type = "'any'";
 	}
 
-
-	pom_rwlock_wlock(&pload_listeners_lock);
-
 	struct pload_listener_reg *reg;
 
 	for (reg = *head; reg && reg->obj != obj; reg = reg->next);
 
 	if (!reg) {
-		pom_rwlock_unlock(&pload_listeners_lock);
+		pom_mutex_unlock(&pload_listeners_lock);
 		pomlog(POMLOG_ERR "Payload listener %x not found for payload type %s", obj, pload_type);
 		return POM_ERR;
+	}
+	struct pload_listener_ploads *cur_pload, *tmp_pload;
+	HASH_ITER(hh, reg->ploads, cur_pload, tmp_pload) {
+		HASH_DEL(reg->ploads, cur_pload);
+
+		struct pload_listener *l;
+		for (l = cur_pload->p->listeners; l && l->reg != reg; l = l->next);
+		if (!l) {
+			pomlog(POMLOG_ERR "Pload of a specific listener not found.");
+			free(cur_pload);
+			continue;
+		}
+
+		if (reg->close(reg->obj, l->priv)) {
+			pomlog(POMLOG_WARN "Error while closing pload");
+		}
+		if (l->next)
+			l->next->prev = l->prev;
+		if (l->prev)
+			l->prev->next = l->next;
+		else
+			cur_pload->p->listeners = l->next;
+
+		free(l);
+
+		free(cur_pload);
 	}
 
 	if (reg->next)
@@ -1103,7 +1155,7 @@ int pload_listen_stop(void *obj, char *pload_type) {
 	else
 		*head = reg->next;
 
-	pom_rwlock_unlock(&pload_listeners_lock);
+	pom_mutex_unlock(&pload_listeners_lock);
 
 	free(reg);
 

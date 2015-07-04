@@ -47,6 +47,8 @@ struct pload_listener_reg {
 	int (*write) (void *obj, void *priv, void *data, size_t len);
 	int (*close) (void *obj, void *priv);
 
+	struct pload_listener_ploads *ploads;
+
 	struct pload_listener_reg *prev, *next;
 
 };
@@ -59,6 +61,12 @@ struct pload_listener {
 
 	struct pload_listener *prev, *next;
 
+};
+
+struct pload_listener_ploads {
+
+	struct pload *p;
+	UT_hash_handle hh;
 };
 
 struct pload_store_map {
