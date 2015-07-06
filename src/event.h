@@ -24,6 +24,7 @@
 #define EVENT_REGISTRY "event"
 
 #include <pom-ng/event.h>
+#include <uthash.h>
 
 struct event {
 	struct event_reg *reg;
@@ -42,11 +43,19 @@ struct event_reg {
 	struct event_reg_info *info;
 	struct event_listener *listeners;
 	struct event_reg *prev, *next;
+	struct event_reg_events *evts;
 	struct registry_instance *reg_instance;
 	struct registry_perf *perf_listeners;
 	struct registry_perf *perf_ongoing;
 	struct registry_perf *perf_processed;
-	pthread_rwlock_t listeners_lock;
+	pthread_mutex_t listeners_lock;
+	pthread_mutex_t notify_lock;
+};
+
+struct event_reg_events {
+
+	struct event *evt;
+	UT_hash_handle hh;
 };
 
 struct event_listener {
