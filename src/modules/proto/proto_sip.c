@@ -163,6 +163,7 @@ static int proto_sip_init(struct proto *proto, struct registry_instance *ri) {
 	proto_sip_evt_req.name = "sip_req";
 	proto_sip_evt_req.description = "SIP request";
 	proto_sip_evt_req.data_reg = &evt_req_data;
+	proto_sip_evt_req.flags = EVENT_REG_FLAG_PAYLOAD;
 
 	priv->evt_sip_req = event_register(&proto_sip_evt_req);
 	if (!priv->evt_sip_req)
@@ -188,6 +189,7 @@ static int proto_sip_init(struct proto *proto, struct registry_instance *ri) {
 	proto_sip_evt_rsp.name = "sip_rsp";
 	proto_sip_evt_rsp.description = "SIP response";
 	proto_sip_evt_rsp.data_reg = &evt_rsp_data;
+	proto_sip_evt_rsp.flags = EVENT_REG_FLAG_PAYLOAD;
 
 	priv->evt_sip_rsp = event_register(&proto_sip_evt_rsp);
 	if (!priv->evt_sip_rsp)
