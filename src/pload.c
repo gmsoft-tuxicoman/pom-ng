@@ -1375,23 +1375,25 @@ struct pload_store_map *pload_store_read_start(struct pload_store *ps) {
 	pom_mutex_lock(&ps->lock);
 
 	if (!ps->filename) {
+		free(map);
 		pomlog(POMLOG_ERR "Unable to read empty pload store");
 		pom_mutex_unlock(&ps->lock);
 		return NULL;
+	}
+
+	if (ps->fd == -1) {
+		ps->fd = pom_open(ps->filename, O_RDWR | O_CREAT, 0666);
+		if (ps->fd == -1) {
+			pom_mutex_unlock(&ps->lock);
+			free(map);
+			return NULL;
+		}
 	}
 
 	map->next = ps->read_maps;
 	if (map->next)
 		map->next->prev = map;
 	ps->read_maps = map;
-
-	if (ps->fd == -1) {
-		ps->fd = pom_open(ps->filename, O_RDWR | O_CREAT, 0666);
-		if (ps->fd == -1) {
-			pom_mutex_unlock(&ps->lock);
-			return NULL;
-		}
-	}
 
 	pom_mutex_unlock(&ps->lock);
 
