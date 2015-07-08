@@ -462,8 +462,13 @@ static int proto_tcp_process_payload(struct conntrack_entry *ce, struct packet *
 	if (flags & TH_FIN) // Increase the sequence number by 1 if we got a FIN
 		stream_increase_seq(cp->stream, s_tcp->direction, 1);
 	
-	if (proto_tcp_update_state(proto_get_priv(s_tcp->proto), cp, ce, flags, s_tcp->direction, p->ts) != POM_OK)
+	conntrack_lock(ce);
+	if (proto_tcp_update_state(proto_get_priv(s_tcp->proto), cp, ce, flags, s_tcp->direction, p->ts) != POM_OK) {
+		conntrack_unlock(ce);
 		return PROTO_ERR;
+	}
+
+	conntrack_unlock(ce);
 
 	stack[stack_index].proto = cp->proto;
 	return core_process_multi_packet(stack, stack_index, p);
