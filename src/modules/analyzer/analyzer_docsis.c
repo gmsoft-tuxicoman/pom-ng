@@ -319,6 +319,7 @@ static int analyzer_docsis_pkt_process(void *obj, struct packet *p, struct proto
 		// Cable modem not found !
 		cm = malloc(sizeof(struct analyzer_docsis_cm));
 		if (!cm) {
+			pom_mutex_unlock(&priv->lock);
 			pom_oom(sizeof(struct analyzer_docsis_cm));
 			return POM_ERR;
 		}
