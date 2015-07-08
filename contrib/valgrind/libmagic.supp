@@ -1,0 +1,8 @@
+{
+   libmagic race
+   Helgrind:Race
+   ...
+   fun:magic_buffer
+   ...
+}
+

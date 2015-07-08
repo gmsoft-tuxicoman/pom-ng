@@ -19,12 +19,14 @@
 {
    libmicrohttpd MHD_quiesce_daemon
    Helgrind:Race
+   ...
    fun:MHD_quiesce_daemon
    ...
 }
 {
    libmicrohttpd MHD_stop_daemon
    Helgrind:Race
+   ...
    fun:MHD_stop_daemon
    ...
 }

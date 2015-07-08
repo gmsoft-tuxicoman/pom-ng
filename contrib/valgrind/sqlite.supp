@@ -1,0 +1,6 @@
+{  
+   sqlite3 races
+   Helgrind:Race
+   obj:/usr/lib*/libsqlite3.so*
+   ...
+}

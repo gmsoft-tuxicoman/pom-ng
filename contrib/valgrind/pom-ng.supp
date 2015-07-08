@@ -1,0 +1,63 @@
+{
+   input pcap interrupt
+   Helgrind:Race
+   fun:input_pcap_interrupt
+   ...
+}
+{
+   input pcap interrupt
+   Helgrind:Race
+   fun:input_pcap_dir_browse
+   fun:input_pcap_dir_open
+   ...
+}
+
+{
+   input pcap close
+   Helgrind:Race
+   fun:input_pcap_close
+   ...
+}
+
+{
+   signal handler for shutdown
+   Helgrind:Race
+   fun:halt_signal
+   fun:signal_handler
+   ...
+}
+
+{
+   core cleanup core_run
+   Helgrind:Race
+   ...
+   fun:core_cleanup
+   ...
+}
+{
+   core cleanup broadcast signal
+   Helgrind:Misc
+   ...
+   fun:core_cleanup
+   ...
+}
+{
+  core clock in core processing_thread
+  Helgrind:Race
+  fun:core_processing_thread_func
+  ...
+}
+{  
+   core_get_clock
+   Helgrind:Race
+   fun:core_get_clock
+   ...
+}
+
+{
+   core_get_clock_last
+   Helgrind:Race
+   fun:core_get_clock_last
+   ...
+}
+

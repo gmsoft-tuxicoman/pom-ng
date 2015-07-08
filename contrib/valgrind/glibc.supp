@@ -28,4 +28,11 @@
   fun:dlopen*
   ...
 }
+{
+   libc tls init race
+   Helgrind:Race
+   fun:mempcpy
+   fun:_dl_allocate_tls_init
+   ...
+}
 
