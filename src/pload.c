@@ -162,40 +162,57 @@ int pload_init() {
 		def->cls = cls_id;
 
 		if (!def->name || !def->description || !def->extension) {
+			free(def);
 			pom_oom(strlen(PTYPE_STRING_GETVAL(v[0].value)));
 			goto err;
 		}
 
 		def->reg_instance = registry_add_instance(pload_registry_class, def->name);
-		if (!def->reg_instance)
+		if (!def->reg_instance) {
+			free(def);
 			goto err;
+		}
 
 		struct ptype *param = ptype_alloc("string");
-		if (!param)
+		if (!param) {
+			free(def);
 			goto err;
+		}
 		p = registry_new_param("class", PTYPE_STRING_GETVAL(v[3].value), param, "Payload class", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
-		if (registry_instance_add_param(def->reg_instance, p) != POM_OK)
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
+			free(def);
 			goto err;
+		}
 
 		param = ptype_alloc("string");
-		if (!param)
+		if (!param) {
+			free(def);
 			goto err;
+		}
 		p = registry_new_param("description", def->description, param, "Payload description", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
-		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) 
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
+			free(def);
 			goto err;
+		}
 
 		param = ptype_alloc("string");
-		if (!param)
+		if (!param) {
+			free(def);
 			goto err;
+		}
 		p = registry_new_param("extension", def->extension, param, "Payload extension", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
-		if (registry_instance_add_param(def->reg_instance, p) != POM_OK)
+		if (registry_instance_add_param(def->reg_instance, p) != POM_OK) {
+			free(def);
 			goto err;
+		}
 		p = NULL;
 
 		def->perf_analyzed = registry_instance_add_perf(def->reg_instance, "analyzed", registry_perf_type_counter, "Number of payload analyzed", "ploads");
 
-		if (!def->perf_analyzed)
+		if (!def->perf_analyzed) {
+			free(def);
 			goto err;
+		}
 
 		// Add the payload with its name
 		HASH_ADD_KEYPTR(hh, pload_types, def->name, strlen(def->name), def);
