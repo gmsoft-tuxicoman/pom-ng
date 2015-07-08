@@ -698,14 +698,14 @@ int pload_store_append(struct pload *p, void *data, size_t len) {
 		write_map->off_cur += len;
 	}
 
-	pthread_mutex_lock(&p->store->lock);
+	pom_mutex_lock(&p->store->lock);
 	p->store->file_size = write_map->off_start + write_map->off_cur;
 	int res = pthread_cond_broadcast(&p->store->cond);
 	if (res) {
 		pomlog(POMLOG_ERR "Error while signaling pload store condition : %s", pom_strerror(res));
 		abort();
 	}
-	pthread_mutex_unlock(&p->store->lock);
+	pom_mutex_unlock(&p->store->lock);
 
 	return POM_OK;
 }
