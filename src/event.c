@@ -477,10 +477,10 @@ int event_process_end(struct event *evt) {
 	HASH_FIND(hh, evt->reg->evts, &evt, sizeof(evt), revt);
 	if (!revt) {
 		pomlog(POMLOG_ERR "Event not found in the event_reg events");
+		HASH_DEL(evt->reg->evts, revt);
+		pom_mutex_unlock(&evt->reg->evts_lock);
+		free(revt);
 	}
-	HASH_DEL(evt->reg->evts, revt);
-	pom_mutex_unlock(&evt->reg->evts_lock);
-	free(revt);
 
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
 		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
