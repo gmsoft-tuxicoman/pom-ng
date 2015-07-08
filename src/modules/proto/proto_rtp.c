@@ -106,8 +106,7 @@ static int proto_rtp_init(struct proto *proto, struct registry_instance *i) {
 
 	return POM_OK;
 err:
-	if (p)
-		registry_cleanup_param(p);
+	registry_cleanup_param(p);
 
 	return POM_ERR;
 }
