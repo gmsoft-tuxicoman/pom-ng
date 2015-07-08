@@ -853,7 +853,7 @@ void core_assert_is_paused() {
 	if (res == EDEADLK || res == EBUSY)
 		return;
 
-	pthread_rwlock_unlock(&core_processing_lock);
+	pom_rwlock_unlock(&core_processing_lock);
 	pomlog(POMLOG_ERR "Error, core processing should be locked while it's not !");
 	abort();
 }
