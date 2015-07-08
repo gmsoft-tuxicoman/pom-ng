@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@
 #include "config.h"
 #include "pload.h"
 #include "registry.h"
+#include "core.h"
 #include <pom-ng/resource.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint32.h>
@@ -49,7 +50,6 @@ static struct ptype *pload_store_mmap_block_size = NULL;
 static size_t pload_page_size = 0;
 
 static struct pload_listener_reg *pload_listeners = NULL;
-static pthread_mutex_t pload_listeners_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static struct pload_type *pload_types = NULL;
 static struct pload_mime_type *pload_mime_types_hash = NULL, *pload_mime_types_head = NULL;
@@ -371,7 +371,6 @@ struct pload *pload_alloc(struct event *rel_event, int flags) {
 
 int pload_end(struct pload *pload) {
 
-	pom_mutex_lock(&pload_listeners_lock);
 	while (pload->listeners) {
 		struct pload_listener *tmp = pload->listeners;
 		pload->listeners = tmp->next;
@@ -381,20 +380,22 @@ int pload_end(struct pload *pload) {
 				pomlog(POMLOG_WARN "Error while closing a payload listener");
 			}
 		}
+
+		pom_mutex_lock(&tmp->reg->lock);
 		struct pload_listener_ploads *plst;
 		HASH_FIND(hh, tmp->reg->ploads, &pload, sizeof(pload), plst);
 		if (!plst) {
-			pom_mutex_unlock(&pload_listeners_lock);
+			pom_mutex_unlock(&tmp->reg->lock);
 			pomlog(POMLOG_ERR "Pload nost found in the listener pload list.");
 			return POM_ERR;
 		}
 		HASH_DEL(tmp->reg->ploads, plst);
+		pom_mutex_unlock(&tmp->reg->lock);
 
 		free(plst);
 
 		free(tmp);
 	}
-	pom_mutex_unlock(&pload_listeners_lock);
 
 	if (pload->store) {
 		pload_store_end(pload->store);
@@ -884,8 +885,6 @@ int pload_append(struct pload *p, void *data, size_t len) {
 	// At this point the payload is ready to be sent to a listener
 
 	if (!(p->flags & PLOAD_FLAG_OPENED)) {
-		
-		pom_mutex_lock(&pload_listeners_lock);
 
 		struct pload_listener_reg *listeners[2] = { pload_listeners, NULL };
 		if (p->type)
@@ -910,7 +909,6 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 				struct pload_listener *lst = malloc(sizeof(struct pload_listener));
 				if (!lst) {
-					pom_mutex_unlock(&pload_listeners_lock);
 					pom_oom(sizeof(struct pload_listener));
 					return POM_ERR;
 				}
@@ -918,7 +916,6 @@ int pload_append(struct pload *p, void *data, size_t len) {
 
 				struct pload_listener_ploads *plst = malloc(sizeof(struct pload_listener_ploads));
 				if (!plst) {
-					pom_mutex_unlock(&pload_listeners_lock);
 					free(lst);
 					pom_oom(sizeof(struct pload_listener_ploads));
 					return POM_ERR;
@@ -934,11 +931,11 @@ int pload_append(struct pload *p, void *data, size_t len) {
 				p->listeners = lst;
 
 				plst->p = p;
+				pom_mutex_lock(&reg->lock);
 				HASH_ADD(hh, reg->ploads, p, sizeof(p), plst);
+				pom_mutex_unlock(&reg->lock);
 			}
 		}
-
-		pom_mutex_unlock(&pload_listeners_lock);
 
 		p->flags |= PLOAD_FLAG_OPENED;
 
@@ -1054,6 +1051,8 @@ struct data_reg *pload_get_data_reg(struct pload *p) {
 
 int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv)) {
 
+	core_assert_is_paused();
+
 	struct pload_listener_reg *reg = malloc(sizeof(struct pload_listener_reg));
 	if (!reg) {
 		pom_oom(sizeof(struct pload_listener_reg));
@@ -1067,14 +1066,21 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 	reg->write = write;
 	reg->close = close;
 
-	pom_mutex_lock(&pload_listeners_lock);
+	int res = pthread_mutex_init(&reg->lock, NULL);
+
+	if (res) {
+		pomlog(POMLOG_ERR "Error while initializing pload listener lock : %s", pom_strerror(res));
+		free(reg);
+		return POM_ERR;
+
+	}
 
 	struct pload_listener_reg **head = &pload_listeners;
 	if (pload_type) {
 		struct pload_type *def;
 		HASH_FIND(hh, pload_types, pload_type, strlen(pload_type), def);
 		if (!def) {
-			pom_mutex_unlock(&pload_listeners_lock);
+			free(reg);
 			pomlog(POMLOG_ERR "Cannot find payload type %s", pload_type);
 			return POM_ERR;
 		}
@@ -1082,27 +1088,26 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 		head = &def->listeners;
 	}
 
+
 	reg->next = *head;
 	if (reg->next)
 		reg->next->prev = reg;
 
 	*head = reg;
 
-	pom_mutex_unlock(&pload_listeners_lock);
 
 	return POM_OK;
 }
 
 int pload_listen_stop(void *obj, char *pload_type) {
 
-	pom_mutex_lock(&pload_listeners_lock);
+	core_assert_is_paused();
 
 	struct pload_listener_reg **head = &pload_listeners;
 	if (pload_type) {
 		struct pload_type *def;
 		HASH_FIND(hh, pload_types, pload_type, strlen(pload_type), def);
 		if (!def) {
-			pom_mutex_unlock(&pload_listeners_lock);
 			pomlog(POMLOG_ERR "Cannot find payload type %s", pload_type);
 			return POM_ERR;
 		}
@@ -1117,10 +1122,16 @@ int pload_listen_stop(void *obj, char *pload_type) {
 	for (reg = *head; reg && reg->obj != obj; reg = reg->next);
 
 	if (!reg) {
-		pom_mutex_unlock(&pload_listeners_lock);
 		pomlog(POMLOG_ERR "Payload listener %x not found for payload type %s", obj, pload_type);
 		return POM_ERR;
 	}
+	if (reg->next)
+		reg->next->prev = reg->prev;
+	if (reg->prev)
+		reg->prev->next = reg->next;
+	else
+		*head = reg->next;
+
 	struct pload_listener_ploads *cur_pload, *tmp_pload;
 	HASH_ITER(hh, reg->ploads, cur_pload, tmp_pload) {
 		HASH_DEL(reg->ploads, cur_pload);
@@ -1148,14 +1159,10 @@ int pload_listen_stop(void *obj, char *pload_type) {
 		free(cur_pload);
 	}
 
-	if (reg->next)
-		reg->next->prev = reg->prev;
-	if (reg->prev)
-		reg->prev->next = reg->next;
-	else
-		*head = reg->next;
 
-	pom_mutex_unlock(&pload_listeners_lock);
+	int res = pthread_mutex_destroy(&reg->lock);
+	if (res)
+		pomlog(POMLOG_WARN "Error while destroying pload_listener mutex : %s", pom_strerror(res));
 
 	free(reg);
 

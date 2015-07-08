@@ -88,12 +88,6 @@ int proto_register(struct proto_reg_info *reg_info) {
 		goto err_proto;
 	}
 
-	res = pthread_rwlock_init(&proto->listeners_lock, NULL);
-	if (res) {
-		pomlog(POMLOG_ERR "Error while initializing the proto_listeners rwlock : %s", pom_strerror(res));
-		goto err_lock1;
-	}
-
 	proto->reg_instance = registry_add_instance(proto_registry_class, reg_info->name);
 	if (!proto->reg_instance) {
 		pomlog(POMLOG_ERR "Error while adding the registry instanc for protocol %s", reg_info->name);
@@ -151,8 +145,6 @@ err_conntrack:
 err_registry:
 	registry_remove_instance(proto->reg_instance);
 err_lock:
-	pthread_rwlock_destroy(&proto->listeners_lock);
-err_lock1:
 	pthread_rwlock_destroy(&proto->expectation_lock);
 err_proto:
 	free(proto);
@@ -324,7 +316,6 @@ int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *
 	if (proto && s_next->plen) {
 		
 		struct proto_packet_listener *l;
-		pom_rwlock_rlock(&proto->listeners_lock);
 		for (l = proto->payload_listeners; l; l = l->next) {
 			if (l->filter && !filter_packet_match(l->filter, stack))
 				continue;
@@ -333,7 +324,6 @@ int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *
 				// FIXME remove listener from the list ?
 			}
 		}
-		pom_rwlock_unlock(&proto->listeners_lock);
 	}
 
 	return POM_OK;
@@ -351,7 +341,6 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 
 	// Process the listeners after the whole stack has been processed
 	struct proto_packet_listener *l;
-	pom_rwlock_rlock(&proto->listeners_lock);
 	for (l = proto->packet_listeners; l; l = l->next) {
 		if (l->filter && !filter_packet_match(l->filter, s))
 			continue;
@@ -360,7 +349,6 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 			// FIXME remove listener from the list ?
 		}
 	}
-	pom_rwlock_unlock(&proto->listeners_lock);
 
 	if (proto->info->post_process)
 		return proto->info->post_process(proto->priv, p, s, stack_index);
@@ -446,10 +434,7 @@ int proto_cleanup() {
 		proto = proto_head;
 		proto_head = proto->next;
 
-		int res = pthread_rwlock_destroy(&proto->listeners_lock);
-		if (res)
-			pomlog(POMLOG_ERR "Error while destroying the listners lock : %s", pom_strerror(res));
-		res = pthread_rwlock_destroy(&proto->expectation_lock);
+		int res = pthread_rwlock_destroy(&proto->expectation_lock);
 		if (res)
 			pomlog(POMLOG_ERR "Error while destroying the listners lock : %s", pom_strerror(res));
 
@@ -478,6 +463,8 @@ int proto_cleanup() {
 
 struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object, int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index), struct filter_node *f) {
 
+	core_assert_is_paused();
+
 	struct proto_packet_listener *l = malloc(sizeof(struct proto_packet_listener));
 	if (!l) {
 		pom_oom(sizeof(struct proto_packet_listener));
@@ -490,8 +477,6 @@ struct proto_packet_listener *proto_packet_listener_register(struct proto *proto
 	l->proto = proto;
 	l->object = object;
 	l->filter = f;
-
-	pom_rwlock_wlock(&proto->listeners_lock);
 
 	if (l->flags & PROTO_PACKET_LISTENER_PLOAD_ONLY)
 		l->next = proto->payload_listeners;
@@ -506,17 +491,15 @@ struct proto_packet_listener *proto_packet_listener_register(struct proto *proto
 	else
 		proto->packet_listeners = l;
 
-	pom_rwlock_unlock(&l->proto->listeners_lock);
-
 	return l;
 }
 
 int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 
+	core_assert_is_paused();
+
 	if (!l)
 		return POM_ERR;
-
-	pom_rwlock_wlock(&l->proto->listeners_lock);
 
 	if (l->next)
 		l->next->prev = l->prev;
@@ -530,17 +513,16 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 			l->proto->packet_listeners = l->next;
 	}
 
-	pom_rwlock_unlock(&l->proto->listeners_lock);
-
 	free(l);
 
 	return POM_OK;
 }
 
 void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_node *f) {
-	pom_rwlock_wlock(&l->proto->listeners_lock);
+
+	core_assert_is_paused();
+
 	l->filter = f;
-	pom_rwlock_unlock(&l->proto->listeners_lock);
 }
 
 

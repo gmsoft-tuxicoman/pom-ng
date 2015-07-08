@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -46,6 +46,8 @@ struct pload_listener_reg {
 	int (*open) (void *obj, void **priv, struct pload *pload);
 	int (*write) (void *obj, void *priv, void *data, size_t len);
 	int (*close) (void *obj, void *priv);
+
+	pthread_mutex_t lock;
 
 	struct pload_listener_ploads *ploads;
 

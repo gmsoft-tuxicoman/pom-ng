@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include <pom-ng/event.h>
 #include "event.h"
 #include "registry.h"
+#include "core.h"
 
 #if 0
 #define debug_event(x ...) pomlog(POMLOG_DEBUG x)
@@ -80,16 +81,9 @@ struct event_reg *event_register(struct event_reg_info *reg_info) {
 	}
 	memset(evt, 0, sizeof(struct event_reg));
 
-	int res = pthread_mutex_init(&evt->listeners_lock, NULL);
+	int res = pthread_mutex_init(&evt->evts_lock, NULL);
 	if (res) {
-		pomlog(POMLOG_ERR "Error while initializing the event listeners lock : %s", pom_strerror(res));
-		free(evt);
-		return NULL;
-	}
-
-	res = pthread_mutex_init(&evt->notify_lock, NULL);
-	if (res) {
-		pomlog(POMLOG_ERR "Error while initializing the event notify lock : %s", pom_strerror(res));
+		pomlog(POMLOG_ERR "Error while initializing the event list lock : %s", pom_strerror(res));
 		free(evt);
 		return NULL;
 	}
@@ -140,12 +134,9 @@ int event_unregister(struct event_reg *reg) {
 
 	registry_remove_instance(reg->reg_instance);
 
-	int res = pthread_mutex_destroy(&reg->listeners_lock);
+	int res = pthread_mutex_destroy(&reg->evts_lock);
 	if (res)
-		pomlog(POMLOG_WARN "Error while destroying event listeners lock : %s", pom_strerror(res));
-	res = pthread_mutex_destroy(&reg->notify_lock);
-	if (res)
-		pomlog(POMLOG_WARN "Error while destroying event notify lock : %s", pom_strerror(res));
+		pomlog(POMLOG_WARN "Error while destroying event list lock : %s", pom_strerror(res));
 
 	free(reg);
 
@@ -260,13 +251,12 @@ int event_payload_listen_stop() {
 
 int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj)) {
 
-	pom_mutex_lock(&evt_reg->listeners_lock);
+	core_assert_is_paused();
 
 	struct event_listener *lst;
 	for (lst = evt_reg->listeners; lst && lst->obj != obj; lst = lst->next);
 
 	if (lst) {
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 		pomlog(POMLOG_ERR "Event %s is already being listened to by obj %p", evt_reg->info->name, obj);
 		return POM_ERR;
 	}
@@ -274,7 +264,6 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 	
 	lst = malloc(sizeof(struct event_listener));
 	if (!lst) {
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 		pom_oom(sizeof(struct event_listener));
 		return POM_ERR;
 
@@ -292,36 +281,28 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 	evt_reg->listeners = lst;
 
 	if (evt_reg->info->listeners_notify && !lst->next) {
-		pom_mutex_lock(&evt_reg->notify_lock);
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 		// Got a listener now, notify
 		if (evt_reg->info->listeners_notify(evt_reg->info->source_obj, evt_reg, 1) != POM_OK) {
-			pom_mutex_unlock(&evt_reg->notify_lock);
 			pomlog(POMLOG_ERR "Error while notifying event object about new listener");
 			evt_reg->listeners = NULL;
 			free(lst);
 			return POM_ERR;
 		}
-		pom_mutex_unlock(&evt_reg->notify_lock);
-	} else {
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 	}
 
 	registry_perf_inc(evt_reg->perf_listeners, 1);
 	
-
 	return POM_OK;
 }
 
 int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 
-	pom_mutex_lock(&evt_reg->listeners_lock);
+	core_assert_is_paused();
 
 	struct event_listener *lst;
 	for (lst = evt_reg->listeners; lst && lst->obj != obj; lst = lst->next);
 
 	if (!lst) {
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 		pomlog(POMLOG_ERR "Object %p not found in the listeners list of event %s",  obj, evt_reg->info->name);
 		return POM_ERR;
 	}
@@ -345,14 +326,9 @@ int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 	free(lst);
 
 	if (evt_reg->info->listeners_notify && !evt_reg->listeners) {
-		pom_mutex_lock(&evt_reg->notify_lock);
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 		if (evt_reg->info->listeners_notify(evt_reg->info->source_obj, evt_reg, 0) != POM_OK) {
 			pomlog(POMLOG_WARN "Error while notifying event object that it has no listeners");
 		}
-		pom_mutex_unlock(&evt_reg->notify_lock);
-	} else {
-		pom_mutex_unlock(&evt_reg->listeners_lock);
 	}
 
 	registry_perf_dec(evt_reg->perf_listeners, 1);
@@ -406,7 +382,6 @@ int event_process(struct event *evt, struct proto_process_stack *stack, int stac
 
 	evt->ts = ts;
 
-	pom_mutex_lock(&evt->reg->listeners_lock);
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
 		if (lst->process_begin && lst->process_begin(evt, lst->obj, stack, stack_index) != POM_OK) {
@@ -419,7 +394,6 @@ int event_process(struct event *evt, struct proto_process_stack *stack, int stac
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}
 	}
-	pom_mutex_unlock(&evt->reg->listeners_lock);
 
 	// tmp listeners don't need to be protected by the listeners lock
 	for (lst = evt->tmp_listeners; lst; lst = lst->next) {
@@ -460,7 +434,6 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 
 	evt->ts = ts;
 
-	pom_mutex_lock(&evt->reg->listeners_lock);
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
 		if (lst->process_begin && lst->process_begin(evt, lst->obj, stack, stack_index) != POM_OK) {
@@ -468,10 +441,10 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 		}
 	}
 
+	pom_mutex_lock(&evt->reg->evts_lock);
 	revt->evt = evt;
 	HASH_ADD(hh, evt->reg->evts, evt, sizeof(evt), revt);
-
-	pom_mutex_unlock(&evt->reg->listeners_lock);
+	pom_mutex_unlock(&evt->reg->evts_lock);
 
 	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_BEGAN);
 
@@ -498,14 +471,15 @@ int event_process_end(struct event *evt) {
 
 
 	struct event_listener *lst;
-	pom_mutex_lock(&evt->reg->listeners_lock);
 
 	struct event_reg_events *revt;
+	pom_mutex_lock(&evt->reg->evts_lock);
 	HASH_FIND(hh, evt->reg->evts, &evt, sizeof(evt), revt);
 	if (!revt) {
 		pomlog(POMLOG_ERR "Event not found in the event_reg events");
 	}
 	HASH_DEL(evt->reg->evts, revt);
+	pom_mutex_unlock(&evt->reg->evts_lock);
 	free(revt);
 
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
@@ -513,7 +487,6 @@ int event_process_end(struct event *evt) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}
 	}
-	pom_mutex_unlock(&evt->reg->listeners_lock);
 
 	// tmp listeners don't need to be protected by the listeners lock
 	for (lst = evt->tmp_listeners; lst; lst = lst->next) {

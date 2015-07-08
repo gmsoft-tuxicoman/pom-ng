@@ -21,6 +21,7 @@
 #include "output.h"
 #include "registry.h"
 #include "mod.h"
+#include "core.h"
 #include <pom-ng/ptype_bool.h>
 
 static struct output_reg *output_reg_head = NULL;
@@ -263,14 +264,19 @@ int output_instance_start_stop_handler(void *priv, struct registry_param *p, str
 
 	char *new_state = PTYPE_BOOL_GETVAL(run);
 
+	core_pause_processing();
+
 	if (o->running == *new_state) {
+		core_resume_processing();
 		pomlog(POMLOG_ERR "Error, output is already %s", (*new_state ? "running" : "stopped"));
 		return POM_ERR;
 	}
 
+
 	if (*new_state) {
 		if (o->info->reg_info->open) {
 			if (o->info->reg_info->open(o->priv) != POM_OK) {
+				core_resume_processing();
 				pomlog(POMLOG_ERR "Error while starting the output");
 				return POM_ERR;
 			}
@@ -280,6 +286,7 @@ int output_instance_start_stop_handler(void *priv, struct registry_param *p, str
 	} else {
 		if (o->info->reg_info->close) {
 			if (o->info->reg_info->close(o->priv) != POM_OK) {
+				core_resume_processing();
 				pomlog(POMLOG_ERR "Error while stopping the output");
 				return POM_ERR;
 			}
@@ -289,6 +296,7 @@ int output_instance_start_stop_handler(void *priv, struct registry_param *p, str
 	}
 
 	o->running = *new_state;
+	core_resume_processing();
 	return POM_OK;
 }
 

@@ -729,17 +729,24 @@ enum core_state core_get_state() {
 // Placeholder for all the stuff to do when processing starts
 static int core_processing_start() {
 
-	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns) && dns_core_init() != POM_OK)
+	core_pause_processing();
+
+	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns) && dns_core_init() != POM_OK) {
+		core_resume_processing();
 		return POM_ERR;
+	}
 
 	if (*PTYPE_BOOL_GETVAL(core_param_reset_perf_on_restart))
 		registry_perf_reset_all();
 
+	core_resume_processing();
 	return POM_OK;
 }
 
 // Placeholder for all the stuff to do when processing stops
 static int core_processing_stop() {
+
+	core_pause_processing();
 
 	if (*PTYPE_BOOL_GETVAL(core_param_offline_dns))
 		dns_core_cleanup();
@@ -749,6 +756,8 @@ static int core_processing_stop() {
 
 	// Give the analyzers the chance to clear their state
 	analyzer_finish();
+
+	core_resume_processing();
 
 	return POM_OK;
 }
@@ -818,18 +827,35 @@ int core_set_state(enum core_state state) {
 
 void core_pause_processing() {
 
-	if (pthread_rwlock_wrlock(&core_processing_lock)) {
-		pomlog(POMLOG_ERR "Error while locking core processing lock : %s", pom_strerror(errno));
+	int res = pthread_rwlock_wrlock(&core_processing_lock);
+	if (res) {
+		pomlog(POMLOG_ERR "Error while locking core processing lock : %s", pom_strerror(res));
 		abort();
 	}
 }
 
 void core_resume_processing() {
 
-	if (pthread_rwlock_unlock(&core_processing_lock)) {
-		pomlog(POMLOG_ERR "Error while locking core processing lock : %s", pom_strerror(errno));
+	int res = pthread_rwlock_unlock(&core_processing_lock);
+
+	if (res) {
+		pomlog(POMLOG_ERR "Error while locking core processing lock : %s", pom_strerror(res));
 		abort();
 	}
+}
+
+void core_assert_is_paused() {
+
+	if (!core_run) // Core is not yet running
+		return;
+
+	int res = pthread_rwlock_trywrlock(&core_processing_lock);
+	if (res == EDEADLK || res == EBUSY)
+		return;
+
+	pthread_rwlock_unlock(&core_processing_lock);
+	pomlog(POMLOG_ERR "Error, core processing should be locked while it's not !");
+	abort();
 }
 
 struct registry_perf *core_add_perf(const char *name, enum registry_perf_type type, const char *description, const char *unit) {

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -48,8 +48,7 @@ struct event_reg {
 	struct registry_perf *perf_listeners;
 	struct registry_perf *perf_ongoing;
 	struct registry_perf *perf_processed;
-	pthread_mutex_t listeners_lock;
-	pthread_mutex_t notify_lock;
+	pthread_mutex_t evts_lock;
 };
 
 struct event_reg_events {

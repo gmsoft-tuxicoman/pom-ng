@@ -73,6 +73,7 @@ int core_set_state(enum core_state state);
 
 void core_pause_processing();
 void core_resume_processing();
+void core_assert_is_paused();
 
 struct registry_perf *core_add_perf(const char *name, enum registry_perf_type type, const char *description, const char *unit);
 

@@ -22,6 +22,7 @@
 
 #include "common.h"
 
+#include "core.h"
 #include "registry.h"
 #include "input.h"
 #include "mod.h"
@@ -327,10 +328,15 @@ int input_instance_start_stop_handler(void *priv, struct registry_param *p, stru
 			}
 		}
 
+
+		core_pause_processing();
+
 		if (i->reg->info->open && i->reg->info->open(i) != POM_OK) {
+			core_resume_processing();
 			pomlog(POMLOG_ERR "Error while starting input %s", i->name);
 			goto err;
 		}
+		core_resume_processing();
 
 		__sync_fetch_and_or(&i->running, INPUT_RUN_RUNNING);
 
@@ -416,9 +422,11 @@ void *input_process_thread(void *param) {
 
 	}
 
+	core_pause_processing();
 	if (i->reg->info->close && i->reg->info->close(i) != POM_OK) {
 		pomlog(POMLOG_WARN "Error while stopping input %s", i->name);
 	}
+	core_resume_processing();
 
 	__sync_fetch_and_and(&i->running, ~INPUT_RUN_RUNNING);
 
