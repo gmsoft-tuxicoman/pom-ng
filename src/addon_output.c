@@ -781,6 +781,8 @@ int addon_output_open(void *output_priv) {
 
 	struct addon_instance_priv *p = output_priv;
 
+	pom_mutex_lock(&p->lock);
+
 	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
 
 	lua_getfield(p->L, -1, "open"); // Stack : self, open_func
@@ -791,6 +793,8 @@ int addon_output_open(void *output_priv) {
 	
 	lua_pop(p->L, 1); // Stack : empty
 
+	pom_mutex_unlock(&p->lock);
+
 	return res;
 }
 
@@ -798,6 +802,7 @@ int addon_output_close(void *output_priv) {
 
 	struct addon_instance_priv *p = output_priv;
 
+	pom_mutex_lock(&p->lock);
 	lua_getfield(p->L, LUA_REGISTRYINDEX, ADDON_INSTANCE); // Stack : self
 	lua_getfield(p->L, -1, "close"); // Stack : self, close_func
 
@@ -806,6 +811,7 @@ int addon_output_close(void *output_priv) {
 	int res =  addon_pcall(p->L, 1, 0); // Stack : self
 	
 	lua_pop(p->L, 1); // Stack : empty
+	pom_mutex_unlock(&p->lock);
 
 	return res;
 }
