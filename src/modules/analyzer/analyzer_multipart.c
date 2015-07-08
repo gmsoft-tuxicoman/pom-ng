@@ -216,7 +216,7 @@ static int analyzer_multipart_pload_write(void *obj, void *p, void *data, size_t
 			size_t new_len = add_len + 1;
 			if (priv->last_line)
 				new_len += strlen(priv->last_line);
-			if (priv->last_line_len < new_len) {
+			if (!priv->last_line || priv->last_line_len < new_len) {
 				char *new_last_line = realloc(priv->last_line, new_len);
 				if (!new_last_line) {
 					pom_oom(new_len);
