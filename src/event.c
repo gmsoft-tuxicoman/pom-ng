@@ -415,17 +415,17 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 
 	debug_event("Processing event begin %s", evt->reg->info->name);
 
+	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN) {
+		pomlog(POMLOG_ERR "Internal error: event %s already processed", evt->reg->info->name);
+		return POM_ERR;
+	}
+
 	struct event_reg_events *revt = malloc(sizeof(struct event_reg_events));
 	if (!revt) {
 		pom_oom(sizeof(struct event_reg_events));
 		return POM_ERR;
 	}
 	memset(revt, 0, sizeof(struct event_reg_events));
-
-	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN) {
-		pomlog(POMLOG_ERR "Internal error: event %s already processed", evt->reg->info->name);
-		return POM_ERR;
-	}
 
 	event_refcount_inc(evt);
 
