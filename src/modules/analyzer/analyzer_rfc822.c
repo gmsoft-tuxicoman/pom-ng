@@ -111,6 +111,8 @@ static int analyzer_rfc822_pload_analyze(struct pload *pload, struct pload_buffe
 		// CR and LF are not supposed to appear independently
 		// Yet, we search for LF and strip CR if any
 		char *crlf = memchr(hdr, '\n', hdrlen);
+		if (!crlf)
+			return PLOAD_ANALYSIS_FAILED;
 		size_t line_len = crlf - hdr;
 		char *line = hdr;
 		if (crlf != pb->data && *(crlf - 1) == '\r')
