@@ -523,7 +523,7 @@ static int proto_sip_parse_request_response(struct conntrack_entry *ce, char *li
 	unsigned int line_len = len;
 
 
-	int is_req;
+	int is_req = 0;
 
 	struct data *evt_data = NULL;
 
