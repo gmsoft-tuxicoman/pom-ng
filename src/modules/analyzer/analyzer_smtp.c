@@ -568,6 +568,8 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 		}
 
 		if (!strcasecmp(cmd, "MAIL")) {
+			if (!arg)
+				return POM_OK;
 			if (strncasecmp(arg, "FROM:", strlen("FROM:"))) {
 				pomlog(POMLOG_DEBUG "Unparseable MAIL command");
 				return POM_OK;
@@ -591,6 +593,8 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			cpriv->last_cmd = analyzer_smtp_last_cmd_mail_from;
 			
 		} else if (!strcasecmp(cmd, "RCPT")) {
+			if (!arg)
+				return POM_OK;
 			if (strncasecmp(arg, "TO:", strlen("TO:"))) {
 				pomlog(POMLOG_DEBUG "Unparseable RCPT command");
 				return POM_OK;
@@ -638,10 +642,14 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 		} else if (!strcasecmp(cmd, "RSET")) {
 			// Cleanup the event
-			event_cleanup(cpriv->evt_msg);
-			cpriv->evt_msg = NULL;
+			if (cpriv->evt_msg) {
+				event_cleanup(cpriv->evt_msg);
+				cpriv->evt_msg = NULL;
+			}
 			cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 		} else if (!strcasecmp(cmd, "HELO") || !strcasecmp(cmd, "EHLO")) {
+			if (!arg)
+				return POM_OK;
 			if (cpriv->client_hello) {
 				pomlog(POMLOG_DEBUG "We already have a client hello !");
 				free(cpriv->client_hello);
@@ -655,6 +663,8 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 
 		} else if (!strcasecmp(cmd, "AUTH")) {
+			if (!arg)
+				return POM_OK;
 			if (!strncasecmp(arg, "PLAIN", strlen("PLAIN"))) {
 				arg += strlen("PLAIN");
 				while (*arg == ' ')
