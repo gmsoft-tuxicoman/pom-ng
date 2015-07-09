@@ -513,7 +513,7 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 	if (qro) {
 		if (!read_query) {
 			read_query = tmp_read_query;
-			strcpy(tmp_read_query, priv->read_query);
+			strncpy(tmp_read_query, priv->read_query, DATASTORE_SQLITE_QUERY_BUFF_LEN);
 		}
 		strncat(tmp_read_query, order_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_read_query));
 	}
