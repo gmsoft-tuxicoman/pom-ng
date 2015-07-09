@@ -1,3 +1,14 @@
+v0.0.18
+	Add telephony API.
+	Add proto_sip, proto_rtp.
+	Add analyzer_sip, analyzer_sdp, analyzer_rtp, analyzer_dtmf.
+	Many bugs fixed thanks to coverity and valgrind.
+	Update gentoo ebuild.
+	Increase max open file soft limit to the hard limit on startup.
+	Add dns_record template for output_log_txt.
+	Fix small race in proto_tcp when updating the state of the connection.
+	Use higher level logs to remove race and improve speed of pload, eventand proto.
+
 v0.0.17
 	Fix support for DLT_MPEG_2_TS in pcap related modules.
 	Improve dvb inputs.
