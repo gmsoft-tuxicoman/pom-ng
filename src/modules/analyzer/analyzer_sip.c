@@ -400,6 +400,7 @@ static struct analyzer_sip_call* analyzer_sip_event_get_call(struct analyzer *a,
 	// The call wasn't found, create it and bind it to the session
 	call = malloc(sizeof(struct analyzer_sip_call));
 	if (!call) {
+		pom_rwlock_unlock(&analyzer_sip_calls_lock);
 		pom_oom(sizeof(struct analyzer_sip_call));
 		return NULL;
 	}
