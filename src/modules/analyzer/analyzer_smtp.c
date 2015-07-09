@@ -724,6 +724,7 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 								event_cleanup(cpriv->evt_auth);
 								cpriv->evt_auth = NULL;
 								username_pt = NULL;
+								return POM_ERR;
 							}
 						} else {
 							free(username);
