@@ -623,6 +623,12 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 		} else if (!strcasecmp(cmd, "DATA")) {
 			cpriv->last_cmd = analyzer_smtp_last_cmd_data;
 
+			if (!cpriv->evt_msg) {
+				cpriv->evt_msg = event_alloc(apriv->evt_msg);
+				if (!cpriv->evt_msg)
+					return POM_ERR;
+
+			}
 			if (!event_is_started(cpriv->evt_msg)) {
 				analyzer_smtp_event_fill_common_data(cpriv, msg_data);
 				event_process_begin(cpriv->evt_msg, stack, stack_index, event_get_timestamp(evt));
