@@ -158,7 +158,7 @@ static int analyzer_sip_init(struct analyzer *analyzer) {
 	analyzer_sip_evt_call_dial.source_name = "analyzer_sip";
 	analyzer_sip_evt_call_dial.source_obj = analyzer;
 	analyzer_sip_evt_call_dial.name = "sip_call_dial";
-	analyzer_sip_evt_call_dial.description = "A SIP call is dial";
+	analyzer_sip_evt_call_dial.description = "A SIP call is dialed and not yet ringing";
 	analyzer_sip_evt_call_dial.data_reg = &evt_sip_call_common_data;
 	analyzer_sip_evt_call_dial.listeners_notify = analyzer_sip_event_listeners_notify;
 
