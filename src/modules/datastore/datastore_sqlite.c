@@ -501,11 +501,11 @@ static int datastore_sqlite_dataset_query_prepare(struct dataset_query *dsq) {
 
 	if (qc) {
 		read_query = tmp_read_query;
-		strcpy(tmp_read_query, priv->read_query);
+		strncpy(tmp_read_query, priv->read_query, DATASTORE_SQLITE_QUERY_BUFF_LEN);
 		strncat(tmp_read_query, cond_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_read_query));
 
 		delete_query = tmp_delete_query;
-		strcpy(tmp_delete_query, priv->delete_query);
+		strncpy(tmp_delete_query, priv->delete_query, DATASTORE_SQLITE_QUERY_BUFF_LEN);
 		strncat(tmp_delete_query, cond_query, DATASTORE_SQLITE_QUERY_BUFF_LEN - strlen(tmp_delete_query));
 
 	}
