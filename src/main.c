@@ -56,6 +56,7 @@ static pthread_t main_thread = 0;
 static int httpd_port = POMNG_HTTPD_PORT;
 static char *httpd_addresses = POMNG_HTTPD_ADDRESSES;
 static char *httpd_ssl_cert = NULL, *httpd_ssl_key = NULL;
+static char *startup_config = "startup";
 
 void signal_handler(int signal) {
 
@@ -80,6 +81,7 @@ void print_usage() {
 		" -h, --help                  print this usage\n"
 		" -u, --user=USER             drop privilege to this user\n"
 		" -s, --system-store=STORE    URI to use for the system datastore (default: '" POMNG_SYSTEM_DATASTORE "')\n"
+		" -C, --startup-config=CONF  specify which saved configuration to load and start on startup (default: startup)\n"
 		" -t, --threads=num           number of processing threads to start (default: number of cpu - 1)\n"
 		" -b, --bind=addresses        comma separated list of ip address to bind to (v4 or v6) (default : '0.0.0.0;::')\n"
 		" -p, --port=num              port fo the HTTP interface (default: %u)\n"
@@ -178,6 +180,7 @@ int main(int argc, char *argv[]) {
 			{ "debug", 1, 0, 'd' },
 			{ "threads", 1, 0, 't' },
 			{ "system-store", 1, 0, 's' },
+			{ "startup-config", 1, 0, 'C' },
 			{ "bind", 1, 0, 'b'},
 			{ "port", 1, 0, 'p' },
 			{ "help", 0, 0, 'h' },
@@ -185,7 +188,7 @@ int main(int argc, char *argv[]) {
 		};
 
 		
-		char *args = "u:d:t:s:b:p:c:k:h";
+		char *args = "u:d:t:s:C:b:p:c:k:h";
 
 		c = getopt_long(argc, argv, args, long_options, NULL);
 
@@ -231,6 +234,10 @@ int main(int argc, char *argv[]) {
 			}
 			case 's': {
 				system_store_uri = optarg;
+				break;
+			}
+			case 'C': {
+				startup_config = optarg;
 				break;
 			}
 			case 't': {
@@ -405,7 +412,32 @@ int main(int argc, char *argv[]) {
 
 	// Main loop
 	
-	pomlog(PACKAGE_NAME " started ! You can now connect using pom-ng-console.");
+	pomlog(PACKAGE_NAME " started ! You can now connect using pom-ng-console or the web-ui.");
+
+	// Load the startup config
+
+	if (registry_config_load(startup_config) != POM_ERR) {
+
+		pomlog("Starting all outputs from configuration %s ...", startup_config);
+
+		// Start all the outputs
+		struct registry_class *c = registry_find_class(OUTPUT_REGISTRY);
+		if (c) {
+			struct registry_instance *i;
+			for (i = c->instances; i; i = i->next)
+				registry_set_param(i, "running", "yes");
+		}
+
+		pomlog("Starting all inputs from configuration %s ...", startup_config);
+		// Start all the inputs
+		c = registry_find_class(INPUT_REGISTRY);
+		if (c) {
+			struct registry_instance *i;
+			for (i = c->instances; i; i = i->next)
+				registry_set_param(i, "running", "yes");
+		}
+		pomlog("All components from configuration %s started !", startup_config);
+	}
 
 	while (running) {
 		struct timeval tv;
