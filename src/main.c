@@ -81,7 +81,7 @@ void print_usage() {
 		" -h, --help                  print this usage\n"
 		" -u, --user=USER             drop privilege to this user\n"
 		" -s, --system-store=STORE    URI to use for the system datastore (default: '" POMNG_SYSTEM_DATASTORE "')\n"
-		" -C, --startup-config=CONF  specify which saved configuration to load and start on startup (default: startup)\n"
+		" -C, --startup-config=CONF   specify which saved configuration to load and start on startup (default: startup)\n"
 		" -t, --threads=num           number of processing threads to start (default: number of cpu - 1)\n"
 		" -b, --bind=addresses        comma separated list of ip address to bind to (v4 or v6) (default : '0.0.0.0;::')\n"
 		" -p, --port=num              port fo the HTTP interface (default: %u)\n"
