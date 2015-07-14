@@ -69,7 +69,9 @@ enum analyzer_smtp_last_cmd {
 	analyzer_smtp_last_cmd_auth_plain_creds,
 	analyzer_smtp_last_cmd_auth_login,
 	analyzer_smtp_last_cmd_auth_login_user,
-	analyzer_smtp_last_cmd_auth_login_pass
+	analyzer_smtp_last_cmd_auth_login_pass,
+	analyzer_smtp_last_cmd_auth_cram_md5,
+	analyzer_smtp_last_cmd_auth_cram_md5_response,
 };
 
 

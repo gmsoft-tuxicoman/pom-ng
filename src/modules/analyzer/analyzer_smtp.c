@@ -373,7 +373,6 @@ static int analyzer_smtp_parse_auth_plain(struct analyzer_smtp_priv *apriv, stru
 		return POM_ERR;
 
 	struct data *evt_data = event_get_data(cpriv->evt_auth);
-
 	analyzer_smtp_event_fill_common_data(cpriv, evt_data);
 
 	// Set the authentication type
@@ -704,7 +703,6 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 					return POM_ERR;
 
 				struct data *auth_data = event_get_data(cpriv->evt_auth);
-
 				analyzer_smtp_event_fill_common_data(cpriv, auth_data);
 
 				// Set the authentication type
@@ -738,6 +736,25 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				} else {
 					cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login;
 				}
+			} else if (!strncasecmp(arg, "CRAM-MD5", strlen("CRAM-MD5"))) {
+				if (cpriv->evt_auth) {
+					event_process_end(cpriv->evt_auth);
+					cpriv->evt_auth = NULL;
+				}
+
+				cpriv->evt_auth = event_alloc(apriv->evt_auth);
+				if (!cpriv->evt_auth)
+					return POM_ERR;
+
+				struct data *auth_data = event_get_data(cpriv->evt_auth);
+				analyzer_smtp_event_fill_common_data(cpriv, auth_data);
+
+				// Set auth authentication type
+				PTYPE_STRING_SETVAL(auth_data[analyzer_smtp_auth_type].value, "CRAM-MD5");
+				data_set(auth_data[analyzer_smtp_auth_type]);
+
+				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_cram_md5;
+				event_process_begin(cpriv->evt_auth, stack, stack_index, event_get_timestamp(evt));
 			}
 
 		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_plain) {
@@ -800,6 +817,15 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 			} else {
 				cpriv->last_cmd = analyzer_smtp_last_cmd_auth_login_pass;
 			}
+		} else if (cpriv->last_cmd == analyzer_smtp_last_cmd_auth_cram_md5) {
+			struct ptype *response = ptype_alloc_from(evt_data[proto_smtp_cmd_name].value);
+			if (response) {
+				struct data *auth_data = event_get_data(cpriv->evt_auth);
+				if (data_item_add_ptype(auth_data, analyzer_smtp_auth_params, strdup("response"), response) != POM_OK) {
+					ptype_cleanup(response);
+				}
+			}
+			cpriv->last_cmd = analyzer_smtp_last_cmd_auth_cram_md5_response;
 		} else {
 			cpriv->last_cmd = analyzer_smtp_last_cmd_other;
 		}
@@ -873,7 +899,8 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				break;
 
 			case analyzer_smtp_last_cmd_auth_plain_creds:
-			case analyzer_smtp_last_cmd_auth_login_pass: {
+			case analyzer_smtp_last_cmd_auth_login_pass:
+			case analyzer_smtp_last_cmd_auth_cram_md5_response: {
 				// We just processed the credentials
 				struct data *auth_data = event_get_data(cpriv->evt_auth);
 				char success = 0;
@@ -885,6 +912,29 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 				cpriv->evt_auth = NULL;
 				break;
 			}
+
+			case analyzer_smtp_last_cmd_auth_cram_md5: {
+				if (code == 334 && evt_data[proto_smtp_reply_text].items && evt_data[proto_smtp_reply_text].items->value) {
+					struct ptype *challenge = ptype_alloc_from (evt_data[proto_smtp_reply_text].items->value);
+					if (challenge) {
+						struct data *auth_data = event_get_data(cpriv->evt_auth);
+						if (data_item_add_ptype(auth_data, analyzer_smtp_auth_params, strdup("challenge"), challenge) != POM_OK) {
+							ptype_cleanup(challenge);
+						}
+					}
+					// Keep last_cmd to analyzer_smtp_last_cmd_cram_md5
+					return POM_OK;
+				} else {
+					struct data *evt_data = event_get_data(cpriv->evt_auth);
+					PTYPE_BOOL_SETVAL(evt_data[analyzer_smtp_auth_success].value, 0);
+					data_set(evt_data[analyzer_smtp_auth_success]);
+					event_process_end(cpriv->evt_auth);
+					cpriv->evt_auth = NULL;
+				}
+				break;
+			}
+
+
 
 		}
 
