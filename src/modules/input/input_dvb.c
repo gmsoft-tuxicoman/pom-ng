@@ -375,9 +375,11 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 	if (input_add_param(i, p) != POM_OK)
 		return POM_ERR;
 
-	p = registry_new_param("frequency", "0", priv->freq, "Frequency in Hz", 0);
-	if (input_add_param(i, p) != POM_OK)
-		return POM_ERR;
+	if (type != input_dvb_type_docsis_scan) {
+		p = registry_new_param("frequency", "0", priv->freq, "Frequency in Hz", 0);
+		if (input_add_param(i, p) != POM_OK)
+			return POM_ERR;
+	}
 
 	p = registry_new_param("tuning_timeout", "3", priv->tuning_timeout, "Timeout while trying to tune in seconds", 0);
 	if (input_add_param(i, p) != POM_OK)
