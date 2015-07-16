@@ -693,8 +693,10 @@ static int input_dvb_docsis_scan_open(struct input *i) {
 	if (!priv->mpeg_buff)
 		return POM_ERR;
 
-	if (input_dvb_card_open(priv) != POM_OK)
+	if (input_dvb_card_open(priv) != POM_OK) {
+		free(priv->mpeg_buff);
 		return POM_ERR;
+	}
 
 
 	struct input_dvb_docsis_scan_priv *spriv = priv->tpriv.d.scan;
@@ -711,14 +713,16 @@ static int input_dvb_docsis_scan_open(struct input *i) {
 		spriv->freq_fast_start = 471000000;
 	} else {
 		pomlog(POMLOG_ERR "Frontend is not DVB-C or ASTC/QAM.");
-		return POM_ERR;
+		free(priv->mpeg_buff);
+		goto err;
 	}
 
 
 	struct dvb_frontend_info fe_info = { { 0 } };
 	if (ioctl(priv->frontend_fd, FE_GET_INFO, &fe_info)) {
 		pomlog(POMLOG_ERR "Error while querying frontend info : %s");
-		return POM_ERR;
+		free(priv->mpeg_buff);
+		goto err;
 	}
 
 	if (fe_info.frequency_min > spriv->freq_min) {
@@ -736,6 +740,13 @@ static int input_dvb_docsis_scan_open(struct input *i) {
 	spriv->input_id = 0;
 
 	return POM_OK;
+
+err:
+
+	input_dvb_card_close(priv);
+
+	return POM_ERR;
+
 }
 
 static int input_dvb_open(struct input *i) {
