@@ -846,8 +846,7 @@ static int input_dvb_open(struct input *i) {
 
 err:
 
-	if (priv->mpeg_buff)
-		free(priv->mpeg_buff);
+	input_dvb_close(i);
 
 	return POM_ERR;
 }
