@@ -184,6 +184,8 @@ static int input_kismet_drone_open(struct input *i) {
 	
 	if (connect(priv->fd, res->ai_addr, res->ai_addrlen)) {
 		freeaddrinfo(res);
+		close(priv->fd);
+		priv->fd = -1;
 		pomlog(POMLOG_ERR "Error while connecting to Kismet drone : %s", pom_strerror(errno));
 		return POM_ERR;
 	}
