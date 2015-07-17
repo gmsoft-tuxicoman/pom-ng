@@ -25,7 +25,7 @@
 #include <pom-ng/core.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_bool.h>
-#include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint32.h>
 #include <pom-ng/ptype_uint64.h>
 
 
@@ -138,7 +138,7 @@ static int output_pcap_file_init(struct output *o) {
 	struct registry_param *p = NULL;
 
 	priv->p_filename = ptype_alloc("string");
-	priv->p_snaplen = ptype_alloc_unit("uint16", "bytes");
+	priv->p_snaplen = ptype_alloc_unit("uint32", "bytes");
 	priv->p_link_type = ptype_alloc("string");
 	priv->p_unbuffered = ptype_alloc("bool");
 	priv->p_filter = ptype_alloc("string");
@@ -225,7 +225,7 @@ static int output_pcap_file_open(void *output_priv) {
 
 	struct output_pcap_file_priv *priv = output_priv;
 
-	uint16_t *snaplen = PTYPE_UINT16_GETVAL(priv->p_snaplen);
+	uint32_t *snaplen = PTYPE_UINT32_GETVAL(priv->p_snaplen);
 
 	char *link_type_str = PTYPE_STRING_GETVAL(priv->p_link_type);
 
@@ -312,7 +312,7 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 
 	phdr.len = stack->plen;
 
-	uint16_t *snaplen = PTYPE_UINT16_GETVAL(priv->p_snaplen);
+	uint32_t *snaplen = PTYPE_UINT32_GETVAL(priv->p_snaplen);
 
 	if (*snaplen > stack->plen)
 		phdr.caplen = stack->plen;
@@ -412,7 +412,7 @@ static int output_pcap_flow_init(struct output *o) {
 	priv->output_name = strdup(output_get_name(o));
 	priv->p_link_type = ptype_alloc("string");
 	priv->p_flow_proto = ptype_alloc("string");
-	priv->p_snaplen = ptype_alloc_unit("uint16", "bytes");
+	priv->p_snaplen = ptype_alloc_unit("uint32", "bytes");
 	priv->p_unbuffered = ptype_alloc("bool");
 	priv->p_prefix = ptype_alloc("string");
 
@@ -510,7 +510,7 @@ static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_pr
 	if (!ce) // No conntrack for this packet
 		return POM_OK;
 
-	uint16_t *snaplen = PTYPE_UINT16_GETVAL(priv->p_snaplen);
+	uint32_t *snaplen = PTYPE_UINT32_GETVAL(priv->p_snaplen);
 
 	conntrack_lock(ce);
 
