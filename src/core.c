@@ -577,7 +577,7 @@ int core_process_packet_stack(struct proto_process_stack *stack, unsigned int st
 		if (res == PROTO_ERR)
 			pomlog(POMLOG_ERR "Error while processing packet for proto %s", s->proto->info->name);
 
-		if (res < 0)
+		if (res != PROTO_OK)
 			break;
 
 		struct proto_process_stack *s_next = &stack[i + 1];

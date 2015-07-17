@@ -36,10 +36,10 @@
 
 
 // Error code definition
+#define PROTO_STOP	1
 #define PROTO_OK	0
 #define PROTO_ERR	-1
-#define PROTO_STOP	-2
-#define PROTO_INVALID	-3
+#define PROTO_INVALID	-2
 
 struct proto;
 
