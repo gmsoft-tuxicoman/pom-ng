@@ -1566,8 +1566,8 @@ static int input_dvb_docsis_process_mpeg_packet(struct input *i, unsigned char *
 				if (missed_len > remaining_len)
 					missed_len = remaining_len;
 
-				memset(p->tpriv.d.pkt->buff + p->tpriv.d.pkt_pos, 0xFF, remaining_len);
-				p->tpriv.d.pkt_pos += remaining_len;
+				memset(p->tpriv.d.pkt->buff + p->tpriv.d.pkt_pos, 0xFF, missedlen);
+				p->tpriv.d.pkt_pos += missed_len;
 
 				if (p->tpriv.d.pkt_pos >= p->tpriv.d.pkt->len) {
 					// process the packet
