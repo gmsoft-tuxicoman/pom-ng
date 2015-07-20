@@ -340,7 +340,6 @@ static int input_dvb_common_init(struct input *i, enum input_dvb_type type) {
 			pomlog(POMLOG_ERR "Cannot initialize input docsis : protocol docsis not registered");
 			return POM_ERR;
 		}
-
 	}
 
 	if (type == input_dvb_type_device) {
@@ -1138,7 +1137,9 @@ static int input_dvb_docsis_scan_read(struct input *i) {
 
 	spriv->sync_count = 0;
 	spriv->mdd_found = 0;
-	p->tpriv.d.mpeg_seq = 0xFF; // Invalid sequence that needs initialization
+
+	// Free the buffer for this new scan
+	input_dvb_docsis_free_buff(&p->tpriv.d);
 
 	// We need to open and close the DVR device for each TP in order to flush the buffer from the previous TP
 	p->dvr_fd = open(p->tpriv.d.scan->dvr_dev, O_RDONLY);
@@ -1204,11 +1205,6 @@ static int input_dvb_docsis_scan_read(struct input *i) {
 	close(p->dvr_fd);
 	p->dvr_fd = -1;
 
-	p->tpriv.d.docsis_buff_len = 0;
-	if (p->tpriv.d.pkt) {
-		packet_release(p->tpriv.d.pkt);
-		p->tpriv.d.pkt = NULL;
-	}
 
 	return POM_OK;
 }
@@ -1256,6 +1252,19 @@ static int input_dvb_docsis_read(struct input *i) {
 
 
 	return POM_OK;
+}
+
+static void input_dvb_docsis_free_buff(struct input_dvb_docsis_priv *p) {
+
+	if (p->pkt) {
+		packet_release(p->pkt);
+		p->pkt = NULL;
+	}
+
+	p->pkt_pos = 0;
+	p->docsis_buff_len = 0;
+	p->mpeg_seq = 0xFF;
+
 }
 
 static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb_docsis_scan_priv_stream *s) {
@@ -1755,6 +1764,10 @@ static int input_dvb_close(struct input *i) {
 		}
 		if (p->tpriv.d.scan->dvr_dev)
 			free(p->tpriv.d.scan->dvr_dev);
+		input_dvb_docsis_free_buff(&p->tpriv.d);
+	} else if (p->type == input_dvb_type_docsis) {
+		input_dvb_docsis_free_buff(&p->tpriv.d);
+
 	}
 
 	return POM_OK;

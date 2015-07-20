@@ -171,6 +171,7 @@ static int input_dvb_tune(struct input_dvb_priv *p, uint32_t frequency, uint32_t
 static int input_dvb_read(struct input *i);
 static int input_dvb_docsis_scan_read(struct input *i);
 static int input_dvb_docsis_read(struct input *i);
+static void input_dvb_docsis_free_buff(struct input_dvb_docsis_priv *p);
 static int input_dvb_docsis_process_new_stream(struct input *i, struct input_dvb_docsis_scan_priv_stream *s);
 static int input_dvb_docsis_process_docsis_mdd(struct input *i, unsigned char *buff, size_t len);
 static int input_dvb_docsis_process_docsis_packet(struct input *i);
