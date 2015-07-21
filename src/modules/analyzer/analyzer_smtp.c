@@ -105,7 +105,7 @@ static int analyzer_smtp_init(struct analyzer *analyzer) {
 	analyzer_smtp_evt_msg.description = "message received over smtp";
 	analyzer_smtp_evt_msg.data_reg = &evt_msg_data;
 	analyzer_smtp_evt_msg.listeners_notify = analyzer_smtp_event_listeners_notify;
-	analyzer_smtp_evt_msg.cleanup = analyzer_smtp_evt_msg_cleanup;
+	analyzer_smtp_evt_msg.priv_cleanup = analyzer_smtp_evt_msg_cleanup;
 	analyzer_smtp_evt_msg.flags = EVENT_REG_FLAG_PAYLOAD;
 
 	priv->evt_msg = event_register(&analyzer_smtp_evt_msg);
@@ -1011,12 +1011,8 @@ static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv) {
 	return POM_OK;
 }
 
-static int analyzer_smtp_evt_msg_cleanup(struct event *evt) {
+static int analyzer_smtp_evt_msg_cleanup(void *priv) {
 
-	struct pload *pload = event_get_priv(evt);
-	if (!pload)
-		return POM_OK;
-
-	pload_end(pload);
+	pload_end(priv);
 	return POM_OK;
 }

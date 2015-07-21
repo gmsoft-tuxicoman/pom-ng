@@ -103,7 +103,7 @@ static int analyzer_smtp_pkt_process(void *obj, struct packet *p, struct proto_p
 static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 static int analyzer_smtp_event_process_end(struct event *evt, void *obj);
 static int analyzer_smtp_ce_priv_cleanup(void *obj, void *priv);
-static int analyzer_smtp_evt_msg_cleanup(struct event *evt);
+static int analyzer_smtp_evt_msg_cleanup(void *priv);
 
 #endif
 
