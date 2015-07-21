@@ -178,7 +178,6 @@ int event_cleanup(struct event *evt) {
 		return POM_ERR;
 	}
 
-
 	if (evt->reg->info->cleanup && evt->reg->info->cleanup(evt) != POM_OK) {
 		pomlog(POMLOG_ERR "Error while cleaning up the event %s", evt->reg->info->name);
 		return POM_ERR;
@@ -188,6 +187,11 @@ int event_cleanup(struct event *evt) {
 		struct event_listener *lst = evt->tmp_listeners;
 		evt->tmp_listeners = lst->next;
 		free(lst);
+	}
+
+	if (evt->priv && evt->reg->info->priv_cleanup) {
+		evt->reg->info->priv_cleanup(evt->priv);
+		evt->priv = NULL;
 	}
 
 	data_cleanup_table(evt->data, evt->reg->info->data_reg);
@@ -403,6 +407,11 @@ int event_process(struct event *evt, struct proto_process_stack *stack, int stac
 		registry_perf_dec(evt->reg->perf_listeners, 1);
 	}
 
+	if (evt->priv && evt->reg->info->priv_cleanup) {
+		evt->reg->info->priv_cleanup(evt->priv);
+		evt->priv = NULL;
+	}
+
 	evt->ce = NULL;
 	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_DONE);
 
@@ -497,6 +506,10 @@ int event_process_end(struct event *evt) {
 		registry_perf_dec(evt->reg->perf_listeners, 1);
 	}
 
+	if (evt->priv && evt->reg->info->priv_cleanup) {
+		evt->reg->info->priv_cleanup(evt->priv);
+		evt->priv = NULL;
+	}
 	evt->ce = NULL;
 
 	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_DONE);

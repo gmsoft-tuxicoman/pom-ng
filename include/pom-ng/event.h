@@ -45,6 +45,7 @@ struct event_reg_info {
 	struct data_reg *data_reg;
 	unsigned int flags;
 	int (*listeners_notify) (void *obj, struct event_reg *evt_reg, int has_listeners);
+	int (*priv_cleanup) (void *priv);
 	int (*cleanup) (struct event *evt);
 };
 
