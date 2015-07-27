@@ -28,7 +28,8 @@
 
 enum output_log_txt_field_type {
 	output_log_txt_event_field,
-	output_log_txt_event_property
+	output_log_txt_event_property,
+	output_log_txt_dollar
 };
 
 enum output_log_txt_event_property {

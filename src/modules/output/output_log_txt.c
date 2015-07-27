@@ -152,6 +152,30 @@ static struct output_log_txt_field *output_log_txt_parse_fields(struct event_reg
 	struct output_log_txt_field *fields = NULL;
 	const char *sep = NULL, *cur = format;
 	while ((sep = strchr(cur, '$'))) {
+
+		// Check if $ was escaped
+		if (sep != format && *(sep - 1) == '\\') {
+			cur = sep + 1;
+
+			field_count++;
+			struct output_log_txt_field *old_fields = fields;
+			fields = realloc(fields, sizeof(struct output_log_txt_field) * (field_count + 1));
+			if (!fields) {
+				free(old_fields);
+				pom_oom(sizeof(struct output_log_parsed_field *) * (field_count + 1));
+				return NULL;
+			}
+			memset(&fields[field_count - 1], 0, sizeof(struct output_log_txt_field) * 2);
+			// End marker
+			fields[field_count].id = -1;
+
+			struct output_log_txt_field *field = &fields[field_count - 1];
+			field->type =  output_log_txt_dollar;
+			field->start_off = sep - format - 1;
+			field->end_off = sep - format;
+			continue;
+		}
+
 		unsigned int start_off = sep - format;
 		sep++;
 
@@ -646,7 +670,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 					pom_mutex_unlock(&file->lock);
 					return POM_ERR;
 			}
-		} else {
+		} else if (field->type == output_log_txt_event_field) {
 
 			struct data *evt_data = event_get_data(evt);
 			if (field->key) {
@@ -715,7 +739,7 @@ int output_log_txt_process(struct event *evt, void *obj) {
 			}
 			if (allocated)
 				free(value);
-		} else {
+		} else if (field->type != output_log_txt_dollar) {
 			if (pom_write(file->fd, "-", 1) != POM_OK)
 				goto write_err;
 		}
