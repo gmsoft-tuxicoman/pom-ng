@@ -470,11 +470,12 @@ int filter_event_compile(struct filter_node **filter, struct event_reg *evt, str
 			return POM_ERR;
 		}
 
+	} else {
+		pomlog(POMLOG_ERR "Unhandled combination of data types");
+		return POM_ERR;
 	}
 
-	pomlog(POMLOG_ERR "Unhandled combination of data types");
-	return POM_ERR;
-
+	return POM_OK;
 }
 
 int filter_pload_compile(struct filter_node **filter, struct filter_raw_node *filter_raw) {
