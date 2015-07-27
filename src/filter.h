@@ -141,10 +141,6 @@ int filter_pload_compile(struct filter_node **filter, struct filter_raw_node *fi
 
 int filter_node_data_match(struct filter_node *n, struct data *d);
 
-int filter_packet_match(struct filter_node *n, struct proto_process_stack *stack);
-int filter_event_match(struct filter_node *n, struct event *evt);
-int filter_pload_match(struct filter_node *n, struct pload *p);
-
 
 #endif
 

@@ -22,17 +22,25 @@
 #ifndef __POM_NG_FILTER_H__
 #define __POM_NG_FILTER_H__
 
-#include <pom-ng/event.h>
-
 #define FILTER_MATCH_NO		0
 #define FILTER_MATCH_YES	1
 
+
+// Avoid including external files
+struct event;
+struct event_reg;
+struct pload;
+struct proto_process_stack;
 
 struct filter_node;
 
 int filter_packet(char *filter_expr, struct filter_node **filter);
 int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
 int filter_pload(char *filter_expr, struct filter_node **filter);
+
+int filter_packet_match(struct filter_node *n, struct proto_process_stack *stack);
+int filter_event_match(struct filter_node *n, struct event *evt);
+int filter_pload_match(struct filter_node *n, struct pload *p);
 
 void filter_cleanup(struct filter_node *n);
 
