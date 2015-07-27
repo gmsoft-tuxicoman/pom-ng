@@ -128,7 +128,6 @@ err:
 	if (p)
 		registry_cleanup_param(p);
 
-	output_log_txt_cleanup(priv);
 	return POM_ERR;
 }
 
