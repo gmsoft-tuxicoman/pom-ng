@@ -576,10 +576,15 @@ xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlr
 	// Start listening outside the lock to avoir locking issue
 	if (!__sync_fetch_and_add(&xmlrpccmd_monitor_pload_listeners_count, 1)) {
 
+
+		core_pause_processing();
+
 		if (pload_listen_start(xmlrpccmd_monitor_pload_open, NULL, NULL, xmlrpccmd_monitor_pload_open, xmlrpccmd_monitor_pload_write, xmlrpccmd_monitor_pload_close) != POM_OK) {
+			core_resume_processing();
 			xmlrpc_faultf(envP, "Error while listening to payloads");
 			return NULL;
 		}
+		core_resume_processing();
 	}
 
 	return xmlrpc_i8_new(envP, l->id);
@@ -756,7 +761,9 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 			process_end = xmlrpccmd_monitor_evt_process_end;
 
 		// We process ourselves the filter since we only register one listener for all the web listeners
+		core_pause_processing();
 		if (event_listener_register(evt, lst, process_begin, process_end, NULL) != POM_OK) {
+			core_resume_processing();
 			pom_mutex_unlock(&sess->lock);
 			filter_cleanup(filter);
 			free(l);
@@ -765,6 +772,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 			return NULL;
 
 		}
+		core_resume_processing();
 
 		lst->next = sess->events_reg;
 		if (lst->next)
@@ -789,7 +797,9 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 
 		}
 		lst->flags = 0;
+		core_pause_processing();
 		if (event_listener_register(evt, lst, process_begin, process_end, NULL) != POM_OK) {
+			core_resume_processing();
 			pom_mutex_unlock(&sess->lock);
 			filter_cleanup(filter);
 			free(l);
@@ -798,6 +808,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 			return NULL;
 
 		}
+		core_resume_processing();
 		lst->flags = all_flags;
 	}
 
