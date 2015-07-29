@@ -353,7 +353,9 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 
 		struct xmlrpccmd_monitor_evtreg *evtreg = sess->events_reg;
 		sess->events_reg = evtreg->next;
+		core_pause_processing();
 		event_listener_unregister(evtreg->evt_reg, evtreg);
+		core_resume_processing();
 
 
 		while (evtreg->listeners) {
@@ -390,8 +392,11 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 		filter_cleanup(tmp->filter);
 		free(tmp);
 
-		if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1))
+		if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1)) {
+			core_pause_processing();
 			pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
+			core_resume_processing();
+		}
 
 	}
 
@@ -578,7 +583,6 @@ xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlr
 
 
 		core_pause_processing();
-
 		if (pload_listen_start(xmlrpccmd_monitor_pload_open, NULL, NULL, xmlrpccmd_monitor_pload_open, xmlrpccmd_monitor_pload_write, xmlrpccmd_monitor_pload_close) != POM_OK) {
 			core_resume_processing();
 			xmlrpc_faultf(envP, "Error while listening to payloads");
@@ -638,8 +642,11 @@ xmlrpc_value *xmlrpccmd_monitor_pload_remove_listener(xmlrpc_env * const envP, x
 
 	pom_mutex_unlock(&sess->lock);
 
-	if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1))
+	if (!__sync_sub_and_fetch(&xmlrpccmd_monitor_pload_listeners_count, 1)) {
+		core_pause_processing();
 		pload_listen_stop(xmlrpccmd_monitor_pload_open, NULL);
+		core_resume_processing();
+	}
 
 	if (tmp->filter)
 		filter_cleanup(tmp->filter);
@@ -787,8 +794,9 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		if (all_flags & XMLRPCCMD_MONITOR_EVT_LISTEN_END)
 			process_end = xmlrpccmd_monitor_evt_process_end;
 
-		// FIXME : hopefully we won't miss events in between those two
+		core_pause_processing();
 		if (event_listener_unregister(evt, lst) != POM_OK) {
+			core_resume_processing();
 			pom_mutex_unlock(&sess->lock);
 			free(l);
 			free(lst);
@@ -797,7 +805,6 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 
 		}
 		lst->flags = 0;
-		core_pause_processing();
 		if (event_listener_register(evt, lst, process_begin, process_end, NULL) != POM_OK) {
 			core_resume_processing();
 			pom_mutex_unlock(&sess->lock);
@@ -885,12 +892,15 @@ xmlrpc_value *xmlrpccmd_monitor_event_remove_listener(xmlrpc_env * const envP, x
 	if (!evt_lst->listeners) {
 		// No need to listener to the event anymore
 
+		core_pause_processing();
 		if (event_listener_unregister(evt_lst->evt_reg, evt_lst) != POM_OK) {
+			core_resume_processing();
 			pom_mutex_unlock(&sess->lock);
 			xmlrpc_faultf(envP, "Error while stopping to listen to the event.");
 			return NULL;
 
 		}
+		core_resume_processing();
 
 		// Remove any pending event pointing to this evt_reg
 
