@@ -150,9 +150,9 @@ int analyzer_ppp_pap_event_listeners_notify(void *obj, struct event_reg *evt_reg
 	struct analyzer_ppp_pap_priv *priv = analyzer->priv;
 
 	if (has_listeners) {
-		if (event_listener_register(priv->evt_request, analyzer, analyzer_ppp_pap_event_process_begin, NULL) != POM_OK) {
+		if (event_listener_register(priv->evt_request, analyzer, analyzer_ppp_pap_event_process_begin, NULL, NULL) != POM_OK) {
 			return POM_ERR;
-		} else if (event_listener_register(priv->evt_ack_nack, analyzer, analyzer_ppp_pap_event_process_begin, NULL) != POM_OK) {
+		} else if (event_listener_register(priv->evt_ack_nack, analyzer, analyzer_ppp_pap_event_process_begin, NULL, NULL) != POM_OK) {
 			event_listener_unregister(priv->evt_request, analyzer);
 			return POM_ERR;
 		}

@@ -24,6 +24,7 @@
 #define EVENT_REGISTRY "event"
 
 #include <pom-ng/event.h>
+#include <pom-ng/filter.h>
 #include <uthash.h>
 
 // Indicate that the event processing has started
@@ -64,6 +65,7 @@ struct event_reg_events {
 
 struct event_listener {
 	void *obj;
+	struct filter_node *filter;
 	int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 	int (*process_end) (struct event *evt, void *obj);
 

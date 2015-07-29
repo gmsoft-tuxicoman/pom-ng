@@ -206,9 +206,9 @@ int analyzer_ppp_chap_event_listeners_notify(void *obj, struct event_reg *evt_re
 	struct analyzer_ppp_chap_priv *priv = analyzer->priv;
 
 	if (event_has_listener(priv->evt_mschapv2) || event_has_listener(priv->evt_md5)) {
-		if (event_listener_register(priv->evt_challenge_response, analyzer, analyzer_ppp_chap_event_process_begin, NULL) != POM_OK) {
+		if (event_listener_register(priv->evt_challenge_response, analyzer, analyzer_ppp_chap_event_process_begin, NULL, NULL) != POM_OK) {
 			return POM_ERR;
-		} else if (event_listener_register(priv->evt_success_failure, analyzer, analyzer_ppp_chap_event_process_begin, NULL) != POM_OK) {
+		} else if (event_listener_register(priv->evt_success_failure, analyzer, analyzer_ppp_chap_event_process_begin, NULL, NULL) != POM_OK) {
 			event_listener_unregister(priv->evt_challenge_response, analyzer);
 			return POM_ERR;
 		}

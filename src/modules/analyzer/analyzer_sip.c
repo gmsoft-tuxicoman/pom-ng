@@ -313,9 +313,9 @@ static int analyzer_sip_event_listeners_notify(void *obj, struct event_reg *evt_
 		listening = __sync_sub_and_fetch(&priv->listening, 1);
 
 	if (has_listeners && listening == 1) {
-		if (event_listener_register(priv->evt_sip_req, analyzer, analyzer_sip_event_process_begin, NULL) != POM_OK) {
+		if (event_listener_register(priv->evt_sip_req, analyzer, analyzer_sip_event_process_begin, NULL, NULL) != POM_OK) {
 			return POM_ERR;
-		} else if (event_listener_register(priv->evt_sip_rsp, analyzer, analyzer_sip_event_process_begin, NULL) != POM_OK) {
+		} else if (event_listener_register(priv->evt_sip_rsp, analyzer, analyzer_sip_event_process_begin, NULL, NULL) != POM_OK) {
 			event_listener_unregister(priv->evt_sip_req, analyzer);
 			return POM_ERR;
 		}

@@ -203,9 +203,9 @@ static int analyzer_smtp_event_listeners_notify(void *obj, struct event_reg *evt
 	if (!priv->listening && (event_has_listener(priv->evt_msg) || event_has_listener(priv->evt_auth))) {
 		
 
-		if (event_listener_register(priv->evt_cmd, analyzer, analyzer_smtp_event_process_begin, analyzer_smtp_event_process_end) != POM_OK) {
+		if (event_listener_register(priv->evt_cmd, analyzer, analyzer_smtp_event_process_begin, analyzer_smtp_event_process_end, NULL) != POM_OK) {
 			return POM_ERR;
-		} else if (event_listener_register(priv->evt_reply, analyzer, analyzer_smtp_event_process_begin, analyzer_smtp_event_process_end) != POM_OK) {
+		} else if (event_listener_register(priv->evt_reply, analyzer, analyzer_smtp_event_process_begin, analyzer_smtp_event_process_end, NULL) != POM_OK) {
 			event_listener_unregister(priv->evt_cmd, analyzer);
 			return POM_ERR;
 		}

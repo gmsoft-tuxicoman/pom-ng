@@ -184,7 +184,7 @@ int output_log_xml_open(void *output_priv) {
 		evt_lst->evt = evt;
 
 		// Start listening to the event
-		if (event_listener_register(evt, priv, NULL, output_log_xml_process) != POM_OK) {
+		if (event_listener_register(evt, priv, NULL, output_log_xml_process, NULL) != POM_OK) {
 			free(evt_lst);
 			free(src);
 			goto err;

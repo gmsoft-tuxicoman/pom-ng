@@ -478,8 +478,19 @@ int output_log_txt_open(void *output_priv) {
 
 		log_evt->evt = evt;
 
+
+		// Parse the filter for this event if any
+		struct filter_node *filter = NULL;
+		if (v[2].value) {
+			char *filter_str = PTYPE_STRING_GETVAL(v[2].value);
+			if (filter_event(filter_str, log_evt->evt, &filter) != POM_OK) {
+				pomlog(POMLOG_ERR "Error while parsing filter \"%s\"", filter_str);
+				goto err;
+			}
+		}
+
 		// Listen to the event
-		if (event_listener_register(evt, log_evt, NULL, output_log_txt_process) != POM_OK)
+		if (event_listener_register(evt, log_evt, NULL, output_log_txt_process, filter) != POM_OK)
 			goto err;
 
 		// Find in which file this event will be saved
@@ -505,14 +516,6 @@ int output_log_txt_open(void *output_priv) {
 			goto err;
 		}
 
-		// Parse the filter for this event if any
-		if (v[2].value) {
-			char *filter = PTYPE_STRING_GETVAL(v[2].value);
-			if (filter_event(filter, log_evt->evt, &log_evt->filter) != POM_OK) {
-				pomlog(POMLOG_ERR "Error while parsing filter \"%s\"", filter);
-				goto err;
-			}
-		}
 
 
 
@@ -558,9 +561,6 @@ int output_log_txt_close(void *output_priv) {
 		if (evt->format)
 			free(evt->format);
 
-		if (evt->filter)
-			filter_cleanup(evt->filter);
-
 		if (evt->fields) {
 			int i;
 			for (i = 0; evt->fields[i].id != -1; i++) {
@@ -604,11 +604,6 @@ int output_log_txt_close(void *output_priv) {
 int output_log_txt_process(struct event *evt, void *obj) {
 
 	struct output_log_txt_event *log_evt = obj;
-
-
-	// Check if we have a filter and if this event match
-	if (log_evt->filter && filter_event_match(log_evt->filter, evt) == FILTER_MATCH_NO)
-		return POM_OK;
 
 	// Open the log file
 	struct output_log_txt_file *file = log_evt->file;

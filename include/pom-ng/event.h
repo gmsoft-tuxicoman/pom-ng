@@ -55,7 +55,7 @@ struct event_reg *event_find(const char *name);
 int event_payload_listen_start();
 int event_payload_listen_stop();
 
-int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj));
+int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj), struct filter_node *filter);
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);
 int event_has_listener(struct event_reg *evt_reg);
 

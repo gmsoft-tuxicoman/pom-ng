@@ -201,9 +201,9 @@ int analyzer_http_event_listeners_notify(void *obj, struct event_reg *evt_reg, i
 	struct analyzer_http_priv *priv = analyzer->priv;
 
 	if (has_listeners) {
-		if (event_listener_register(priv->evt_query, analyzer, analyzer_http_event_process_begin, analyzer_http_event_process_end) != POM_OK) {
+		if (event_listener_register(priv->evt_query, analyzer, analyzer_http_event_process_begin, analyzer_http_event_process_end, NULL) != POM_OK) {
 			return POM_ERR;
-		} else if (event_listener_register(priv->evt_response, analyzer, analyzer_http_event_process_begin, analyzer_http_event_process_end) != POM_OK) {
+		} else if (event_listener_register(priv->evt_response, analyzer, analyzer_http_event_process_begin, analyzer_http_event_process_end, NULL) != POM_OK) {
 			event_listener_unregister(priv->evt_query, analyzer);
 			return POM_ERR;
 		}

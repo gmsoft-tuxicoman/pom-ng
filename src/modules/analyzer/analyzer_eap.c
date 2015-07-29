@@ -155,9 +155,9 @@ int analyzer_eap_event_listeners_notify(void *obj, struct event_reg *evt_reg, in
 	struct analyzer_eap_priv *priv = analyzer->priv;
 
 	if (event_has_listener(priv->evt_md5_auth)) {
-		if (event_listener_register(priv->evt_md5_challenge, analyzer, analyzer_eap_event_process_begin, NULL) != POM_OK) {
+		if (event_listener_register(priv->evt_md5_challenge, analyzer, analyzer_eap_event_process_begin, NULL, NULL) != POM_OK) {
 			return POM_ERR;
-		} else if (event_listener_register(priv->evt_success_failure, analyzer, analyzer_eap_event_process_begin, NULL) != POM_OK) {
+		} else if (event_listener_register(priv->evt_success_failure, analyzer, analyzer_eap_event_process_begin, NULL, NULL) != POM_OK) {
 			event_listener_unregister(priv->evt_md5_challenge, analyzer);
 			return POM_ERR;
 		}

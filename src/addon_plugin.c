@@ -99,6 +99,7 @@ static int addon_plugin_event_listen_start(lua_State *L) {
 	// Args should be :
 	// 1) self
 	// 2) event name
+	// 3) filter if any
 	
 	struct addon_plugin *a = luaL_checkudata(L, 1, ADDON_PLUGIN_METATABLE);
 	if (a->reg->type != addon_plugin_type_event)
@@ -110,7 +111,15 @@ static int addon_plugin_event_listen_start(lua_State *L) {
 	if (!evt)
 		luaL_error(L, "Event %s does not exists", evt_name);
 
-	if (event_listener_register(evt, a->priv, a->reg->event_begin, a->reg->event_end) != POM_OK)
+	struct filter_node *filter = NULL;
+
+	if (!lua_isnil(L, 3)) {
+		const char *filter_str = luaL_checkstring(L, 3);
+		if (filter_event((char*)filter_str, evt, &filter) != POM_OK)
+			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
+	}
+
+	if (event_listener_register(evt, a->priv, a->reg->event_begin, a->reg->event_end, filter) != POM_OK)
 		luaL_error(L, "Error while listening to event %s", evt_name);
 
 	return 0;

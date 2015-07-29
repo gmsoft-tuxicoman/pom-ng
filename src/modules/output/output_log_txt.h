@@ -57,7 +57,6 @@ struct output_log_txt_file {
 
 struct output_log_txt_event {
 	struct event_reg *evt;
-	struct filter_node *filter;
 	struct ptype *p_prefix;
 	struct output_log_txt_priv *priv;
 

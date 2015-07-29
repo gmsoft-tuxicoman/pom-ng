@@ -91,6 +91,7 @@ static int addon_output_event_listen_start(lua_State *L) {
 	// 2) event name
 	// 3) process_begin
 	// 4) process_end
+	// 5) filter if any
 	
 	// Find the event
 	const char *evt_name = luaL_checkstring(L, 2);
@@ -108,10 +109,17 @@ static int addon_output_event_listen_start(lua_State *L) {
 	if (lua_isfunction(L, 4))
 		process_end = addon_event_process_end;
 
+	struct filter_node *filter = NULL;
+	if (!lua_isnil(L, 5)) {
+		const char *filter_str = luaL_checkstring(L, 5);
+		if (filter_event((char*)filter_str, evt, &filter) != POM_OK)
+			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
+	}
+
 	// Get the output
 	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
 
-	if (event_listener_register(evt, p, process_begin, process_end) != POM_OK)
+	if (event_listener_register(evt, p, process_begin, process_end, filter) != POM_OK)
 		luaL_error(L, "Error while listening to event %s", evt_name);
 
 	// Add a table to self for the processing functions of this event

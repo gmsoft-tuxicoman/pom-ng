@@ -219,7 +219,7 @@ int event_payload_listen_start() {
 	for (tmp = event_reg_head; tmp; tmp = tmp->next) {
 		if (tmp->info->flags & EVENT_REG_FLAG_PAYLOAD) {
 			// Register a dummy listener for events that generate payload
-			if (event_listener_register(tmp, &event_pload_listener_ref, NULL, NULL) != POM_OK)
+			if (event_listener_register(tmp, &event_pload_listener_ref, NULL, NULL, NULL) != POM_OK)
 				goto err;
 		}
 	}
@@ -253,7 +253,7 @@ int event_payload_listen_stop() {
 	return POM_OK;
 }
 
-int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj)) {
+int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj), struct filter_node *f) {
 
 	core_assert_is_paused();
 
@@ -261,6 +261,8 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 	for (lst = evt_reg->listeners; lst && lst->obj != obj; lst = lst->next);
 
 	if (lst) {
+		if (f)
+			filter_cleanup(f);
 		pomlog(POMLOG_ERR "Event %s is already being listened to by obj %p", evt_reg->info->name, obj);
 		return POM_ERR;
 	}
@@ -268,6 +270,8 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 	
 	lst = malloc(sizeof(struct event_listener));
 	if (!lst) {
+		if (f)
+			filter_cleanup(f);
 		pom_oom(sizeof(struct event_listener));
 		return POM_ERR;
 
@@ -277,6 +281,7 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 	lst->obj = obj;
 	lst->process_begin = process_begin;
 	lst->process_end = process_end;
+	lst->filter = f;
 	
 	lst->next = evt_reg->listeners;
 	if (lst->next)
@@ -290,6 +295,8 @@ int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_
 			pomlog(POMLOG_ERR "Error while notifying event object about new listener");
 			evt_reg->listeners = NULL;
 			free(lst);
+			if (f)
+				filter_cleanup(f);
 			return POM_ERR;
 		}
 	}
@@ -318,6 +325,9 @@ int event_listener_unregister(struct event_reg *evt_reg, void *obj) {
 			lst->process_end(cur_evt->evt, lst->obj);
 		}
 	}
+
+	if (lst->filter)
+		filter_cleanup(lst->filter);
 
 	if (lst->next)
 		lst->next->prev = lst->prev;
@@ -386,20 +396,22 @@ int event_process(struct event *evt, struct proto_process_stack *stack, int stac
 
 	evt->ts = ts;
 
+	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_BEGAN);
+
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
+
+		if (lst->filter && filter_event_match(lst->filter, evt) != FILTER_MATCH_YES)
+			continue;
+
 		if (lst->process_begin && lst->process_begin(evt, lst->obj, stack, stack_index) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing begining of event %s", evt->reg->info->name);
 		}
-	}
-	__sync_fetch_and_or(&evt->flags, EVENT_FLAG_PROCESS_BEGAN);
-	for (lst = evt->reg->listeners; lst; lst = lst->next) {
 		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}
 	}
 
-	// tmp listeners don't need to be protected by the listeners lock
 	for (lst = evt->tmp_listeners; lst; lst = lst->next) {
 		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
@@ -445,7 +457,14 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 
 	struct event_listener *lst;
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
-		if (lst->process_begin && lst->process_begin(evt, lst->obj, stack, stack_index) != POM_OK) {
+
+		if (!lst->process_begin)
+			continue;
+
+		if (lst->filter && filter_event_match(lst->filter, evt) != FILTER_MATCH_YES)
+			continue;
+
+		if (lst->process_begin(evt, lst->obj, stack, stack_index) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing begining of event %s", evt->reg->info->name);
 		}
 	}
@@ -493,12 +512,17 @@ int event_process_end(struct event *evt) {
 	}
 
 	for (lst = evt->reg->listeners; lst; lst = lst->next) {
-		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
+		if (!lst->process_end)
+			continue;
+
+		if (lst->filter && filter_event_match(lst->filter, evt) != FILTER_MATCH_YES)
+			continue;
+
+		if (lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);
 		}
 	}
 
-	// tmp listeners don't need to be protected by the listeners lock
 	for (lst = evt->tmp_listeners; lst; lst = lst->next) {
 		if (lst->process_end && lst->process_end(evt, lst->obj) != POM_OK) {
 			pomlog(POMLOG_WARN "An error occured while processing event %s", evt->reg->info->name);

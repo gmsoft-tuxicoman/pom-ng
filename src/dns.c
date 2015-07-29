@@ -150,7 +150,7 @@ int dns_core_init() {
 		goto err;
 	}
 
-	if (event_listener_register(dns_record_evt, dns_table, NULL, dns_process_event) != POM_OK) {
+	if (event_listener_register(dns_record_evt, dns_table, NULL, dns_process_event, NULL) != POM_OK) {
 		pomlog(POMLOG_ERR "Unable to listen to event dns_record");
 		goto err;
 	}

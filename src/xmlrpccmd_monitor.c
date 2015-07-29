@@ -754,8 +754,9 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		int (*process_end) (struct event *evt, void *obj) = NULL;
 		if (l->flags & XMLRPCCMD_MONITOR_EVT_LISTEN_END)
 			process_end = xmlrpccmd_monitor_evt_process_end;
-		
-		if (event_listener_register(evt, lst, process_begin, process_end) != POM_OK) {
+
+		// We process ourselves the filter since we only register one listener for all the web listeners
+		if (event_listener_register(evt, lst, process_begin, process_end, NULL) != POM_OK) {
 			pom_mutex_unlock(&sess->lock);
 			filter_cleanup(filter);
 			free(l);
@@ -788,7 +789,7 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 
 		}
 		lst->flags = 0;
-		if (event_listener_register(evt, lst, process_begin, process_end) != POM_OK) {
+		if (event_listener_register(evt, lst, process_begin, process_end, NULL) != POM_OK) {
 			pom_mutex_unlock(&sess->lock);
 			filter_cleanup(filter);
 			free(l);
