@@ -26,6 +26,11 @@
 #include <pom-ng/event.h>
 #include <uthash.h>
 
+// Indicate that the event processing has started
+#define EVENT_FLAG_PROCESS_BEGAN	0x1
+// Indicate that the event processing is done
+#define EVENT_FLAG_PROCESS_DONE		0x2
+
 struct event {
 	struct event_reg *reg;
 	unsigned int flags;

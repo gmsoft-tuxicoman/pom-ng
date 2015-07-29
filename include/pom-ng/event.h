@@ -26,11 +26,6 @@
 #include <pom-ng/conntrack.h>
 #include <pom-ng/data.h>
 
-// Indicate that the event processing has started
-#define EVENT_FLAG_PROCESS_BEGAN	0x1
-// Indicate that the event processing is done
-#define EVENT_FLAG_PROCESS_DONE		0x2
-
 // Indicate that the event generates a payload
 #define EVENT_REG_FLAG_PAYLOAD		0x1
 
