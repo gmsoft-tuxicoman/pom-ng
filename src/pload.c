@@ -912,6 +912,9 @@ int pload_append(struct pload *p, void *data, size_t len) {
 			
 			for (reg = listeners[i]; reg; reg = reg->next) {
 
+				if (reg->filter && filter_pload_match(reg->filter, p) != FILTER_MATCH_YES)
+					continue;
+
 				void *pload_priv = NULL;
 				int res = reg->open(reg->obj, &pload_priv, p);
 				if (res == PLOAD_OPEN_ERR) {
@@ -1070,6 +1073,7 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 
 	struct pload_listener_reg *reg = malloc(sizeof(struct pload_listener_reg));
 	if (!reg) {
+		filter_cleanup(filter);
 		pom_oom(sizeof(struct pload_listener_reg));
 		return POM_ERR;
 	}
@@ -1085,6 +1089,7 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 
 	if (res) {
 		pomlog(POMLOG_ERR "Error while initializing pload listener lock : %s", pom_strerror(res));
+		filter_cleanup(filter);
 		free(reg);
 		return POM_ERR;
 
@@ -1095,6 +1100,7 @@ int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, 
 		struct pload_type *def;
 		HASH_FIND(hh, pload_types, pload_type, strlen(pload_type), def);
 		if (!def) {
+			filter_cleanup(filter);
 			free(reg);
 			pomlog(POMLOG_ERR "Cannot find payload type %s", pload_type);
 			return POM_ERR;
@@ -1178,6 +1184,9 @@ int pload_listen_stop(void *obj, char *pload_type) {
 	int res = pthread_mutex_destroy(&reg->lock);
 	if (res)
 		pomlog(POMLOG_WARN "Error while destroying pload_listener mutex : %s", pom_strerror(res));
+
+	if (reg->filter)
+		filter_cleanup(reg->filter);
 
 	free(reg);
 
