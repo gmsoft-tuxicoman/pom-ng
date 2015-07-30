@@ -406,6 +406,7 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	// 2) open function
 	// 3) write function
 	// 4) close function
+	// 5) filter if any
 
 	// Push nill if additional functions are missing
 	while (lua_gettop(L) < 4)
@@ -424,7 +425,15 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	if (!lua_isnil(L, -1))
 		luaL_error(L, "The output is already listening for payloads");
 
-	if (pload_listen_start(p, NULL, NULL, addon_output_pload_open, addon_output_pload_write, addon_output_pload_close) != POM_OK)
+	struct filter_node *filter = NULL;
+
+	if (!lua_isnil(L, 5)) {
+		const char *filter_str = luaL_checkstring(L, 5);
+		if (filter_event((char*)filter_str, evt, &filter) != POM_OK)
+			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
+	}
+
+	if (pload_listen_start(p, NULL, filter, addon_output_pload_open, addon_output_pload_write, addon_output_pload_close) != POM_OK)
 		luaL_error(L, "Error while registering the payload listener");
 
 
