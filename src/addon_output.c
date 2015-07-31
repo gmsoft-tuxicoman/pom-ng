@@ -429,7 +429,7 @@ static int addon_output_pload_listen_start(lua_State *L) {
 
 	if (!lua_isnil(L, 5)) {
 		const char *filter_str = luaL_checkstring(L, 5);
-		if (filter_event((char*)filter_str, evt, &filter) != POM_OK)
+		if (filter_pload((char*)filter_str, &filter) != POM_OK)
 			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
 	}
 
