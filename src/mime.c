@@ -184,7 +184,7 @@ char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
 }
 
 
-static int mime_header_parse_value_token(char *buff, size_t in_len, size_t *out_len) {
+int mime_header_parse_encoded_value(char *buff, size_t in_len, size_t *out_len) {
 	
 	// Parse =?charset?encoding?encoded_text?= where encoding is either B or Q
 	// See RFC 2047 for details
@@ -258,7 +258,10 @@ static int mime_header_parse_value_token(char *buff, size_t in_len, size_t *out_
 
 	decoder_decode(dec);
 
-	*out_len = (in_len - dec->avail_out);
+	if (out_len)
+		*out_len = (in_len - dec->avail_out);
+	*dec->next_out = 0;
+
 
 	decoder_cleanup(dec);
 
@@ -294,7 +297,7 @@ static char *mime_header_parse_value(char *data, size_t len) {
 			in_len = end - eq;
 		
 		size_t out_len = 0;
-		if (mime_header_parse_value_token(eq, in_len, &out_len) == POM_OK) {
+		if (mime_header_parse_encoded_value(eq, in_len, &out_len) == POM_OK) {
 			output += out_len;
 		} else {
 			output += in_len;

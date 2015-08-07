@@ -66,6 +66,8 @@ char *mime_type_get_param(struct mime_type *mime, char *param_name);
 
 int mime_header_parse(struct data *data, char *line, size_t line_len);
 
+int mime_header_parse_encoded_value(char *buff, size_t in_len, size_t *out_len);
+
 
 #endif
 
