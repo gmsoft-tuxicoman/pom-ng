@@ -149,6 +149,13 @@ struct mime_type *mime_type_parse(char *content_type) {
 			return NULL;
 		}
 
+		// Some values might be encoded
+		if (mime_header_parse_encoded_value(param_value, strlen(param_value), NULL) != POM_OK) {
+			// Decoding failed, skip this parameter
+			free(param_value);
+			continue;
+		}
+
 		mime_type->params[param_num].name = param_name;
 		mime_type->params[param_num].value = param_value;
 
@@ -190,14 +197,14 @@ int mime_header_parse_encoded_value(char *buff, size_t in_len, size_t *out_len) 
 	// See RFC 2047 for details
 
 	if (in_len < 9) // strlen("=?c?e?t?=")
-		return POM_ERR;
+		return POM_OK; // Return OK if it's not encoded
 
 	// We overwrite the original content
 	char *out = buff;
 
 	// Check for begining =? and ending ?=
 	if (buff[0] != '=' || buff[1] != '?' || buff[in_len - 2] != '?' || buff[in_len - 1] != '=')
-		return POM_ERR;
+		return POM_OK; // Return OK if it's not encoded
 	
 	buff += 2;
 	in_len -= 4;
