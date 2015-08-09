@@ -108,6 +108,9 @@ struct data_reg *pload_get_data_reg(struct pload *p);
 int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv));
 int pload_listen_stop(void *obj, char *pload_type);
 
+int pload_set_filename(struct pload *p, char *filename);
+char *pload_get_filename(struct pload *p);
+
 void pload_refcount_inc(struct pload *pload);
 void pload_refcount_dec(struct pload *pload);
 

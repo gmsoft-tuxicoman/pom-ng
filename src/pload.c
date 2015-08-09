@@ -468,6 +468,9 @@ void pload_refcount_dec(struct pload *pload) {
 	if (pload->mime_type)
 		mime_type_cleanup(pload->mime_type);
 
+	if (pload->filename)
+		free(pload->filename);
+
 	event_refcount_dec(pload->rel_event);
 
 	free(pload);
@@ -485,6 +488,24 @@ int pload_set_mime_type(struct pload *p, char *mime_type) {
 	p->mime_type = mime_type_parse(mime_type);
 	if (!p->mime_type)
 		return POM_ERR;
+
+	// Check for the name embedded in the Content-Type header if no filename is specified yet
+	if (!p->filename) {
+
+		char *filename = mime_type_get_param(p->mime_type, "name");
+		if (filename) {
+			char *slash = strrchr(filename, '/');
+			if (slash)
+				filename = slash + 1;
+			if (strlen(filename)) {
+				p->filename = strdup(filename);
+				if (!p->filename) {
+					pom_oom(strlen(filename));
+					return POM_ERR;
+				}
+			}
+		}
+	}
 
 	struct pload_mime_type *pmt = NULL;
 	HASH_FIND(hh, pload_mime_types_hash, p->mime_type->name, strlen(p->mime_type->name), pmt);
@@ -1191,6 +1212,31 @@ int pload_listen_stop(void *obj, char *pload_type) {
 	free(reg);
 
 	return POM_OK;
+}
+
+
+int pload_set_filename(struct pload *p, char *filename) {
+
+	if (p->filename)
+		free(p->filename);
+
+	char *slash = strrchr(filename, '/');
+	if (slash)
+		filename = slash;
+
+	if (!strlen(filename))
+		return POM_OK;
+
+	p->filename = strdup(filename);
+	if (!p->filename) {
+		pom_oom(strlen(filename) + 1);
+		return POM_ERR;
+	}
+	return POM_OK;
+}
+
+char *pload_get_filename(struct pload *p) {
+	return p->filename;
 }
 
 struct pload_store *pload_store_get(struct pload *pload) {

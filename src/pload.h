@@ -120,6 +120,7 @@ struct pload {
 	struct pload *parent;
 	uint32_t refcount;
 	struct pload_store *store;
+	char *filename;
 };
 
 int pload_init();
