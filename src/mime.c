@@ -43,6 +43,69 @@ static struct mime_top_type_str mime_top_types_str[] = {
 	{ mime_top_type_unknown, NULL },
 };
 
+
+static int mime_header_parse_parameters(char *param_str, struct mime_parameter *params) {
+
+	// Parse parameters
+	unsigned int param_num;
+	for (param_num = 0; param_str && param_num < MIME_MAX_PARAMETERS; param_num++) {
+
+		// Trim left
+		while (*param_str == ' ')
+			param_str++;
+
+		char *eq = strchr(param_str, '=');
+		if (!eq) {
+			// Parameter without value, abort parsing
+			return POM_OK;
+		}
+
+		char *param_name = strndup(param_str, eq - param_str);
+		if (!param_name) {
+			pom_oom(eq - param_str);
+			return POM_ERR;
+		}
+
+		// Parse the value
+		char *pv = eq + 1;
+		char pv_end = ';';
+		if (*pv == '"') { // The parameters is enclosed between ""
+			pv_end = '"';
+			pv++;
+		}
+
+		char *param_value = NULL;
+		char *next_p = strchr(pv, pv_end);
+		if (!next_p) { // Last parameters
+			param_value = strdup(pv);
+		} else {
+			param_value = strndup(pv, next_p - pv);
+		}
+
+		if (!param_value) {
+			pom_oom(strlen(pv));
+			return POM_ERR;
+		}
+
+		// Some values might be encoded
+		if (mime_header_parse_encoded_value(param_value, strlen(param_value), NULL) != POM_OK) {
+			// Decoding failed, skip this parameter
+			free(param_value);
+			continue;
+		}
+
+		params[param_num].name = param_name;
+		params[param_num].value = param_value;
+
+		param_str = next_p;
+		while (param_str && (*param_str == ' ' || *param_str == '"' || *param_str == ';'))
+			param_str++;
+	}
+
+	return POM_OK;
+}
+
+
 struct mime_type *mime_type_parse(char *content_type) {
 
 	if (!content_type)
@@ -105,65 +168,61 @@ struct mime_type *mime_type_parse(char *content_type) {
 	if (!sc) // No parameters
 		return mime_type;
 
-	// Parse parameters
-	char *p = sc + 1;
-	unsigned int param_num;
-	for (param_num = 0; p && param_num < MIME_MAX_PARAMETERS; param_num++) {
-
-		// Trim left
-		while (*p == ' ')
-			p++;
-
-		char *eq = strchr(p, '=');
-		if (!eq) {
-			// Parameter without value, abort parsing
-			return mime_type;
-		}
-
-		char *param_name = strndup(p, eq - p);
-		if (!param_name) {
-			mime_type_cleanup(mime_type);
-			pom_oom(eq - p);
-			return NULL;
-		}
-		
-		// Parse the value
-		char *pv = eq + 1;
-		char pv_end = ' ';
-		if (*pv == '"') { // The parameters is enclosed between ""
-			pv_end = '"';
-			pv++;
-		}
-
-		char *param_value = NULL;
-		char *next_p = strchr(pv, pv_end);
-		if (!next_p) { // Last parameters
-			param_value = strdup(pv);
-		} else {
-			param_value = strndup(pv, next_p - pv);
-		}
-
-		if (!param_value) {
-			mime_type_cleanup(mime_type);
-			pom_oom(strlen(pv));
-			return NULL;
-		}
-
-		// Some values might be encoded
-		if (mime_header_parse_encoded_value(param_value, strlen(param_value), NULL) != POM_OK) {
-			// Decoding failed, skip this parameter
-			free(param_value);
-			continue;
-		}
-
-		mime_type->params[param_num].name = param_name;
-		mime_type->params[param_num].value = param_value;
-
-		p = next_p;
+	if (mime_header_parse_parameters(sc + 1, mime_type->params) != POM_OK) {
+		mime_type_cleanup(mime_type);
+		return NULL;
 	}
-	
 
 	return mime_type;
+}
+
+struct mime_disposition *mime_disposition_parse(char *content_disposition) {
+
+	if (!content_disposition)
+		return NULL;
+
+	while (*content_disposition == ' ')
+		content_disposition++;
+
+	struct mime_disposition *mime_disposition = malloc(sizeof(struct mime_disposition));
+	if (!mime_disposition) {
+		pom_oom(sizeof(struct mime_disposition));
+		return NULL;
+	}
+	memset(mime_disposition, 0, sizeof(struct mime_disposition));
+
+	// First, copy the filtered content_type
+
+	char *sc = strchr(content_disposition, ';');
+
+	size_t disposition_len;
+	if (sc)
+		disposition_len = sc - content_disposition;
+	else
+		disposition_len = strlen(content_disposition);
+
+	while (disposition_len > 0 && content_disposition[disposition_len - 1] == ' ')
+		disposition_len--;
+
+	if (!strncmp(content_disposition, "attachement", disposition_len))
+		mime_disposition->disposition = mime_disposition_attachement;
+	else if (!strncmp(content_disposition, "inline", disposition_len))
+		mime_disposition->disposition = mime_disposition_inline;
+	else
+		pomlog(POMLOG_DEBUG "Mime disposition not known");
+
+
+	if (!sc) // No parameters
+		return mime_disposition;
+
+	
+	if (mime_header_parse_parameters(sc + 1, mime_disposition->params) != POM_OK) {
+		mime_disposition_cleanup(mime_disposition);
+		return NULL;
+	}
+
+	return mime_disposition;
+
 }
 
 void mime_type_cleanup(struct mime_type *mime_type) {
@@ -180,6 +239,18 @@ void mime_type_cleanup(struct mime_type *mime_type) {
 	free(mime_type);
 }
 
+void mime_disposition_cleanup(struct mime_disposition *mime_disposition) {
+
+	int i;
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_disposition->params[i].name; i++) {
+		if (mime_disposition->params[i].value)
+			free(mime_disposition->params[i].value);
+		free(mime_disposition->params[i].name);
+	}
+
+	free(mime_disposition);
+}
+
 char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
 
 	int i;
@@ -190,6 +261,15 @@ char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
 	return NULL;
 }
 
+char *mime_disposition_get_param(struct mime_disposition *mime_disposition, char *param_name) {
+
+	int i;
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_disposition->params[i].name; i++) {
+		if (!strcmp(mime_disposition->params[i].name, param_name))
+			return mime_disposition->params[i].value;
+	}
+	return NULL;
+}
 
 int mime_header_parse_encoded_value(char *buff, size_t in_len, size_t *out_len) {
 	

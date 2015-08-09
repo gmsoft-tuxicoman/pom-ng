@@ -45,7 +45,13 @@ enum mime_top_type {
 	mime_top_type_message
 };
 
-struct mime_type_parameter {
+enum mime_dispositions {
+	mime_disposition_unknown = 0,
+	mime_disposition_inline,
+	mime_disposition_attachement,
+};
+
+struct mime_parameter {
 	char *name;
 	char *value;
 };
@@ -54,15 +60,24 @@ struct mime_type {
 	
 	enum mime_top_type top_type;
 	char *name;
-	struct mime_type_parameter params[MIME_MAX_PARAMETERS];
+	struct mime_parameter params[MIME_MAX_PARAMETERS];
 
+};
+
+struct mime_disposition {
+	enum mime_dispositions disposition;
+	struct mime_parameter params[MIME_MAX_PARAMETERS];
 };
 
 
 struct mime_type *mime_type_parse(char *content_type);
 void mime_type_cleanup(struct mime_type *mime);
 
-char *mime_type_get_param(struct mime_type *mime, char *param_name);
+struct mime_disposition *mime_disposition_parse(char *content_disposition);
+void mime_disposition_cleanup(struct mime_disposition *mime_disposition);
+
+char *mime_type_get_param(struct mime_type *mime_type, char *param_name);
+char *mime_disposition_get_param(struct mime_disposition *mime_disposition, char *param_name);
 
 int mime_header_parse(struct data *data, char *line, size_t line_len);
 
