@@ -67,14 +67,12 @@ static int analyzer_multipart_pload_open(void *obj, void **priv, struct pload *p
 
 	struct mime_type *mime_type = pload_get_mime_type(pload);
 	if (!mime_type) {
-		free(priv);
 		return PLOAD_OPEN_STOP;
 	}
 
 	char *boundary = mime_type_get_param(mime_type, "boundary");
 	if (!boundary) {
 		pomlog(POMLOG_DEBUG "Multipart boundary not found in mime type informations !");
-		free(priv);
 		return PLOAD_OPEN_STOP;
 	}
 
@@ -165,6 +163,15 @@ static int analyzer_multipart_pload_process_line(struct analyzer_multipart_pload
 					pload_set_mime_type(priv->pload, PTYPE_STRING_GETVAL(itm->value));
 				} else if (!strcasecmp(itm->key, "Content-Transfer-Encoding")) {
 					pload_set_encoding(priv->pload, PTYPE_STRING_GETVAL(itm->value));
+				} else if (!strcasecmp(itm->key, "Content-Disposition")) {
+					struct mime_disposition *d = mime_disposition_parse(PTYPE_STRING_GETVAL(itm->value));
+					if (d) {
+						char * filename = mime_disposition_get_param(d, "filename");
+						if (filename)
+							pload_set_filename(priv->pload, filename);
+
+					}
+					mime_disposition_cleanup(d);
 				}
 				free(itm->key);
 				ptype_cleanup(itm->value);
