@@ -56,9 +56,15 @@
 			<item><name>rfc822</name><mime>message/rfc822</mime></item>
 			<item><name>text</name><mime>text/plain</mime></item>
 			<item><name>multipart</name><mime>multipart/mixed</mime></item>
-			<item><name>multipart</name><mime>multipart/alternative</mime></item>
 			<item><name>multipart</name><mime>multipart/digest</mime></item>
+			<item><name>multipart</name><mime>multipart/message</mime></item>
 			<item><name>multipart</name><mime>multipart/parallel</mime></item>
+			<item><name>multipart</name><mime>multipart/alternative</mime></item>
+			<item><name>multipart</name><mime>multipart/related</mime></item>
+			<item><name>multipart</name><mime>multipart/report</mime></item>
+			<item><name>multipart</name><mime>multipart/signed</mime></item>
+			<item><name>multipart</name><mime>multipart/encrypted</mime></item>
+			<item><name>multipart</name><mime>multipart/form-data</mime></item>
 			<item><name>sdp</name><mime>application/sdp</mime></item>
 			<item><name>dtmf</name><mime>application/dtmf</mime></item>
 			<item><name>dtmf</name><mime>application/dtmf-relay</mime></item>
