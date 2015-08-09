@@ -302,7 +302,7 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				}
 
 				if (!f) {
-					pomlog(POMLOG_DEBUG "File not found in queued file request.");
+					pomlog(POMLOG_ERR "File not found in queued file request.");
 					conntrack_session_unlock(session);
 					return POM_OK;
 				}
@@ -322,6 +322,9 @@ static int analyzer_tftp_pkt_process(void *obj, struct packet *p, struct proto_p
 				f->pload = pload_alloc(f->evt, PLOAD_FLAG_NEED_MAGIC);
 				if (!f->pload)
 					goto err;
+
+				if (data_is_set(evt_data[analyzer_tftp_file_filename]))
+					pload_set_filename(f->pload, PTYPE_STRING_GETVAL(evt_data[analyzer_tftp_file_filename].value));
 
 				conntrack_add_priv(s_prev->ce, obj, f, analyzer_tftp_conntrack_priv_cleanup);
 			} else {
