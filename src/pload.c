@@ -1222,7 +1222,7 @@ int pload_set_filename(struct pload *p, char *filename) {
 
 	char *slash = strrchr(filename, '/');
 	if (slash)
-		filename = slash;
+		filename = slash + 1;
 
 	if (!strlen(filename))
 		return POM_OK;
