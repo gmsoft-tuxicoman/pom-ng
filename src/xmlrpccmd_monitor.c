@@ -1225,6 +1225,13 @@ xmlrpc_value *xmlrpccmd_monitor_build_pload(xmlrpc_env * const envP, struct ploa
 		xmlrpc_DECREF(xml_mime_type);
 	}
 
+	char *filename = pload_get_filename(pload);
+	if (filename) {
+		xmlrpc_value *xml_filename = xmlrpc_string_new(envP, filename);
+		xmlrpc_struct_set_value(envP, xml_pload, "filename", xml_filename);
+		xmlrpc_DECREF(xml_filename);
+	}
+
 	struct event *evt = pload_get_related_event(pload);
 	if (evt) {
 		xmlrpc_value *xml_evt = xmlrpccmd_monitor_build_event(envP, evt);
