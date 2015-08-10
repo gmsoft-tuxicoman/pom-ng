@@ -64,6 +64,7 @@ struct analyzer_http_request_event_priv {
 	char *content_type[POM_DIR_TOT];
 	size_t content_len[POM_DIR_TOT];
 	char *content_encoding[POM_DIR_TOT];
+	struct mime_disposition *content_disposition[POM_DIR_TOT];
 
 };
 

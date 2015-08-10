@@ -27,6 +27,7 @@
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/decoder.h>
 #include <pom-ng/dns.h>
+#include <pom-ng/mime.h>
 
 struct mod_reg_info* analyzer_http_reg_info() {
 
@@ -463,10 +464,9 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 			epriv->content_type[s->direction] = PTYPE_STRING_GETVAL(headers->value);
 		} else if (!strcasecmp(headers->key, "Content-Encoding")) {
 			epriv->content_encoding[s->direction] = PTYPE_STRING_GETVAL(headers->value);
+		} else if (!strcasecmp(headers->key, "Content-Disposition")) {
+			epriv->content_disposition[s->direction] = mime_disposition_parse(PTYPE_STRING_GETVAL(headers->value));
 		}
-		
-
-
 	}
 
 	// Get client/server ports if not fetched yet
@@ -646,6 +646,11 @@ int analyzer_http_event_finalize_process(struct analyzer_http_ce_priv *cpriv) {
 		priv->content_len[i] = 0;
 		priv->content_type[i] = NULL;
 		priv->content_encoding[i] = NULL;
+
+		if (priv->content_disposition[i]) {
+			mime_disposition_cleanup(priv->content_disposition[i]);
+			priv->content_disposition[i] = NULL;
+		}
 	}
 
 	if (event_process_end(evt) != POM_OK)
@@ -735,6 +740,24 @@ int analyzer_http_proto_packet_process(void *object, struct packet *p, struct pr
 
 		if (epriv->content_encoding[dir])
 			pload_set_encoding(epriv->pload[dir], epriv->content_encoding[dir]);
+
+		if (epriv->content_disposition[dir]) {
+			char * filename = mime_disposition_get_param(epriv->content_disposition[dir], "filename");
+			if (filename)
+				pload_set_filename(epriv->pload[dir], filename);
+			mime_disposition_cleanup(epriv->content_disposition[dir]);
+			epriv->content_disposition[dir] = NULL;
+		} else {
+			// Set the filename based on the URL only if there are not get parameters
+			struct data *evt_data = event_get_data(evt);
+			if (data_is_set(evt_data[analyzer_http_request_url])) {
+				char *url = PTYPE_STRING_GETVAL(evt_data[analyzer_http_request_url].value);
+				if (!strchr(url, '?')) {
+					// pload_set_filename will trim whatever is before the last '/'
+					pload_set_filename(epriv->pload[dir], PTYPE_STRING_GETVAL(evt_data[analyzer_http_request_url].value));
+				}
+			}
+		}
 	}
 
 	if (pload_append(epriv->pload[dir], pload_stack->pload, pload_stack->plen) != POM_OK)
