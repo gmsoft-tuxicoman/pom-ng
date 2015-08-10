@@ -975,20 +975,24 @@ xmlrpc_value *xmlrpccmd_monitor_pload_events_listen(xmlrpc_env * const envP, xml
 	}
 
 
+	core_pause_processing();
 	if (value) {
 		if (event_payload_listen_start() != POM_OK) {
+			core_resume_processing();
 			xmlrpc_faultf(envP, "Error while listening to the payload generating events");
 			pom_mutex_unlock(&sess->lock);
 			return NULL;
 		}
 	} else {
 		if (event_payload_listen_stop() != POM_OK) {
+			core_resume_processing();
 			xmlrpc_faultf(envP, "Error while stopping to listen to the payload generating events");
 			pom_mutex_unlock(&sess->lock);
 			return NULL;
 		}
 
 	}
+	core_resume_processing();
 
 	sess->pload_events_listening = value;
 	pom_mutex_unlock(&sess->lock);
