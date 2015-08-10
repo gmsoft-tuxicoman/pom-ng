@@ -204,7 +204,7 @@ struct mime_disposition *mime_disposition_parse(char *content_disposition) {
 	while (disposition_len > 0 && content_disposition[disposition_len - 1] == ' ')
 		disposition_len--;
 
-	if (!strncmp(content_disposition, "attachement", disposition_len))
+	if (!strncmp(content_disposition, "attachment", disposition_len))
 		mime_disposition->disposition = mime_disposition_attachement;
 	else if (!strncmp(content_disposition, "inline", disposition_len))
 		mime_disposition->disposition = mime_disposition_inline;
