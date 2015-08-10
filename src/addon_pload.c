@@ -81,6 +81,13 @@ static int addon_pload_metatable(lua_State *L) {
 		lua_settable(L, -3);
 	} else if (!strcmp(key, "parent") && p->parent) {
 		addon_pload_push(L, p->parent, NULL);
+	} else if (!strcmp(key, "filename")) {
+		char *filename = pload_get_filename(p);
+		if (filename) {
+			lua_pushstring(L, filename);
+		} else {
+			lua_pushnil(L);
+		}
 	} else {
 		return 0;
 	}
