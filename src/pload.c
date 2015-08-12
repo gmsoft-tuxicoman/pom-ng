@@ -1239,6 +1239,11 @@ char *pload_get_filename(struct pload *p) {
 	return p->filename;
 }
 
+
+struct pload_type *pload_get_type(struct pload *p) {
+	return p->type;
+}
+
 struct pload_store *pload_store_get(struct pload *pload) {
 
 	if (pload->flags & PLOAD_FLAG_OPENED) {

@@ -110,6 +110,7 @@ int pload_listen_stop(void *obj, char *pload_type);
 
 int pload_set_filename(struct pload *p, char *filename);
 char *pload_get_filename(struct pload *p);
+struct pload_type *pload_get_type(struct pload *p);
 
 void pload_refcount_inc(struct pload *pload);
 void pload_refcount_dec(struct pload *pload);
