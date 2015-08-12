@@ -30,6 +30,7 @@
 			<item><name>g711u</name><description>G.711U</description><extension>ulaw</extension><class>audio</class></item>
 			<item><name>g723</name><description>G.723</description><extension>g723</extension><class>audio</class></item>
 			<item><name>g729</name><description>G.729</description><extension>g729</extension><class>audio</class></item>
+			<item><name>html</name><description>HTML</description><extension>html</extension><class>other</class></item>
 		</dataset>
 
 		<dataset name="mime_types">
@@ -72,6 +73,7 @@
 			<item><name>g711u</name><mime>audio/pcmu</mime></item>
 			<item><name>g723</name><mime>audio/g723</mime></item>
 			<item><name>g729</name><mime>audio/g729</mime></item>
+			<item><name>html</name><mime>text/html</mime></item>
 		</dataset>
 	</datasets>
 
