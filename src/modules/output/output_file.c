@@ -214,8 +214,8 @@ int output_file_pload_open(void *obj, void **ppriv, struct pload *pload) {
 	struct output_file_priv *priv = obj;
 
 	// Open the file
-	char filename[FILENAME_MAX + 1];
-	strncpy(filename, PTYPE_STRING_GETVAL(priv->p_path), FILENAME_MAX);
+	char filename[FILENAME_MAX] = { 0 };
+	char *path = PTYPE_STRING_GETVAL(priv->p_path);
 
 	// TODO Use correct filename
 	struct tm tmp;
@@ -225,7 +225,17 @@ int output_file_pload_open(void *obj, void **ppriv, struct pload *pload) {
 	char *format = "%Y%m%d-%H%M%S";
 	char buff[4+2+2+1+2+2+2+1];
 	strftime(buff, sizeof(buff), format, &tmp);
-	snprintf(filename + strlen(filename), FILENAME_MAX - strlen(filename), "%s-%u.bin", buff, (unsigned int)tv.tv_usec);
+
+	char *pload_filename = pload_get_filename(pload);
+	if (pload_filename) {
+		snprintf(filename, FILENAME_MAX - 1, "%s/%s-%u-%s", path, buff, (unsigned int)tv.tv_usec, pload_filename);
+	} else {
+		char *ext = "bin";
+		struct pload_type *pt = pload_get_type(pload);
+		if (pt && pt->extension)
+			ext = pt->extension;
+		snprintf(filename, FILENAME_MAX - 1, "%s/%s-%u.%s", path, buff, (unsigned int)tv.tv_usec, ext);
+	}
 
 	return file_pload_open(obj, filename, ppriv);
 
