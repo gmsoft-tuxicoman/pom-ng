@@ -29,6 +29,7 @@ struct output_file_priv {
 
 	struct ptype *p_listen_pload_evt;
 	struct ptype *p_path;
+	struct ptype *p_filter;
 	
 	struct registry_perf *perf_files_closed;
 	struct registry_perf *perf_files_open;

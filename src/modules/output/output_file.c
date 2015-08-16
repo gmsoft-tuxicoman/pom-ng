@@ -105,8 +105,9 @@ int output_file_init(struct output *o) {
 
 	priv->p_listen_pload_evt = ptype_alloc("bool");
 	priv->p_path = ptype_alloc("string");
+	priv->p_filter = ptype_alloc("string");
 
-	if (!priv->p_path || !priv->p_listen_pload_evt)
+	if (!priv->p_path || !priv->p_listen_pload_evt || !priv->p_filter)
 		goto err;
 
 	struct registry_instance *inst = output_get_reg_instance(o);
@@ -124,9 +125,17 @@ int output_file_init(struct output *o) {
 	p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
+
+	p = registry_new_param("filter", "", priv->p_filter, "Payload filter", 0);
+	if (output_add_param(o, p) != POM_OK)
+		goto err;
 	
 	return POM_OK;
 err:
+
+	if (p)
+		registry_cleanup_param(p);
+
 	output_file_cleanup(priv);
 	return POM_ERR;
 
@@ -151,13 +160,21 @@ int output_file_open(void *output_priv) {
 
 	struct output_file_priv *priv = output_priv;
 
-	char *listen_pload_evt = PTYPE_BOOL_GETVAL(priv->p_listen_pload_evt);
-	if (*listen_pload_evt && event_payload_listen_start() != POM_OK)
+	struct filter_node *filter = NULL;
+	char *filter_str = PTYPE_STRING_GETVAL(priv->p_filter);
+	if (filter_pload(filter_str, &filter) != POM_OK) {
+		pomlog(POMLOG_ERR "Error while parsing filter '%s'", filter_str);
 		return POM_ERR;
-		
+	}
 
-	return pload_listen_start(output_priv, NULL, NULL, output_file_pload_open, output_file_pload_write, output_file_pload_close);
+	char *listen_pload_evt = PTYPE_BOOL_GETVAL(priv->p_listen_pload_evt);
+	if (*listen_pload_evt && event_payload_listen_start() != POM_OK) {
+		if (filter)
+			filter_cleanup(filter);
+		return POM_ERR;
+	}
 
+	return pload_listen_start(output_priv, NULL, filter, output_file_pload_open, output_file_pload_write, output_file_pload_close);
 }
 
 int output_file_close(void *output_priv) {
