@@ -161,11 +161,15 @@ int output_file_open(void *output_priv) {
 
 	struct output_file_priv *priv = output_priv;
 
-	struct filter_node *filter = NULL;
 	char *filter_str = PTYPE_STRING_GETVAL(priv->p_filter);
-	if (filter_pload(filter_str, &filter) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while parsing filter '%s'", filter_str);
-		return POM_ERR;
+	struct filter *filter = NULL;
+
+	if (strlen(filter_str)) {
+		filter = pload_filter_compile(filter_str);
+		if (!filter) {
+			pomlog(POMLOG_ERR "Error while parsing filter '%s'", filter_str);
+			return POM_ERR;
+		}
 	}
 
 	char *listen_pload_evt = PTYPE_BOOL_GETVAL(priv->p_listen_pload_evt);
