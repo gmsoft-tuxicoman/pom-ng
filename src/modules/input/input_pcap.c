@@ -696,8 +696,10 @@ static int input_pcap_dir_open_next(struct input_pcap_priv *p) {
 				// Rescan the directory for possible new files
 				pomlog(POMLOG_INFO "Rescanning directory %s for pcap files ...", PTYPE_STRING_GETVAL(dp->p_dir));
 				int new_found = input_pcap_dir_browse(p);
-				if (dp->interrupt_scan)
+				if (dp->interrupt_scan) {
+					dp->cur_file = NULL;
 					return POM_OK;
+				}
 				if (new_found == POM_ERR)
 					return POM_ERR;
 				pomlog(POMLOG_INFO "Found %u new files", new_found);
