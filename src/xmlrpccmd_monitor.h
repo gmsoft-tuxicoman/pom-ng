@@ -72,14 +72,14 @@ struct xmlrpccmd_monitor_httpd_pload {
 
 struct xmlrpccmd_monitor_pload_listener {
 	uint64_t id;
-	struct filter_node *filter;
+	struct filter *filter;
 	struct xmlrpccmd_monitor_pload_listener *prev, *next;
 };
 
 struct xmlrpccmd_monitor_evt_listener {
 	uint64_t id;
 	unsigned int flags;
-	struct filter_node *filter;
+	struct filter *filter;
 	struct xmlrpccmd_monitor_evt_listener *prev, *next;
 };
 

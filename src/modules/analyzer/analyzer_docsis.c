@@ -174,7 +174,8 @@ static int analyzer_docsis_event_listeners_notify(void *obj, struct event_reg *e
 			return POM_OK;
 
 		if (!priv->filter) {
-			if (filter_packet("docsis_mgmt.type > 3", &priv->filter) != POM_OK) {
+			priv->filter = packet_filter_compile("docsis_mgmt.type > 3");
+			if (!priv->filter) {
 				pomlog(POMLOG_ERR "Error while building filter");
 				return POM_ERR;
 			}

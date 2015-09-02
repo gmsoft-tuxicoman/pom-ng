@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <pom-ng/proto.h>
 #include <pom-ng/conntrack.h>
 #include <pom-ng/data.h>
+#include <pom-ng/filter.h>
 
 // Indicate that the event generates a payload
 #define EVENT_REG_FLAG_PAYLOAD		0x1
@@ -55,7 +56,7 @@ struct event_reg *event_find(const char *name);
 int event_payload_listen_start();
 int event_payload_listen_stop();
 
-int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj), struct filter_node *filter);
+int event_listener_register(struct event_reg *evt_reg, void *obj, int (*process_begin) (struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index), int (*process_end) (struct event *evt, void *obj), struct filter *filter);
 int event_listener_unregister(struct event_reg *evt_reg, void *obj);
 int event_has_listener(struct event_reg *evt_reg);
 
@@ -77,5 +78,9 @@ struct conntrack_entry *event_get_conntrack(struct event *evt);
 unsigned int event_is_started(struct event *evt);
 unsigned int event_is_done(struct event *evt);
 ptime event_get_timestamp(struct event *evt);
+
+struct filter *event_filter_compile(char *filter_expr, struct event_reg *evt);
+int event_filter_match(struct filter *f, struct event *evt);
+
 #endif
 

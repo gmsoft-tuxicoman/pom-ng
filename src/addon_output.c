@@ -109,10 +109,11 @@ static int addon_output_event_listen_start(lua_State *L) {
 	if (lua_isfunction(L, 4))
 		process_end = addon_event_process_end;
 
-	struct filter_node *filter = NULL;
+	struct filter *filter = NULL;
 	if (!lua_isnoneornil(L, 5)) {
 		const char *filter_str = luaL_checkstring(L, 5);
-		if (filter_event((char*)filter_str, evt, &filter) != POM_OK)
+		filter = event_filter_compile((char*)filter_str, evt);
+		if (!filter)
 			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
 	}
 
@@ -425,11 +426,12 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	if (!lua_isnil(L, -1))
 		luaL_error(L, "The output is already listening for payloads");
 
-	struct filter_node *filter = NULL;
+	struct filter *filter = NULL;
 
 	if (!lua_isnoneornil(L, 5)) {
 		const char *filter_str = luaL_checkstring(L, 5);
-		if (filter_pload((char*)filter_str, &filter) != POM_OK)
+		filter = pload_filter_compile((char*)filter_str);
+		if (!filter)
 			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
 	}
 

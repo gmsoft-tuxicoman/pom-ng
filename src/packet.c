@@ -25,8 +25,7 @@
 #include "packet.h"
 #include "main.h"
 #include "core.h"
-
-#include <pom-ng/ptype.h>
+#include "filter.h"
 
 #if 0
 #define debug_stream_parser(x ...) pomlog(POMLOG_DEBUG "stream_parser: " x)
@@ -664,4 +663,109 @@ int packet_stream_parser_cleanup(struct packet_stream_parser *sp) {
 	free(sp);
 
 	return POM_OK;
+}
+
+
+int packet_filter_prop_compile(struct filter *f, char *prop_str, struct filter_value *v) {
+
+	char *dot = strchr(prop_str, '.');
+	if (dot)
+		*dot = 0;
+
+	struct proto *proto = proto_get(prop_str);
+	if (!proto) {
+		pomlog(POMLOG_ERR "Cannot parse filter. Protocol %s does not exists.", prop_str);
+		return POM_ERR;
+	}
+
+	struct packet_filter_prop *prop = malloc(sizeof(struct packet_filter_prop));
+	if (!prop) {
+		pom_oom(sizeof(struct packet_filter_prop));
+		return POM_ERR;
+	}
+	memset(prop, 0, sizeof(struct packet_filter_prop));
+
+	v->type = filter_value_type_prop;
+	v->val.prop.priv = prop;
+	prop->proto = proto;
+
+	if (dot) {
+		dot++;
+
+		int field_id;
+		for (field_id = 0; proto->info->pkt_fields[field_id].name && strcmp(proto->info->pkt_fields[field_id].name, dot); field_id++);
+
+		if (!proto->info->pkt_fields[field_id].name) {
+			pomlog(POMLOG_ERR "Field %s doesn't exists for proto %s", dot, proto->info->name);
+			return POM_ERR;
+		}
+		prop->field_id = field_id;
+		prop->pt_reg = proto->info->pkt_fields[field_id].value_type;
+
+		if (filter_ptype_is_integer(prop->pt_reg)) {
+			v->val.prop.out_type = filter_value_type_int;
+		} else if (filter_ptype_is_string(prop->pt_reg)) {
+			v->val.prop.out_type = filter_value_type_string;
+		} else {
+			v->val.prop.out_type = filter_value_type_ptype;
+			v->val.prop.out_ptype = prop->pt_reg;
+		}
+	} else {
+		// We'll output the proto name
+		v->val.prop.out_type = filter_value_type_string;
+		prop->field_id = -1;
+	}
+
+	return POM_OK;
+}
+
+int packet_filter_prop_get_val(struct filter_value *inval, struct filter_value *outval, void *obj) {
+
+	struct proto_process_stack *stack = obj;
+	struct packet_filter_prop *prop = inval->val.prop.priv;
+
+
+	unsigned int j;
+	for (j = CORE_PROTO_STACK_START; j <= CORE_PROTO_STACK_MAX && stack[j].proto && stack[j].proto != prop->proto; j++);
+
+	if (!stack[j].proto)
+		return POM_OK;
+
+	if (prop->field_id == -1) {
+		outval->val.string = prop->proto->info->name;
+		outval->type = filter_value_type_string;
+		return POM_OK;
+	}
+
+	struct ptype *out_ptype = stack[j].pkt_info->fields_value[prop->field_id];
+
+	if (!out_ptype)
+		return POM_OK;
+
+	filter_ptype_to_value(outval, out_ptype);
+
+	return POM_OK;
+}
+
+void packet_filter_prop_cleanup(void *prop) {
+
+	free(prop);
+}
+
+struct filter *packet_filter_compile(char *filter_expr) {
+
+	struct filter *f = filter_alloc(packet_filter_prop_compile, NULL, packet_filter_prop_get_val, packet_filter_prop_cleanup);
+	if (!f)
+		return NULL;
+	if (filter_compile(filter_expr, f) != POM_OK) {
+		filter_cleanup(f);
+		return NULL;
+	}
+	return f;
+
+}
+
+int packet_filter_match(struct filter *f, struct proto_process_stack *stack) {
+
+	return filter_match(f, stack);
 }

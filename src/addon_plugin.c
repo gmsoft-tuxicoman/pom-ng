@@ -111,11 +111,12 @@ static int addon_plugin_event_listen_start(lua_State *L) {
 	if (!evt)
 		luaL_error(L, "Event %s does not exists", evt_name);
 
-	struct filter_node *filter = NULL;
+	struct filter *filter = NULL;
 
 	if (!lua_isnoneornil(L, 3)) {
 		const char *filter_str = luaL_checkstring(L, 3);
-		if (filter_event((char*)filter_str, evt, &filter) != POM_OK)
+		filter = event_filter_compile((char*)filter_str, evt);
+		if (!filter)
 			luaL_error(L, "Error while parsing filter \"%s\"", filter_str);
 	}
 

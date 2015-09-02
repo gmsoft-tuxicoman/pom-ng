@@ -24,7 +24,8 @@
 #include "proto.h"
 #include "main.h"
 #include "mod.h"
-#include "filter.h"
+#include "core.h"
+#include <pom-ng/filter.h>
 
 
 #if 0
@@ -317,7 +318,7 @@ int proto_process_pload_listeners(struct packet *p, struct proto_process_stack *
 		
 		struct proto_packet_listener *l;
 		for (l = proto->payload_listeners; l; l = l->next) {
-			if (l->filter && !filter_packet_match(l->filter, stack))
+			if (l->filter && packet_filter_match(l->filter, stack) != FILTER_MATCH_YES)
 				continue;
 			if (l->process(l->object, p, stack, stack_index + 1) != POM_OK) {
 				pomlog(POMLOG_WARN "Warning payload listener failed");
@@ -342,7 +343,7 @@ int proto_post_process(struct packet *p, struct proto_process_stack *s, unsigned
 	// Process the listeners after the whole stack has been processed
 	struct proto_packet_listener *l;
 	for (l = proto->packet_listeners; l; l = l->next) {
-		if (l->filter && !filter_packet_match(l->filter, s))
+		if (l->filter && packet_filter_match(l->filter, s) != FILTER_MATCH_YES)
 			continue;
 		if (l->process(l->object, p, s, stack_index) != POM_OK) {
 			pomlog(POMLOG_WARN "Warning packet listener failed");
@@ -461,7 +462,7 @@ int proto_cleanup() {
 	return POM_OK;
 }
 
-struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object, int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index), struct filter_node *f) {
+struct proto_packet_listener *proto_packet_listener_register(struct proto *proto, unsigned int flags, void *object, int (*process) (void *object, struct packet *p, struct proto_process_stack *s, unsigned int stack_index), struct filter *f) {
 
 	core_assert_is_paused();
 
@@ -518,7 +519,7 @@ int proto_packet_listener_unregister(struct proto_packet_listener *l) {
 	return POM_OK;
 }
 
-void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter_node *f) {
+void proto_packet_listener_set_filter(struct proto_packet_listener *l, struct filter *f) {
 
 	core_assert_is_paused();
 

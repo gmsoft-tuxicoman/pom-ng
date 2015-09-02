@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -46,6 +46,12 @@ struct packet_stream_parser {
 	char *pload;
 	size_t plen;
 	unsigned int flags;
+};
+
+struct packet_filter_prop {
+	struct proto *proto;
+	int field_id;
+	struct ptype_reg *pt_reg;
 };
 
 int packet_init();

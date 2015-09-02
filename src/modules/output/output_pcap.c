@@ -335,7 +335,20 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 static int output_pcap_filter_parse(void *priv, struct registry_param *param, char *value) {
 
 	struct output_pcap_file_priv *p = priv;
-	return filter_packet(value, &p->filter);
+	if (p->filter) {
+		filter_cleanup(p->filter);
+		p->filter = NULL;
+	}
+
+	if (!strlen(value))
+		return POM_OK;
+
+	p->filter = packet_filter_compile(value);
+
+	if (!p->filter)
+		return POM_ERR;
+
+	return POM_OK;
 }
 
 static int output_pcap_filter_update(void *priv, struct registry_param *param, struct ptype *value) {

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -215,7 +215,18 @@ static int output_inject_process(void *obj, struct packet *p, struct proto_proce
 static int output_inject_filter_parse(void *priv, struct registry_param *param, char *value) {
 
 	struct output_inject_priv *p = priv;
-	return filter_packet(value, &p->filter);
+	if (p->filter) {
+		filter_cleanup(p->filter);
+		p->filter = NULL;
+	}
+	if (!strlen(value))
+		return POM_OK;
+	p->filter = packet_filter_compile(value);
+
+	if (!p->filter)
+		return POM_ERR;
+
+	return POM_OK;
 }
 
 static int output_inject_filter_update(void *priv, struct registry_param *param, struct ptype *value) {

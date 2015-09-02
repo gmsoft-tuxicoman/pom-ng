@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -38,56 +38,42 @@
 // Remove this one when merge complete
 #define FILTER_OP_NOT	(PTYPE_OP_ALL + 3)
 
-#include <pom-ng/proto.h>
-#include <pom-ng/filter.h>
-#include "pload.h"
-#include "event.h"
-#include "core.h"
+#include <pom-ng/data.h>
 
-enum filter_evt_prop {
-	filter_evt_prop_time,
-	filter_evt_prop_name,
-	filter_evt_prop_source,
-};
+
+#include <pom-ng/ptype_bool.h>
+#include <pom-ng/ptype_uint8.h>
+#include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint32.h>
+#include <pom-ng/ptype_uint64.h>
+
 
 enum filter_value_type {
-	filter_value_type_none = 0,
-	filter_value_type_node,
-	filter_value_type_data,
-	filter_value_type_ptype,
+	filter_value_type_unknown,
+	filter_value_type_prop,
 	filter_value_type_string,
-	filter_value_type_integer,
-	filter_value_type_evt_prop,
-	filter_value_type_pload_data,
-	filter_value_type_pload_evt_data,
-	filter_value_type_proto,
+	filter_value_type_int,
+	filter_value_type_node,
+	filter_value_type_ptype,
 };
 
-struct filter_data_raw {
-	char *field_name;
-	char *key;
+struct filter_prop {
+	void *priv;
+	enum filter_value_type out_type;
+	struct ptype_reg *out_ptype;
 };
 
-struct filter_data {
-	unsigned int field_id;
-	char *key;
-	struct ptype_reg *pt_reg;
-};
-
-struct filter_packet {
-	struct proto *proto;
-	int field_id;
-	struct ptype_reg *pt_reg;
-};
-
-union filter_value {
-	struct filter_node *node;
-	struct filter_data data;
-	struct filter_data_raw data_raw;
-	struct filter_packet proto;
-	struct ptype *ptype;
+union filter_value_u {
+	struct filter_prop prop;
 	char *string;
 	uint64_t integer;
+	struct filter_node *node;
+	struct ptype *ptype;
+};
+
+struct filter_value {
+	enum filter_value_type type;
+	union filter_value_u val;
 };
 
 struct filter_node {
@@ -95,52 +81,35 @@ struct filter_node {
 	int op;
 	int not;
 
-	enum filter_value_type type[2];
-	union filter_value value[2];
+	struct filter_value value[2];
+};
 
+struct filter {
+
+	struct filter_node *n;
+	int (*prop_compile) (struct filter *f, char *prop_str, struct filter_value *v);
+	int (*prop_get_val) (struct filter_value *inval, struct filter_value *outval, void *obj);
+	void (*prop_cleanup) (void *prop);
+	void *priv;
 };
 
 
-// Raw filter structure used to parse strings
-struct filter_raw_data {
-	char *op;
-	char *value[2];
-};
-
-struct filter_raw_branch {
-
-	struct filter_raw_node *a;
-	struct filter_raw_node *b;
-	int op;
-
-};
-
-struct filter_raw_node {
-
-	int isbranch;
-	union {
-		struct filter_raw_data data;
-		struct filter_raw_branch branch;
-	};
-	int not;
-
-};
+struct filter *filter_alloc(int (*prop_compile) (struct filter *f, char *prop_str, struct filter_value *v), void *priv, int (*prop_get_val) (struct filter_value *inval, struct filter_value *outval, void *obj), void (*prop_cleanup) (void *(prop)));
 
 
-int filter_raw_parse(char *expr, unsigned int len, struct filter_raw_node **n);
-int filter_raw_parse_block(char *expr, unsigned int len, struct filter_raw_node **n);
-void filter_raw_cleanup(struct filter_raw_node *fr);
 
-int filter_data_compile(struct filter_data *d, struct data_reg *dr, char *value);
-int filter_data_raw_compile(struct filter_data_raw *d, char *value);
-int filter_op_compile(struct filter_node *n, struct filter_raw_node *fr);
+int filter_ptype_is_integer(struct ptype_reg *reg);
+int filter_ptype_is_string(struct ptype_reg *reg);
+uint64_t filter_ptype_int_get(struct ptype* pt);
+void filter_ptype_to_value(struct filter_value *v, struct ptype *pt);
 
-int filter_packet_compile(struct filter_node **filter, struct filter_raw_node *filter_raw);
-int filter_event_compile(struct filter_node **filter, struct event_reg *evt, struct filter_raw_node *filter_raw);
-int filter_pload_compile(struct filter_node **filter, struct filter_raw_node *filter_raw);
+int filter_parse_expr(struct filter *f, char *expr, unsigned int len, struct filter_node **n);
+
+int filter_compile(char *filter_expr, struct filter *f);
 
 int filter_node_data_match(struct filter_node *n, struct data *d);
 
+int filter_match(struct filter *n, void *obj);
 
 #endif
 

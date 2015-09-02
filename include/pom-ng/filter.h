@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -26,22 +26,7 @@
 #define FILTER_MATCH_YES	1
 
 
-// Avoid including external files
-struct event;
-struct event_reg;
-struct pload;
-struct proto_process_stack;
-
-struct filter_node;
-
-int filter_packet(char *filter_expr, struct filter_node **filter);
-int filter_event(char *filter_expr, struct event_reg *evt_reg, struct filter_node **filter);
-int filter_pload(char *filter_expr, struct filter_node **filter);
-
-int filter_packet_match(struct filter_node *n, struct proto_process_stack *stack);
-int filter_event_match(struct filter_node *n, struct event *evt);
-int filter_pload_match(struct filter_node *n, struct pload *p);
-
-void filter_cleanup(struct filter_node *n);
+struct filter;
+void filter_cleanup(struct filter *f);
 
 #endif

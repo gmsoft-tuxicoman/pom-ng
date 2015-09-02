@@ -1,6 +1,6 @@
 /*
  *  This tap is part of pom-ng.
- *  Copyright (C) 2012-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ struct output_tap_priv {
 	struct ptype *p_filter;
 	int fd;
 	struct proto_packet_listener *listener;
-	struct filter_node *filter;
+	struct filter *filter;
 
 	struct registry_perf *perf_pkts_out;
 	struct registry_perf *perf_bytes_out;

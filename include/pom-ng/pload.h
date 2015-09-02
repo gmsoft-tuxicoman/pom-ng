@@ -105,7 +105,7 @@ int pload_set_analyzer(char *pload_type, struct pload_analyzer *analyzer);
 struct data *pload_get_data(struct pload *p);
 struct data_reg *pload_get_data_reg(struct pload *p);
 
-int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv));
+int pload_listen_start(void *obj, char *pload_type, struct filter *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv));
 int pload_listen_stop(void *obj, char *pload_type);
 
 int pload_set_filename(struct pload *p, char *filename);
@@ -124,4 +124,6 @@ struct pload_store_map *pload_store_read_start(struct pload_store *ps);
 ssize_t pload_store_read(struct pload_store_map *map, void **buff, size_t count);
 void pload_store_read_end(struct pload_store_map *map);
 
+struct filter *pload_filter_compile(char *filter_expr);
+int pload_filter_match(struct filter *f, struct pload *p);
 #endif

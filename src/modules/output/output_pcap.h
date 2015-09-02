@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ struct output_pcap_file_priv {
 
 	pcap_dumper_t *pdump;
 	pcap_t *p;
-	struct filter_node *filter;
+	struct filter *filter;
 
 	struct proto_packet_listener *listener;
 
