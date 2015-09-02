@@ -149,8 +149,9 @@ int output_file_cleanup(void *output_priv) {
 			ptype_cleanup(priv->p_listen_pload_evt);
 		if (priv->p_path)
 			ptype_cleanup(priv->p_path);
+		if (priv->p_filter)
+			ptype_cleanup(priv->p_filter);
 		free(priv);
-
 	}
 
 	return POM_OK;
