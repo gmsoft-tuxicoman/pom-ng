@@ -41,7 +41,7 @@ struct pload_mime_type {
 struct pload_listener_reg {
 
 	void *obj;
-	struct filter_node *filter;
+	struct filter *filter;
 
 	int (*open) (void *obj, void **priv, struct pload *pload);
 	int (*write) (void *obj, void *priv, void *data, size_t len);
@@ -121,6 +121,20 @@ struct pload {
 	uint32_t refcount;
 	struct pload_store *store;
 	char *filename;
+};
+
+enum pload_filter_prop_type {
+	pload_filter_prop_pload_data,
+	pload_filter_prop_evt_data,
+	pload_filter_prop_evt_name,
+	pload_filter_prop_evt_source,
+};
+
+struct pload_filter_prop {
+	enum pload_filter_prop_type type;
+	char *field_name;
+	char *key;
+
 };
 
 int pload_init();

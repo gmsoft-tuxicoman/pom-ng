@@ -33,7 +33,7 @@
 			<item><template>hashcat_md5chap</template><event>eap_md5_auth</event><format>$response:$challenge:$identifier{%02X}</format><file>hashcat_md5chap_log</file></item>
 
 			<!-- hashcat_cram_md5 -->
-			<item><template>hashcat_cram_md5</template><event>smtp_auth</event><format>\$cram_md5\$$params[challenge]\$$params[response]</format><filter>data.type == CRAM-MD5</filter><file>hashcat_cram_md5_log</file></item>
+			<item><template>hashcat_cram_md5</template><event>smtp_auth</event><format>\$cram_md5\$$params[challenge]\$$params[response]</format><filter>data.type == "CRAM-MD5"</filter><file>hashcat_cram_md5_log</file></item>
 
 			<!-- dns_record -->
 			<item><template>dns_record</template><event>dns_record</event><format>$name $class $type -> $values[*]</format><file>dns_record_log</file></item>

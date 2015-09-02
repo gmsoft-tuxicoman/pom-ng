@@ -23,6 +23,7 @@
 #include "pload.h"
 #include "registry.h"
 #include "core.h"
+#include "filter.h"
 #include <pom-ng/resource.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint32.h>
@@ -933,7 +934,7 @@ int pload_append(struct pload *p, void *data, size_t len) {
 			
 			for (reg = listeners[i]; reg; reg = reg->next) {
 
-				if (reg->filter && filter_pload_match(reg->filter, p) != FILTER_MATCH_YES)
+				if (reg->filter && pload_filter_match(reg->filter, p) != FILTER_MATCH_YES)
 					continue;
 
 				void *pload_priv = NULL;
@@ -1088,7 +1089,7 @@ struct data_reg *pload_get_data_reg(struct pload *p) {
 	return p->type->analyzer->data_reg;
 }
 
-int pload_listen_start(void *obj, char *pload_type, struct filter_node *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv)) {
+int pload_listen_start(void *obj, char *pload_type, struct filter *filter, int (*open) (void *obj, void **priv, struct pload *pload), int (*write) (void *obj, void *priv, void *data, size_t len), int (*close) (void *obj, void *priv)) {
 
 	core_assert_is_paused();
 
@@ -1544,4 +1545,180 @@ void pload_store_read_end(struct pload_store_map *map) {
 	pom_mutex_unlock(&map->store->lock);
 
 	pload_store_map_cleanup(map);
+}
+
+int pload_filter_prop_compile(struct filter *f, char *prop_str, struct filter_value *v) {
+
+	struct pload_filter_prop *prop = malloc(sizeof(struct pload_filter_prop));
+	if (!prop) {
+		pom_oom(sizeof(struct pload_filter_prop));
+		return POM_ERR;
+	}
+	memset(prop, 0, sizeof(struct pload_filter_prop));
+	v->type = filter_value_type_prop;
+	v->val.prop.priv = prop;
+
+
+	if (!strncmp(prop_str, "data.", strlen("data."))) {
+		prop_str += strlen("data.");
+		v->type = filter_value_type_prop;
+		prop->type = pload_filter_prop_pload_data;
+
+
+	} else if (!strncmp(prop_str, "evt.", strlen("evt."))) {
+		prop_str += strlen("evt.");
+
+		if (!strncmp(prop_str, "data.", strlen("data."))) {
+			prop_str += strlen("data.");
+			prop->type = pload_filter_prop_evt_data;
+		} else if (!strcmp(prop_str, "name")) {
+			prop->type = pload_filter_prop_evt_name;
+			v->val.prop.out_type = filter_value_type_string;
+		} else if (!strcmp(prop_str, "source")) {
+			prop->type = pload_filter_prop_evt_source;
+			v->val.prop.out_type = filter_value_type_string;
+		} else {
+			pomlog(POMLOG_ERR "Invalid value for event filter");
+		}
+	} else {
+		pomlog(POMLOG_ERR "Unknown property %s", prop_str);
+		return POM_ERR;
+	}
+
+	if (prop->type == pload_filter_prop_pload_data || prop->type == pload_filter_prop_evt_data) {
+		char *key = strchr(prop_str, '[');
+
+		if (key) {
+			*key = 0;
+			key++;
+			char *key_end = strchr(key, ']');
+			if (!key_end) {
+				free(prop);
+				pomlog(POMLOG_ERR "Missing ] for data key in filter for item %s", prop_str);
+				return POM_ERR;
+			}
+			prop->key = strdup(key);
+			if (!prop->key) {
+				free(prop);
+				pom_oom(strlen(key) + 1);
+				return POM_ERR;
+			}
+		}
+
+		prop->field_name = strdup(prop_str);
+		if (!prop->field_name) {
+			if (prop->key)
+				free(prop->key);
+			free(prop);
+			pom_oom(strlen(prop_str) + 1);
+			return POM_ERR;
+		}
+	}
+
+	return POM_OK;
+}
+
+int pload_filter_prop_get_val(struct filter_value *inval, struct filter_value *outval, void *obj) {
+
+
+	struct pload *p = obj;
+	struct pload_filter_prop *prop = inval->val.prop.priv;
+	struct event *evt = p->rel_event;
+	struct event_reg_info *evt_info = event_reg_get_info(event_get_reg(evt));
+
+	if (prop->type == pload_filter_prop_evt_name) {
+		outval->type = filter_value_type_string;
+		outval->val.string = evt_info->name;
+		return POM_OK;
+	} else if (prop->type == pload_filter_prop_evt_source) {
+		outval->type = filter_value_type_string;
+		outval->val.string = evt_info->source_name;
+		return POM_OK;
+	}
+
+	// We're left with pload_filter_prop_pload_data and pload_filter_prop_evt_data
+
+	struct data *data = NULL;
+	struct data_reg *dr = NULL;
+
+	if (prop->type == pload_filter_prop_pload_data) {
+		data = pload_get_data(p);
+		dr = pload_get_data_reg(p);
+	} else if (prop->type == pload_filter_prop_evt_data) {
+		data = event_get_data(evt);
+
+		struct event_reg_info *info = event_get_info(evt);
+		dr = info->data_reg;
+	} else {
+		return POM_ERR;
+	}
+
+	if (!data || !dr)
+		return POM_OK;
+
+	int i;
+	for (i = 0; i < dr->data_count && strcmp(dr->items[i].name, prop->field_name); i++);
+
+	if (i >= dr->data_count)
+		return POM_OK;
+
+	struct ptype *value = NULL;
+
+	struct data_item_reg *itm_reg = &dr->items[i];
+	if (prop->key) {
+		if (!(itm_reg->flags & DATA_REG_FLAG_LIST))
+			// Specific item isn't a list
+			return POM_OK;
+
+		// Find the right entry
+		struct data_item *itm;
+		for (itm = data[i].items; itm && strcmp(itm->key, prop->key); itm = itm->next);
+		if (!itm)
+			return POM_OK;
+
+		value = itm->value;
+
+	} else if (itm_reg->flags & DATA_REG_FLAG_LIST) {
+		// Key not provided
+		return POM_OK;
+	} else {
+		value = data[i].value;
+	}
+
+	if (!value)
+		return POM_OK;
+
+	filter_ptype_to_value(outval, value);
+
+	return POM_OK;
+}
+
+void pload_filter_prop_cleanup(void *prop) {
+
+	struct pload_filter_prop *p = prop;
+	if (p->field_name)
+		free(p->field_name);
+	if (p->key)
+		free(p->key);
+
+	free(p);
+}
+
+
+struct filter *pload_filter_compile(char *filter_expr) {
+
+	struct filter *f = filter_alloc(pload_filter_prop_compile, NULL, pload_filter_prop_get_val, pload_filter_prop_cleanup);
+	if (!f)
+		return NULL;
+	if (filter_compile(filter_expr, f) != POM_OK) {
+		filter_cleanup(f);
+		return NULL;
+	}
+	return f;
+
+}
+
+int pload_filter_match(struct filter *f, struct pload *p) {
+
+	return filter_match(f, p);
 }

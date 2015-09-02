@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2010-2013 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2010-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <pom-ng/base.h>
 #include <pom-ng/timer.h>
 #include <pom-ng/conntrack.h>
+#include <pom-ng/filter.h>
 
 #define PACKET_FLAG_FORCE_NO_COPY	0x1
 
@@ -87,4 +88,8 @@ int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **p
 int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, size_t len);
 int packet_stream_parser_empty(struct packet_stream_parser *sp);
 int packet_stream_parser_cleanup(struct packet_stream_parser *sp);
+
+struct filter *packet_filter_compile(char *filter_expr);
+int packet_filter_match(struct filter *f, struct proto_process_stack *stack);
+
 #endif

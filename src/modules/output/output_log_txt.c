@@ -480,10 +480,11 @@ int output_log_txt_open(void *output_priv) {
 
 
 		// Parse the filter for this event if any
-		struct filter_node *filter = NULL;
+		struct filter *filter = NULL;
 		if (v[2].value) {
 			char *filter_str = PTYPE_STRING_GETVAL(v[2].value);
-			if (filter_event(filter_str, log_evt->evt, &filter) != POM_OK) {
+			filter = event_filter_compile(filter_str, log_evt->evt);
+			if (!filter) {
 				pomlog(POMLOG_ERR "Error while parsing filter \"%s\"", filter_str);
 				goto err;
 			}

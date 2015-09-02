@@ -20,8 +20,13 @@
 
 #include "common.h"
 #include "xmlrpcsrv.h"
-#include "filter.h"
 #include "httpd.h"
+#include "core.h"
+
+#include <pom-ng/event.h>
+#include <pom-ng/pload.h>
+#include <pom-ng/filter.h>
+#include <pom-ng/mime.h>
 
 #include "xmlrpccmd.h"
 #include "xmlrpccmd_monitor.h"
@@ -147,7 +152,7 @@ int xmlrpccmd_monitor_evt_process(struct event *evt, void *obj, unsigned int fla
 		if (!(listeners->flags & flags))
 			continue;
 			
-		if (listeners->filter && (filter_event_match(listeners->filter, evt) != FILTER_MATCH_YES))
+		if (listeners->filter && (event_filter_match(listeners->filter, evt) != FILTER_MATCH_YES))
 			continue;
 
 		lst->listeners_count++;
@@ -214,7 +219,7 @@ int xmlrpccmd_monitor_pload_open(void *obj, void **priv, struct pload *pload) {
 			if (!tmp->filter)
 				matched = 1;
 			else {
-				int res = filter_pload_match(tmp->filter, pload);
+				int res = pload_filter_match(tmp->filter, pload);
 				if (res == POM_ERR) {
 					pomlog(POMLOG_ERR "Error while matching filter");
 					continue;
@@ -534,13 +539,15 @@ xmlrpc_value *xmlrpccmd_monitor_pload_add_listener(xmlrpc_env * const envP, xmlr
 		return NULL;
 	}
 
-	struct filter_node *filter = NULL;
+	struct filter *filter = NULL;
+	if (strlen(filter_expr)) {
+		filter = pload_filter_compile(filter_expr);
 
-	// Attempt to parse the filter
-	if (filter_pload(filter_expr, &filter) != POM_OK) {
-		free(filter_expr);
-		xmlrpc_faultf(envP, "Error while parsing the filter");
-		return NULL;
+		if (!filter) {
+			free(filter_expr);
+			xmlrpc_faultf(envP, "Error while parsing the filter");
+			return NULL;
+		}
 	}
 
 	free(filter_expr);
@@ -692,15 +699,18 @@ xmlrpc_value *xmlrpccmd_monitor_event_add_listener(xmlrpc_env * const envP, xmlr
 		return NULL;
 	}
 
-	struct filter_node *filter = NULL;
+	struct filter *filter = NULL;
 	// Attempt to parse the filter
 	
-	if (filter_event(filter_expr, evt, &filter) != POM_OK) {
+	if (strlen(filter_expr)) {
+		filter = event_filter_compile(filter_expr, evt);
+		if (!filter) {
 
-		xmlrpc_faultf(envP, "Error while parsing the filter");
-		free(evt_name);
-		free(filter_expr);
-		return NULL;
+			xmlrpc_faultf(envP, "Error while parsing the filter");
+			free(evt_name);
+			free(filter_expr);
+			return NULL;
+		}
 	}
 
 

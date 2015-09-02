@@ -414,12 +414,15 @@ int analyzer_http_event_process_begin(struct event *evt, void *obj, struct proto
 				for (j = 0; value[j] && value[j] != ' '; j++)
 					if (value[j] >= 'A' && value[j] <= 'Z')
 						value[j] += 'a' - 'A';
-				char *basic = strstr(value, "basic");
-				if (!basic) { // Not basic authentication
+
+				while (*value == ' ')
+					value++;
+				if (strncmp(value, "basic", strlen("basic"))) {
+					// Not basic authentication
 					free(value_buff);
 					continue;
 				}
-				value = basic + strlen("basic ");
+				value += strlen("basic ");
 				while (*value == ' ')
 					value++;
 				while (value[strlen(value)] == ' ')

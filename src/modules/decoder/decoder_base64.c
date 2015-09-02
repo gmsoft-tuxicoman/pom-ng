@@ -134,6 +134,9 @@ int decoder_base64_decode(struct decoder *dec) {
 				value[i] = 63;
 			} else if (block[i] == '=') {
 				value[i] = 0;
+			} else {
+				pomlog(POMLOG_DEBUG "Invalid character in base64 string");
+				return DEC_ERR;
 			}
 		}
 		
@@ -178,7 +181,7 @@ int decoder_base64_decode(struct decoder *dec) {
 		dec->avail_in = 0;
 	}
 
-	if (res == DEC_END) {
+	if (res == DEC_END && dec->avail_in >= 4) {
 		dec->next_in += 4;
 		dec->avail_in -= 4;
 	}

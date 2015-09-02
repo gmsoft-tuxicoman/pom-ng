@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -64,7 +64,7 @@ struct analyzer_docsis_priv {
 	pthread_mutex_t lock;
 	struct analyzer_docsis_cm *cms[ANALYZER_DOCSIS_CM_TABLE_SIZE];
 
-	struct filter_node *filter;
+	struct filter *filter;
 };
 
 struct mod_reg_info *analyzer_docsis_reg_info();
