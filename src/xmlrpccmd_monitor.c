@@ -414,8 +414,11 @@ int xmlrpccmd_monitor_session_cleanup(struct xmlrpccmd_monitor_session *sess) {
 
 	}
 
-	if (sess->pload_events_listening)
+	if (sess->pload_events_listening) {
+		core_pause_processing();
 		event_payload_listen_stop();
+		core_resume_processing();
+	}
 
 	struct xmlrpccmd_monitor_httpd_pload *cur_pload, *tmp_pload;
 	HASH_ITER(hh, sess->httpd_ploads, cur_pload, tmp_pload) {
