@@ -380,6 +380,7 @@ struct pload *pload_alloc(struct event *rel_event, int flags) {
 
 	pload->rel_event = rel_event;
 	pload->flags = flags | PLOAD_FLAG_NEED_ANALYSIS;
+	pload->refcount = 1;
 
 	event_refcount_inc(rel_event);
 
@@ -426,27 +427,10 @@ int pload_end(struct pload *pload) {
 
 	if (pload->analyzer_priv && pload->type && pload->type->analyzer && pload->type->analyzer->cleanup)
 		pload->type->analyzer->cleanup(pload, pload->analyzer_priv);
-	
 
-	if (pload->refcount)
-		return POM_OK;
-
-	if (pload->store)
-		pload_store_release(pload->store);
-
-	if (pload->data)
-		data_cleanup_table(pload->data, pload->type->analyzer->data_reg);
-
-	if (pload->mime_type)
-		mime_type_cleanup(pload->mime_type);
-
-	event_refcount_dec(pload->rel_event);
-
-	free(pload);
-	
+	pload_refcount_dec(pload);
 
 	return POM_OK;
-
 }
 
 
@@ -460,8 +444,8 @@ void pload_refcount_dec(struct pload *pload) {
 	if (__sync_sub_and_fetch(&pload->refcount, 1))
 		return;
 
-	if (pload->store || pload->listeners || !(pload->flags & PLOAD_FLAG_OPENED))
-		return;
+	if (pload->store)
+		pload_store_release(pload->store);
 
 	if (pload->data)
 		data_cleanup_table(pload->data, pload->type->analyzer->data_reg);
@@ -475,7 +459,6 @@ void pload_refcount_dec(struct pload *pload) {
 	event_refcount_dec(pload->rel_event);
 
 	free(pload);
-
 }
 
 int pload_set_mime_type(struct pload *p, char *mime_type) {
@@ -1361,6 +1344,8 @@ void pload_store_end(struct pload_store *ps) {
 		abort();
 	}
 	pom_mutex_unlock(&ps->lock);
+
+	pload_store_release(ps);
 
 }
 
