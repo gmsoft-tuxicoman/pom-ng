@@ -306,7 +306,8 @@ static int output_pcap_file_process(void *obj, struct packet *p, struct proto_pr
 
 	struct pcap_pkthdr phdr = { { 0 } };
 
-	memcpy(&phdr.ts, &p->ts, sizeof(struct timeval));
+	phdr.ts.tv_sec = pom_ptime_sec(p->ts);
+	phdr.ts.tv_usec = pom_ptime_usec(p->ts);
 
 	struct proto_process_stack *stack = &s[stack_index];
 
@@ -639,7 +640,8 @@ static int output_pcap_flow_process(void *obj, struct packet *p, struct proto_pr
 
 	struct pcap_pkthdr phdr = { { 0 } };
 
-	memcpy(&phdr.ts, &p->ts, sizeof(struct timeval));
+	phdr.ts.tv_sec = pom_ptime_sec(p->ts);
+	phdr.ts.tv_usec = pom_ptime_usec(p->ts);
 
 	struct proto_process_stack *stack = &s[stack_index];
 
