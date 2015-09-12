@@ -538,14 +538,12 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 	}
 
+	if (!cpriv->common_data_fetched)
+		analyzer_smtp_event_fetch_common_data(cpriv, stack, stack_index, s->direction);
 
 	struct data *msg_data = event_get_data(cpriv->evt_msg);
 	
 	if (evt_reg == apriv->evt_cmd) {
-
-		if (!cpriv->common_data_fetched)
-			analyzer_smtp_event_fetch_common_data(cpriv, stack, stack_index, POM_DIR_REVERSE(s->direction));
-
 
 		// Process commands
 
@@ -832,8 +830,6 @@ static int analyzer_smtp_event_process_begin(struct event *evt, void *obj, struc
 
 	} else if (evt_reg == apriv->evt_reply) {
 
-		if (!cpriv->common_data_fetched)
-			analyzer_smtp_event_fetch_common_data(cpriv, stack, stack_index, s->direction);
 
 		// Process replies
 		uint16_t code = *PTYPE_UINT16_GETVAL(evt_data[proto_smtp_reply_code].value);
