@@ -18,7 +18,7 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_dtmf.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_rtp.la analyzer_sdp.la analyzer_sip.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_dtmf.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_imap.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_rtp.la analyzer_sdp.la analyzer_sip.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 DECODER_SRC = decoder_base64.la decoder_percent.la decoder_quoted_printable.la @DECODER_OBJS@
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
@@ -56,6 +56,9 @@ analyzer_jpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la @libexif_LIBS@
 analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
 analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_imap_la_SOURCES = analyzer/analyzer_imap.c analyzer/analyzer_imap.h
+analyzer_imap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_imap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_multipart_la_SOURCES = analyzer/analyzer_multipart.c analyzer/analyzer_multipart.h
 analyzer_multipart_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_multipart_la_LIBADD = $(top_builddir)/src/libpom-ng.la
