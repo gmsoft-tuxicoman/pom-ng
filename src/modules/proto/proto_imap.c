@@ -104,7 +104,7 @@ static int proto_imap_init(struct proto *proto, struct registry_instance *i) {
 	if (!priv->evt_cmd)
 		goto err;
 
-	// Register the imap_response event
+	// Register the imap_rsp event
 	static struct data_item_reg evt_rsp_data_items[PROTO_IMAP_EVT_CMD_DATA_COUNT] = { { 0 } };
 	evt_rsp_data_items[proto_imap_response_tag].name = "tag";
 	evt_rsp_data_items[proto_imap_response_tag].value_type = ptype_get_type("string");
@@ -112,9 +112,6 @@ static int proto_imap_init(struct proto *proto, struct registry_instance *i) {
 	evt_rsp_data_items[proto_imap_response_status].value_type = ptype_get_type("string");
 	evt_rsp_data_items[proto_imap_response_text].name = "text";
 	evt_rsp_data_items[proto_imap_response_text].value_type = ptype_get_type("string");
-	evt_rsp_data_items[proto_imap_response_lines].name = "lines";
-	evt_rsp_data_items[proto_imap_response_lines].value_type = ptype_get_type("string");
-	evt_rsp_data_items[proto_imap_response_lines].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_reg evt_rsp_data = {
 		.items = evt_rsp_data_items,
@@ -130,6 +127,29 @@ static int proto_imap_init(struct proto *proto, struct registry_instance *i) {
 
 	priv->evt_rsp = event_register(&proto_imap_evt_rsp);
 	if (!priv->evt_rsp)
+		goto err;
+
+	// Register the imap_pload event
+	static struct data_item_reg evt_pload_data_items[PROTO_IMAP_EVT_PLOAD_DATA_COUNT] = { { 0 } };
+	evt_pload_data_items[proto_imap_pload_content].name = "content";
+	evt_pload_data_items[proto_imap_pload_content].value_type = ptype_get_type("string");
+	evt_pload_data_items[proto_imap_pload_size].name = "size";
+	evt_pload_data_items[proto_imap_pload_size].value_type = ptype_get_type("uint64");
+
+	static struct data_reg evt_pload_data = {
+		.items = evt_pload_data_items,
+		.data_count = PROTO_IMAP_EVT_PLOAD_DATA_COUNT
+	};
+
+	static struct event_reg_info proto_imap_evt_pload = { 0 };
+	proto_imap_evt_pload.source_name = "proto_imap";
+	proto_imap_evt_pload.source_obj = proto;
+	proto_imap_evt_pload.name = "imap_pload";
+	proto_imap_evt_pload.description = "IMAP payload";
+	proto_imap_evt_pload.data_reg = &evt_pload_data;
+
+	priv->evt_pload = event_register(&proto_imap_evt_pload);
+	if (!priv->evt_pload)
 		goto err;
 
 	return POM_OK;
@@ -247,11 +267,10 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 		if (!len) // Probably a missed packet
 			return PROTO_OK;
 
-		if ((priv->flags & PROTO_IMAP_RSP_LINE_REMAINING) && (priv->server_direction == s->direction)) {
+		if (priv->rsp_evt && (priv->server_direction == s->direction)) {
 			// There was some leftover from the previous server line to parse
-			if (!priv->rsp_cur_line)
-				return PROTO_ERR;
-			char *old_line = PTYPE_STRING_GETVAL(priv->rsp_cur_line);
+			struct data *rsp_data = event_get_data(priv->rsp_evt);
+			char *old_line = PTYPE_STRING_GETVAL(rsp_data[proto_imap_response_text].value);
 			size_t old_len = strlen(old_line);
 			size_t new_len = old_len + len;
 			char *new_line = malloc(new_len + 1);
@@ -263,13 +282,13 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 			memcpy(new_line + old_len, line, len);
 			new_line[new_len] = 0;
 
-			PTYPE_STRING_SETVAL_P(priv->rsp_cur_line, new_line);
+			PTYPE_STRING_SETVAL_P(rsp_data[proto_imap_response_text].value, new_line);
 
 			if (new_line[new_len - 1] == '}') {
 				// We've got some more payload after this line
 				int i;
 				for (i = new_len - 2; i > 0; i--) {
-					if (new_line[i] <= '0' || new_line[i] >= '9')
+					if (new_line[i] < '0' || new_line[i] > '9')
 						break;
 				}
 
@@ -281,8 +300,10 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 
 
 			} else {
-				priv->flags &= ~PROTO_IMAP_RSP_LINE_REMAINING;
-				priv->rsp_cur_line = NULL;
+				if (event_process_end(priv->rsp_evt) != POM_OK)
+					return POM_ERR;
+
+				priv->rsp_evt = NULL;
 			}
 
 			continue;
@@ -346,99 +367,49 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				return PROTO_OK;
 			}
 
-			if (!priv->rsp_evt) {
-				priv->rsp_evt = event_alloc(ppriv->evt_rsp);
-				if (!priv->rsp_evt) {
-					free(tag);
-					free(cmd_or_status);
-					return PROTO_ERR;
-				}
-				
-
-			}
-			struct data *evt_data = event_get_data(priv->rsp_evt);
-			
-			if (*tag == '*') {
-
-				// It's a response multiline response
-				
-				// We don't care about the tag or status
+			struct event *rsp_evt = event_alloc(ppriv->evt_rsp);
+			if (!rsp_evt) {
 				free(tag);
 				free(cmd_or_status);
-				
-				char *key = malloc(strlen("65536"));
-				if (!key) {
-					pom_oom(strlen("65536"));
-					return PROTO_ERR;
-				}
-				sprintf(key, "%hu", priv->rsp_line_id);
-				priv->rsp_line_id++;
-
-				struct ptype *pt_line = ptype_alloc_from(evt_data[proto_imap_response_tag].value);
-				if (!pt_line) {
-					free(key);
-					return PROTO_ERR;
-				}
-
-				PTYPE_STRING_SETVAL_N(pt_line, line, len);
-				priv->rsp_cur_line = pt_line;
-
-				if (data_item_add_ptype(evt_data, proto_imap_response_lines, key, pt_line) != POM_OK) {
-					free(key);
-					ptype_cleanup(pt_line);
-					return PROTO_ERR;
-				}
-
-				if (!event_is_started(priv->rsp_evt)) {
-					if (event_process_begin(priv->rsp_evt, stack, stack_index, p->ts) != POM_OK)
-						return PROTO_ERR;
-				}
-
-				if (len > 3 && line[len - 1] == '}') {
-					// We've got some payload after this line
-					int i;
-					for (i = len - 2; i > 0;i --) {
-						if (line[i] <= '0' || line[i] >= '9')
-							break;
-					}
-
-					if (sscanf(line + i + 1, "%"SCNu64, &priv->data_bytes[s->direction]) != 1) {
-						pomlog(POMLOG_DEBUG "Invalid size for payload");
-						priv->flags |= PROTO_IMAP_FLAG_INVALID;
-						return PROTO_OK;
-					}
-
-					priv->flags |= PROTO_IMAP_RSP_LINE_REMAINING;
-
-					continue;
-
-				}
-			} else {
-				// It's the end of a multiline response or a single line response
-
-				PTYPE_STRING_SETVAL_P(evt_data[proto_imap_response_tag].value, tag);
-				data_set(evt_data[proto_imap_response_tag]);
-				PTYPE_STRING_SETVAL_P(evt_data[proto_imap_response_status].value, cmd_or_status);
-				data_set(evt_data[proto_imap_response_status]);
-
-
-				if (sp) {
-					PTYPE_STRING_SETVAL_N(evt_data[proto_imap_response_text].value, sp + 1, len - tok_len - 1);
-					data_set(evt_data[proto_imap_response_text]);
-				}
-				if (!event_is_started(priv->rsp_evt)) {
-					if (event_process(priv->rsp_evt, stack, stack_index, p->ts) != POM_OK)
-						return PROTO_ERR;
-				} else {
-					if (event_process_end(priv->rsp_evt) != POM_OK)
-						return PROTO_ERR;
-				}
-
-				priv->rsp_evt = NULL;
-				priv->rsp_line_id = 0;
-				priv->rsp_cur_line = NULL;
-			
+				return PROTO_ERR;
 			}
+			struct data *evt_data = event_get_data(rsp_evt);
+			
+			PTYPE_STRING_SETVAL_P(evt_data[proto_imap_response_tag].value, tag);
+			data_set(evt_data[proto_imap_response_tag]);
+			PTYPE_STRING_SETVAL_P(evt_data[proto_imap_response_status].value, cmd_or_status);
+			data_set(evt_data[proto_imap_response_status]);
+
+			if (sp) {
+				PTYPE_STRING_SETVAL_N(evt_data[proto_imap_response_text].value, sp + 1, len - tok_len - 1);
+				data_set(evt_data[proto_imap_response_text]);
+			}
+
+			if (len > 3 && line[len - 1] == '}') {
+				// We've got some payload after this line
+				int i;
+				for (i = len - 2; i > 0;i --) {
+					if (line[i] < '0' || line[i] > '9')
+						break;
+				}
+
+				if (sscanf(line + i + 1, "%"SCNu64, &priv->data_bytes[s->direction]) != 1) {
+					pomlog(POMLOG_DEBUG "Invalid size for payload");
+					event_cleanup(rsp_evt);
+					return PROTO_OK;
+				}
+
+				if (event_process_begin(rsp_evt, stack, stack_index, p->ts) != POM_OK) {
+					event_cleanup(rsp_evt);
+					return PROTO_ERR;
+				}
+				priv->rsp_evt = rsp_evt;
+
+			} else {
+				if (event_process(rsp_evt, stack, stack_index, p->ts) != POM_OK)
+					return PROTO_ERR;
+			}
+
 		} else {
 			if (!event_has_listener(ppriv->evt_cmd)) {
 				free(tag);

@@ -29,13 +29,19 @@ enum {
 	proto_imap_cmd_arg,
 };
 
-#define PROTO_IMAP_EVT_RESPONSE_DATA_COUNT 4
+#define PROTO_IMAP_EVT_RESPONSE_DATA_COUNT 3
 
 enum {
 	proto_imap_response_tag,
 	proto_imap_response_status,
 	proto_imap_response_text,
-	proto_imap_response_lines,
+};
+
+#define PROTO_IMAP_EVT_PLOAD_DATA_COUNT 2
+
+enum {
+	proto_imap_pload_content,
+	proto_imap_pload_size,
 };
 
 #endif

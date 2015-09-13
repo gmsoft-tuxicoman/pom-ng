@@ -28,13 +28,13 @@
 
 // Either if it's invalid or encrypted
 #define PROTO_IMAP_FLAG_INVALID			0x1
-#define PROTO_IMAP_RSP_LINE_REMAINING		0x2
-#define PROTO_IMAP_FLAG_STARTTLS		0x4
+#define PROTO_IMAP_FLAG_STARTTLS		0x2
 
 struct proto_imap_priv {
 
 	struct event_reg *evt_cmd;
 	struct event_reg *evt_rsp;
+	struct event_reg *evt_pload;
 };
 
 struct proto_imap_conntrack_priv {
@@ -43,9 +43,7 @@ struct proto_imap_conntrack_priv {
 	int server_direction;
 	struct event *data_evt, *rsp_evt;
 	uint64_t data_bytes[POM_DIR_TOT];
-	struct ptype *rsp_cur_line;
 	uint32_t flags;
-	uint16_t rsp_line_id;
 };
 
 struct mod_reg_info* proto_imap_reg_info();
