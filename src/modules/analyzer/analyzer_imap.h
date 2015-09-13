@@ -71,14 +71,29 @@ struct analyzer_imap_ce_priv {
 	struct ptype *client_addr, *server_addr;
 	int common_data_fetched;
 	uint16_t server_port;
+
+	struct analyzer_imap_cmd_entry *cmd_queue_head, *cmd_queue_tail;
 };
 
-struct imap_cmd {
+enum analyzer_imap_cmd {
+	analyzer_imap_cmd_unk = 0,
+	analyzer_imap_cmd_login,
+};
+
+enum analyzer_imap_rsp_status {
+	analyzer_imap_rsp_status_unk = 0,
+	analyzer_imap_rsp_status_ok,
+	analyzer_imap_rsp_status_no,
+	analyzer_imap_rsp_status_bad,
+	analyzer_imap_rsp_status_bye,
+};
+
+struct analyzer_imap_cmd_entry {
 
 	char *tag;
-	char *cmd;
-	struct event *evt;
-	struct imap_cmd *next;
+	enum analyzer_imap_cmd cmd;
+	struct event *cmd_evt, *out_evt;
+	struct analyzer_imap_cmd_entry *prev, *next;
 
 };
 

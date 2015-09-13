@@ -430,6 +430,32 @@ static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *c
 	return POM_OK;
 }
 
+static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum analyzer_imap_cmd cmd_type, struct event *cmd_evt, struct event *out_evt) {
+
+	struct data *evt_data = event_get_data(cmd_evt);
+
+	struct analyzer_imap_cmd_entry *cmd = malloc(sizeof(struct analyzer_imap_cmd_entry));
+	if (!cmd) {
+		pom_oom(sizeof(struct analyzer_imap_cmd_entry));
+		return POM_ERR;
+	}
+	memset(cmd, 0, sizeof(struct analyzer_imap_cmd_entry));
+
+	cmd->tag = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_tag].value);
+	cmd->cmd = cmd_type;
+	cmd->cmd_evt = cmd_evt;
+	cmd->out_evt = out_evt;
+	event_refcount_inc(cmd_evt);
+
+	cmd->prev = cpriv->cmd_queue_tail;
+	if (cmd->prev)
+		cmd->prev->next = cmd;
+	else
+		cpriv->cmd_queue_head = cmd;
+
+	return POM_OK;
+}
+
 static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct analyzer *analyzer = obj;
@@ -501,7 +527,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			}
 
 			struct data *auth_data = event_get_data(evt_auth);
-			
+
 			PTYPE_STRING_SETVAL(auth_data[analyzer_imap_auth_type].value, "LOGIN");
 			data_set(auth_data[analyzer_imap_auth_type]);
 
@@ -517,12 +543,83 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 				event_cleanup(evt_auth);
 				return POM_ERR;
 			}
-			if (event_process(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
+			if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_login, evt, evt_auth) != POM_OK) {
+				event_cleanup(evt_auth);
 				return POM_ERR;
+			}
+
+			if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
+				return POM_ERR;
+
 		}
 
 	} else if (evt_reg == apriv->evt_rsp) {
 
+		char *tag = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_tag].value);
+
+		if (strcmp(tag, "*") && strcmp(tag, "+")) {
+			// Check if it this is the completion of a command only if it's a tagged result
+			struct analyzer_imap_cmd_entry *cmd;
+			for (cmd = cpriv->cmd_queue_head; cmd && strcmp(cmd->tag, tag); cmd = cmd->next);
+
+			if (!cmd)
+				return POM_OK;
+
+			enum analyzer_imap_rsp_status status = analyzer_imap_rsp_status_unk;
+			char *status_str = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
+			if (!strcasecmp(status_str, "OK")) {
+				status = analyzer_imap_rsp_status_ok;
+			} else if (!strcasecmp(status_str, "NO")) {
+				status = analyzer_imap_rsp_status_no;
+			} else if (!strcasecmp(status_str, "BAD")) {
+				status = analyzer_imap_rsp_status_bad;
+			} else if (!strcasecmp(status_str, "BYE")) {
+				status = analyzer_imap_rsp_status_bye;
+			}
+
+
+			// We've got a match
+
+			if (cmd->prev)
+				cmd->prev->next = cmd->next;
+			else
+				cpriv->cmd_queue_head = cmd->next;
+
+			if (cmd->next)
+				cmd->next->prev = cmd->prev;
+			else
+				cpriv->cmd_queue_tail = cmd->prev;
+
+			event_refcount_dec(cmd->cmd_evt);
+
+			struct event *out_evt = cmd->out_evt;
+
+			enum analyzer_imap_cmd cmd_type = cmd->cmd;
+
+			free(cmd);
+
+			struct data *out_data = event_get_data(out_evt);
+
+			switch (cmd_type) {
+				case analyzer_imap_cmd_unk:
+					pomlog(POMLOG_ERR "Unknown CMD found in queue list");
+					if (out_evt)
+						event_process_end(out_evt);
+					return POM_ERR;
+				case analyzer_imap_cmd_login:
+					if (status == analyzer_imap_rsp_status_ok) {
+						PTYPE_BOOL_SETVAL(out_data[analyzer_imap_auth_success].value, 1);
+						data_set(out_data[analyzer_imap_auth_success]);
+					} else if (status == analyzer_imap_rsp_status_no) {
+						PTYPE_BOOL_SETVAL(out_data[analyzer_imap_auth_success].value, 0);
+						data_set(out_data[analyzer_imap_auth_success]);
+					}
+					break;
+			}
+
+			if (event_process_end(out_evt) != POM_OK)
+				return POM_ERR;
+		}
 
 	}
 
@@ -531,32 +628,6 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 }
 
 static int analyzer_imap_event_process_end(struct event *evt, void *obj) {
-
-	struct analyzer *analyzer = obj;
-	struct event_reg *evt_reg = event_get_reg(evt);
-	struct analyzer_imap_priv *apriv = analyzer->priv;
-
-	if (evt_reg != apriv->evt_cmd)
-		return POM_OK;
-
-	// Check if the DATA event ended
-	struct data *evt_data = event_get_data(evt);
-	char *cmd = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_name].value);
-	if (!cmd)
-		return POM_OK;
-	
-	if (!strcasecmp(cmd, "DATA"))
-		return POM_OK;
-	
-	struct analyzer_imap_ce_priv *cpriv = conntrack_get_priv(event_get_conntrack(evt), analyzer);
-
-	if (!cpriv)
-		return POM_ERR;
-
-	if (event_is_started(cpriv->evt_msg)) {
-		event_process_end(cpriv->evt_msg);
-		cpriv->evt_msg = NULL;
-	}
 
 	return POM_OK;
 }
@@ -585,6 +656,15 @@ static int analyzer_imap_ce_priv_cleanup(void *obj, void *priv) {
 		ptype_cleanup(cpriv->client_addr);
 	if (cpriv->server_addr)
 		ptype_cleanup(cpriv->server_addr);
+
+
+	while (cpriv->cmd_queue_head) {
+		struct analyzer_imap_cmd_entry *cmd = cpriv->cmd_queue_head;
+		cpriv->cmd_queue_head = cmd->next;
+		event_refcount_dec(cmd->cmd_evt);
+		event_process_end(cmd->out_evt);
+		free(cmd);
+	}
 
 	free(cpriv);
 
