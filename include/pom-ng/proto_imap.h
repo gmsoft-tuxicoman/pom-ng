@@ -40,7 +40,7 @@ enum {
 #define PROTO_IMAP_EVT_PLOAD_DATA_COUNT 2
 
 enum {
-	proto_imap_pload_content,
+	proto_imap_pload_cmd,
 	proto_imap_pload_size,
 };
 

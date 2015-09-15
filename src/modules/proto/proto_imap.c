@@ -25,6 +25,7 @@
 
 #include "proto_imap.h"
 #include <pom-ng/ptype_string.h>
+#include <pom-ng/ptype_uint64.h>
 
 #include <string.h>
 #include <stdio.h>
@@ -36,7 +37,7 @@ struct mod_reg_info* proto_imap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = proto_imap_mod_register;
 	reg_info.unregister_func = proto_imap_mod_unregister;
-	reg_info.dependencies = "ptype_string";
+	reg_info.dependencies = "ptype_string, ptype_uint64";
 
 	return &reg_info;
 }
@@ -131,8 +132,8 @@ static int proto_imap_init(struct proto *proto, struct registry_instance *i) {
 
 	// Register the imap_pload event
 	static struct data_item_reg evt_pload_data_items[PROTO_IMAP_EVT_PLOAD_DATA_COUNT] = { { 0 } };
-	evt_pload_data_items[proto_imap_pload_content].name = "content";
-	evt_pload_data_items[proto_imap_pload_content].value_type = ptype_get_type("string");
+	evt_pload_data_items[proto_imap_pload_cmd].name = "cmd";
+	evt_pload_data_items[proto_imap_pload_cmd].value_type = ptype_get_type("string");
 	evt_pload_data_items[proto_imap_pload_size].name = "size";
 	evt_pload_data_items[proto_imap_pload_size].value_type = ptype_get_type("uint64");
 
@@ -253,6 +254,15 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 					return PROTO_ERR;
 				}
 				priv->data_bytes[s->direction] = 0;
+
+				if (!priv->pload_evt[s->direction]) {
+					pomlog(POMLOG_ERR "Could not find the pload event");
+					return PROTO_ERR;
+				}
+
+				if (event_process_end(priv->pload_evt[s->direction]) != POM_OK)
+					return PROTO_ERR;
+				priv->pload_evt[s->direction] = NULL;
 			}
 		}
 
@@ -298,10 +308,41 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 					return PROTO_OK;
 				}
 
+				// Send a new pload event for this pload
+				struct event *pload_evt = event_alloc(ppriv->evt_pload);
+				if (!pload_evt)
+					return PROTO_ERR;
+				char *status = PTYPE_STRING_GETVAL(rsp_data[proto_imap_response_status].value);
+				size_t status_len = strlen(status);
+				size_t complete_len = status_len + 1 + new_len;
+				char *complete_line = malloc(complete_len + 1);
+				if (!complete_line) {
+					pom_oom(complete_len + 1);
+					event_cleanup(pload_evt);
+					return PROTO_ERR;
+				}
+				memcpy(complete_line, status, status_len);
+				complete_line[status_len] = ' ';
+				memcpy(complete_line + status_len + 1, new_line, new_len);
+				complete_line[complete_len] = 0;
+
+
+				struct data *pload_data = event_get_data(pload_evt);
+				PTYPE_STRING_SETVAL_P(pload_data[proto_imap_pload_cmd].value, complete_line);
+				data_set(pload_data[proto_imap_pload_cmd]);
+				PTYPE_UINT64_SETVAL(pload_data[proto_imap_pload_size].value, priv->data_bytes[s->direction]);
+				data_set(pload_data[proto_imap_pload_size]);
+
+				if (event_process_begin(pload_evt, stack, stack_index, p->ts) != POM_OK) {
+					event_cleanup(pload_evt);
+					return PROTO_ERR;
+				}
+				priv->pload_evt[s->direction] = pload_evt;
+
 
 			} else {
 				if (event_process_end(priv->rsp_evt) != POM_OK)
-					return POM_ERR;
+					return PROTO_ERR;
 
 				priv->rsp_evt = NULL;
 			}
@@ -399,11 +440,30 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 					return PROTO_OK;
 				}
 
-				if (event_process_begin(rsp_evt, stack, stack_index, p->ts) != POM_OK) {
+				struct event *pload_evt = event_alloc(ppriv->evt_pload);
+				if (!pload_evt) {
 					event_cleanup(rsp_evt);
 					return PROTO_ERR;
 				}
+
+				if (event_process_begin(rsp_evt, stack, stack_index, p->ts) != POM_OK) {
+					event_cleanup(rsp_evt);
+					event_cleanup(pload_evt);
+					return PROTO_ERR;
+				}
 				priv->rsp_evt = rsp_evt;
+
+				struct data *pload_data = event_get_data(pload_evt);
+				PTYPE_STRING_SETVAL_N(pload_data[proto_imap_pload_cmd].value, line, len);
+				data_set(pload_data[proto_imap_pload_cmd]);
+				PTYPE_UINT64_SETVAL(pload_data[proto_imap_pload_size].value, priv->data_bytes[s->direction]);
+				data_set(pload_data[proto_imap_pload_size]);
+
+				if (event_process_begin(pload_evt, stack, stack_index, p->ts) != POM_OK) {
+					event_cleanup(pload_evt);
+					return PROTO_ERR;
+				}
+				priv->pload_evt[s->direction] = pload_evt;
 
 			} else {
 				if (event_process(rsp_evt, stack, stack_index, p->ts) != POM_OK)
