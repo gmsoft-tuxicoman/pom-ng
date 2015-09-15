@@ -22,6 +22,7 @@
 #include <pom-ng/ptype_bool.h>
 #include <pom-ng/ptype_string.h>
 #include <pom-ng/ptype_uint16.h>
+#include <pom-ng/ptype_uint64.h>
 #include <pom-ng/proto_imap.h>
 #include <pom-ng/decoder.h>
 #include <pom-ng/dns.h>
@@ -33,7 +34,7 @@ struct mod_reg_info *analyzer_imap_reg_info() {
 	reg_info.api_ver = MOD_API_VER;
 	reg_info.register_func = analyzer_imap_mod_register;
 	reg_info.unregister_func = analyzer_imap_mod_unregister;
-	reg_info.dependencies = "proto_imap, ptype_bool, ptype_string, ptype_uint16";
+	reg_info.dependencies = "proto_imap, ptype_bool, ptype_string, ptype_uint16, ptype_uint64";
 
 	return &reg_info;
 }
@@ -67,7 +68,8 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 
 	priv->evt_cmd = event_find("imap_cmd");
 	priv->evt_rsp = event_find("imap_rsp");
-	if (!priv->evt_cmd || !priv->evt_rsp)
+	priv->evt_pload = event_find("imap_pload");
+	if (!priv->evt_cmd || !priv->evt_rsp || !priv->evt_pload)
 		goto err;
 
 	static struct data_item_reg evt_msg_data_items[ANALYZER_IMAP_EVT_MSG_DATA_COUNT] = { { 0 } };
@@ -82,12 +84,10 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 	evt_msg_data_items[analyzer_imap_common_server_host].value_type = ptype_get_type("string");
 
 
-	evt_msg_data_items[analyzer_imap_msg_from].name = "from";
-	evt_msg_data_items[analyzer_imap_msg_from].value_type = ptype_get_type("string");
-	evt_msg_data_items[analyzer_imap_msg_to].name = "to";
-	evt_msg_data_items[analyzer_imap_msg_to].flags = DATA_REG_FLAG_LIST;
-	evt_msg_data_items[analyzer_imap_msg_result].name = "result";
-	evt_msg_data_items[analyzer_imap_msg_result].value_type = ptype_get_type("uint16");
+	evt_msg_data_items[analyzer_imap_msg_mailbox].name = "mailbox";
+	evt_msg_data_items[analyzer_imap_msg_mailbox].value_type = ptype_get_type("string");
+	evt_msg_data_items[analyzer_imap_msg_uid].name = "uid";
+	evt_msg_data_items[analyzer_imap_msg_uid].value_type = ptype_get_type("uint64");
 
 	static struct data_reg evt_msg_data = {
 		.items = evt_msg_data_items,
@@ -182,12 +182,17 @@ static int analyzer_imap_event_listeners_notify(void *obj, struct event_reg *evt
 
 	if (evt_reg == priv->evt_msg) {
 		if (has_listeners) {
-			priv->pkt_listener = proto_packet_listener_register(proto_get("imap"), PROTO_PACKET_LISTENER_PLOAD_ONLY, obj, analyzer_imap_pkt_process, NULL);
+			priv->pkt_listener = proto_packet_listener_register(proto_get("imap"), PROTO_PACKET_LISTENER_PLOAD_ONLY, analyzer, analyzer_imap_pkt_process, NULL);
 			if (!priv->pkt_listener)
 				return POM_ERR;
-		} else {
-			if (proto_packet_listener_unregister(priv->pkt_listener) != POM_OK)
+			if (event_listener_register(priv->evt_pload, analyzer, analyzer_imap_pload_event_process_begin, analyzer_imap_pload_event_process_end, NULL) != POM_OK) {
+				proto_packet_listener_unregister(priv->pkt_listener);
+				priv->pkt_listener = NULL;
 				return POM_ERR;
+			}
+		} else {
+			event_listener_unregister(priv->evt_pload, analyzer);
+			proto_packet_listener_unregister(priv->pkt_listener);
 			priv->pkt_listener = NULL;
 		}
 	}
@@ -453,6 +458,14 @@ static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum ana
 	else
 		cpriv->cmd_queue_head = cmd;
 
+	return POM_OK;
+}
+
+static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
+	return POM_OK;
+}
+
+static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
 	return POM_OK;
 }
 

@@ -26,12 +26,8 @@
 
 
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
-#define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
+#define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
 #define ANALYZER_IMAP_EVT_AUTH_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
-
-#define ANALYZER_IMAP_DOTDOT		"\r\n.."
-#define ANALYZER_IMAP_DOTDOT_LEN	4
-
 
 #define ANALYZER_IMAP_FLAGS_LISTENING	0x1
 #define ANALYZER_IMAP_FLAGS_COMMON_DATA	0x2
@@ -47,9 +43,8 @@ enum {
 };
 
 enum {
-	analyzer_imap_msg_from = analyzer_imap_common_end,
-	analyzer_imap_msg_to,
-	analyzer_imap_msg_result,
+	analyzer_imap_msg_mailbox = analyzer_imap_common_end,
+	analyzer_imap_msg_uid,
 };
 
 enum {
@@ -59,7 +54,7 @@ enum {
 };
 
 struct analyzer_imap_priv {
-	struct event_reg *evt_cmd, *evt_rsp;
+	struct event_reg *evt_cmd, *evt_rsp, *evt_pload;
 	struct event_reg *evt_msg, *evt_auth;
 	struct proto_packet_listener *pkt_listener;
 	int listening;
@@ -105,6 +100,8 @@ static int analyzer_imap_cleanup(struct analyzer *analyzer);
 
 static int analyzer_imap_event_listeners_notify(void *obj, struct event_reg *evt_reg, int has_listeners);
 static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
+static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj);
 static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index);
 static int analyzer_imap_event_process_end(struct event *evt, void *obj);
 static int analyzer_imap_ce_priv_cleanup(void *obj, void *priv);
