@@ -19,3 +19,4 @@ stamp-h1
 src/pom-ng
 **/**/.libs/*
 **/.libs/*
+.dirstamp
