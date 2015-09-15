@@ -518,12 +518,6 @@ static int proto_imap_conntrack_cleanup(void *ce_priv) {
 	if (!priv)
 		return POM_OK;
 
-	if (priv->parser[POM_DIR_FWD])
-		packet_stream_parser_cleanup(priv->parser[POM_DIR_FWD]);
-
-	if (priv->parser[POM_DIR_REV])
-		packet_stream_parser_cleanup(priv->parser[POM_DIR_REV]);
-
 	if (priv->data_evt) {
 		if (event_is_started(priv->data_evt))
 			event_process_end(priv->data_evt);
@@ -536,8 +530,18 @@ static int proto_imap_conntrack_cleanup(void *ce_priv) {
 			event_process_end(priv->rsp_evt);
 		else
 			event_cleanup(priv->rsp_evt);
+
+	int i;
+	for (i = 0; i < POM_DIR_TOT; i++) {
+		if (priv->parser[i])
+			packet_stream_parser_cleanup(priv->parser[i]);
+		if (priv->pload_evt[i]) {
+			if (event_is_started(priv->pload_evt[i]))
+				event_process_end(priv->pload_evt[i]);
+			else
+				event_cleanup(priv->pload_evt[i]);
+		}
 	}
-		
 
 	free(priv);
 
