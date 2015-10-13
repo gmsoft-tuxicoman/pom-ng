@@ -409,11 +409,7 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	// 4) close function
 	// 5) filter if any
 
-	// Push nill if additional functions are missing
-	while (lua_gettop(L) < 4)
-		lua_pushnil(L);
-
-	// Stack : instance, read_func, write_func, close_func
+	// Stack : instance, read_func, write_func, close_func, filter
 
 	// Get the output
 	struct addon_instance_priv *p = addon_output_get_priv(L, 1);
@@ -443,19 +439,19 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	lua_pushliteral(L, "__pload_listener");
 	lua_newtable(L);
 
-	if (!lua_isnil(L, 2)) {
+	if (!lua_isnoneornil(L, 2)) {
 		lua_pushliteral(L, "open");
 		lua_pushvalue(L, 2);
 		lua_settable(L, -3);
 	}
 
-	if (!lua_isnil(L, 3)) {
+	if (!lua_isnoneornil(L, 3)) {
 		lua_pushliteral(L, "write");
 		lua_pushvalue(L, 3);
 		lua_settable(L, -3);
 	}
 
-	if (!lua_isnil(L, 4)) {
+	if (!lua_isnoneornil(L, 4)) {
 		lua_pushliteral(L, "close");
 		lua_pushvalue(L, 4);
 		lua_settable(L, -3);
