@@ -410,7 +410,7 @@ static int addon_output_pload_listen_start(lua_State *L) {
 	// 5) filter if any
 
 	// Push nill if additional functions are missing
-	while (lua_gettop(L) < 4)
+	while (lua_gettop(L) < 5)
 		lua_pushnil(L);
 
 	// Stack : instance, read_func, write_func, close_func
