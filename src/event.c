@@ -623,7 +623,7 @@ int event_filter_prop_compile(struct filter *f, char *prop_str, struct filter_va
 		}
 
 		int i;
-		for (i = 0; strcmp(dr->items[i].name, prop_str) && i < dr->data_count; i ++);
+		for (i = 0;i < dr->data_count && strcmp(dr->items[i].name, prop_str); i ++);
 
 		if (i >= dr->data_count) {
 			pomlog(POMLOG_ERR "Data item %s not found", prop_str);

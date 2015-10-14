@@ -351,7 +351,7 @@ int filter_parse_expr_block(struct filter *f, char *expr, unsigned int len, stru
 	len -= data_len;
 
 	expr = end;
-	while (*expr == ' ' && len >= 1) {
+	while (len >= 1 && *expr == ' ') {
 		expr++;
 		len--;
 	}
@@ -373,7 +373,7 @@ int filter_parse_expr_block(struct filter *f, char *expr, unsigned int len, stru
 	expr = end;
 	len -= data_len;
 
-	while (*expr == ' ' && len >= 1) {
+	while (len >= 1 && *expr == ' ') {
 		expr++;
 		len--;
 	}
