@@ -225,21 +225,26 @@ void addon_lua_register(lua_State *L) {
 
 	// Register the POMLOG_* variables
 	lua_pushinteger(L, 1);
-	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_ERR");
+	lua_setglobal(L, "POMLOG_ERR");
+	//lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_ERR");
 
 	lua_pushinteger(L, 2);
-	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_WARN");
+	lua_setglobal(L, "POMLOG_WARN");
+	//lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_WARN");
 
 	lua_pushinteger(L, 3);
-	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_INFO");
+	lua_setglobal(L, "POMLOG_INFO");
+	//lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_INFO");
 
 	lua_pushinteger(L, 4);
-	lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_DEBUG");
+	lua_setglobal(L, "POMLOG_DEBUG");
+	//lua_setfield(L, LUA_GLOBALSINDEX, "POMLOG_DEBUG");
 
 	// Replace print() by our logging function
 	
 	lua_pushcfunction(L, addon_log);
-	lua_setfield(L, LUA_GLOBALSINDEX, "print");
+	lua_setglobal(L, "print");
+	//lua_setfield(L, LUA_GLOBALSINDEX, "print");
 
 	struct luaL_Reg dns_l[] = {
 		{ "forward_lookup", addon_dns_forward_lookup },
