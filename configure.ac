@@ -368,6 +368,10 @@ fi
 PKG_CHECK_MODULES(lua, [lua5.1], [has_lua=yes], [has_lua=no])
 if test "x$has_lua" = "xno"
 then
+	PKG_CHECK_MODULES(lua, [lua5.2], [has_lua=yes], [has_lua=no])
+fi
+if test "x$has_lua" = "xno"
+then
 	PKG_CHECK_MODULES(lua, [lua], [], AC_MSG_ERROR([lua is required to build this program])])
 fi
 AC_SUBST(lua_LIBS)
