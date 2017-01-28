@@ -1124,7 +1124,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 		if (res == ETIMEDOUT) {
 			pom_mutex_unlock(&sess->lock);
 			timer_sys_queue(sess->timer, sess->timeout);
-			return xmlrpc_array_new(envP);
+			return xmlrpc_struct_new(envP);
 		} else if (res) {
 			pomlog(POMLOG_ERR "Error while waiting for session condition : %s", pom_strerror(errno));
 			abort();
@@ -1133,7 +1133,7 @@ xmlrpc_value *xmlrpccmd_monitor_poll(xmlrpc_env * const envP, xmlrpc_value * con
 		if (sess->id == -1) {
 			// The session has been removed while polling
 			pom_mutex_unlock(&sess->lock);
-			return xmlrpc_array_new(envP);
+			return xmlrpc_struct_new(envP);
 		}
 		
 	}
