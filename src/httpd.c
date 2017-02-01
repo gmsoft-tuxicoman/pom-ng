@@ -128,7 +128,7 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 	char *str, *token, *saveptr = NULL;
 	for (str = addr_tmp; ; str = NULL) {
-		token = strtok_r(str, "; ", &saveptr);
+		token = strtok_r(str, ",; ", &saveptr);
 		if (!token)
 			break;
 

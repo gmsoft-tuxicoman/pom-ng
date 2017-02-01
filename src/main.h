@@ -22,7 +22,7 @@
 #ifndef __MAIN_H__
 #define __MAIN_H__
 
-#define POMNG_HTTPD_ADDRESSES	"0.0.0.0;::"
+#define POMNG_HTTPD_ADDRESSES	"0.0.0.0,::"
 #define POMNG_HTTPD_PORT	8080
 #define POMNG_HTTPD_WWW_DATA	DATAROOT "/pom-ng-webui/"
 #define POMNG_SYSTEM_DATASTORE "sqlite:system?dbfile=~/.pom-ng/sys_datastore.db"
