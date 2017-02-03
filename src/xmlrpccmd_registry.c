@@ -32,7 +32,7 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 	{
 		.name = "registry.list",
 		.callback_func = xmlrpccmd_registry_list,
-		.signature = "S:",
+		.signature = "A:",
 		.help = "List all the classes and their instances",
 	},
 
@@ -259,7 +259,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_perfs(xmlrpc_env * const envP, str
 
 xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * const paramArrayP, void * const userData) {
 
-	xmlrpc_value *classes = xmlrpc_array_new(envP);
+	xmlrpc_value *classes = xmlrpc_struct_new(envP);
 	if (envP->fault_occurred)
 		return NULL;
 
@@ -280,14 +280,14 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		}
 
-		xmlrpc_value *instances = xmlrpc_array_new(envP);
+		xmlrpc_value *instances = xmlrpc_struct_new(envP);
 		
 		struct registry_instance *i;
 		for (i = c->instances; i; i = i->next) {
 			xmlrpc_value *inst = xmlrpc_build_value(envP, "{s:s,s:i}",
 								"name", i->name,
 								"serial", i->serial);
-			xmlrpc_array_append_item(envP, instances, inst);
+			xmlrpc_struct_set_value(envP, instances, i->name, inst);
 			xmlrpc_DECREF(inst);
 		}
 
@@ -295,7 +295,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, c->perfs);
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A,s:A}",
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:A,s:A}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
@@ -307,7 +307,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 		xmlrpc_DECREF(instances);
 		xmlrpc_DECREF(perfs);
 		xmlrpc_DECREF(params);
-		xmlrpc_array_append_item(envP, classes, cls);
+		xmlrpc_struct_set_value(envP, classes, c->name, cls);
 		xmlrpc_DECREF(cls);
 
 	}
@@ -330,7 +330,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 	}
 
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:A,s:i,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:S,s:i,s:A}",
 					"classes_serial", registry_classes_serial_get(),
 					"classes", classes,
 					"configs_serial", registry_config_serial_get(),
