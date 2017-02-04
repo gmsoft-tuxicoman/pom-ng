@@ -158,7 +158,7 @@ int xmlrpccmd_registry_register_all() {
 
 static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, struct registry_param *param_head) {
 
-	xmlrpc_value *params = xmlrpc_array_new(envP);
+	xmlrpc_value *params = xmlrpc_struct_new(envP);
 
 	struct registry_param *p;
 	for (p = param_head; p; p = p->next) {
@@ -215,7 +215,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 			xmlrpc_DECREF(info);
 		}
 
-		xmlrpc_array_append_item(envP, params, param);
+		xmlrpc_struct_set_value(envP, params, p->name, param);
 		xmlrpc_DECREF(param);
 
 	}
@@ -295,7 +295,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, c->perfs);
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:A,s:A}",
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:A,s:S}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
@@ -544,7 +544,7 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 
 	xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, i->perfs);
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:S,s:A,s:A}",
 				"name", i->name,
 				"serial", i->serial,
 				"parameters", params,
