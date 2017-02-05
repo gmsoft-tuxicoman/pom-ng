@@ -110,7 +110,7 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 	{
 		.name = "registry.getPerfs",
 		.callback_func = xmlrpccmd_registry_get_perfs,
-		.signature = "A:A",
+		.signature = "A:S",
 		.help = "Fetch a set of performance objects"
 	},
 
@@ -224,7 +224,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 
 static xmlrpc_value *xmlrpccmd_registry_build_perfs(xmlrpc_env * const envP, struct registry_perf *perf_head) {
 
-	xmlrpc_value *perfs = xmlrpc_array_new(envP);
+	xmlrpc_value *perfs = xmlrpc_struct_new(envP);
 
 	struct registry_perf *p;
 	for (p = perf_head; p; p = p->next) {
@@ -249,7 +249,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_perfs(xmlrpc_env * const envP, str
 							"unit", p->unit,
 							"description", p->description);
 
-		xmlrpc_array_append_item(envP, perfs, perf);
+		xmlrpc_struct_set_value(envP, perfs, p->name, perf);
 		xmlrpc_DECREF(perf);
 
 	}
@@ -295,7 +295,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, c->perfs);
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:A,s:S}",
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:S,s:S}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
@@ -544,7 +544,7 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 
 	xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, i->perfs);
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:S,s:A,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:S,s:S,s:A}",
 				"name", i->name,
 				"serial", i->serial,
 				"parameters", params,
@@ -783,7 +783,7 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 	}
 	memset(perf_array, 0, perf_array_size);
 
-	xmlrpc_value *res = xmlrpc_array_new(envP);
+	xmlrpc_value *res = xmlrpc_struct_new(envP);
 
 	// Fetch each entry in the array
 	unsigned int i;
@@ -909,7 +909,7 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 			xmlrpc_DECREF(pkt_time);
 		}
 			
-		xmlrpc_array_append_item(envP, res, item);
+		xmlrpc_struct_set_value(envP, res, perf_array[i].perf_name, item);
 		xmlrpc_DECREF(item);
 	}
 	registry_unlock();
