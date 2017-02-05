@@ -312,7 +312,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 	}
 
-	xmlrpc_value *configs = xmlrpc_array_new(envP);
+	xmlrpc_value *configs = xmlrpc_struct_new(envP);
 
 	struct registry_config_entry *config_list = registry_config_list();
 	if (config_list) {
@@ -322,7 +322,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 			xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:s,s:t}",
 								"name", config_list[i].name,
 								"timestamp", (time_t)pom_ptime_sec(config_list[i].ts));
-			xmlrpc_array_append_item(envP, configs, entry);
+			xmlrpc_struct_set_value(envP, configs, config_list[i].name, entry);
 			xmlrpc_DECREF(entry);
 		}
 
@@ -330,7 +330,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 	}
 
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:S,s:i,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:S,s:i,s:S}",
 					"classes_serial", registry_classes_serial_get(),
 					"classes", classes,
 					"configs_serial", registry_config_serial_get(),
