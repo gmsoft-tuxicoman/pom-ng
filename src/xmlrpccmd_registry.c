@@ -110,7 +110,7 @@ static struct xmlrpcsrv_command xmlrpccmd_registry_commands[XMLRPCCMD_REGISTRY_N
 	{
 		.name = "registry.getPerfs",
 		.callback_func = xmlrpccmd_registry_get_perfs,
-		.signature = "A:A",
+		.signature = "A:S",
 		.help = "Fetch a set of performance objects"
 	},
 
@@ -158,7 +158,7 @@ int xmlrpccmd_registry_register_all() {
 
 static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, struct registry_param *param_head) {
 
-	xmlrpc_value *params = xmlrpc_array_new(envP);
+	xmlrpc_value *params = xmlrpc_struct_new(envP);
 
 	struct registry_param *p;
 	for (p = param_head; p; p = p->next) {
@@ -215,7 +215,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 			xmlrpc_DECREF(info);
 		}
 
-		xmlrpc_array_append_item(envP, params, param);
+		xmlrpc_struct_set_value(envP, params, p->name, param);
 		xmlrpc_DECREF(param);
 
 	}
@@ -224,7 +224,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_params(xmlrpc_env * const envP, st
 
 static xmlrpc_value *xmlrpccmd_registry_build_perfs(xmlrpc_env * const envP, struct registry_perf *perf_head) {
 
-	xmlrpc_value *perfs = xmlrpc_array_new(envP);
+	xmlrpc_value *perfs = xmlrpc_struct_new(envP);
 
 	struct registry_perf *p;
 	for (p = perf_head; p; p = p->next) {
@@ -249,7 +249,7 @@ static xmlrpc_value *xmlrpccmd_registry_build_perfs(xmlrpc_env * const envP, str
 							"unit", p->unit,
 							"description", p->description);
 
-		xmlrpc_array_append_item(envP, perfs, perf);
+		xmlrpc_struct_set_value(envP, perfs, p->name, perf);
 		xmlrpc_DECREF(perf);
 
 	}
@@ -269,13 +269,13 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 	for (c = registry_get(); c; c = c->next) {
 
-		xmlrpc_value *types = xmlrpc_array_new(envP);
+		xmlrpc_value *types = xmlrpc_struct_new(envP);
 		struct registry_instance_type *t;
 		for (t = c->types; t; t = t->next) {
 			xmlrpc_value *type = xmlrpc_build_value(envP, "{s:s,s:s}",
 								"name", t->name,
 								"description", t->description);
-			xmlrpc_array_append_item(envP, types, type);
+			xmlrpc_struct_set_value(envP, types, t->name, type);
 			xmlrpc_DECREF(type);
 
 		}
@@ -295,7 +295,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, c->perfs);
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:A,s:A}",
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:S,s:S,s:S,s:S}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
@@ -312,7 +312,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 	}
 
-	xmlrpc_value *configs = xmlrpc_array_new(envP);
+	xmlrpc_value *configs = xmlrpc_struct_new(envP);
 
 	struct registry_config_entry *config_list = registry_config_list();
 	if (config_list) {
@@ -322,7 +322,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 			xmlrpc_value *entry = xmlrpc_build_value(envP, "{s:s,s:t}",
 								"name", config_list[i].name,
 								"timestamp", (time_t)pom_ptime_sec(config_list[i].ts));
-			xmlrpc_array_append_item(envP, configs, entry);
+			xmlrpc_struct_set_value(envP, configs, config_list[i].name, entry);
 			xmlrpc_DECREF(entry);
 		}
 
@@ -330,7 +330,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 	}
 
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:S,s:i,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:i,s:S,s:i,s:S}",
 					"classes_serial", registry_classes_serial_get(),
 					"classes", classes,
 					"configs_serial", registry_config_serial_get(),
@@ -544,7 +544,7 @@ xmlrpc_value *xmlrpccmd_registry_get_instance(xmlrpc_env * const envP, xmlrpc_va
 
 	xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, i->perfs);
 
-	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:A,s:A}",
+	xmlrpc_value *res = xmlrpc_build_value(envP, "{s:s,s:i,s:S,s:S,s:A}",
 				"name", i->name,
 				"serial", i->serial,
 				"parameters", params,
@@ -783,7 +783,7 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 	}
 	memset(perf_array, 0, perf_array_size);
 
-	xmlrpc_value *res = xmlrpc_array_new(envP);
+	xmlrpc_value *res = xmlrpc_struct_new(envP);
 
 	// Fetch each entry in the array
 	unsigned int i;
@@ -909,7 +909,7 @@ xmlrpc_value *xmlrpccmd_registry_get_perfs(xmlrpc_env * const envP, xmlrpc_value
 			xmlrpc_DECREF(pkt_time);
 		}
 			
-		xmlrpc_array_append_item(envP, res, item);
+		xmlrpc_struct_set_value(envP, res, perf_array[i].perf_name, item);
 		xmlrpc_DECREF(item);
 	}
 	registry_unlock();
