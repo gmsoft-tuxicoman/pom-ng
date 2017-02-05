@@ -269,13 +269,13 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 	for (c = registry_get(); c; c = c->next) {
 
-		xmlrpc_value *types = xmlrpc_array_new(envP);
+		xmlrpc_value *types = xmlrpc_struct_new(envP);
 		struct registry_instance_type *t;
 		for (t = c->types; t; t = t->next) {
 			xmlrpc_value *type = xmlrpc_build_value(envP, "{s:s,s:s}",
 								"name", t->name,
 								"description", t->description);
-			xmlrpc_array_append_item(envP, types, type);
+			xmlrpc_struct_set_value(envP, types, t->name, type);
 			xmlrpc_DECREF(type);
 
 		}
@@ -295,7 +295,7 @@ xmlrpc_value *xmlrpccmd_registry_list(xmlrpc_env * const envP, xmlrpc_value * co
 
 		xmlrpc_value *perfs = xmlrpccmd_registry_build_perfs(envP, c->perfs);
 
-		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:A,s:S,s:S,s:S}",
+		xmlrpc_value *cls = xmlrpc_build_value(envP, "{s:s,s:i,s:S,s:S,s:S,s:S}",
 							"name", c->name,
 							"serial", c->serial,
 							"available_types", types,
