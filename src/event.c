@@ -95,6 +95,18 @@ struct event_reg *event_register(struct event_reg_info *reg_info) {
 		return NULL;
 	}
 
+	struct ptype *param = ptype_alloc("string");
+	if (!param) {
+		free(evt);
+		return NULL;
+	}
+
+	struct registry_param *p = registry_new_param("description", reg_info->description, param, "Event description", REGISTRY_PARAM_FLAG_CLEANUP_VAL | REGISTRY_PARAM_FLAG_IMMUTABLE);
+	if (registry_instance_add_param(evt->reg_instance, p) != POM_OK) {
+		free(evt);
+		return NULL;
+	}
+
 	evt->perf_listeners = registry_instance_add_perf(evt->reg_instance, "listeners", registry_perf_type_gauge, "Number of event listeners", "listeners");
 	evt->perf_ongoing = registry_instance_add_perf(evt->reg_instance, "ongoing", registry_perf_type_gauge, "Number of ongoing events", "events");
 	evt->perf_processed = registry_instance_add_perf(evt->reg_instance, "processed", registry_perf_type_counter, "Number of events fully processed", "events");
