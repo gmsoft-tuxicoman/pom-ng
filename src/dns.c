@@ -424,7 +424,8 @@ static int dns_update_expiry(struct dns_entry *a, struct dns_entry *b, uint32_t 
 		} else {
 			dns_cache_queues_tail[b->cache_queue] = b->cache_prev;
 		}
-
+		b->cache_prev = NULL;
+		b->cache_next= NULL;
 	}
 
 	// Find in which queue this goes
