@@ -242,8 +242,10 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 						if (i != plen || (priv->data_end_pos >= 2 && plen < 3)) {
 							pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
 							priv->flags |= PROTO_SMTP_FLAG_INVALID;
-							event_process_end(priv->data_evt);
-							priv->data_evt = NULL;
+							if (priv->data_evt) {
+								event_process_end(priv->data_evt);
+								priv->data_evt = NULL;
+							}
 							return PROTO_OK;
 						}
 						s_next->pload = pload;
@@ -261,18 +263,16 @@ static int proto_smtp_process(void *proto_priv, struct packet *p, struct proto_p
 
 				char *dotline = pom_strnstr(pload, PROTO_SMTP_DATA_END, plen);
 				if (dotline) {
-					if (pload + plen - PROTO_SMTP_DATA_END_LEN != dotline) {
-						pomlog(POMLOG_DEBUG "The final line was not at the of a packet as expected !");
-						priv->flags |= PROTO_SMTP_FLAG_INVALID;
-						event_process_end(priv->data_evt);
-						priv->data_evt = NULL;
-						return PROTO_OK;
-					}
 					s_next->pload = pload;
-					s_next->plen = plen - PROTO_SMTP_DATA_END_LEN + 2; // The last line return is part of the payload
+					s_next->plen = (void*)dotline - pload + 2; // The last line return is part of the payload
 					priv->flags |= PROTO_SMTP_FLAG_CLIENT_DATA_END;
 
 					priv->flags &= ~PROTO_SMTP_FLAG_CLIENT_DATA;
+
+					// Add back the end for processing
+					priv->data_end_pos = 2;
+					if (packet_stream_parser_add_payload(parser, dotline + 2, plen - s_next->plen) != POM_OK)
+						return PROTO_ERR;
 
 				} else {
 					// Check if the end of the payload contains part of the "<CR><LF>.<CR><LF>" sequence
