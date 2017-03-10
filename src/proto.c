@@ -198,6 +198,11 @@ int proto_process(struct packet *p, struct proto_process_stack *stack, unsigned 
 				break;
 			}
 
+			if (!es->fields[POM_DIR_FWD] && !es->fields[POM_DIR_REV]) {
+				// Nothing to match for this proto
+				continue;
+			}
+
 			struct ptype *fwd_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->fwd_pkt_field_id];
 			struct ptype *rev_value = s_tmp->pkt_info->fields_value[s_tmp->proto->info->ct_info->rev_pkt_field_id];
 
@@ -546,11 +551,6 @@ struct proto_expectation *proto_expectation_alloc(struct proto *proto, void *pri
 
 static struct proto_expectation_stack *proto_expectation_stack_alloc(struct proto *p, struct ptype *fwd_value, struct ptype *rev_value) {
 
-	if (!p || !fwd_value) {
-		pomlog(POMLOG_ERR "Cannot allocate expectation with a forward nor reverse conntrack entry field value");
-		return NULL;
-	}
-
 	struct proto_expectation_stack *es = malloc(sizeof(struct proto_expectation_stack));
 	if (!es) {
 		pom_oom(sizeof(struct proto_expectation_stack));
@@ -559,10 +559,12 @@ static struct proto_expectation_stack *proto_expectation_stack_alloc(struct prot
 	memset(es, 0, sizeof(struct proto_expectation_stack));
 	es->proto = p;
 
-	es->fields[POM_DIR_FWD] = ptype_alloc_from(fwd_value);
-	if (!es->fields[POM_DIR_FWD]) {
-		free(es);
-		return NULL;
+	if (fwd_value) {
+		es->fields[POM_DIR_FWD] = ptype_alloc_from(fwd_value);
+		if (!es->fields[POM_DIR_FWD]) {
+			free(es);
+			return NULL;
+		}
 	}
 
 	if (rev_value) {
