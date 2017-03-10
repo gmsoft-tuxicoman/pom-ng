@@ -145,6 +145,11 @@ static int proto_pppoe_process(void *proto_priv, struct packet *p, struct proto_
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_pppoe_field_code], phdr->code);
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_pppoe_field_session_id],ntohs(phdr->session_id));
 
+	// Code is 0 when there are data
+	// If it's not data, don't create sessions and add payload
+	if (phdr->code)
+		return PROTO_OK;
+
 	if (conntrack_get(stack, stack_index) != POM_OK)
 		return PROTO_ERR;
 	conntrack_delayed_cleanup(s->ce, *PTYPE_UINT16_GETVAL(priv->p_session_timeout) , p->ts);
