@@ -429,7 +429,7 @@ static int proto_sip_process(void *proto_priv, struct packet *p, struct proto_pr
 						goto end;
 					}
 
-					if (proto_sip_post_process(priv, p, stack, stack_index) != POM_OK) {
+					if (proto_sip_post_process(NULL, p, stack, stack_index) != POM_OK) {
 						res = PROTO_ERR;
 						goto end;
 					}
@@ -484,7 +484,10 @@ static int proto_sip_post_process(void *proto_priv, struct packet *p, struct pro
 
 		proto_sip_conntrack_reset(ce, direction);
 	}
-	conntrack_unlock(ce);
+
+	// If proto_priv is NULL, it was called by proto_sip_process and we must not unlock the conntrack
+	if (proto_priv)
+		conntrack_unlock(ce);
 
 	return PROTO_OK;
 }
