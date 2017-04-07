@@ -594,210 +594,191 @@ int proto_http_parse_query_response(struct conntrack_entry *ce, char *line, unsi
 	struct proto_http_priv *ppriv = proto_get_priv(ce->proto);
 	struct proto_http_conntrack_priv *priv = ce->priv;
 
-	int tok_num = 0;
-	char *token = line, *space = NULL;;
-	unsigned int line_len = len;
 
 	// Response protocol
 	char *response_proto = NULL;
 
-	while (len) {
-		space = memchr(token, ' ', len);
-		
-		size_t tok_len;
-		if (space)
-			tok_len = space - token;
-		else
-			tok_len = len;
 
-		switch (tok_num) {
-			case 0:
-				
-				if (priv->event[direction]) {
-					pomlog(POMLOG_WARN "Internal error : http event still exist for direction %u", direction);
-					event_cleanup(priv->event[direction]);
-				}
+	char *first_space = memchr(line, ' ', len);
 
-				if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
-
-					// Check the response direction
-					if (priv->client_direction == POM_DIR_UNK) {
-						priv->client_direction = POM_DIR_REVERSE(direction);
-					} else {
-						if (priv->client_direction != POM_DIR_REVERSE(direction)) {
-							debug_http("Received response in the wrong direction !");
-							return PROTO_INVALID;
-						}
-					}
-
-					response_proto = malloc(tok_len + 1);
-					if (!response_proto) {
-						pom_oom(tok_len + 1);
-						return PROTO_ERR;
-					}
-					memcpy(response_proto, token, tok_len);
-					response_proto[tok_len] = 0;
-				} else {
-
-					priv->event[direction] = event_alloc(ppriv->evt_query);
-					if (!priv->event[direction])
-						return POM_ERR;
-
-					unsigned int i;
-					for (i = 0; i < tok_len; i++) {
-						if ((token[i]) < 'A' || (token[i] > 'Z' && token[i] < 'a') || (token[i] > 'z')) {
-							// Definitely not a HTTP method
-							// pomlog(POMLOG_DEBUG "Not identified as an HTTP method");
-							return PROTO_INVALID;
-						}
-					}
-
-					// Check the query direction
-					if (priv->client_direction == POM_DIR_UNK) {
-						priv->client_direction = direction;
-					} else {
-						if (priv->client_direction != direction) {
-							debug_http("Received query in the wrong direction !");
-							return PROTO_INVALID;
-						}
-					}
-
-
-					char *request_method = malloc(tok_len + 1);
-					if (!request_method) {
-						pom_oom(tok_len + 1);
-						return PROTO_ERR;
-					}
-					memcpy(request_method, token, tok_len);
-					request_method[tok_len] = 0;
-
-					struct data *evt_data = event_get_data(priv->event[direction]);
-
-					PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_method].value, request_method);
-					data_set(evt_data[proto_http_query_method]);
-				}
-				break;
-			case 1: {
-				if (priv->client_direction == direction) {
-					char *url = malloc(tok_len + 1);
-					if (!url) {
-						pom_oom(tok_len + 1);
-						return PROTO_ERR;
-					}
-					memcpy(url, token, tok_len);
-					url[tok_len] = 0;
-					struct data *evt_data = event_get_data(priv->event[direction]);
-					PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_url].value, url);
-					data_set(evt_data[proto_http_query_url]);
-				} else {
-					// Get the status code
-					uint16_t err_code = 0;
-					char errcode[4];
-					errcode[3] = 0;
-					strncpy(errcode, token, 3);
-					if (sscanf(errcode, "%hu", &err_code) != 1 || err_code == 0) {
-						if (response_proto)
-							free(response_proto);
-						pomlog(POMLOG_DEBUG "Invalid code in HTTP response");
-						return PROTO_INVALID;
-					}
-
-					// Do not save stuff about 100 Continue replies as it's not an response in itself
-					if (err_code == 100) {
-						if (response_proto)
-							free(response_proto);
-						return POM_OK;
-					}
-
-					priv->event[direction] = event_alloc(ppriv->evt_response);
-					if (!priv->event[direction]) {
-						if (response_proto)
-							free(response_proto);
-						return PROTO_ERR;
-					}
-
-					struct data *evt_data = event_get_data(priv->event[direction]);
-					PTYPE_UINT16_SETVAL(evt_data[proto_http_response_status].value, err_code);
-					data_set(evt_data[proto_http_response_status]);
-					priv->info[direction].last_err_code = err_code;
-
-					PTYPE_STRING_SETVAL_P(evt_data[proto_http_response_proto].value, response_proto);
-					data_set(evt_data[proto_http_response_proto]);
-					response_proto = NULL;
-				}
-
-				break;
-			}
-			case 2:
-				if (priv->client_direction == direction) {
-					// This payload was identified as a possible query
-					if (tok_len < strlen("HTTP/")) {
-						pomlog(POMLOG_DEBUG "HTTP version string too short");
-						return PROTO_INVALID;
-					}
-					if (strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
-						// Doesn't seem to be a valid HTTP version
-						pomlog(POMLOG_DEBUG "Invalid HTTP version string");
-						return PROTO_INVALID;
-					}
-
-					char *request_proto = malloc(tok_len + 1);
-					if (!request_proto) {
-						pom_oom(tok_len + 1);
-						return PROTO_ERR;
-					}
-					memcpy(request_proto, token, tok_len);
-					request_proto[tok_len] = 0;
-					
-					struct data *evt_data = event_get_data(priv->event[direction]);
-					PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_proto].value, request_proto);
-					data_set(evt_data[proto_http_query_proto]);
-				}
-
-				break;
-			default:
-				if (priv->client_direction == direction) {
-					// No more than 3 tokens are expected for a query
-					pomlog(POMLOG_DEBUG "More than 3 tokens found in the HTTP query");
-					// FIXME do the cleanup
-					return PROTO_INVALID;
-				}
-				break;
-		}
-		token += tok_len;
-		len -= tok_len;
-		while (*token == ' ' && len) {
-			token++;
-			len--;
-		}
-		tok_num++;
-	}
-
-	if (tok_num < 2) {
-
-		if (response_proto)
-			free(response_proto);
-
-		pomlog(POMLOG_DEBUG "Unable to parse the query/response");
+	if (!first_space) {
+		// No space in the request or response, probably not HTTP
 		return PROTO_INVALID;
 	}
+
+	char *last_space = memrchr(line, ' ', len);
+	if (last_space == first_space)
+		last_space = NULL;
+
+	char *token = line;
+	size_t tok_len = first_space - line;
+
+	// Parse the first token
+	if (priv->event[direction]) {
+		pomlog(POMLOG_WARN "Internal error : http event still exist for direction %u", direction);
+		event_cleanup(priv->event[direction]);
+	}
+
+	if (!strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
+
+		// It's a response
+		if (priv->client_direction == POM_DIR_UNK) {
+			priv->client_direction = POM_DIR_REVERSE(direction);
+		} else {
+			if (priv->client_direction != POM_DIR_REVERSE(direction)) {
+				debug_http("Received response in the wrong direction !");
+				return PROTO_INVALID;
+			}
+		}
+
+		response_proto = malloc(tok_len + 1);
+		if (!response_proto) {
+			pom_oom(tok_len + 1);
+			return PROTO_ERR;
+		}
+		memcpy(response_proto, token, tok_len);
+		response_proto[tok_len] = 0;
+	} else {
+
+		// It's a query
+		priv->event[direction] = event_alloc(ppriv->evt_query);
+		if (!priv->event[direction])
+			return POM_ERR;
+
+		unsigned int i;
+		for (i = 0; i < tok_len; i++) {
+			if ((token[i]) < 'A' || (token[i] > 'Z' && token[i] < 'a') || (token[i] > 'z')) {
+				// Definitely not a HTTP method
+				// pomlog(POMLOG_DEBUG "Not identified as an HTTP method");
+				return PROTO_INVALID;
+			}
+		}
+
+		// Check the query direction
+		if (priv->client_direction == POM_DIR_UNK) {
+			priv->client_direction = direction;
+		} else {
+			if (priv->client_direction != direction) {
+				debug_http("Received query in the wrong direction !");
+				return PROTO_INVALID;
+			}
+		}
+
+
+		char *request_method = malloc(tok_len + 1);
+		if (!request_method) {
+			pom_oom(tok_len + 1);
+			return PROTO_ERR;
+		}
+		memcpy(request_method, token, tok_len);
+		request_method[tok_len] = 0;
+
+		struct data *evt_data = event_get_data(priv->event[direction]);
+
+		PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_method].value, request_method);
+		data_set(evt_data[proto_http_query_method]);
+	}
+
+
+	// Parse the second token
+
+	token = first_space + 1;
+	if (last_space) {
+		tok_len = last_space - token;
+	} else {
+		tok_len = len - (token - line);
+	}
+
+	if (priv->client_direction == direction) {
+		char *url = malloc(tok_len + 1);
+		if (!url) {
+			pom_oom(tok_len + 1);
+			return PROTO_ERR;
+		}
+		memcpy(url, token, tok_len);
+		url[tok_len] = 0;
+		struct data *evt_data = event_get_data(priv->event[direction]);
+		PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_url].value, url);
+		data_set(evt_data[proto_http_query_url]);
+	} else {
+		// Get the status code
+		uint16_t err_code = 0;
+		char errcode[4];
+		errcode[3] = 0;
+		strncpy(errcode, token, 3);
+		if (sscanf(errcode, "%hu", &err_code) != 1 || err_code == 0) {
+			if (response_proto)
+				free(response_proto);
+			pomlog(POMLOG_DEBUG "Invalid code in HTTP response");
+			return PROTO_INVALID;
+		}
+
+		// Do not save stuff about 100 Continue replies as it's not a response in itself
+		if (err_code == 100) {
+			if (response_proto)
+				free(response_proto);
+			return POM_OK;
+		}
+
+		priv->event[direction] = event_alloc(ppriv->evt_response);
+		if (!priv->event[direction]) {
+			if (response_proto)
+				free(response_proto);
+			return PROTO_ERR;
+		}
+
+		struct data *evt_data = event_get_data(priv->event[direction]);
+		PTYPE_UINT16_SETVAL(evt_data[proto_http_response_status].value, err_code);
+		data_set(evt_data[proto_http_response_status]);
+		priv->info[direction].last_err_code = err_code;
+
+		PTYPE_STRING_SETVAL_P(evt_data[proto_http_response_proto].value, response_proto);
+		data_set(evt_data[proto_http_response_proto]);
+		response_proto = NULL;
+	}
+
+
+	// Parse the HTTP version in case of a query
+	if (last_space && priv->client_direction == direction) {
+
+		token = last_space + 1;
+		tok_len = len - (token - line);
+		// This payload was identified as a possible query
+		if (tok_len < strlen("HTTP/")) {
+			pomlog(POMLOG_DEBUG "HTTP version string too short");
+			return PROTO_INVALID;
+		}
+		if (strncasecmp(token, "HTTP/", strlen("HTTP/"))) {
+			// Doesn't seem to be a valid HTTP version
+			pomlog(POMLOG_DEBUG "Invalid HTTP version string");
+			return PROTO_INVALID;
+		}
+
+		char *request_proto = malloc(tok_len + 1);
+		if (!request_proto) {
+			pom_oom(tok_len + 1);
+			return PROTO_ERR;
+		}
+		memcpy(request_proto, token, tok_len);
+		request_proto[tok_len] = 0;
+
+		struct data *evt_data = event_get_data(priv->event[direction]);
+		PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_proto].value, request_proto);
+		data_set(evt_data[proto_http_query_proto]);
+	}
+
 
 	struct data *evt_data = event_get_data(priv->event[direction]);
 	if (priv->client_direction == direction) {
 		
-		if (tok_num < 3) {
-			pomlog(POMLOG_DEBUG "Missing token for query");
-			return PROTO_INVALID;
-		}
-		
-		char *first_line = malloc(line_len + 1);
+		char *first_line = malloc(len + 1);
 		if (!first_line) {
-			pom_oom(line_len + 1);
+			pom_oom(len + 1);
 			return PROTO_ERR;
 		}
 
-		memcpy(first_line, line, line_len);
-		first_line[line_len] = 0;
+		memcpy(first_line, line, len);
+		first_line[len] = 0;
 		PTYPE_STRING_SETVAL_P(evt_data[proto_http_query_first_line].value, first_line);
 		data_set(evt_data[proto_http_query_first_line]);
 
