@@ -219,9 +219,11 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 	unsigned char *data_tmp = *data;
 	unsigned char len = *data_tmp;
 
-	if (!len) { // Special case where the RR name is empty, seen for EDNS0 (RFC2671)
+	if (!len) {
 		*name = malloc(1);
 		**name = 0;
+		*data += 1;
+		*data_len -= 1;
 		return POM_OK;
 	}
 
@@ -231,6 +233,11 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 		if (len > 63) {
 			if (!msg) // Pointers are not allowed for the first record
 				return POM_ERR;
+			if (msg_end - data_tmp < 2) {
+				debug_dns("Not enough data to parse rr name pointer");
+				return POM_ERR;
+			}
+
 			if ((len & 0xC0) != 0xC0) {
 				debug_dns("Invalid label length : 0x%X", len);
 				return POM_ERR;
@@ -485,7 +492,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 	if (analyzer_dns_parse_question(&data_start, &data_remaining, &question) != POM_OK)
 		return POM_OK;
 
-	debug_dns("Got question \"%s\", type : %u, class : %u", question.qname, question.qtype, question.qclass);
+	//debug_dns("Got question \"%s\", type : %u, class : %u", question.qname, question.qtype, question.qclass);
 
 	if (anti_spoof) {
 		if (!is_response) {
@@ -610,7 +617,7 @@ static int analyzer_dns_proto_packet_process(void *object, struct packet *p, str
 			return POM_OK;
 		}
 
-		debug_dns("Got RR for %s, type %u", rr.name, rr.type);
+		//debug_dns("Got RR for \"%s\", type %u", rr.name, rr.type);
 
 		int process_event = 0;
 
