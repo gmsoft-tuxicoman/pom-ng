@@ -284,7 +284,9 @@ static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb,
 		res = PLOAD_ANALYSIS_OK;
 
 	} else {
-		pomlog(POMLOG_DEBUG "Error while parsing JPEG headers");
+		char buffer[JMSG_LENGTH_MAX];
+		priv->cinfo.err->format_message((j_common_ptr)&priv->cinfo, buffer);
+		pomlog(POMLOG_DEBUG "Error while parsing JPEG headers : %s", buffer);
 		res = PLOAD_ANALYSIS_ERR;
 	}
 
