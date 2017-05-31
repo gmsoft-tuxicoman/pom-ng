@@ -107,64 +107,6 @@ int xmlrpccmd_register_all() {
 }
 
 
-/*
-is_utf8 is distributed under the following terms:
-
-Copyright (c) 2013 Palard Julien. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
-OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
-OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
-SUCH DAMAGE.
-*/
-
-static int is_utf8(unsigned char *str, size_t len) {
-
-	size_t i = 0;
-	size_t continuation_bytes = 0;
-
-	while (i < len) {
-		if (str[i] <= 0x7F)
-			continuation_bytes = 0;
-		else if (str[i] >= 0xC0 /*11000000*/ && str[i] <= 0xDF /*11011111*/)
-			continuation_bytes = 1;
-		else if (str[i] >= 0xE0 /*11100000*/ && str[i] <= 0xEF /*11101111*/)
-			continuation_bytes = 2;
-		else if (str[i] >= 0xF0 /*11110000*/ && str[i] <= 0xF4 /* Cause of RFC 3629 */)
-			continuation_bytes = 3;
-		else
-			return i + 1;
-		i += 1;
-
-		while (i < len && continuation_bytes > 0 && str[i] >= 0x80 && str[i] <= 0xBF) {
-
-			i += 1;
-			continuation_bytes -= 1;
-		}
-
-		if (continuation_bytes != 0)
-			return i + 1;
-	}
-
-	return 0;
-}
-
 xmlrpc_value *xmlrpccmd_ptype_to_val(xmlrpc_env* const envP, struct ptype* p) {
 
 	if (p->type == pt_bool) {
@@ -173,10 +115,18 @@ xmlrpc_value *xmlrpccmd_ptype_to_val(xmlrpc_env* const envP, struct ptype* p) {
 		char *value = PTYPE_STRING_GETVAL(p);
 		size_t len = strlen(value);
 		xmlrpc_value *res = NULL;
-		if (!is_utf8((unsigned char *)value, len))
+
+		xmlrpc_env tmpEnvP;
+		xmlrpc_env_init(&tmpEnvP);
+		xmlrpc_validate_utf8(&tmpEnvP, value, len);
+
+		if (!tmpEnvP.fault_occurred)
 			res = xmlrpc_string_new(envP, value);
 		else
 			res = xmlrpc_base64_new(envP, len, (unsigned char*)value);
+
+		xmlrpc_env_clean(&tmpEnvP);
+
 		return res;
 	} else if (p->type == pt_timestamp) {
 		// Don't use the time version of xmlrpc as it's not precise enough
@@ -203,10 +153,14 @@ xmlrpc_value *xmlrpccmd_ptype_to_val(xmlrpc_env* const envP, struct ptype* p) {
 	size_t len = strlen(value);
 	xmlrpc_value *res = NULL;
 
-	if (!is_utf8((unsigned char *)value, len))
+	xmlrpc_env tmpEnvP;
+	xmlrpc_env_init(&tmpEnvP);
+	xmlrpc_validate_utf8(&tmpEnvP, value, len);
+	if (!tmpEnvP.fault_occurred)
 		res = xmlrpc_string_new(envP, value);
 	else
 		res = xmlrpc_base64_new(envP, len, (unsigned char *)value);
+	xmlrpc_env_clean(&tmpEnvP);
 	free(value);
 	return res;
 }
