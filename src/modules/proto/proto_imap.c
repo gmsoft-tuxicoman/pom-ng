@@ -552,6 +552,13 @@ static int proto_imap_conntrack_cleanup(void *ce_priv) {
 			event_cleanup(priv->data_evt);
 	}
 
+	if (priv->cmd_evt) {
+		if (event_is_started(priv->rsp_evt))
+			event_process_end(priv->rsp_evt);
+		else
+			event_cleanup(priv->rsp_evt);
+	}
+
 	if (priv->rsp_evt) {
 		if (event_is_started(priv->rsp_evt))
 			event_process_end(priv->rsp_evt);
