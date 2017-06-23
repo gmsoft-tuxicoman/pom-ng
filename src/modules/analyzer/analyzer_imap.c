@@ -469,6 +469,23 @@ static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
 	return POM_OK;
 }
 
+static void analyzer_imap_invalidate_mbx(struct analyzer_imap_conntrack_priv *cpriv) {
+
+	if (cpriv->cur_mbx)
+		free(cpriv->cur_mbx);
+	cpriv->cur_mbx = NULL;
+
+
+	// TODO We need to actually queue msg here and make use of them
+	while (cpriv->msg_queue_head) {
+		struct analyzer_imap_msg *msg = cpriv->msg_queue_head;
+		cpriv->msg_queue_head = msg->next;
+		free(msg);
+	}
+	cpriv->msg_queue_tail = NULL;
+
+}
+
 static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct analyzer *analyzer = obj;
@@ -505,9 +522,16 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 	if (evt_reg == apriv->evt_cmd) {
 
 		char *cmd = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_name].value);
-		char *arg = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_arg].value);
+		char *arg = NULL;
+
+		if (data_is_set(evt_data[proto_imap_cmd_arg]))
+			arg = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_arg].value);
 
 		if (!strcasecmp(cmd, "LOGIN")) {
+
+			if (!arg)
+				return POM_OK;
+
 			char *pwd = strchr(arg, ' ');
 			if (!pwd) {
 				// No password found
@@ -564,20 +588,33 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
 				return POM_ERR;
 
+		} else if (!strcasecmd(cmd, "SELECT") || !strcasecmd(cmd, "EXAMINE")) {
+			if (!arg)
+				return POM_OK;
+
+			analyzer_imap_invalidate_mbx(cpriv);
+
+			cpriv->cur_mbx = strdup(arg);
+			if (!cpriv->cur_mbx) {
+				pom_oom(strlen(arg) + 1);
+				return POM_ERR;
+			}
 		}
 
 	} else if (evt_reg == apriv->evt_rsp) {
 
 		char *tag = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_tag].value);
 
+		// Check if it this is the completion of a command only if it's a tagged result
+		struct analyzer_imap_cmd_entry *cmd = NULL;
 		if (strcmp(tag, "*") && strcmp(tag, "+")) {
-			// Check if it this is the completion of a command only if it's a tagged result
-			struct analyzer_imap_cmd_entry *cmd;
+			// Check only for the command if the tag is a number
 			for (cmd = cpriv->cmd_queue_head; cmd && strcmp(cmd->tag, tag); cmd = cmd->next);
+		}
 
-			if (!cmd)
-				return POM_OK;
 
+		// Handle the command
+		if (cmd)
 			enum analyzer_imap_rsp_status status = analyzer_imap_rsp_status_unk;
 			char *status_str = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
 			if (!strcasecmp(status_str, "OK")) {
@@ -632,6 +669,24 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 
 			if (event_process_end(out_evt) != POM_OK)
 				return POM_ERR;
+
+			// No more processing needed for this reply
+			return POM_OK;
+		}
+
+		char *status = NULL;
+		if (data_is_set(evt_data[proto_imap_response_status]))
+			status = PTYPE_STRING_SETVAL(evt_data[proto_imap_response_status].value);
+
+		if (!status)
+			return POM_OK;
+
+		if (!strcmp(tag, "*")) {
+			if (!strcasecmp(status, "FLAGS")) {
+				// FLAGS response appear only for SELECT or EXAMINE
+				// Since we switched mailbox we need to flush what we know about messages
+				analyzer_imap_invalidate_mbx(cpriv);
+			}
 		}
 
 	}
@@ -678,6 +733,9 @@ static int analyzer_imap_ce_priv_cleanup(void *obj, void *priv) {
 		event_process_end(cmd->out_evt);
 		free(cmd);
 	}
+
+
+	analyzer_imap_invalidate_mbx(cpriv);
 
 	free(cpriv);
 

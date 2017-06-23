@@ -263,6 +263,11 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				if (event_process_end(priv->pload_evt[s->direction]) != POM_OK)
 					return PROTO_ERR;
 				priv->pload_evt[s->direction] = NULL;
+
+				if (priv->server_direction != s->direction && priv->cmd_evt) {
+					event_process_end(priv->cmd_evt);
+					priv->cmd_evt = NULL;
+				}
 			}
 		}
 
@@ -486,26 +491,48 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				len--;
 			}
 
-			struct event *evt_cmd = event_alloc(ppriv->evt_cmd);
-			if (!evt_cmd) {
+			struct event *cmd_evt = event_alloc(ppriv->evt_cmd);
+			if (!cmd_evt) {
 				free(tag);
 				free(cmd_or_status);
 				return PROTO_ERR;
 			}
 
-			struct data *evt_data = event_get_data(evt_cmd);
+			struct data *evt_data = event_get_data(cmd_evt);
 			PTYPE_STRING_SETVAL_P(evt_data[proto_imap_cmd_tag].value, tag);
 			data_set(evt_data[proto_imap_cmd_tag]);
 			PTYPE_STRING_SETVAL_P(evt_data[proto_imap_cmd_name].value, cmd_or_status);
 			data_set(evt_data[proto_imap_cmd_name]);
 
-			if (len) {
+			if (sp) {
 				PTYPE_STRING_SETVAL_N(evt_data[proto_imap_cmd_arg].value, line, len);
 				data_set(evt_data[proto_imap_cmd_arg]);
 			}
 
-			if (event_process(evt_cmd, stack, stack_index, p->ts) != POM_OK)
-				return PROTO_ERR;
+			if (len > 3 && line[len - 1] == '}') {
+				// We've got some payload after this line
+				int i;
+				for (i = len - 2; i > 0;i --) {
+					if (line[i] < '0' || line[i] > '9')
+						break;
+				}
+
+				if (sscanf(line + i + 1, "%"SCNu64, &priv->data_bytes[s->direction]) != 1) {
+					pomlog(POMLOG_DEBUG "Invalid size for payload");
+					event_cleanup(cmd_evt);
+					return PROTO_OK;
+				}
+
+				if (event_process_begin(cmd_evt, stack, stack_index, p->ts) != POM_OK) {
+					event_cleanup(cmd_evt);
+					return PROTO_ERR;
+				}
+				priv->cmd_evt = cmd_evt;
+
+			} else {
+				if (event_process(cmd_evt, stack, stack_index, p->ts) != POM_OK)
+					return PROTO_ERR;
+			}
 		}
 	}
 

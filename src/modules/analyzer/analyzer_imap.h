@@ -60,12 +60,22 @@ struct analyzer_imap_priv {
 	int listening;
 };
 
+struct analyzer_imap_msg {
+	uint64_t header_size, body_size;
+	uint64_t uid, seq;
+	struct analyzer_imap_msg *prev, *next;
+};
+
 struct analyzer_imap_ce_priv {
 	struct event *evt_msg, *evt_auth;
 	char *server_host;
 	struct ptype *client_addr, *server_addr;
 	int common_data_fetched;
 	uint16_t server_port;
+
+
+	char *cur_mbx;
+	struct analyzer_imap_msg *msg_queue_head, *msg_queue_tail;
 
 	struct analyzer_imap_cmd_entry *cmd_queue_head, *cmd_queue_tail;
 };
