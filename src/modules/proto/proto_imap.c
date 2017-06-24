@@ -123,7 +123,7 @@ static int proto_imap_init(struct proto *proto, struct registry_instance *i) {
 	proto_imap_evt_rsp.source_name = "proto_imap";
 	proto_imap_evt_rsp.source_obj = proto;
 	proto_imap_evt_rsp.name = "imap_rsp";
-	proto_imap_evt_rsp.description = "IMAP command from the client";
+	proto_imap_evt_rsp.description = "IMAP response from the server";
 	proto_imap_evt_rsp.data_reg = &evt_rsp_data;
 
 	priv->evt_rsp = event_register(&proto_imap_evt_rsp);
