@@ -564,6 +564,7 @@ static int proto_imap_conntrack_cleanup(void *ce_priv) {
 			event_process_end(priv->rsp_evt);
 		else
 			event_cleanup(priv->rsp_evt);
+	}
 
 	int i;
 	for (i = 0; i < POM_DIR_TOT; i++) {

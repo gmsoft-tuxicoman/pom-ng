@@ -42,7 +42,6 @@ struct proto_imap_conntrack_priv {
 	struct packet_stream_parser *parser[POM_DIR_TOT];
 	int server_direction;
 	struct event *data_evt, *cmd_evt, *rsp_evt, *pload_evt[POM_DIR_TOT];
-	struct event *data_evt, *cmd_evt, *rsp_evt;
 	uint64_t data_bytes[POM_DIR_TOT];
 	uint32_t flags;
 };

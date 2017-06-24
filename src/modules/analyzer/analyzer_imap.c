@@ -291,7 +291,33 @@ static int analyzer_imap_event_fill_common_data(struct analyzer_imap_ce_priv *cp
 
 }
 
-static int analyzer_imap_parse_auth_plain(struct analyzer_imap_priv *apriv, struct analyzer_imap_ce_priv *cpriv, char *auth_plain) {
+static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum analyzer_imap_cmd cmd_type, struct event *cmd_evt, struct event *out_evt) {
+
+	struct data *evt_data = event_get_data(cmd_evt);
+
+	struct analyzer_imap_cmd_entry *cmd = malloc(sizeof(struct analyzer_imap_cmd_entry));
+	if (!cmd) {
+		pom_oom(sizeof(struct analyzer_imap_cmd_entry));
+		return POM_ERR;
+	}
+	memset(cmd, 0, sizeof(struct analyzer_imap_cmd_entry));
+
+	cmd->tag = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_tag].value);
+	cmd->cmd = cmd_type;
+	cmd->cmd_evt = cmd_evt;
+	cmd->out_evt = out_evt;
+	event_refcount_inc(cmd_evt);
+
+	cmd->prev = cpriv->cmd_queue_tail;
+	if (cmd->prev)
+		cmd->prev->next = cmd;
+	else
+		cpriv->cmd_queue_head = cmd;
+
+	return POM_OK;
+}
+
+static int analyzer_imap_parse_auth_plain(struct analyzer_imap_priv *apriv, struct analyzer_imap_ce_priv *cpriv, struct event *evt_auth, char *auth_plain) {
 
 	// Parse SASL AUTH PLAIN as described in RFC 4616
 
@@ -301,12 +327,7 @@ static int analyzer_imap_parse_auth_plain(struct analyzer_imap_priv *apriv, stru
 		return POM_OK;
 	}
 
-	// Allocate the event
-	cpriv->evt_auth = event_alloc(apriv->evt_auth);
-	if (!cpriv->evt_auth)
-		return POM_ERR;
-
-	struct data *evt_data = event_get_data(cpriv->evt_auth);
+	struct data *evt_data = event_get_data(evt_auth);
 	analyzer_imap_event_fill_common_data(cpriv, evt_data);
 
 	// Set the authentication type
@@ -325,7 +346,6 @@ static int analyzer_imap_parse_auth_plain(struct analyzer_imap_priv *apriv, stru
 		pomlog(POMLOG_DEBUG "Invalid decoded AUTH PLAIN data");
 		return POM_OK;
 	}
-
 
 
 	char *tmp = creds_str;
@@ -366,12 +386,11 @@ static int analyzer_imap_parse_auth_plain(struct analyzer_imap_priv *apriv, stru
 	}
 
 	free(creds_str);
+
+
 	return POM_OK;
 
 err:
-
-	event_cleanup(cpriv->evt_auth);
-	cpriv->evt_auth = NULL;
 
 	free(creds_str);
 
@@ -435,32 +454,6 @@ static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *c
 	return POM_OK;
 }
 
-static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum analyzer_imap_cmd cmd_type, struct event *cmd_evt, struct event *out_evt) {
-
-	struct data *evt_data = event_get_data(cmd_evt);
-
-	struct analyzer_imap_cmd_entry *cmd = malloc(sizeof(struct analyzer_imap_cmd_entry));
-	if (!cmd) {
-		pom_oom(sizeof(struct analyzer_imap_cmd_entry));
-		return POM_ERR;
-	}
-	memset(cmd, 0, sizeof(struct analyzer_imap_cmd_entry));
-
-	cmd->tag = PTYPE_STRING_GETVAL(evt_data[proto_imap_cmd_tag].value);
-	cmd->cmd = cmd_type;
-	cmd->cmd_evt = cmd_evt;
-	cmd->out_evt = out_evt;
-	event_refcount_inc(cmd_evt);
-
-	cmd->prev = cpriv->cmd_queue_tail;
-	if (cmd->prev)
-		cmd->prev->next = cmd;
-	else
-		cpriv->cmd_queue_head = cmd;
-
-	return POM_OK;
-}
-
 static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
 	return POM_OK;
 }
@@ -469,7 +462,7 @@ static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
 	return POM_OK;
 }
 
-static void analyzer_imap_invalidate_mbx(struct analyzer_imap_conntrack_priv *cpriv) {
+static void analyzer_imap_invalidate_mbx(struct analyzer_imap_ce_priv *cpriv) {
 
 	if (cpriv->cur_mbx)
 		free(cpriv->cur_mbx);
@@ -580,15 +573,38 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 				event_cleanup(evt_auth);
 				return POM_ERR;
 			}
-			if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_login, evt, evt_auth) != POM_OK) {
+			if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_auth, evt, evt_auth) != POM_OK) {
 				event_cleanup(evt_auth);
 				return POM_ERR;
 			}
 
 			if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
 				return POM_ERR;
+		} else if (!strcasecmp(cmd, "AUTHENTICATE")) {
+			if (!arg) // Invalid command, AUTHENTICATE needs an argument
+				return POM_OK;
 
-		} else if (!strcasecmd(cmd, "SELECT") || !strcasecmd(cmd, "EXAMINE")) {
+			if (!strncasecmp(arg, "PLAIN ", strlen("PLAIN "))) {
+				arg += strlen("PLAIN ");
+
+				struct event* evt_auth = event_alloc(apriv->evt_auth);
+				if (!evt_auth)
+					return POM_ERR;
+				if (analyzer_imap_parse_auth_plain(apriv, cpriv, evt_auth, arg) == POM_ERR) {
+					event_cleanup(evt_auth);
+					return POM_ERR;
+				}
+				if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_auth, evt, evt_auth) != POM_OK) {
+					event_cleanup(evt_auth);
+					return POM_ERR;
+				}
+
+				if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
+					return POM_ERR;
+			}
+
+
+		} else if (!strcasecmp(cmd, "SELECT") || !strcasecmp(cmd, "EXAMINE")) {
 			if (!arg)
 				return POM_OK;
 
@@ -614,7 +630,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 
 
 		// Handle the command
-		if (cmd)
+		if (cmd) {
 			enum analyzer_imap_rsp_status status = analyzer_imap_rsp_status_unk;
 			char *status_str = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
 			if (!strcasecmp(status_str, "OK")) {
@@ -656,7 +672,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 					if (out_evt)
 						event_process_end(out_evt);
 					return POM_ERR;
-				case analyzer_imap_cmd_login:
+				case analyzer_imap_cmd_auth:
 					if (status == analyzer_imap_rsp_status_ok) {
 						PTYPE_BOOL_SETVAL(out_data[analyzer_imap_auth_success].value, 1);
 						data_set(out_data[analyzer_imap_auth_success]);
@@ -676,7 +692,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 
 		char *status = NULL;
 		if (data_is_set(evt_data[proto_imap_response_status]))
-			status = PTYPE_STRING_SETVAL(evt_data[proto_imap_response_status].value);
+			status = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
 
 		if (!status)
 			return POM_OK;
@@ -709,13 +725,6 @@ static int analyzer_imap_ce_priv_cleanup(void *obj, void *priv) {
 			event_process_end(cpriv->evt_msg);
 		else
 			event_cleanup(cpriv->evt_msg);
-	}
-
-	if (cpriv->evt_auth) {
-		if (event_is_started(cpriv->evt_auth))
-			event_process_end(cpriv->evt_auth);
-		else
-			event_cleanup(cpriv->evt_auth);
 	}
 
 	if (cpriv->server_host)

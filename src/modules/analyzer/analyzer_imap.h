@@ -67,7 +67,7 @@ struct analyzer_imap_msg {
 };
 
 struct analyzer_imap_ce_priv {
-	struct event *evt_msg, *evt_auth;
+	struct event *evt_msg;
 	char *server_host;
 	struct ptype *client_addr, *server_addr;
 	int common_data_fetched;
@@ -82,7 +82,7 @@ struct analyzer_imap_ce_priv {
 
 enum analyzer_imap_cmd {
 	analyzer_imap_cmd_unk = 0,
-	analyzer_imap_cmd_login,
+	analyzer_imap_cmd_auth,
 };
 
 enum analyzer_imap_rsp_status {
