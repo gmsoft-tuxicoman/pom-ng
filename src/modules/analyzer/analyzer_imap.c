@@ -557,6 +557,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			}
 
 			struct data *auth_data = event_get_data(evt_auth);
+			analyzer_imap_event_fill_common_data(cpriv, auth_data);
 
 			PTYPE_STRING_SETVAL(auth_data[analyzer_imap_auth_type].value, "LOGIN");
 			data_set(auth_data[analyzer_imap_auth_type]);
