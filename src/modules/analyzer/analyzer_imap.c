@@ -546,8 +546,14 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 				ptype_cleanup(username);
 				return POM_ERR;
 			}
-
-			PTYPE_STRING_SETVAL(password, pwd);
+			if (*pwd == '"') {
+				pwd = pom_undquote(pwd, strlen(pwd));
+				if (pwd) {
+					PTYPE_STRING_SETVAL_P(password, pwd);
+				}
+			} else {
+				PTYPE_STRING_SETVAL(password, pwd);
+			}
 
 			struct event *evt_auth = event_alloc(apriv->evt_auth);
 			if (!evt_auth) {

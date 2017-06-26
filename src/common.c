@@ -208,3 +208,56 @@ char *pom_strnstr(char *haystack, char *needle, size_t len) {
 	
 	return NULL;
 }
+
+
+char *pom_undquote(char* dquoted_str, size_t len) {
+	if (!len) {
+		char *ret = malloc(1);
+		if (!ret) {
+			pom_oom(1);
+			return NULL;
+		}
+		*ret = 0;
+		return ret;
+	}
+
+	if (dquoted_str[0] != '"' || dquoted_str[len - 1] != '"')
+		return NULL;
+
+	dquoted_str++;
+	len -= 2;
+
+	char *ret = malloc(len + 1);
+	if (!ret) {
+		pom_oom(len + 1);
+		return NULL;
+	}
+	memset(ret, 0, len + 1);
+
+	char *bslash = dquoted_str;
+	char *otmp = ret;
+	char *itmp = dquoted_str;
+	size_t slen = len;
+
+	while ((bslash = memchr(bslash, '\\', slen))) {
+		char *escaped = bslash + 1;
+		if (*escaped != '\\'  && *escaped != '"') {
+			bslash++;
+			slen -= bslash - itmp;
+			continue;
+		}
+		size_t ltmp = bslash - itmp;
+		memcpy(otmp, itmp, ltmp);
+		otmp += ltmp;
+		*otmp = *escaped;
+		len -= ltmp + 2;
+		itmp = bslash + 2;
+		bslash = itmp;
+		slen = len;
+		otmp++;
+	}
+
+	memcpy(otmp, itmp, len);
+
+	return ret;
+}
