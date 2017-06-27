@@ -28,6 +28,7 @@
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
 #define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
 #define ANALYZER_IMAP_EVT_AUTH_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
+#define ANALYZER_IMAP_EVT_ID_DATA_COUNT		ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
 
 #define ANALYZER_IMAP_FLAGS_LISTENING	0x1
 #define ANALYZER_IMAP_FLAGS_COMMON_DATA	0x2
@@ -53,9 +54,14 @@ enum {
 	analyzer_imap_auth_success,
 };
 
+enum {
+	analyzer_imap_id_client_params = analyzer_imap_common_end,
+	analyzer_imap_id_server_params,
+};
+
 struct analyzer_imap_priv {
 	struct event_reg *evt_cmd, *evt_rsp, *evt_pload;
-	struct event_reg *evt_msg, *evt_auth;
+	struct event_reg *evt_msg, *evt_auth, *evt_id;
 	struct proto_packet_listener *pkt_listener;
 	int listening;
 };
@@ -67,7 +73,7 @@ struct analyzer_imap_msg {
 };
 
 struct analyzer_imap_ce_priv {
-	struct event *evt_msg;
+	struct event *evt_msg, *evt_id;
 	char *server_host;
 	struct ptype *client_addr, *server_addr;
 	int common_data_fetched;
@@ -83,6 +89,7 @@ struct analyzer_imap_ce_priv {
 enum analyzer_imap_cmd {
 	analyzer_imap_cmd_unk = 0,
 	analyzer_imap_cmd_auth,
+	analyzer_imap_cmd_id,
 };
 
 enum analyzer_imap_rsp_status {

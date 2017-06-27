@@ -143,6 +143,38 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 	if (!priv->evt_auth)
 		goto err;
 	
+	static struct data_item_reg evt_id_data_items[ANALYZER_IMAP_EVT_ID_DATA_COUNT] = { { 0 } };
+	evt_id_data_items[analyzer_imap_common_client_addr].name = "client_addr";
+	evt_id_data_items[analyzer_imap_common_client_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_id_data_items[analyzer_imap_common_server_addr].name = "server_addr";
+	evt_id_data_items[analyzer_imap_common_server_addr].flags = DATA_REG_FLAG_NO_ALLOC;
+	evt_id_data_items[analyzer_imap_common_server_port].name = "server_port";
+	evt_id_data_items[analyzer_imap_common_server_port].value_type = ptype_get_type("uint16");
+	evt_id_data_items[analyzer_imap_common_server_host].name = "server_host";
+	evt_id_data_items[analyzer_imap_common_server_host].value_type = ptype_get_type("string");
+
+	evt_id_data_items[analyzer_imap_id_client_params].name = "client_params";
+	evt_id_data_items[analyzer_imap_id_client_params].flags = DATA_REG_FLAG_LIST;
+	evt_id_data_items[analyzer_imap_id_server_params].name = "server_params";
+	evt_id_data_items[analyzer_imap_id_server_params].flags = DATA_REG_FLAG_LIST;
+
+	static struct data_reg evt_id_data = {
+		.items = evt_id_data_items,
+		.data_count = ANALYZER_IMAP_EVT_ID_DATA_COUNT
+	};
+
+	static struct event_reg_info analyzer_imap_evt_id = { 0 };
+	analyzer_imap_evt_id.source_name = "analyzer_imap";
+	analyzer_imap_evt_id.source_obj = analyzer;
+	analyzer_imap_evt_id.name = "imap_id";
+	analyzer_imap_evt_id.description = "IMAP ID commands output for client and server";
+	analyzer_imap_evt_id.data_reg = &evt_id_data;
+	analyzer_imap_evt_id.listeners_notify = analyzer_imap_event_listeners_notify;
+
+	priv->evt_id = event_register(&analyzer_imap_evt_id);
+	if (!priv->evt_id)
+		goto err;
+
 
 	return POM_OK;
 
@@ -197,7 +229,7 @@ static int analyzer_imap_event_listeners_notify(void *obj, struct event_reg *evt
 		}
 	}
 
-	if (!priv->listening && (event_has_listener(priv->evt_msg) || event_has_listener(priv->evt_auth))) {
+	if (!priv->listening && (event_has_listener(priv->evt_msg) || event_has_listener(priv->evt_auth) || event_has_listener(priv->evt_id))) {
 		
 
 		if (event_listener_register(priv->evt_cmd, analyzer, analyzer_imap_event_process_begin, analyzer_imap_event_process_end, NULL) != POM_OK) {
@@ -209,7 +241,7 @@ static int analyzer_imap_event_listeners_notify(void *obj, struct event_reg *evt
 
 		priv->listening = 1;
 
-	} else if (priv->listening && !event_has_listener(priv->evt_msg) && !event_has_listener(priv->evt_auth)) {
+	} else if (priv->listening && !event_has_listener(priv->evt_msg) && !event_has_listener(priv->evt_auth) && !event_has_listener(priv->evt_id)) {
 
 		event_listener_unregister(priv->evt_cmd, analyzer);
 		event_listener_unregister(priv->evt_rsp, analyzer);
@@ -317,6 +349,42 @@ static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum ana
 	return POM_OK;
 }
 
+static size_t analyzer_imap_strlen(char *imap_str, size_t len) {
+
+	if (*imap_str != '"') {
+		// Not a double quoted string
+		char *sp = memchr(imap_str, ' ', len);
+		if (!sp)
+			return len;
+		return sp - imap_str;
+	}
+
+	// Check for double quoted string
+
+	char *dquote = NULL;
+	char *tmp = imap_str + 1;
+	while ((dquote = memchr(tmp, '"', len))) {
+		unsigned int bslash_count = 0;
+		char *bslash = tmp - 1;
+		while (bslash >= imap_str && *bslash == '\\') {
+			bslash_count++;
+			bslash--;
+		}
+
+		if ((bslash_count % 2) == 0) {
+			// The double quote is not escaped
+			break;
+		}
+
+		tmp = dquote + 1;
+		len -= dquote - tmp;
+
+	}
+
+	return dquote - imap_str + 1;
+
+}
+
 static int analyzer_imap_parse_auth_plain(struct analyzer_imap_priv *apriv, struct analyzer_imap_ce_priv *cpriv, struct event *evt_auth, char *auth_plain) {
 
 	// Parse SASL AUTH PLAIN as described in RFC 4616
@@ -395,6 +463,61 @@ err:
 	free(creds_str);
 
 	return POM_ERR;
+}
+
+static int analyzer_imap_parse_id(struct event *evt_id, char *arg, int is_client) {
+
+	struct data *id_data = event_get_data(evt_id);
+
+	size_t len = strlen(arg);
+	if (len == 0 || *arg != '(' || arg[len - 1] != ')')
+		return POM_OK;
+
+	arg++;
+	len -= 2;
+
+	while (len > 0) {
+		size_t key_len = analyzer_imap_strlen(arg, len);
+		if (!key_len)
+			break;
+		char *key = arg;
+		arg += key_len;
+		len -= key_len;
+		while (*arg == ' ') {
+			arg++;
+			len--;
+		}
+
+		size_t value_len = analyzer_imap_strlen(arg, len);
+		if (!value_len)
+			break;
+		char *value = arg;
+		arg += value_len;
+		len -= value_len;
+		while (*arg == ' ') {
+			arg++;
+			len--;
+		}
+
+		if (*key == '"')
+			key = pom_undquote(key, key_len);
+		else
+			key = strndup(key, key_len);
+
+		if (*value == '"')
+			value = pom_undquote(value, value_len);
+		else
+			value = strndup(value, value_len);
+		struct ptype *value_pt = ptype_alloc("string");
+		PTYPE_STRING_SETVAL_P(value_pt, value);
+
+		int client_server = (is_client ? analyzer_imap_id_client_params : analyzer_imap_id_server_params);
+		if (data_item_add_ptype(id_data, client_server, key, value_pt) != POM_OK) {
+			event_cleanup(evt_id);
+			return POM_ERR;
+		}
+	}
+	return POM_OK;
 }
 
 static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *cpriv, struct proto_process_stack *stack, unsigned int stack_index, int server_direction) {
@@ -601,13 +724,17 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 					event_cleanup(evt_auth);
 					return POM_ERR;
 				}
-				if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_auth, evt, evt_auth) != POM_OK) {
+
+				if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK) {
 					event_cleanup(evt_auth);
 					return POM_ERR;
 				}
 
-				if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
+				if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_auth, evt, evt_auth) != POM_OK) {
+					event_process_end(evt_auth);
 					return POM_ERR;
+				}
+
 			}
 
 
@@ -622,6 +749,37 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 				pom_oom(strlen(arg) + 1);
 				return POM_ERR;
 			}
+		} else if (!strcasecmp(cmd, "ID")) {
+			if (!arg)
+				return POM_OK;
+			struct event *evt_id = event_alloc(apriv->evt_id);
+			if (!evt_id)
+				return POM_ERR;
+
+			if (cpriv->evt_id)
+				event_process_end(cpriv->evt_id);
+			cpriv->evt_id = NULL;
+
+			if (analyzer_imap_parse_id(evt_id, arg, 1) != POM_OK) {
+				event_cleanup(evt_id);
+				return POM_ERR;
+			}
+
+			struct data *id_data = event_get_data(evt_id);
+			analyzer_imap_event_fill_common_data(cpriv, id_data);
+
+			if (event_process_begin(evt_id, stack, stack_index, event_get_timestamp(evt)) != POM_OK) {
+				event_cleanup(evt_id);
+				return POM_ERR;
+			}
+
+			if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_id, evt, evt_id) != POM_OK) {
+				event_process_end(evt_id);
+				return POM_ERR;
+			}
+
+			cpriv->evt_id = evt_id;
+
 		}
 
 	} else if (evt_reg == apriv->evt_rsp) {
@@ -635,11 +793,13 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			for (cmd = cpriv->cmd_queue_head; cmd && strcmp(cmd->tag, tag); cmd = cmd->next);
 		}
 
+		char *status_str = NULL;
+		if (data_is_set(evt_data[proto_imap_response_status]))
+			status_str = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
 
-		// Handle the command
 		if (cmd) {
+			// We found a matching command in our queue
 			enum analyzer_imap_rsp_status status = analyzer_imap_rsp_status_unk;
-			char *status_str = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
 			if (!strcasecmp(status_str, "OK")) {
 				status = analyzer_imap_rsp_status_ok;
 			} else if (!strcasecmp(status_str, "NO")) {
@@ -688,6 +848,9 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 						data_set(out_data[analyzer_imap_auth_success]);
 					}
 					break;
+				case analyzer_imap_cmd_id:
+					cpriv->evt_id = NULL;
+					break;
 			}
 
 			if (event_process_end(out_evt) != POM_OK)
@@ -697,22 +860,43 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			return POM_OK;
 		}
 
-		char *status = NULL;
-		if (data_is_set(evt_data[proto_imap_response_status]))
-			status = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_status].value);
 
-		if (!status)
+		if (!status_str)
 			return POM_OK;
 
 		if (!strcmp(tag, "*")) {
-			if (!strcasecmp(status, "FLAGS")) {
+			if (!strcasecmp(status_str, "FLAGS")) {
 				// FLAGS response appear only for SELECT or EXAMINE
 				// Since we switched mailbox we need to flush what we know about messages
 				analyzer_imap_invalidate_mbx(cpriv);
+			} else if (!strcasecmp(status_str, "ID")) {
+
+				char *text = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_text].value);
+				if (!text)
+					return POM_OK;
+
+				struct event *evt_id = cpriv->evt_id;
+				if (!cpriv->evt_id) {
+					evt_id = event_alloc(apriv->evt_id);
+					if (!evt_id)
+						return POM_ERR;
+					struct data *id_data = event_get_data(evt_id);
+					analyzer_imap_event_fill_common_data(cpriv, id_data);
+				}
+
+				if (analyzer_imap_parse_id(evt_id, text, 0) != POM_OK) {
+					if (!cpriv->evt_id)
+						event_cleanup(evt_id);
+					return POM_ERR;
+				}
+
+				if (!cpriv->evt_id)
+					return event_process(evt_id, stack, stack_index, event_get_timestamp(evt));
+
 			}
 		}
-
 	}
+
 
 
 	return POM_OK;
