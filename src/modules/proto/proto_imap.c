@@ -439,7 +439,13 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 						break;
 				}
 
-				if (sscanf(line + i + 1, "%"SCNu64, &priv->data_bytes[s->direction]) != 1) {
+				char plen[32] = { 0 };
+				size_t plen_len = len - i - 2;
+				if (plen_len > sizeof(plen) - 1)
+					return PROTO_OK; // Invalid number
+				memcpy(plen, line + i + 1, plen_len);
+
+				if (sscanf(plen, "%"SCNu64, &priv->data_bytes[s->direction]) != 1) {
 					pomlog(POMLOG_DEBUG "Invalid size for payload");
 					event_cleanup(rsp_evt);
 					return PROTO_OK;
