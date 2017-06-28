@@ -51,7 +51,14 @@ static int decoder_gzip_mod_register(struct mod_reg *mod) {
 	if (decoder_register("x-gzip", &dec_gzip) != POM_OK)
 		return POM_ERR;
 
-	if (decoder_register("deflate", &dec_gzip) != POM_OK)
+	static struct decoder_reg_info dec_deflate = { 0 };
+	dec_deflate.mod = mod;
+	dec_deflate.alloc = decoder_deflate_alloc;
+	dec_deflate.cleanup = decoder_gzip_cleanup;
+	dec_deflate.estimate_size = decoder_gzip_estimate_size;
+	dec_deflate.decode = decoder_gzip_decode;
+
+	if (decoder_register("deflate", &dec_deflate) != POM_OK)
 		return POM_ERR;
 
 	return POM_OK;
@@ -66,7 +73,7 @@ static int decoder_gzip_mod_unregister() {
 	return res;
 }
 
-static int decoder_gzip_alloc(struct decoder *dec) {
+static int decoder_gzip_deflate_alloc(struct decoder *dec, int windowBits) {
 
 	z_stream *zbuff = malloc(sizeof(z_stream));
 	if (!zbuff) {
@@ -76,7 +83,7 @@ static int decoder_gzip_alloc(struct decoder *dec) {
 
 	memset(zbuff, 0, sizeof(z_stream));
 
-	if (inflateInit2(zbuff, 15 + 32) != Z_OK) {
+	if (inflateInit2(zbuff, windowBits) != Z_OK) {
 		if (zbuff->msg)
 			pomlog(POMLOG_ERR "Unable to init Zlib : %s", zbuff->msg);
 		else
@@ -88,6 +95,16 @@ static int decoder_gzip_alloc(struct decoder *dec) {
 	dec->priv = zbuff;
 
 	return POM_OK;
+}
+
+static int decoder_gzip_alloc(struct decoder *dec) {
+
+	return decoder_gzip_deflate_alloc(dec, 15 + 32);
+}
+
+static int decoder_deflate_alloc(struct decoder *dec) {
+
+	return decoder_gzip_deflate_alloc(dec, -15);
 }
 
 static int decoder_gzip_cleanup(struct decoder *dec) {

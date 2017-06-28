@@ -30,6 +30,7 @@ static int decoder_gzip_mod_register(struct mod_reg *mod);
 static int decoder_gzip_mod_unregister();
 
 static int decoder_gzip_alloc(struct decoder *dec);
+static int decoder_deflate_alloc(struct decoder *dec);
 static int decoder_gzip_cleanup(struct decoder *dec);
 static size_t decoder_gzip_estimate_size(size_t encoded_size);
 static int decoder_gzip_decode(struct decoder *dec);
