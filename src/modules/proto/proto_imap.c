@@ -177,6 +177,70 @@ static int proto_imap_cleanup(void *proto_priv) {
 	return POM_OK;
 }
 
+static int proto_imap_decompress_init(struct proto_imap_conntrack_priv *priv) {
+
+
+	int i;
+	for (i = 0; i < POM_DIR_TOT; i++) {
+		if (!priv->comp_dec[i]) {
+			priv->comp_dec[i] = decoder_alloc("deflate");
+			if (!priv->comp_dec[i]) {
+				return POM_ERR;
+			}
+		}
+
+		void *pload;
+		size_t len;
+		if (packet_stream_parser_get_remaining(priv->parser[i], &pload, &len) != POM_OK)
+			return POM_ERR;
+
+		if (len > 0) {
+			size_t estimated_size = decoder_estimate_output_size(priv->comp_dec[i], len);
+			priv->comp_dec[i]->next_in = pload;
+			priv->comp_dec[i]->avail_in = len;
+
+			void *decoded = malloc(estimated_size);
+			if (!decoded) {
+				pom_oom(estimated_size);
+				return POM_ERR;
+			}
+			priv->comp_dec[i]->avail_out = estimated_size;
+			priv->comp_dec[i]->next_out = decoded;
+			while (1) {
+				int res = decoder_decode(priv->comp_dec[i]);
+				if (res == DEC_ERR) {
+					priv->flags |= PROTO_IMAP_FLAG_INVALID;
+					free(decoded);
+					return POM_OK;
+				} else if (res == DEC_MORE) {
+					void *decoded_new = realloc(decoded, estimated_size * 2);
+					if (!decoded_new) {
+						pom_oom(estimated_size);
+						free(decoded);
+						return POM_ERR;
+					}
+					decoded = decoded_new;
+					priv->comp_dec[i]->avail_out = estimated_size;
+					priv->comp_dec[i]->next_out = decoded + estimated_size;
+					estimated_size *= 2;
+					continue;
+				} else {
+					break;
+				}
+			}
+
+			packet_stream_parser_empty(priv->parser[i]);
+			if (packet_stream_parser_add_payload_buffer(priv->parser[i], decoded, estimated_size - priv->comp_dec[i]->avail_out) != POM_OK) {
+				return POM_ERR;
+			}
+
+		}
+
+	}
+
+	return POM_OK;
+}
+
 static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index];
@@ -223,12 +287,89 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 		return PROTO_OK;
 
 	struct packet_stream_parser *parser = priv->parser[s->direction];
-	if (packet_stream_parser_add_payload(parser, s->pload, s->plen) != POM_OK)
-		return PROTO_ERR;
+	if (priv->comp_dec[s->direction]) {
+		struct decoder *dec = priv->comp_dec[s->direction];
+		size_t estimated_size = decoder_estimate_output_size(dec, s->plen);
+		dec->next_in = s->pload;
+		dec->avail_in = s->plen;
+
+		void *decoded = malloc(estimated_size);
+		if (!decoded) {
+			pom_oom(estimated_size);
+			return POM_ERR;
+		}
+		dec->avail_out = estimated_size;
+		dec->next_out = decoded;
+		while (1) {
+			int res = decoder_decode(dec);
+			if (res == DEC_ERR) {
+				priv->flags |= PROTO_IMAP_FLAG_INVALID;
+				free(decoded);
+				return POM_OK;
+			} else if (res == DEC_MORE) {
+				void *decoded_new = realloc(decoded, estimated_size * 2);
+				if (!decoded_new) {
+					pom_oom(estimated_size);
+					free(decoded);
+					return POM_ERR;
+				}
+				decoded = decoded_new;
+				dec->avail_out = estimated_size;
+				dec->next_out = decoded + estimated_size;
+				estimated_size *= 2;
+				continue;
+			} else {
+				break;
+			}
+		}
+
+		if (packet_stream_parser_add_payload_buffer(parser, decoded, estimated_size - dec->avail_out) != POM_OK) {
+			return POM_ERR;
+		}
+	} else {
+		if (packet_stream_parser_add_payload(parser, s->pload, s->plen) != POM_OK)
+			return PROTO_ERR;
+	}
 
 	char *line = NULL;
 	size_t len = 0;
 	while (1) {
+
+		if (priv->compressed == proto_imap_compress_client && priv->server_direction == POM_DIR_REVERSE(s->direction)) {
+			// The client asked for compression but we did not catch the server response.
+			// Try to see if this content looks compressed or not
+			if (packet_stream_parser_get_remaining(parser, (void**)&line, &len) != POM_OK)
+				return POM_ERR;
+			if (!len)
+				return POM_OK;
+			int i, sp_count = 0;
+			for (i = 0; i < len; i++) {
+				if (line[i] == '\r' || line[i] == '\n')
+					break;
+				if (line[i] == ' ') {
+					sp_count++;
+				} else if (line[i] < ' ' || line[i] > '~') { // Crude isascii() check
+					// Probably compressed
+					priv->compressed = proto_imap_compress_enabled;
+					if (proto_imap_decompress_init(priv) != POM_OK)
+						return POM_ERR;
+					break;
+				}
+			}
+			if (priv->compressed != proto_imap_compress_enabled) {
+				if (i < 3 || sp_count < 1) {
+					// Probably compressed
+					priv->compressed = proto_imap_compress_enabled;
+					if (proto_imap_decompress_init(priv) != POM_OK)
+						return POM_ERR;
+				} else {
+					// We have more than 3 chars, there was a space and the line is all ascii
+					// Probably not compressed
+					priv->compressed = proto_imap_compress_none;
+				}
+			}
+		}
+
 
 		// Check if there is any remaining payload
 		uint64_t data_bytes = priv->data_bytes[s->direction];
@@ -427,8 +568,19 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 			data_set(evt_data[proto_imap_response_status]);
 
 			if (sp) {
-				PTYPE_STRING_SETVAL_N(evt_data[proto_imap_response_text].value, sp + 1, len - tok_len - 1);
+				char *text = strndup(sp + 1, len - tok_len - 1);
+				if (!text) {
+					pom_oom(len - tok_len);
+					return POM_ERR;
+				}
+				PTYPE_STRING_SETVAL_P(evt_data[proto_imap_response_text].value, text);
 				data_set(evt_data[proto_imap_response_text]);
+				if ((priv->compressed == proto_imap_compress_none && !strcasecmp(cmd_or_status, "OK") && !strcasecmp(text, "DEFLATE active")) || (priv->compressed == proto_imap_compress_client && !strcasecmp(cmd_or_status, "OK"))) {
+					// Compression has been enabled
+					priv->compressed = proto_imap_compress_enabled;
+					if (proto_imap_decompress_init(priv) != POM_OK)
+						return POM_ERR;
+				}
 			}
 
 			if (len > 3 && line[len - 1] == '}') {
@@ -515,6 +667,11 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				data_set(evt_data[proto_imap_cmd_arg]);
 			}
 
+			if (!strcasecmp(cmd_or_status, "COMPRESS") && (len >= strlen("DEFLATE")) && !strncasecmp(line, "DEFLATE", strlen("DEFLATE"))) {
+				// Client requested compression with the deflate algo
+				priv->compressed = proto_imap_compress_client;
+			}
+
 			if (len > 3 && line[len - 1] == '}') {
 				// We've got some payload after this line
 				int i;
@@ -539,6 +696,7 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				if (event_process(cmd_evt, stack, stack_index, p->ts) != POM_OK)
 					return PROTO_ERR;
 			}
+
 		}
 	}
 
@@ -574,6 +732,8 @@ static int proto_imap_conntrack_cleanup(void *ce_priv) {
 
 	int i;
 	for (i = 0; i < POM_DIR_TOT; i++) {
+		if (priv->comp_dec[i])
+			decoder_cleanup(priv->comp_dec[i]);
 		if (priv->parser[i])
 			packet_stream_parser_cleanup(priv->parser[i]);
 		if (priv->pload_evt[i]) {

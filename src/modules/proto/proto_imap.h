@@ -23,6 +23,7 @@
 
 
 #include <pom-ng/proto_imap.h>
+#include <pom-ng/decoder.h>
 
 #define IMAP_MAX_LINE 4096
 
@@ -37,10 +38,19 @@ struct proto_imap_priv {
 	struct event_reg *evt_pload;
 };
 
+enum proto_imap_compress {
+	proto_imap_compress_none = 0,
+	proto_imap_compress_client,
+	proto_imap_compress_enabled
+
+};
+
 struct proto_imap_conntrack_priv {
 
 	struct packet_stream_parser *parser[POM_DIR_TOT];
 	int server_direction;
+	enum proto_imap_compress compressed;
+	struct decoder *comp_dec[POM_DIR_TOT];
 	struct event *data_evt, *cmd_evt, *rsp_evt, *pload_evt[POM_DIR_TOT];
 	uint64_t data_bytes[POM_DIR_TOT];
 	uint32_t flags;
