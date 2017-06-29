@@ -171,6 +171,8 @@ static int proto_imap_cleanup(void *proto_priv) {
 		event_unregister(priv->evt_cmd);
 	if (priv->evt_rsp)
 		event_unregister(priv->evt_rsp);
+	if (priv->evt_pload)
+		event_unregister(priv->evt_pload);
 
 	free(priv);
 

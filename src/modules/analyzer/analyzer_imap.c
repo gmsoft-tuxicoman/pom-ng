@@ -202,6 +202,9 @@ static int analyzer_imap_cleanup(struct analyzer *analyzer) {
 	if (priv->evt_auth)
 		event_unregister(priv->evt_auth);
 
+	if (priv->evt_id)
+		event_unregister(priv->evt_id);
+
 	free(priv);
 
 	return POM_OK;
