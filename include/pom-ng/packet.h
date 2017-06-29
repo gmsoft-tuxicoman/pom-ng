@@ -82,6 +82,8 @@ int packet_multipart_process(struct packet_multipart *multipart, struct proto_pr
 
 struct packet_stream_parser *packet_stream_parser_alloc(size_t max_line_size, unsigned int flags);
 int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *pload, size_t len);
+// Add payload to the stream parser and use it as or own buffer (or copy then free it if we already have some stuff buffered)
+int packet_stream_parser_add_payload_buffer(struct packet_stream_parser *sp, void *pload, size_t len);
 int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, size_t *len);
 int packet_stream_parser_get_bytes(struct packet_stream_parser *p, size_t len, void **pload);
 int packet_stream_parser_get_remaining(struct packet_stream_parser *sp, void **pload, size_t *len);
