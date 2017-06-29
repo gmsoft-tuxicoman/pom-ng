@@ -209,7 +209,7 @@ static int proto_imap_decompress_init(struct proto_imap_conntrack_priv *priv) {
 			while (1) {
 				int res = decoder_decode(priv->comp_dec[i]);
 				if (res == DEC_ERR) {
-					priv->flags |= PROTO_IMAP_FLAG_INVALID;
+					priv->state = proto_imap_state_invalid;
 					free(decoded);
 					return POM_OK;
 				} else if (res == DEC_MORE) {
@@ -283,7 +283,7 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 		s->ce->priv = priv;
 	}
 
-	if (priv->flags & PROTO_IMAP_FLAG_INVALID)
+	if (priv->state == proto_imap_state_invalid || priv->state == proto_imap_state_starttls)
 		return PROTO_OK;
 
 	struct packet_stream_parser *parser = priv->parser[s->direction];
@@ -303,7 +303,7 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 		while (1) {
 			int res = decoder_decode(dec);
 			if (res == DEC_ERR) {
-				priv->flags |= PROTO_IMAP_FLAG_INVALID;
+				priv->state = proto_imap_state_invalid;
 				free(decoded);
 				return POM_OK;
 			} else if (res == DEC_MORE) {
@@ -333,11 +333,11 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 
 	char *line = NULL;
 	size_t len = 0;
-	while (1) {
+	while (priv->state != proto_imap_state_invalid && priv->state != proto_imap_state_starttls) {
 
-		if (priv->compressed == proto_imap_compress_client && priv->server_direction == POM_DIR_REVERSE(s->direction)) {
-			// The client asked for compression but we did not catch the server response.
-			// Try to see if this content looks compressed or not
+		if ((priv->state == proto_imap_state_compress_req || priv->state == proto_imap_state_starttls_req) && priv->server_direction == POM_DIR_REVERSE(s->direction)) {
+			// The client asked for compression or starttls but we did not catch the server response.
+			// Try to see if this content looks readable or not
 			if (packet_stream_parser_get_remaining(parser, (void**)&line, &len) != POM_OK)
 				return POM_ERR;
 			if (!len)
@@ -349,23 +349,31 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				if (line[i] == ' ') {
 					sp_count++;
 				} else if (line[i] < ' ' || line[i] > '~') { // Crude isascii() check
-					// Probably compressed
-					priv->compressed = proto_imap_compress_enabled;
-					if (proto_imap_decompress_init(priv) != POM_OK)
-						return POM_ERR;
+					// Probably compressed or TLS
+					priv->state++;
+					if (priv->state == proto_imap_state_compress) {
+						if (proto_imap_decompress_init(priv) != POM_OK)
+							return POM_ERR;
+					} else if (priv->state == proto_imap_state_starttls) {
+						return POM_OK;
+					}
 					break;
 				}
 			}
-			if (priv->compressed != proto_imap_compress_enabled) {
+			if (priv->state != proto_imap_state_compress) {
 				if (i < 3 || sp_count < 1) {
-					// Probably compressed
-					priv->compressed = proto_imap_compress_enabled;
-					if (proto_imap_decompress_init(priv) != POM_OK)
+					// Probably compressed or TLS
+					priv->state++;
+					if (priv->state == proto_imap_state_compress) {
+						if (proto_imap_decompress_init(priv) != POM_OK)
 						return POM_ERR;
+					} else if (priv->state == proto_imap_state_starttls) {
+						return POM_OK;
+					}
 				} else {
 					// We have more than 3 chars, there was a space and the line is all ascii
 					// Probably not compressed
-					priv->compressed = proto_imap_compress_none;
+					priv->state = proto_imap_state_normal;
 				}
 			}
 		}
@@ -450,7 +458,7 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 
 				if (sscanf(new_line + i + 1, "%"SCNu64, &priv->data_bytes[s->direction]) != 1) {
 					pomlog(POMLOG_DEBUG "Invalid size for payload");
-					priv->flags |= PROTO_IMAP_FLAG_INVALID;
+					priv->state = proto_imap_state_invalid;
 					return PROTO_OK;
 				}
 
@@ -500,7 +508,7 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 		char *sp = memchr(line, ' ', len);
 		if (!sp) {
 			pomlog(POMLOG_DEBUG "Space after the tag not found");
-			priv->flags |= PROTO_IMAP_FLAG_INVALID;
+			priv->state = proto_imap_state_invalid;
 			return PROTO_OK;
 		}
 
@@ -575,11 +583,28 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				}
 				PTYPE_STRING_SETVAL_P(evt_data[proto_imap_response_text].value, text);
 				data_set(evt_data[proto_imap_response_text]);
-				if ((priv->compressed == proto_imap_compress_none && !strcasecmp(cmd_or_status, "OK") && !strcasecmp(text, "DEFLATE active")) || (priv->compressed == proto_imap_compress_client && !strcasecmp(cmd_or_status, "OK"))) {
-					// Compression has been enabled
-					priv->compressed = proto_imap_compress_enabled;
-					if (proto_imap_decompress_init(priv) != POM_OK)
-						return POM_ERR;
+				if (priv->state == proto_imap_state_compress_req || priv->state == proto_imap_state_starttls_req) {
+					if (!strcasecmp(cmd_or_status, "OK")) {
+						priv->state++;
+						if (priv->state == proto_imap_state_compress) {
+							if (proto_imap_decompress_init(priv) != POM_OK)
+								return POM_ERR;
+						}
+					} else {
+						// Compression or STARTTLS was denied
+						priv->state = proto_imap_state_normal;
+					}
+				} else if (priv->state == proto_imap_state_normal && !strcasecmp(cmd_or_status, "OK")) {
+					// Try to catch compression or TLS enabled with the status message
+					// Not all IMAP implementation probably use the RFC defined messages
+					if (!strcasecmp(text, "DEFLATE active")) {
+						// Compression has been enabled
+						priv->state = proto_imap_state_compress;
+						if (proto_imap_decompress_init(priv) != POM_OK)
+							return POM_ERR;
+					} else if (!strcasecmp(text, "Begin TLS negotiation now")) {
+						priv->state = proto_imap_state_starttls;
+					}
 				}
 			}
 
@@ -667,9 +692,14 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 				data_set(evt_data[proto_imap_cmd_arg]);
 			}
 
-			if (!strcasecmp(cmd_or_status, "COMPRESS") && (len >= strlen("DEFLATE")) && !strncasecmp(line, "DEFLATE", strlen("DEFLATE"))) {
-				// Client requested compression with the deflate algo
-				priv->compressed = proto_imap_compress_client;
+			if (priv->state == proto_imap_state_normal) {
+				if (!strcasecmp(cmd_or_status, "COMPRESS") && (len >= strlen("DEFLATE")) && !strncasecmp(line, "DEFLATE", strlen("DEFLATE"))) {
+					// Client requested compression with the deflate algo
+					priv->state = proto_imap_state_compress_req;
+				} else if (!strcasecmp(cmd_or_status, "STARTTLS")) {
+					// Client requested TLs
+					priv->state = proto_imap_state_starttls_req;
+				}
 			}
 
 			if (len > 3 && line[len - 1] == '}') {

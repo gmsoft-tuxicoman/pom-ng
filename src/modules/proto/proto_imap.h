@@ -27,10 +27,6 @@
 
 #define IMAP_MAX_LINE 4096
 
-// Either if it's invalid or encrypted
-#define PROTO_IMAP_FLAG_INVALID			0x1
-#define PROTO_IMAP_FLAG_STARTTLS		0x2
-
 struct proto_imap_priv {
 
 	struct event_reg *evt_cmd;
@@ -38,10 +34,13 @@ struct proto_imap_priv {
 	struct event_reg *evt_pload;
 };
 
-enum proto_imap_compress {
-	proto_imap_compress_none = 0,
-	proto_imap_compress_client,
-	proto_imap_compress_enabled
+enum proto_imap_state {
+	proto_imap_state_normal = 0,
+	proto_imap_state_invalid,
+	proto_imap_state_compress_req,
+	proto_imap_state_compress,
+	proto_imap_state_starttls_req,
+	proto_imap_state_starttls
 
 };
 
@@ -49,7 +48,7 @@ struct proto_imap_conntrack_priv {
 
 	struct packet_stream_parser *parser[POM_DIR_TOT];
 	int server_direction;
-	enum proto_imap_compress compressed;
+	enum proto_imap_state state;
 	struct decoder *comp_dec[POM_DIR_TOT];
 	struct event *data_evt, *cmd_evt, *rsp_evt, *pload_evt[POM_DIR_TOT];
 	uint64_t data_bytes[POM_DIR_TOT];
