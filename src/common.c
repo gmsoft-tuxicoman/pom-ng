@@ -222,7 +222,7 @@ char *pom_undquote(char* dquoted_str, size_t len) {
 	}
 
 	if (dquoted_str[0] != '"' || dquoted_str[len - 1] != '"')
-		return NULL;
+		return strndup(dquoted_str, len);
 
 	dquoted_str++;
 	len -= 2;
