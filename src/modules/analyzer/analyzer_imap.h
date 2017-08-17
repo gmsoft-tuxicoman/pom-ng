@@ -23,7 +23,7 @@
 
 #include <pom-ng/analyzer.h>
 #include <pom-ng/proto.h>
-
+#include <pom-ng/mime.h>
 
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
 #define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
@@ -84,6 +84,44 @@ struct analyzer_imap_ce_priv {
 	struct analyzer_imap_msg *msg_queue_head, *msg_queue_tail;
 
 	struct analyzer_imap_cmd_entry *cmd_queue_head, *cmd_queue_tail;
+};
+
+
+enum analyzer_imap_fetch_field {
+
+	analyzer_imap_fetch_field_unknown = 0,
+	analyzer_imap_fetch_field_uid,
+	analyzer_imap_fetch_field_internaldate,
+	analyzer_imap_fetch_field_flags,
+	analyzer_imap_fetch_field_rfc822,
+	analyzer_imap_fetch_field_rfc822_header,
+	analyzer_imap_fetch_field_rfc822_size,
+	analyzer_imap_fetch_field_rfc822_text,
+	analyzer_imap_fetch_field_bodystructure,
+	analyzer_imap_fetch_field_body,
+	analyzer_imap_fetch_field_envelope,
+};
+
+
+enum analyzer_imap_fetch_body_field {
+	analyzer_imap_fetch_body_field_unknown = 0,
+	analyzer_imap_fetch_body_field_header,
+	analyzer_imap_fetch_body_field_header_fields,
+	analyzer_imap_fetch_body_field_header_fields_not,
+	analyzer_imap_fetch_body_field_mime,
+	analyzer_imap_fetch_body_field_text,
+	analyzer_imap_fetch_body_field_part
+};
+
+struct analyzer_imap_fetch_body_part {
+	int part;
+	struct analyzer_imap_fetch_body_part *next;
+};
+
+struct analyzer_imap_fetch_bodystructure {
+	struct mime_type *mime_type;
+	char *encoding;
+	
 };
 
 enum analyzer_imap_cmd {

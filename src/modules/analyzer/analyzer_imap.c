@@ -270,6 +270,7 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 	if (!cpriv)
 		return POM_ERR;
 
+	return POM_OK;
 	if (!event_is_started(cpriv->evt_msg)) {
 		pomlog(POMLOG_ERR "Payload received while data event not found");
 		return POM_OK;
@@ -354,12 +355,41 @@ static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum ana
 
 static size_t analyzer_imap_strlen(char *imap_str, size_t len) {
 
-	if (*imap_str != '"') {
-		// Not a double quoted string
-		char *sp = memchr(imap_str, ' ', len);
-		if (!sp)
-			return len;
-		return sp - imap_str;
+
+	if (*imap_str == '(' || *imap_str == '[') {
+		char end_sep = ')';
+		if (*imap_str == '[')
+			end_sep = ']';
+
+		char *pos = imap_str + 1;
+		char *end = imap_str + len;
+
+		while (pos < end && *pos) {
+			for (;pos < end && *pos == ' '; pos++);
+
+			if (pos >= end)
+				break;
+
+			size_t sublen = analyzer_imap_strlen(pos, end - pos);
+			pos += sublen;
+			if (pos >= end)
+				break;
+
+			if (*pos == end_sep) {
+				pos++;
+				break;
+			}
+
+		}
+		return pos - imap_str;
+
+
+	} else if (*imap_str != '"') {
+		char *end = imap_str;
+		while (*end >= '!' && *end <= 'z' && *end != '(' && *end != ')' && *end != '[' && *end != ']' && *end != '<' && *end != '>' )
+			end++;
+		return end - imap_str;
+
 	}
 
 	// Check for double quoted string
@@ -502,15 +532,9 @@ static int analyzer_imap_parse_id(struct event *evt_id, char *arg, int is_client
 			len--;
 		}
 
-		if (*key == '"')
-			key = pom_undquote(key, key_len);
-		else
-			key = strndup(key, key_len);
+		key = pom_undquote(key, key_len);
+		value = pom_undquote(value, value_len);
 
-		if (*value == '"')
-			value = pom_undquote(value, value_len);
-		else
-			value = strndup(value, value_len);
 		struct ptype *value_pt = ptype_alloc("string");
 		PTYPE_STRING_SETVAL_P(value_pt, value);
 
@@ -580,8 +604,351 @@ static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *c
 	return POM_OK;
 }
 
-static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
+static struct analyzer_imap_fetch_body_part* analyzer_imap_parse_fetch_field_body(char *line, size_t len) {
+
+	struct analyzer_imap_fetch_body_part *res = malloc(sizeof(struct analyzer_imap_fetch_body_part));
+	if (!res) {
+		pom_oom(sizeof(struct analyzer_imap_fetch_body_part));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct analyzer_imap_fetch_body_part));
+
+	size_t field_len = 0;
+	if (len >= strlen("HEADER.FIELDS.NOT") && !strncasecmp(line, "HEADER.FIELDS.NOT", strlen("HEADER.FIELDS.NOT"))) {
+		res->part = analyzer_imap_fetch_body_field_header_fields_not;
+		field_len = strlen("HEADER.FIELDS.NOT");
+	} else if (len >= strlen("HEADER.FIELDS") && !strncasecmp(line, "HEADER.FIELDS", strlen("HEADER.FIELDS"))) {
+		res->part = analyzer_imap_fetch_body_field_header_fields;
+		field_len = strlen("HEADER.FIELDS");
+	} else if (len >= strlen("HEADER") && !strncasecmp(line, "HEADER", strlen("HEADER"))) {
+		res->part = analyzer_imap_fetch_body_field_header;
+		field_len = strlen("HEADER");
+	} else if (len >= strlen("MIME") && !strncasecmp(line, "MIME", strlen("MIME"))) {
+		res->part = analyzer_imap_fetch_body_field_mime;
+		field_len = strlen("MIME");
+	} else if (len >= strlen("TEXT") && !strncasecmp(line, "TEXT", strlen("TEXT"))) {
+		res->part = analyzer_imap_fetch_body_field_text;
+		field_len = strlen("TEXT");
+	} else {
+		// It's most likely a number
+		char *dot = memchr(line, '.', len);
+		if (dot) {
+			*dot = 0;
+			field_len = dot - line + 1;
+		} else {
+			field_len = len;
+		}
+		if (sscanf(line, "%u", &res->part) != 1) {
+			// Parse error, set the part as unknown
+			return res;
+		}
+		// Negate the value to mean it's an actual part number
+		res->part = -res->part;
+	}
+
+	line += field_len;
+	len -= field_len;
+
+	if (!len)
+		return res;
+
+	res->next = analyzer_imap_parse_fetch_field_body(line, len);
+	if (!res->next) {
+		free(res);
+		return NULL;
+	}
+
+	return res;
+}
+
+struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodystructure(char *line, size_t len) {
+
+	if (*line == '(') {
+		// This is a nested bodystructure
+
+		while (len > 2 && *line == '(') {
+			char *subpart = line;
+			size_t sublen = analyzer_imap_strlen(line, len);
+
+			if (sublen < 2) // Shouldn't happen
+				return NULL;
+
+			line += sublen;
+			len -= sublen;
+
+
+			// Remove the parenthesis
+			subpart++;
+			sublen--;
+			if (subpart[sublen - 1] == ')')
+				sublen--;
+
+			analyzer_imap_parse_fetch_field_bodystructure(subpart, sublen);
+
+			while (len > 0 && *line == ' ') {
+				line++;
+				len--;
+			}
+		}
+
+		// Now parse what kind of multipart we have
+
+		if (len < 0) // Check if it's correctly provided or not
+			return POM_OK;
+
+		size_t multipart_len = analyzer_imap_strlen(line, len);
+		char *multipart_type = pom_undquote(line, multipart_len);
+		if (!multipart_type)
+			return NULL;
+
+		printf("Multipart of type %s\n", multipart_type);
+		free(multipart_type);
+
+		return POM_OK;
+	}
+
+
+	// Process a non nested bodystructure
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+
+	if (len == 0)
+		return NULL;
+
+	size_t tmp_len = analyzer_imap_strlen(line, len);
+	char *mime_toptype = pom_undquote(line, tmp_len);
+	if (!mime_toptype)
+		return NULL;
+
+	line += tmp_len;
+	len -= tmp_len;
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+
+	tmp_len = analyzer_imap_strlen(line, len);
+	char *mime_subtype = pom_undquote(line, tmp_len);
+	if (!mime_subtype) {
+		free(mime_toptype);
+		return NULL;
+	}
+
+	size_t mime_type_len = strlen(mime_toptype) + 1 + strlen(mime_subtype) + 1;
+	char *mime_type = malloc(mime_type_len);
+	if (!mime_type) {
+		free(mime_toptype);
+		free(mime_subtype);
+		pom_oom(mime_type_len);
+		return NULL;
+	}
+	strcpy(mime_type, mime_toptype);
+	free(mime_toptype);
+	strcat(mime_type, "/");
+	strcat(mime_type, mime_subtype);
+	free(mime_subtype);
+
+	struct analyzer_imap_fetch_bodystructure *res = malloc(sizeof(struct analyzer_imap_fetch_bodystructure));
+	if (!res) {
+		pom_oom(sizeof(struct analyzer_imap_fetch_bodystructure));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct analyzer_imap_fetch_bodystructure));
+
+	res->mime_type = mime_type_parse(mime_type);
+	free(mime_type);
+
+	if (!res->mime_type) {
+		free(res);
+		return NULL;
+	}
+
+	printf("Got bodystructure part of type %s\n", res->mime_type->name);
+
+	return res;
+}
+
+static int analyzer_imap_parse_fetch(char *line, size_t len) {
+
+	struct analyzer_imap_msg msg = { 0 };
+
+
+	struct imap_value {
+		int is_nested;
+		int tok_count;
+		struct imap_value *next;
+		char *token[];
+
+	};
+
+	// Ok now parse all the stuff here
+	while (len) {
+		size_t name_len = analyzer_imap_strlen(line, len);
+		if (!name_len)
+			break;
+
+		enum analyzer_imap_fetch_field field = 0;
+
+
+		if (name_len == strlen("UID") && !strncasecmp(line, "UID", strlen("UID"))) {
+			field = analyzer_imap_fetch_field_uid;
+		} else if (name_len == strlen("INTERNALDATE") && !strncasecmp(line, "INTERNALDATE", strlen("INTERNALDATE"))) {
+			field = analyzer_imap_fetch_field_internaldate;
+		} else if (name_len == strlen("FLAGS") && !strncasecmp(line, "FLAGS", strlen("FLAGS"))) {
+			field = analyzer_imap_fetch_field_flags;
+		} else if (name_len == strlen("RFC822") && !strncasecmp(line, "RFC822", strlen("RFC822"))) {
+			field = analyzer_imap_fetch_field_rfc822;
+		} else if (name_len == strlen("RFC822.HEADER") && !strncasecmp(line, "RFC822.HEADER", strlen("RFC822.HEADER"))) {
+			field = analyzer_imap_fetch_field_rfc822_header;
+		} else if (name_len == strlen("RFC822.SIZE") && !strncasecmp(line, "RFC822.SIZE", strlen("RFC822.SIZE"))) {
+			field = analyzer_imap_fetch_field_rfc822_size;
+		} else if (name_len == strlen("RFC822.TEXT") && !strncasecmp(line, "RFC822.TEXT", strlen("RFC822.TEXT"))) {
+			field = analyzer_imap_fetch_field_rfc822_text;
+		} else if (name_len == strlen("BODYSTRUCTURE") && !strncasecmp(line, "BODYSTRUCTURE", strlen("BODYSTRUCTURE"))) {
+			field = analyzer_imap_fetch_field_bodystructure;
+		} else if (name_len == strlen("BODY") && !strncasecmp(line, "BODY", strlen("BODY"))) {
+			field = analyzer_imap_fetch_field_body;
+		} else if (name_len == strlen("BODY.PEEK") && !strncasecmp(line, "BODY.PEEK", strlen("BODY.PEEK"))) {
+			field = analyzer_imap_fetch_field_body;
+		} else if (name_len == strlen("ENVELOPE") && !strncasecmp(line, "ENVELOPE", strlen("ENVELOPE"))) {
+			field = analyzer_imap_fetch_field_envelope;
+		} else {
+			char *name = strndup(line, name_len);
+			pomlog(POMLOG_DEBUG "Unknown fetch field %s", name);
+			free(name);
+		}
+
+		line += name_len;
+		len -= name_len;
+		while (*line == ' ') {
+			line++;
+			len--;
+		}
+
+		size_t value_len = analyzer_imap_strlen(line, len);
+		if (!value_len)
+			break;
+
+		char *value = strndup(line, value_len);
+
+		line += value_len;
+		len -= value_len;
+
+
+		if (!value) {
+			pom_oom(value_len);
+			return POM_ERR;
+		}
+
+
+		switch (field) {
+			case analyzer_imap_fetch_field_uid: {
+				uint64_t uid = 0;
+				if (sscanf(value, "%"PRIu64, &uid) != 1) {
+					pomlog(POMLOG_DEBUG "Error while parsing FETCH UID");
+					free(value);
+					continue;
+				}
+				break;
+			}
+			case analyzer_imap_fetch_field_rfc822_size: {
+				uint64_t rfc822_size = 0;
+				if (sscanf(value, "%"PRIu64, &rfc822_size) != 1) {
+					pomlog(POMLOG_DEBUG "Error while parsing FETCH RFC822.SIZE");
+					free(value);
+					continue;
+				}
+				break;
+			}
+			case analyzer_imap_fetch_field_body: {
+				char *tmp = value;
+				size_t tmp_len = value_len;
+
+				if (tmp_len > 1 && tmp[tmp_len - 1] == ']')
+					tmp_len--;
+				if (tmp_len > 1 && tmp[0] == '[') {
+					tmp++;
+					tmp_len--;
+				}
+
+				// Strip space if any, we don't need header definitions
+				char *sp = memchr(tmp, ' ', tmp_len);
+				if (sp) {
+					*sp = 0;
+					tmp_len = sp - value;
+				}
+				struct analyzer_imap_fetch_body_part *parts = analyzer_imap_parse_fetch_field_body(tmp, tmp_len);
+				if (!parts) {
+					free(value);
+					continue;
+				}
+
+				// TODO do usefull stuff with this
+				free(parts);
+				break;
+			}
+			case analyzer_imap_fetch_field_bodystructure: {
+				char *tmp = value;
+				size_t tmp_len = value_len;
+
+				if (tmp_len > 1 && tmp[tmp_len - 1] == ')')
+					tmp_len--;
+
+				if (tmp_len > 1 && tmp[0] == '(') {
+					tmp++;
+					tmp_len--;
+				}
+
+				analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
+				break;
+			}
+
+
+			default:
+				break;
+		}
+
+		free(value);
+
+		while (*line == ' ') {
+			line++;
+			len--;
+		}
+
+	}
 	return POM_OK;
+
+}
+
+static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct data *evt_data = event_get_data(evt);
+
+	if (!data_is_set(evt_data[proto_imap_pload_cmd]) || !data_is_set(evt_data[proto_imap_pload_size]))
+		return POM_OK;
+
+	char *line = PTYPE_STRING_GETVAL(evt_data[proto_imap_pload_cmd].value);
+	uint64_t plen = *PTYPE_UINT64_GETVAL(evt_data[proto_imap_pload_size].value);
+
+	char *sp = strchr(line, ' ');
+	if (!sp)
+		return POM_OK;
+
+	while (*sp == ' ')
+		sp++;
+
+	if (strncasecmp(sp, "FETCH (", strlen("FETCH ("))) {
+		pomlog(POMLOG_DEBUG "Cannot parse payload command \"%s\"", line);
+		return POM_OK;
+	}
+	line = sp + strlen("FETCH (");
+	printf("%s\n", line);
+	return analyzer_imap_parse_fetch(line, strlen(line));
+
 }
 
 static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
@@ -672,13 +1039,10 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 				ptype_cleanup(username);
 				return POM_ERR;
 			}
-			if (*pwd == '"') {
-				pwd = pom_undquote(pwd, strlen(pwd));
-				if (pwd) {
-					PTYPE_STRING_SETVAL_P(password, pwd);
-				}
-			} else {
-				PTYPE_STRING_SETVAL(password, pwd);
+
+			pwd = pom_undquote(pwd, strlen(pwd));
+			if (pwd) {
+				PTYPE_STRING_SETVAL_P(password, pwd);
 			}
 
 			struct event *evt_auth = event_alloc(apriv->evt_auth);
