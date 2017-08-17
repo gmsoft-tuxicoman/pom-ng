@@ -28,23 +28,6 @@
 
 // From RFC 2046
 
-enum mime_top_type {
-	// Unknown type
-	mime_top_type_unknown,
-
-	// Discrete types
-	mime_top_type_text,
-	mime_top_type_image,
-	mime_top_type_audio,
-	mime_top_type_video,
-	mime_top_type_application,
-	mime_top_type_binary,
-
-	// Composite top-level types
-	mime_top_type_multipart,
-	mime_top_type_message
-};
-
 enum mime_dispositions {
 	mime_disposition_unknown = 0,
 	mime_disposition_inline,
@@ -58,7 +41,6 @@ struct mime_parameter {
 
 struct mime_type {
 	
-	enum mime_top_type top_type;
 	char *name;
 	struct mime_parameter params[MIME_MAX_PARAMETERS];
 

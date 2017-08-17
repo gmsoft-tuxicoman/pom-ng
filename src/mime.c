@@ -26,24 +26,6 @@
 
 #include "analyzer.h"
 
-struct mime_top_type_str {
-	enum mime_top_type top_type;
-	char *str;
-};
-
-static struct mime_top_type_str mime_top_types_str[] = {
-	{ mime_top_type_binary, "binary" },
-	{ mime_top_type_text, "text" },
-	{ mime_top_type_image, "image" },
-	{ mime_top_type_audio, "audio" },
-	{ mime_top_type_video, "video" },
-	{ mime_top_type_application, "application" },
-	{ mime_top_type_multipart, "multipart" },
-	{ mime_top_type_message, "message" },
-	{ mime_top_type_unknown, NULL },
-};
-
-
 static int mime_header_parse_parameters(char *param_str, struct mime_parameter *params) {
 
 	// Parse parameters
@@ -149,22 +131,6 @@ struct mime_type *mime_type_parse(char *content_type) {
 			mime_type->name[i] += 'a' - 'A';
 	}
 	
-
-	// Find the top type
-	int found = 0;
-	for (i = 0; mime_top_types_str[i].str; i++) {
-		if (!strncmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
-			mime_type->top_type = mime_top_types_str[i].top_type;
-			found = 1;
-			break;
-		}
-	}
-
-	if (!found) {
-		mime_type->top_type = mime_top_type_unknown;
-		pomlog(POMLOG_DEBUG "Top type of '%s' now known", mime_type->name);
-	}
-
 	if (!sc) // No parameters
 		return mime_type;
 
