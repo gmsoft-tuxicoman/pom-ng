@@ -52,6 +52,7 @@ struct mime_disposition {
 };
 
 
+struct mime_type *mime_type_alloc(char *content_type);
 struct mime_type *mime_type_parse(char *content_type);
 void mime_type_cleanup(struct mime_type *mime);
 

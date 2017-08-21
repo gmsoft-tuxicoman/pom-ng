@@ -87,6 +87,29 @@ static int mime_header_parse_parameters(char *param_str, struct mime_parameter *
 	return POM_OK;
 }
 
+struct mime_type *mime_type_alloc(char *content_type) {
+
+	if (!content_type)
+		return NULL;
+
+	struct mime_type *mime_type = malloc(sizeof(struct mime_type));
+	if (!mime_type) {
+		pom_oom(sizeof(struct mime_type));
+		return NULL;
+	}
+	memset(mime_type, 0, sizeof(struct mime_type));
+
+	mime_type->name = content_type;
+
+	// Lowercase the name
+	int i, len = strlen(content_type);
+	for (i = 0; i < len; i++) {
+		if (mime_type->name[i] >= 'A' && mime_type->name[i] <= 'Z')
+			mime_type->name[i] += 'a' - 'A';
+	}
+
+	return mime_type;
+}
 
 struct mime_type *mime_type_parse(char *content_type) {
 
@@ -96,13 +119,6 @@ struct mime_type *mime_type_parse(char *content_type) {
 	while (*content_type == ' ')
 		content_type++;
 
-
-	struct mime_type *mime_type = malloc(sizeof(struct mime_type));
-	if (!mime_type) {
-		pom_oom(sizeof(struct mime_type));
-		return NULL;
-	}
-	memset(mime_type, 0, sizeof(struct mime_type));
 
 	// First, copy the filtered content_type
 	
@@ -117,19 +133,18 @@ struct mime_type *mime_type_parse(char *content_type) {
 	while (type_len > 0 && content_type[type_len - 1] == ' ')
 		type_len--;
 
-	mime_type->name = strndup(content_type, type_len);
-	if (!mime_type->name) {
+	char *name = strndup(content_type, type_len);
+	if (!name) {
 		pom_oom(type_len);
-		free(mime_type);
 		return NULL;
 	}
 
-	// Lowercase the name
-	int i;
-	for (i = 0; i < type_len; i++) {
-		if (mime_type->name[i] >= 'A' && mime_type->name[i] <= 'Z')
-			mime_type->name[i] += 'a' - 'A';
+	struct mime_type *mime_type = mime_type_alloc(name);
+	if (!mime_type) {
+		free(name);
+		return NULL;
 	}
+
 	
 	if (!sc) // No parameters
 		return mime_type;
