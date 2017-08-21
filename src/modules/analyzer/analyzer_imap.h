@@ -66,12 +66,6 @@ struct analyzer_imap_priv {
 	int listening;
 };
 
-struct analyzer_imap_msg {
-	uint64_t header_size, body_size;
-	uint64_t uid, seq;
-	struct analyzer_imap_msg *prev, *next;
-};
-
 struct analyzer_imap_ce_priv {
 	struct event *evt_msg, *evt_id;
 	char *server_host;
@@ -121,7 +115,17 @@ struct analyzer_imap_fetch_body_part {
 struct analyzer_imap_fetch_bodystructure {
 	struct mime_type *mime_type;
 	char *encoding;
+	uint64_t size;
+
+	struct analyzer_imap_fetch_bodystructure **subparts;
+	int subparts_count;
 	
+};
+
+struct analyzer_imap_msg {
+	uint64_t uid, seq;
+	struct analyzer_imap_fetch_bodystructure *bodystructure;
+	struct analyzer_imap_msg *prev, *next;
 };
 
 enum analyzer_imap_cmd {

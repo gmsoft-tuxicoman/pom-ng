@@ -661,17 +661,53 @@ static struct analyzer_imap_fetch_body_part* analyzer_imap_parse_fetch_field_bod
 	return res;
 }
 
+void analyzer_imap_fetch_bodystructure_cleanup(struct analyzer_imap_fetch_bodystructure *bodystruct) {
+
+	if (bodystruct->mime_type)
+		mime_type_cleanup(bodystruct->mime_type);
+
+	if (bodystruct->subparts) {
+		int i;
+		for (i = 0; i < bodystruct->subparts_count; i++)
+			analyzer_imap_fetch_bodystructure_cleanup(bodystruct->subparts[i]);
+
+		free(bodystruct->subparts);
+	}
+}
+
 struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodystructure(char *line, size_t len) {
+
+
+	struct analyzer_imap_fetch_bodystructure *res = malloc(sizeof(struct analyzer_imap_fetch_bodystructure));
+	if (!res) {
+		pom_oom(sizeof(struct analyzer_imap_fetch_bodystructure));
+		return NULL;
+	}
+	memset(res, 0, sizeof(struct analyzer_imap_fetch_bodystructure));
 
 	if (*line == '(') {
 		// This is a nested bodystructure
 
 		while (len > 2 && *line == '(') {
+			struct analyzer_imap_fetch_bodystructure **tmp = realloc(res->subparts, sizeof(struct analyzer_imap_fetch_bodystructure*) * (res->subparts_count + 1));
+			if (!tmp) {
+				pom_oom(sizeof(struct analyzer_imap_fetch_bodystructure*) * (res->subparts_count + 1));
+				analyzer_imap_fetch_bodystructure_cleanup(res);
+				return NULL;
+			}
+
+			res->subparts = tmp;
+
+			tmp[res->subparts_count] = NULL;
+
 			char *subpart = line;
 			size_t sublen = analyzer_imap_strlen(line, len);
 
-			if (sublen < 2) // Shouldn't happen
+			if (sublen < 2) {// Shouldn't happen
+				analyzer_imap_fetch_bodystructure_cleanup(res);
+				pomlog(POMLOG_DEBUG "Cannot parse BODYSTRUCTURE : substring too short");
 				return NULL;
+			}
 
 			line += sublen;
 			len -= sublen;
@@ -683,7 +719,11 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 			if (subpart[sublen - 1] == ')')
 				sublen--;
 
-			analyzer_imap_parse_fetch_field_bodystructure(subpart, sublen);
+			tmp[res->subparts_count] = analyzer_imap_parse_fetch_field_bodystructure(subpart, sublen);
+			if (!tmp[res->subparts_count]) {
+				analyzer_imap_fetch_bodystructure_cleanup(res);
+				return NULL;
+			}
 
 			while (len > 0 && *line == ' ') {
 				line++;
@@ -698,8 +738,10 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 
 		size_t multipart_len = analyzer_imap_strlen(line, len);
 		char *multipart_type = pom_undquote(line, multipart_len);
-		if (!multipart_type)
+		if (!multipart_type) {
+			analyzer_imap_fetch_bodystructure_cleanup(res);
 			return NULL;
+		}
 
 		printf("Multipart of type %s\n", multipart_type);
 		free(multipart_type);
@@ -715,13 +757,19 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 		len--;
 	}
 
-	if (len == 0)
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
 		return NULL;
+	}
+
+	// First field is the (top mime) type
 
 	size_t tmp_len = analyzer_imap_strlen(line, len);
 	char *mime_toptype = pom_undquote(line, tmp_len);
-	if (!mime_toptype)
+	if (!mime_toptype) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
 		return NULL;
+	}
 
 	line += tmp_len;
 	len -= tmp_len;
@@ -730,17 +778,25 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 		line++;
 		len--;
 	}
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
+		return NULL;
+	}
+
+	// Second field is the sub (mime) type
 
 	tmp_len = analyzer_imap_strlen(line, len);
 	char *mime_subtype = pom_undquote(line, tmp_len);
 	if (!mime_subtype) {
 		free(mime_toptype);
+		analyzer_imap_fetch_bodystructure_cleanup(res);
 		return NULL;
 	}
 
 	size_t mime_type_len = strlen(mime_toptype) + 1 + strlen(mime_subtype) + 1;
 	char *mime_type = malloc(mime_type_len);
 	if (!mime_type) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
 		free(mime_toptype);
 		free(mime_subtype);
 		pom_oom(mime_type_len);
@@ -752,24 +808,121 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 	strcat(mime_type, mime_subtype);
 	free(mime_subtype);
 
-	struct analyzer_imap_fetch_bodystructure *res = malloc(sizeof(struct analyzer_imap_fetch_bodystructure));
-	if (!res) {
-		pom_oom(sizeof(struct analyzer_imap_fetch_bodystructure));
-		return NULL;
-	}
-	memset(res, 0, sizeof(struct analyzer_imap_fetch_bodystructure));
-
-	res->mime_type = mime_type_parse(mime_type);
-	free(mime_type);
+	res->mime_type = mime_type_alloc(mime_type);
 
 	if (!res->mime_type) {
-		free(res);
+		analyzer_imap_fetch_bodystructure_cleanup(res);
 		return NULL;
 	}
 
 	printf("Got bodystructure part of type %s\n", res->mime_type->name);
 
+	line += tmp_len;
+	len -= tmp_len;
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
+		return NULL;
+	}
+
+	// Third field are mime parameters
+
+	tmp_len = analyzer_imap_strlen(line, len);
+
+	// TODO parse mime parameters
+
+	line += tmp_len;
+	len -= tmp_len;
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
+		return NULL;
+	}
+
+	// Fourth field is the mime ID, we don't care about it
+
+	tmp_len = analyzer_imap_strlen(line, len);
+	line += tmp_len;
+	len -= tmp_len;
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
+		return NULL;
+	}
+
+	// Fifth field is the mime description, we don't care either
+
+	tmp_len = analyzer_imap_strlen(line, len);
+	line += tmp_len;
+	len -= tmp_len;
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
+		return NULL;
+	}
+
+	// Sixth field is the encoding
+	tmp_len = analyzer_imap_strlen(line, len);
+	if (strncasecmp(line, "NIL", strlen("NIL"))) {
+
+		res->encoding = strndup(line, tmp_len);
+		if (!res->encoding) {
+			pom_oom(tmp_len);
+			analyzer_imap_fetch_bodystructure_cleanup(res);
+			return NULL;
+		}
+	}
+
+	line += tmp_len;
+	len -= tmp_len;
+
+	while (len > 0 && *line == ' ') {
+		line++;
+		len--;
+	}
+	if (len == 0) {
+		analyzer_imap_fetch_bodystructure_cleanup(res);
+		return NULL;
+	}
+
+	// Seventh field is the part size
+	tmp_len = analyzer_imap_strlen(line, len);
+
+	if (strncasecmp(line, "NIL", strlen("NIL"))) {
+
+		if (tmp_len > 21) {
+			pomlog(POMLOG_DEBUG "Field size too big");
+			analyzer_imap_fetch_bodystructure_cleanup(res);
+			return NULL;
+		}
+		char uint[22] = { 0 };
+		strncpy(uint, line, tmp_len);
+
+		if (sscanf(uint, "%"PRIu64, &res->size) != 1) {
+			pomlog(POMLOG_DEBUG "Unable to parse field size");
+			analyzer_imap_fetch_bodystructure_cleanup(res);
+			return NULL;
+		}
+	}
+
 	return res;
+
 }
 
 static int analyzer_imap_parse_fetch(char *line, size_t len) {
@@ -903,7 +1056,9 @@ static int analyzer_imap_parse_fetch(char *line, size_t len) {
 					tmp_len--;
 				}
 
-				analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
+				struct analyzer_imap_fetch_bodystructure *bodystructure = analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
+				analyzer_imap_fetch_bodystructure_cleanup(bodystructure);
+
 				break;
 			}
 
