@@ -725,6 +725,8 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 				return NULL;
 			}
 
+			res->subparts_count++;
+
 			while (len > 0 && *line == ' ') {
 				line++;
 				len--;
@@ -734,7 +736,7 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 		// Now parse what kind of multipart we have
 
 		if (len < 0) // Check if it's correctly provided or not
-			return POM_OK;
+			return res;
 
 		size_t multipart_len = analyzer_imap_strlen(line, len);
 		char *multipart_type = pom_undquote(line, multipart_len);
@@ -743,10 +745,26 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 			return NULL;
 		}
 
-		printf("Multipart of type %s\n", multipart_type);
+		char *multipart = malloc(strlen("multipart/") + strlen(multipart_type) + 1);
+		if (!multipart) {
+			pom_oom(strlen("multipart/") + strlen(multipart_type) + 1);
+			analyzer_imap_fetch_bodystructure_cleanup(res);
+			return NULL;
+		}
+
+		strcpy(multipart, "multipart/");
+		strcat(multipart, multipart_type);
 		free(multipart_type);
 
-		return POM_OK;
+		res->mime_type = mime_type_alloc(multipart);
+		if (!res->mime_type) {
+			analyzer_imap_fetch_bodystructure_cleanup(res);
+			return NULL;
+		}
+
+		printf("Multipart of type %s\n", multipart);
+
+		return res;
 	}
 
 
@@ -881,11 +899,17 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 	tmp_len = analyzer_imap_strlen(line, len);
 	if (strncasecmp(line, "NIL", strlen("NIL"))) {
 
-		res->encoding = strndup(line, tmp_len);
+		res->encoding = pom_undquote(line, tmp_len);
 		if (!res->encoding) {
 			pom_oom(tmp_len);
 			analyzer_imap_fetch_bodystructure_cleanup(res);
 			return NULL;
+		}
+
+		int i;
+		for (i = 0; i < tmp_len; i++) {
+			if (res->encoding[i] >= 'A' && res->encoding[i] <= 'Z')
+				res->encoding[i] += 'a' - 'A';
 		}
 	}
 
@@ -925,10 +949,7 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 
 }
 
-static int analyzer_imap_parse_fetch(char *line, size_t len) {
-
-	struct analyzer_imap_msg msg = { 0 };
-
+static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_imap_msg *msg) {
 
 	struct imap_value {
 		int is_nested;
@@ -1000,8 +1021,7 @@ static int analyzer_imap_parse_fetch(char *line, size_t len) {
 
 		switch (field) {
 			case analyzer_imap_fetch_field_uid: {
-				uint64_t uid = 0;
-				if (sscanf(value, "%"PRIu64, &uid) != 1) {
+				if (sscanf(value, "%"PRIu64, &msg->uid) != 1) {
 					pomlog(POMLOG_DEBUG "Error while parsing FETCH UID");
 					free(value);
 					continue;
@@ -1009,8 +1029,7 @@ static int analyzer_imap_parse_fetch(char *line, size_t len) {
 				break;
 			}
 			case analyzer_imap_fetch_field_rfc822_size: {
-				uint64_t rfc822_size = 0;
-				if (sscanf(value, "%"PRIu64, &rfc822_size) != 1) {
+				if (sscanf(value, "%"PRIu64, &msg->rfc822_size) != 1) {
 					pomlog(POMLOG_DEBUG "Error while parsing FETCH RFC822.SIZE");
 					free(value);
 					continue;
@@ -1056,8 +1075,12 @@ static int analyzer_imap_parse_fetch(char *line, size_t len) {
 					tmp_len--;
 				}
 
-				struct analyzer_imap_fetch_bodystructure *bodystructure = analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
-				analyzer_imap_fetch_bodystructure_cleanup(bodystructure);
+				if (msg->bodystructure) {
+					pomlog(POMLOG_DEBUG "BODYSTRUCTURE provided more than once");
+					analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
+				}
+				msg->bodystructure = analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
+
 
 				break;
 			}
@@ -1077,6 +1100,15 @@ static int analyzer_imap_parse_fetch(char *line, size_t len) {
 	}
 	return POM_OK;
 
+}
+
+void analyzer_imap_msg_cleanup(struct analyzer_imap_msg *msg) {
+
+	if (msg->bodystructure) {
+		analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
+	}
+
+	free(msg);
 }
 
 static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
@@ -1102,7 +1134,18 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	}
 	line = sp + strlen("FETCH (");
 	printf("%s\n", line);
-	return analyzer_imap_parse_fetch(line, strlen(line));
+
+	struct analyzer_imap_msg *msg = malloc(sizeof(struct analyzer_imap_msg));
+	if (!msg) {
+		pom_oom(sizeof(struct analyzer_imap_msg));
+		return POM_ERR;
+	}
+	memset(msg, 0, sizeof(struct analyzer_imap_msg));
+	int res = analyzer_imap_parse_fetch(line, strlen(line), msg);
+
+	analyzer_imap_msg_cleanup(msg);
+
+	return res;
 
 }
 
@@ -1418,8 +1461,6 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			}
 		}
 	}
-
-
 
 	return POM_OK;
 }
