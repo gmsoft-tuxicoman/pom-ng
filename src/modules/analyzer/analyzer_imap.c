@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2015 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2015-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -88,6 +88,8 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 	evt_msg_data_items[analyzer_imap_msg_mailbox].value_type = ptype_get_type("string");
 	evt_msg_data_items[analyzer_imap_msg_uid].name = "uid";
 	evt_msg_data_items[analyzer_imap_msg_uid].value_type = ptype_get_type("uint64");
+	evt_msg_data_items[analyzer_imap_msg_part].name = "part";
+	evt_msg_data_items[analyzer_imap_msg_part].value_type = ptype_get_type("string");
 
 	static struct data_reg evt_msg_data = {
 		.items = evt_msg_data_items,
@@ -270,56 +272,78 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 	if (!cpriv)
 		return POM_ERR;
 
-	return POM_OK;
-	if (!event_is_started(cpriv->evt_msg)) {
-		pomlog(POMLOG_ERR "Payload received while data event not found");
+	if (!cpriv->pload)
 		return POM_OK;
+
+
+	struct analyzer_imap_ce_priv_pload *cpload = cpriv->pload;
+
+	if (cpload->header_only)
+		// XXX TODO
+		return POM_OK;
+
+
+	struct pload *pload_buff = event_get_priv(cpload->evt_msg);
+
+	if (!pload_buff)
+		return POM_OK;
+
+	struct proto_process_stack *pload_stack = &stack[stack_index];
+
+	size_t plen = pload_stack->plen;
+
+	if (!plen)
+		return POM_OK;
+
+	char *pload = pload_stack->pload;
+
+	size_t remaining = cpload->len - cpload->pos;
+
+	if (plen > remaining)
+		plen = remaining;
+
+	int ret = pload_append(pload_buff, pload, plen);
+
+	cpload->pos += plen;
+
+	if (cpload->pos >= cpload->len) {
+		pload_end(pload_buff);
+		event_set_priv(cpload->evt_msg, NULL);
+		cpload->pos = 0;
+		cpload->len = 0;
 	}
 
-	struct pload *pload_buff = event_get_priv(cpriv->evt_msg);
-
-	if (!pload_buff) {
-		pload_buff = pload_alloc(cpriv->evt_msg, 0);
-		pload_set_type(pload_buff, ANALYZER_IMAP_RFC822_PLOAD_TYPE);
-		if (!pload_buff)
-			return POM_ERR;
-
-		event_set_priv(cpriv->evt_msg, pload_buff);
-	}
-
-	//struct proto_process_stack *pload_stack = &stack[stack_index];
-
-	//char *pload = pload_stack->pload;
-	//size_t plen = pload_stack->plen;
-
-
-
-	return POM_OK;
+	return ret;
 }
 
 static int analyzer_imap_event_fill_common_data(struct analyzer_imap_ce_priv *cpriv, struct data *data) {
 
-	if (cpriv->client_addr) {
-		data[analyzer_imap_common_client_addr].value = ptype_alloc_from(cpriv->client_addr);
+	struct analyzer_imap_ce_priv_common_data *cdata = cpriv->common_data;
+
+	if (!cdata)
+		return POM_ERR;
+
+	if (cdata->client_addr) {
+		data[analyzer_imap_common_client_addr].value = ptype_alloc_from(cdata->client_addr);
 		data[analyzer_imap_common_client_addr].flags &= ~DATA_FLAG_NO_CLEAN;
 		if (data[analyzer_imap_common_client_addr].value)
 			data_set(data[analyzer_imap_common_client_addr]);
 	}
 
-	if (cpriv->server_addr) {
-		data[analyzer_imap_common_server_addr].value = ptype_alloc_from(cpriv->server_addr);
+	if (cdata->server_addr) {
+		data[analyzer_imap_common_server_addr].value = ptype_alloc_from(cdata->server_addr);
 		data[analyzer_imap_common_server_addr].flags &= ~DATA_FLAG_NO_CLEAN;
 		if (data[analyzer_imap_common_server_addr].value)
 			data_set(data[analyzer_imap_common_server_addr]);
 	}
 
-	if (cpriv->server_port) {
-		PTYPE_UINT16_SETVAL(data[analyzer_imap_common_server_port].value, cpriv->server_port);
+	if (cdata->server_port) {
+		PTYPE_UINT16_SETVAL(data[analyzer_imap_common_server_port].value, cdata->server_port);
 		data_set(data[analyzer_imap_common_server_port]);
 	}
 
-	if (cpriv->server_host) {
-		PTYPE_STRING_SETVAL(data[analyzer_imap_common_server_host].value, cpriv->server_host);
+	if (cdata->server_host) {
+		PTYPE_STRING_SETVAL(data[analyzer_imap_common_server_host].value, cdata->server_host);
 		data_set(data[analyzer_imap_common_server_host]);
 	}
 
@@ -549,6 +573,14 @@ static int analyzer_imap_parse_id(struct event *evt_id, char *arg, int is_client
 
 static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *cpriv, struct proto_process_stack *stack, unsigned int stack_index, int server_direction) {
 
+
+	struct analyzer_imap_ce_priv_common_data *cdata = malloc(sizeof(struct analyzer_imap_ce_priv_common_data));
+	if (!cdata) {
+		pom_oom(sizeof(struct analyzer_imap_ce_priv_common_data));
+		return POM_ERR;
+	}
+	memset(cdata, 0, sizeof(struct analyzer_imap_ce_priv_common_data));
+
 	struct  proto_process_stack *l4_stack = &stack[stack_index - 1];
 	struct  proto_process_stack *l3_stack = &stack[stack_index - 2];
 
@@ -558,13 +590,13 @@ static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *c
 	if (server_direction == POM_DIR_REV)
 		port_str = "sport";
 	
-	for (i = 0; !cpriv->server_port; i++) {
+	for (i = 0; !cdata->server_port; i++) {
 		struct proto_reg_info *l4_info = proto_get_info(l4_stack->proto);
 		char *name = l4_info->pkt_fields[i].name;
 		if (!name)
 			break;
 		if (!strcmp(name, port_str))
-			cpriv->server_port = *PTYPE_UINT16_GETVAL(l4_stack->pkt_info->fields_value[i]);
+			cdata->server_port = *PTYPE_UINT16_GETVAL(l4_stack->pkt_info->fields_value[i]);
 	}
 
 
@@ -583,23 +615,23 @@ static int analyzer_imap_event_fetch_common_data(struct analyzer_imap_ce_priv *c
 
 	if (server_direction == POM_DIR_FWD) {
 		if (src)
-			cpriv->client_addr = ptype_alloc_from(src);
+			cdata->client_addr = ptype_alloc_from(src);
 		if (dst)
-			cpriv->server_addr = ptype_alloc_from(dst);
+			cdata->server_addr = ptype_alloc_from(dst);
 	} else {
 		if (src)
-			cpriv->server_addr = ptype_alloc_from(src);
+			cdata->server_addr = ptype_alloc_from(src);
 		if (dst)
-			cpriv->client_addr = ptype_alloc_from(dst);
+			cdata->client_addr = ptype_alloc_from(dst);
 	}
 
-	if (cpriv->server_addr) {
-		char *host = dns_reverse_lookup_ptype(cpriv->server_addr);
+	if (cdata->server_addr) {
+		char *host = dns_reverse_lookup_ptype(cdata->server_addr);
 		if (host)
-			cpriv->server_host = host;
+			cdata->server_host = host;
 	}
 
-	cpriv->common_data_fetched = 1;
+	cpriv->common_data = cdata;
 
 	return POM_OK;
 }
@@ -938,7 +970,7 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 		char uint[22] = { 0 };
 		strncpy(uint, line, tmp_len);
 
-		if (sscanf(uint, "%"PRIu64, &res->size) != 1) {
+		if (sscanf(uint, "%"SCNu64, &res->size) != 1) {
 			pomlog(POMLOG_DEBUG "Unable to parse field size");
 			analyzer_imap_fetch_bodystructure_cleanup(res);
 			return NULL;
@@ -949,18 +981,99 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 
 }
 
-static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_imap_msg *msg) {
 
-	struct imap_value {
-		int is_nested;
-		int tok_count;
-		struct imap_value *next;
-		char *token[];
+static void analyzer_imap_msg_cleanup(struct analyzer_imap_msg *msg) {
 
-	};
+	if (msg->bodystructure) {
+		analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
+	}
+
+	free(msg);
+}
+
+struct analyzer_imap_msg *analyzer_imap_msg_merge(struct analyzer_imap_ce_priv *cpriv, struct analyzer_imap_msg *msg) {
+
+	// This function returns a merged message. The original message might be destroyed and shouldn't be used after calling this function
+
+	if (!msg->uid) {
+		pomlog(POMLOG_DEBUG "Cannot process message without a UID");
+		return NULL;
+	}
+
+	// Merge new messaage data with known ones if any
+	// If not, add it to the list
+
+	struct analyzer_imap_msg *old_msg = NULL;
+	HASH_FIND(hh, cpriv->msgs, &msg->uid, sizeof(msg->uid), old_msg);
+
+	if (!old_msg) {
+		HASH_ADD(hh, cpriv->msgs, uid, sizeof(msg->uid), msg);
+		return msg;
+	}
+
+	// The message was found, let's merge things !
+
+	if (msg->seq)
+		old_msg->seq = msg->seq;
+
+	if (msg->rfc822_size)
+		old_msg->rfc822_size = msg->rfc822_size;
+
+	if (msg->bodystructure && !old_msg->bodystructure) {
+		old_msg->bodystructure = msg->bodystructure;
+		msg->bodystructure = NULL;
+	}
+
+	analyzer_imap_msg_cleanup(msg);
+
+	return old_msg;
+}
+
+static int analyzer_imap_parse_fetch(struct analyzer_imap_ce_priv *cpriv, char *line, size_t len, struct analyzer_imap_fetch_cmd_data *data) {
 
 	// Ok now parse all the stuff here
 	while (len) {
+		while (*line == ' ') {
+			line++;
+			len--;
+		}
+
+		if (*line == '{') {
+			char *end;
+			for (end = line + 1; end < line + len; end++) {
+				if (*end < '0' || *end > '9')
+					break;
+			}
+			if (*end != '}') {
+				pomlog(POMLOG_DEBUG "Unable to parse payload size, '}' not found");
+				break;
+			}
+
+			if (end != line + len - 1) {
+				end++;
+				len -= end - line;
+				line = end;
+
+				continue;
+			}
+
+			// This this the payload length
+			char len_str[21] = { 0 };
+			line ++;
+			len -= 2;
+			if (len > 20)
+				len = 20;
+
+			memcpy(len_str, line, len);
+
+			if (sscanf(len_str, "%"SCNu64, &data->data_size) != 1) {
+				pomlog(POMLOG_DEBUG "Unable to parse payload size");
+			}
+
+			break;
+		}
+
+
 		size_t name_len = analyzer_imap_strlen(line, len);
 		if (!name_len)
 			break;
@@ -1007,6 +1120,16 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 		if (!value_len)
 			break;
 
+		if (field == analyzer_imap_fetch_field_body) {
+			// Check for an offset
+			if (value_len < len && line[value_len] == '<') {
+				while (value_len < len && line[value_len] != '>')
+					value_len++;
+				value_len++;
+			}
+
+		}
+
 		char *value = strndup(line, value_len);
 
 		line += value_len;
@@ -1021,7 +1144,7 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 
 		switch (field) {
 			case analyzer_imap_fetch_field_uid: {
-				if (sscanf(value, "%"PRIu64, &msg->uid) != 1) {
+				if (sscanf(value, "%"SCNu64, &data->msg->uid) != 1) {
 					pomlog(POMLOG_DEBUG "Error while parsing FETCH UID");
 					free(value);
 					continue;
@@ -1029,7 +1152,7 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 				break;
 			}
 			case analyzer_imap_fetch_field_rfc822_size: {
-				if (sscanf(value, "%"PRIu64, &msg->rfc822_size) != 1) {
+				if (sscanf(value, "%"SCNu64, &data->msg->rfc822_size) != 1) {
 					pomlog(POMLOG_DEBUG "Error while parsing FETCH RFC822.SIZE");
 					free(value);
 					continue;
@@ -1039,6 +1162,22 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 			case analyzer_imap_fetch_field_body: {
 				char *tmp = value;
 				size_t tmp_len = value_len;
+				size_t offset = 0;
+
+				if (tmp_len > 3 && tmp[tmp_len - 1] == '>') {
+					// Parse the offset
+					char *offset_str = tmp + tmp_len;
+					while (offset_str > value && *(offset_str - 1) != '<')
+						offset_str--;
+
+					if (sscanf(offset_str, "%"SCNu64, &offset) != 1) {
+						pomlog(POMLOG_DEBUG "Error while parsing BODY[]<offset>");
+						free(value);
+						continue;
+					}
+					tmp_len = offset_str - value - 1;
+				}
+
 
 				if (tmp_len > 1 && tmp[tmp_len - 1] == ']')
 					tmp_len--;
@@ -1051,16 +1190,14 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 				char *sp = memchr(tmp, ' ', tmp_len);
 				if (sp) {
 					*sp = 0;
-					tmp_len = sp - value;
+					tmp_len = sp - value - 1;
 				}
-				struct analyzer_imap_fetch_body_part *parts = analyzer_imap_parse_fetch_field_body(tmp, tmp_len);
-				if (!parts) {
+				data->parts = analyzer_imap_parse_fetch_field_body(tmp, tmp_len);
+				if (!data->parts) {
 					free(value);
 					continue;
 				}
 
-				// TODO do usefull stuff with this
-				free(parts);
 				break;
 			}
 			case analyzer_imap_fetch_field_bodystructure: {
@@ -1075,11 +1212,11 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 					tmp_len--;
 				}
 
-				if (msg->bodystructure) {
+				if (data->msg->bodystructure) {
 					pomlog(POMLOG_DEBUG "BODYSTRUCTURE provided more than once");
-					analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
+					analyzer_imap_fetch_bodystructure_cleanup(data->msg->bodystructure);
 				}
-				msg->bodystructure = analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
+				data->msg->bodystructure = analyzer_imap_parse_fetch_field_bodystructure(tmp, tmp_len);
 
 
 				break;
@@ -1091,27 +1228,23 @@ static int analyzer_imap_parse_fetch(char *line, size_t len, struct analyzer_ima
 		}
 
 		free(value);
-
-		while (*line == ' ') {
-			line++;
-			len--;
-		}
-
 	}
+
+	data->msg = analyzer_imap_msg_merge(cpriv, data->msg);
+
 	return POM_OK;
 
 }
 
-void analyzer_imap_msg_cleanup(struct analyzer_imap_msg *msg) {
-
-	if (msg->bodystructure) {
-		analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
-	}
-
-	free(msg);
-}
 
 static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj, struct proto_process_stack *stack, unsigned int stack_index) {
+
+	struct analyzer *analyzer = obj;
+	struct analyzer_imap_priv *apriv = analyzer->priv;
+	struct proto_process_stack *s = &stack[stack_index];
+	if (!s->ce)
+		return POM_ERR;
+	struct analyzer_imap_ce_priv *cpriv = conntrack_get_priv(s->ce, analyzer);
 
 	struct data *evt_data = event_get_data(evt);
 
@@ -1119,7 +1252,6 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		return POM_OK;
 
 	char *line = PTYPE_STRING_GETVAL(evt_data[proto_imap_pload_cmd].value);
-	uint64_t plen = *PTYPE_UINT64_GETVAL(evt_data[proto_imap_pload_size].value);
 
 	char *sp = strchr(line, ' ');
 	if (!sp)
@@ -1128,6 +1260,7 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	while (*sp == ' ')
 		sp++;
 
+	// For now we only parse FETCH commands
 	if (strncasecmp(sp, "FETCH (", strlen("FETCH ("))) {
 		pomlog(POMLOG_DEBUG "Cannot parse payload command \"%s\"", line);
 		return POM_OK;
@@ -1135,21 +1268,103 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	line = sp + strlen("FETCH (");
 	printf("%s\n", line);
 
+
+	struct analyzer_imap_fetch_cmd_data data = { 0 };
+
 	struct analyzer_imap_msg *msg = malloc(sizeof(struct analyzer_imap_msg));
 	if (!msg) {
 		pom_oom(sizeof(struct analyzer_imap_msg));
 		return POM_ERR;
 	}
 	memset(msg, 0, sizeof(struct analyzer_imap_msg));
-	int res = analyzer_imap_parse_fetch(line, strlen(line), msg);
 
-	analyzer_imap_msg_cleanup(msg);
+	data.msg = msg;
+	int res = analyzer_imap_parse_fetch(cpriv, line, strlen(line), &data);
+
+
+	if (res != POM_OK)
+		goto end;
+
+	if (!data.data_size || !data.parts || data.parts->part == analyzer_imap_fetch_body_field_unknown) {
+		res = POM_OK;
+		goto end;
+	}
+
+	struct analyzer_imap_ce_priv_pload *cpload = malloc(sizeof(struct analyzer_imap_ce_priv_pload));
+	if (!cpload) {
+		pom_oom(sizeof(struct analyzer_imap_ce_priv_pload));
+		res = POM_ERR;
+		goto end;
+	}
+	memset(cpload, 0, sizeof(struct analyzer_imap_ce_priv_pload));
+
+	cpload->msg = data.msg;
+	cpload->len = data.data_size;
+
+	// New message coming in, create the corresponding event
+	cpload->evt_msg = event_alloc(apriv->evt_msg);
+	if (!cpload->evt_msg) {
+		free(cpload);
+		res = POM_ERR;
+		goto end;
+	}
+
+	if (data.parts->part <= analyzer_imap_fetch_body_field_header_fields_not) {
+		cpload->header_only = 1;
+	} else {
+
+
+		struct pload *pload_buff = pload_alloc(cpload->evt_msg, 0);
+		if (!pload_buff) {
+			event_cleanup(cpload->evt_msg);
+			free(cpload);
+			res = POM_ERR;
+			goto end;
+		}
+
+		event_set_priv(cpload->evt_msg, pload_buff);
+
+		pload_set_expected_size(pload_buff, data.data_size);
+	}
+
+	cpriv->pload = cpload;
+
+	res = event_process_begin(cpload->evt_msg, stack, stack_index, event_get_timestamp(evt));
+end:
+
+	while (data.parts) {
+		struct analyzer_imap_fetch_body_part *tmp = data.parts;
+		data.parts = tmp->next;
+		free(tmp);
+
+	}
 
 	return res;
-
 }
 
 static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
+
+	struct analyzer *analyzer = obj;
+	struct conntrack_entry *ce = event_get_conntrack(evt);
+	if (!ce)
+		return POM_ERR;
+
+	struct analyzer_imap_ce_priv *cpriv = conntrack_get_priv(ce, analyzer);
+	if (!cpriv)
+		return POM_ERR;
+
+	if (!cpriv->pload)
+		return POM_OK;
+
+	struct analyzer_imap_ce_priv_pload *cpload = cpriv->pload;
+	cpriv->pload = NULL;
+
+	if (cpload->evt_msg)
+		event_process_end(cpload->evt_msg);
+
+	free(cpload);
+
+
 	return POM_OK;
 }
 
@@ -1159,14 +1374,12 @@ static void analyzer_imap_invalidate_mbx(struct analyzer_imap_ce_priv *cpriv) {
 		free(cpriv->cur_mbx);
 	cpriv->cur_mbx = NULL;
 
+	struct analyzer_imap_msg *cur_msg, *tmp;
 
-	// TODO We need to actually queue msg here and make use of them
-	while (cpriv->msg_queue_head) {
-		struct analyzer_imap_msg *msg = cpriv->msg_queue_head;
-		cpriv->msg_queue_head = msg->next;
-		free(msg);
+	HASH_ITER(hh, cpriv->msgs, cur_msg, tmp) {
+		HASH_DEL(cpriv->msgs, cur_msg);
+		analyzer_imap_msg_cleanup(cur_msg);
 	}
-	cpriv->msg_queue_tail = NULL;
 
 }
 
@@ -1200,7 +1413,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 		}
 	}
 
-	if (!cpriv->common_data_fetched)
+	if (!cpriv->common_data)
 		analyzer_imap_event_fetch_common_data(cpriv, stack, stack_index, s->direction);
 
 	if (evt_reg == apriv->evt_cmd) {
@@ -1474,19 +1687,30 @@ static int analyzer_imap_ce_priv_cleanup(void *obj, void *priv) {
 
 	struct analyzer_imap_ce_priv *cpriv = priv;
 
-	if (cpriv->evt_msg) {
-		if (event_is_started(cpriv->evt_msg))
-			event_process_end(cpriv->evt_msg);
-		else
-			event_cleanup(cpriv->evt_msg);
+	if (cpriv->pload) {
+
+		struct analyzer_imap_ce_priv_pload *cpload = cpriv->pload;
+
+		if (cpload->evt_msg) {
+			if (event_is_started(cpload->evt_msg))
+				event_process_end(cpload->evt_msg);
+			else
+				event_cleanup(cpload->evt_msg);
+		}
+
 	}
 
-	if (cpriv->server_host)
-		free(cpriv->server_host);
-	if (cpriv->client_addr)
-		ptype_cleanup(cpriv->client_addr);
-	if (cpriv->server_addr)
-		ptype_cleanup(cpriv->server_addr);
+	if (cpriv->common_data) {
+
+		struct analyzer_imap_ce_priv_common_data *cdata = cpriv->common_data;
+
+		if (cdata->server_host)
+			free(cdata->server_host);
+		if (cdata->client_addr)
+			ptype_cleanup(cdata->client_addr);
+		if (cdata->server_addr)
+			ptype_cleanup(cdata->server_addr);
+	}
 
 
 	while (cpriv->cmd_queue_head) {

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2015 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2015-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@
 #include <pom-ng/analyzer.h>
 #include <pom-ng/proto.h>
 #include <pom-ng/mime.h>
+#include <uthash.h>
 
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
 #define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
@@ -46,6 +47,7 @@ enum {
 enum {
 	analyzer_imap_msg_mailbox = analyzer_imap_common_end,
 	analyzer_imap_msg_uid,
+	analyzer_imap_msg_part,
 };
 
 enum {
@@ -66,18 +68,28 @@ struct analyzer_imap_priv {
 	int listening;
 };
 
-struct analyzer_imap_ce_priv {
-	struct event *evt_msg, *evt_id;
+struct analyzer_imap_ce_priv_pload {
+	size_t pos, len;
+	struct analyzer_imap_msg *msg;
+	int header_only;
+	struct event *evt_msg;
+};
+
+struct analyzer_imap_ce_priv_common_data {
 	char *server_host;
 	struct ptype *client_addr, *server_addr;
-	int common_data_fetched;
 	uint16_t server_port;
+};
 
-
+struct analyzer_imap_ce_priv {
+	struct event *evt_id;
 	char *cur_mbx;
-	struct analyzer_imap_msg *msg_queue_head, *msg_queue_tail;
+	struct analyzer_imap_msg *msgs;
 
 	struct analyzer_imap_cmd_entry *cmd_queue_head, *cmd_queue_tail;
+
+	struct analyzer_imap_ce_priv_common_data *common_data;
+	struct analyzer_imap_ce_priv_pload *pload;
 };
 
 
@@ -96,7 +108,6 @@ enum analyzer_imap_fetch_field {
 	analyzer_imap_fetch_field_envelope,
 };
 
-
 enum analyzer_imap_fetch_body_field {
 	analyzer_imap_fetch_body_field_unknown = 0,
 	analyzer_imap_fetch_body_field_header,
@@ -109,6 +120,7 @@ enum analyzer_imap_fetch_body_field {
 
 struct analyzer_imap_fetch_body_part {
 	int part;
+	size_t offset;
 	struct analyzer_imap_fetch_body_part *next;
 };
 
@@ -124,8 +136,17 @@ struct analyzer_imap_fetch_bodystructure {
 
 struct analyzer_imap_msg {
 	uint64_t uid, seq;
+	uint64_t rfc822_size;
 	struct analyzer_imap_fetch_bodystructure *bodystructure;
-	struct analyzer_imap_msg *prev, *next;
+	UT_hash_handle hh;
+};
+
+struct analyzer_imap_fetch_cmd_data {
+
+	struct analyzer_imap_msg *msg;
+	struct analyzer_imap_fetch_body_part *parts;
+	uint64_t data_size;
+	enum analyzer_imap_fetch_body_field data_type;
 };
 
 enum analyzer_imap_cmd {
