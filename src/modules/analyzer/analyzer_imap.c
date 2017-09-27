@@ -665,7 +665,6 @@ static struct analyzer_imap_fetch_body_part* analyzer_imap_parse_fetch_field_bod
 		// It's most likely a number
 		char *dot = memchr(line, '.', len);
 		if (dot) {
-			*dot = 0;
 			field_len = dot - line + 1;
 		} else {
 			field_len = len;
@@ -938,8 +937,8 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 			return NULL;
 		}
 
-		int i;
-		for (i = 0; i < tmp_len; i++) {
+		int i, elen = strlen(res->encoding);
+		for (i = 0; i < elen; i++) {
 			if (res->encoding[i] >= 'A' && res->encoding[i] <= 'Z')
 				res->encoding[i] += 'a' - 'A';
 		}
@@ -1192,11 +1191,27 @@ static int analyzer_imap_parse_fetch(struct analyzer_imap_ce_priv *cpriv, char *
 					*sp = 0;
 					tmp_len = sp - value - 1;
 				}
+
+				while (data->parts) {
+					struct analyzer_imap_fetch_body_part *tmp = data->parts;
+					data->parts = tmp->next;
+					free(tmp);
+
+				}
+
 				data->parts = analyzer_imap_parse_fetch_field_body(tmp, tmp_len);
 				if (!data->parts) {
 					free(value);
 					continue;
 				}
+
+				if (data->part_str) {
+					free(data->part_str);
+					data->part_str = NULL;
+				}
+
+				if (tmp_len)
+					data->part_str = strndup(tmp, tmp_len);
 
 				break;
 			}
@@ -1309,10 +1324,25 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		goto end;
 	}
 
+	struct data *msg_data = event_get_data(cpload->evt_msg);
+	analyzer_imap_event_fill_common_data(cpriv, msg_data);
+
+	PTYPE_UINT64_SETVAL(msg_data[analyzer_imap_msg_uid].value, data.msg->uid);
+	data_set(msg_data[analyzer_imap_msg_uid]);
+
+	if (cpriv->cur_mbx) {
+		PTYPE_STRING_SETVAL(msg_data[analyzer_imap_msg_mailbox].value, cpriv->cur_mbx);
+		data_set(msg_data[analyzer_imap_msg_mailbox]);
+	}
+
 	if (data.parts->part <= analyzer_imap_fetch_body_field_header_fields_not) {
 		cpload->header_only = 1;
 	} else {
 
+		if (data.part_str) {
+			PTYPE_STRING_SETVAL(msg_data[analyzer_imap_msg_part].value, data.part_str);
+			data_set(msg_data[analyzer_imap_msg_part]);
+		}
 
 		struct pload *pload_buff = pload_alloc(cpload->evt_msg, 0);
 		if (!pload_buff) {
@@ -1331,6 +1361,11 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 
 	res = event_process_begin(cpload->evt_msg, stack, stack_index, event_get_timestamp(evt));
 end:
+
+	if (data.part_str) {
+		free(data.part_str);
+		data.part_str = NULL;
+	}
 
 	while (data.parts) {
 		struct analyzer_imap_fetch_body_part *tmp = data.parts;
@@ -1643,11 +1678,12 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			return POM_OK;
 
 		if (!strcmp(tag, "*")) {
-			if (!strcasecmp(status_str, "FLAGS")) {
+			/*if (!strcasecmp(status_str, "FLAGS")) {
 				// FLAGS response appear only for SELECT or EXAMINE
 				// Since we switched mailbox we need to flush what we know about messages
 				analyzer_imap_invalidate_mbx(cpriv);
-			} else if (!strcasecmp(status_str, "ID")) {
+			} else*/ 
+			if (!strcasecmp(status_str, "ID")) {
 
 				char *text = PTYPE_STRING_GETVAL(evt_data[proto_imap_response_text].value);
 				if (!text)

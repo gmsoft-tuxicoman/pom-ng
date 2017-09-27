@@ -27,7 +27,7 @@
 #include <uthash.h>
 
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
-#define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
+#define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
 #define ANALYZER_IMAP_EVT_AUTH_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
 #define ANALYZER_IMAP_EVT_ID_DATA_COUNT		ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
 
@@ -147,6 +147,7 @@ struct analyzer_imap_fetch_cmd_data {
 	struct analyzer_imap_fetch_body_part *parts;
 	uint64_t data_size;
 	enum analyzer_imap_fetch_body_field data_type;
+	char *part_str;
 };
 
 enum analyzer_imap_cmd {
