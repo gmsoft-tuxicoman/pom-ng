@@ -697,6 +697,9 @@ void analyzer_imap_fetch_bodystructure_cleanup(struct analyzer_imap_fetch_bodyst
 	if (bodystruct->mime_type)
 		mime_type_cleanup(bodystruct->mime_type);
 
+	if (bodystruct->encoding)
+		free(bodystruct->encoding);
+
 	if (bodystruct->subparts) {
 		int i;
 		for (i = 0; i < bodystruct->subparts_count; i++)
@@ -704,6 +707,8 @@ void analyzer_imap_fetch_bodystructure_cleanup(struct analyzer_imap_fetch_bodyst
 
 		free(bodystruct->subparts);
 	}
+
+	free(bodystruct);
 }
 
 struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodystructure(char *line, size_t len) {
@@ -1746,6 +1751,8 @@ static int analyzer_imap_ce_priv_cleanup(void *obj, void *priv) {
 			ptype_cleanup(cdata->client_addr);
 		if (cdata->server_addr)
 			ptype_cleanup(cdata->server_addr);
+
+		free(cpriv->common_data);
 	}
 
 
