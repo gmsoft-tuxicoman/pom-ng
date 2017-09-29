@@ -26,8 +26,11 @@
 #include <pom-ng/mime.h>
 #include <uthash.h>
 
+
+#define ANALYZER_IMAP_MSG_DATA_COUNT		1
+
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
-#define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
+#define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 4
 #define ANALYZER_IMAP_EVT_AUTH_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 3
 #define ANALYZER_IMAP_EVT_ID_DATA_COUNT		ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 2
 
@@ -35,6 +38,10 @@
 #define ANALYZER_IMAP_FLAGS_COMMON_DATA	0x2
 
 #define ANALYZER_IMAP_RFC822_PLOAD_TYPE	"rfc822"
+
+enum {
+	analyzer_imap_msg_data_headers = 0,
+};
 
 enum {
 	analyzer_imap_common_client_addr = 0,
@@ -48,6 +55,7 @@ enum {
 	analyzer_imap_msg_mailbox = analyzer_imap_common_end,
 	analyzer_imap_msg_uid,
 	analyzer_imap_msg_part,
+	analyzer_imap_msg_headers,
 };
 
 enum {
@@ -71,8 +79,9 @@ struct analyzer_imap_priv {
 struct analyzer_imap_ce_priv_pload {
 	size_t pos, len;
 	struct analyzer_imap_msg *msg;
-	int header_only;
 	struct event *evt_msg;
+	int header_only;
+	char *hdr_buff;
 };
 
 struct analyzer_imap_ce_priv_common_data {
@@ -138,6 +147,7 @@ struct analyzer_imap_msg {
 	uint64_t uid, seq;
 	uint64_t rfc822_size;
 	struct analyzer_imap_fetch_bodystructure *bodystructure;
+	struct data *data;
 	UT_hash_handle hh;
 };
 

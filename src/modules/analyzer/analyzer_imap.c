@@ -28,6 +28,13 @@
 #include <pom-ng/dns.h>
 #include <pom-ng/pload.h>
 
+
+static struct data_item_reg analyzer_imap_msg_data_items[ANALYZER_IMAP_MSG_DATA_COUNT] = { { 0 } };
+static struct data_reg analyzer_imap_msg_data = {
+	.items = analyzer_imap_msg_data_items,
+	.data_count = ANALYZER_IMAP_MSG_DATA_COUNT
+};
+
 struct mod_reg_info *analyzer_imap_reg_info() {
 	
 	static struct mod_reg_info reg_info = { 0 };
@@ -72,6 +79,11 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 	if (!priv->evt_cmd || !priv->evt_rsp || !priv->evt_pload)
 		goto err;
 
+
+	analyzer_imap_msg_data_items[analyzer_imap_msg_data_headers].name = "headers";
+	analyzer_imap_msg_data_items[analyzer_imap_msg_data_headers].value_type = ptype_get_type("string");
+	analyzer_imap_msg_data_items[analyzer_imap_msg_data_headers].flags = DATA_REG_FLAG_LIST;
+
 	static struct data_item_reg evt_msg_data_items[ANALYZER_IMAP_EVT_MSG_DATA_COUNT] = { { 0 } };
 
 	evt_msg_data_items[analyzer_imap_common_client_addr].name = "client_addr";
@@ -90,6 +102,8 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 	evt_msg_data_items[analyzer_imap_msg_uid].value_type = ptype_get_type("uint64");
 	evt_msg_data_items[analyzer_imap_msg_part].name = "part";
 	evt_msg_data_items[analyzer_imap_msg_part].value_type = ptype_get_type("string");
+	evt_msg_data_items[analyzer_imap_msg_headers].name = "headers";
+	evt_msg_data_items[analyzer_imap_msg_headers].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_reg evt_msg_data = {
 		.items = evt_msg_data_items,
@@ -278,36 +292,105 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 
 	struct analyzer_imap_ce_priv_pload *cpload = cpriv->pload;
 
-	if (cpload->header_only)
-		// XXX TODO
-		return POM_OK;
-
-
-	struct pload *pload_buff = event_get_priv(cpload->evt_msg);
-
-	if (!pload_buff)
-		return POM_OK;
-
 	struct proto_process_stack *pload_stack = &stack[stack_index];
-
+	char *pload = pload_stack->pload;
 	size_t plen = pload_stack->plen;
-
 	if (!plen)
 		return POM_OK;
 
-	char *pload = pload_stack->pload;
-
 	size_t remaining = cpload->len - cpload->pos;
-
 	if (plen > remaining)
 		plen = remaining;
-
-	int ret = pload_append(pload_buff, pload, plen);
-
 	cpload->pos += plen;
 
-	if (cpload->pos >= cpload->len) {
-		pload_end(pload_buff);
+
+	int ret = POM_OK;
+	struct pload *pload_buff = NULL;
+
+	if (cpload->header_only) {
+
+		while (plen) {
+
+			char *crlf = memchr(pload, '\n', plen);
+
+			if (!crlf) {
+				if (cpload->hdr_buff)
+					free(cpload->hdr_buff);
+				cpload->hdr_buff = strndup(pload, plen);
+				break;
+			}
+
+			size_t line_len = crlf - pload;
+			char *line = pload;
+			pload = crlf + 1;
+			plen -= line_len + 1;
+
+			if (!line_len)
+				continue;
+
+			if (line[line_len -1] == '\r')
+				line_len--;
+
+			if (!line_len)
+				continue;
+
+
+			if (cpload->hdr_buff) {
+				size_t buff_len = line_len + strlen(cpload->hdr_buff);
+				char *new_line = malloc(buff_len + 1);
+				if (!new_line) {
+					pom_oom(buff_len + 1);
+					ret = POM_ERR;
+					break;
+				}
+				strcpy(new_line, cpload->hdr_buff);
+				strncat(new_line, line, line_len);
+				new_line[buff_len] = 0;
+				line_len = buff_len;
+				line = new_line;
+
+			}
+
+			ret = mime_header_parse(&cpload->msg->data[analyzer_imap_msg_data_headers], line, line_len);
+
+			if (cpload->hdr_buff) {
+				free(cpload->hdr_buff);
+				cpload->hdr_buff = NULL;
+				free(line);
+			}
+
+			if (ret != POM_OK)
+				break;
+
+		}
+
+		if (plen) {
+			cpload->hdr_buff = strndup(pload, plen);
+			if (!cpload->hdr_buff) {
+				pom_oom(plen);
+				ret = POM_ERR;
+			}
+		}
+
+
+	} else {
+
+		pload_buff = event_get_priv(cpload->evt_msg);
+
+		if (pload_buff)
+			ret = pload_append(pload_buff, pload, plen);
+	}
+
+
+	if (cpload->pos >= cpload->len || ret != POM_OK) {
+
+		if (pload_buff)
+			pload_end(pload_buff);
+		if (cpload->hdr_buff) {
+			free(cpload->hdr_buff);
+			cpload->hdr_buff = NULL;
+		}
+
 		event_set_priv(cpload->evt_msg, NULL);
 		cpload->pos = 0;
 		cpload->len = 0;
@@ -992,6 +1075,10 @@ static void analyzer_imap_msg_cleanup(struct analyzer_imap_msg *msg) {
 		analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
 	}
 
+	if (msg->data) {
+		data_cleanup_table(msg->data, &analyzer_imap_msg_data);
+	}
+
 	free(msg);
 }
 
@@ -1011,7 +1098,16 @@ struct analyzer_imap_msg *analyzer_imap_msg_merge(struct analyzer_imap_ce_priv *
 	HASH_FIND(hh, cpriv->msgs, &msg->uid, sizeof(msg->uid), old_msg);
 
 	if (!old_msg) {
+		// Allocate data for this message
+		msg->data = data_alloc_table(&analyzer_imap_msg_data);
+		if (!msg->data) {
+			analyzer_imap_msg_cleanup(msg);
+			return NULL;
+		}
+
 		HASH_ADD(hh, cpriv->msgs, uid, sizeof(msg->uid), msg);
+
+
 		return msg;
 	}
 
@@ -1340,7 +1436,7 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		data_set(msg_data[analyzer_imap_msg_mailbox]);
 	}
 
-	if (data.parts->part <= analyzer_imap_fetch_body_field_header_fields_not) {
+	if (data.parts->part >= 0 && data.parts->part <= analyzer_imap_fetch_body_field_header_fields_not) {
 		cpload->header_only = 1;
 	} else {
 
