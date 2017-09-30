@@ -1565,6 +1565,9 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			if (!arg)
 				return POM_OK;
 
+			if (!event_has_listener(apriv->evt_auth))
+				return POM_OK;
+
 			char *pwd = strchr(arg, ' ');
 			if (!pwd) {
 				// No password found
@@ -1628,6 +1631,9 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 
 		} else if (!strcasecmp(cmd, "AUTHENTICATE")) {
 			if (!arg) // Invalid command, AUTHENTICATE needs an argument
+				return POM_OK;
+
+			if (!event_has_listener(apriv->evt_auth))
 				return POM_OK;
 
 			if (!strncasecmp(arg, "PLAIN ", strlen("PLAIN "))) {
