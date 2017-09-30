@@ -1376,6 +1376,9 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	while (*sp == ' ')
 		sp++;
 
+	if (!event_has_listener(apriv->evt_msg))
+		return POM_OK;
+
 	// For now we only parse FETCH commands
 	if (strncasecmp(sp, "FETCH (", strlen("FETCH ("))) {
 		pomlog(POMLOG_DEBUG "Cannot parse payload command \"%s\"", line);
@@ -1674,6 +1677,10 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 		} else if (!strcasecmp(cmd, "ID")) {
 			if (!arg)
 				return POM_OK;
+
+			if (!event_has_listener(apriv->evt_id))
+				return POM_OK;
+
 			struct event *evt_id = event_alloc(apriv->evt_id);
 			if (!evt_id)
 				return POM_ERR;
