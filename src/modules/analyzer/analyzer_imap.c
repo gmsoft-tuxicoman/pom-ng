@@ -1666,7 +1666,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 
 			analyzer_imap_invalidate_mbx(cpriv);
 
-			cpriv->cur_mbx = strdup(arg);
+			cpriv->cur_mbx = pom_undquote(arg, strlen(arg));
 			if (!cpriv->cur_mbx) {
 				pom_oom(strlen(arg) + 1);
 				return POM_ERR;
