@@ -162,7 +162,7 @@ struct event *event_alloc(struct event_reg *evt_reg) {
 		return NULL;
 	}
 
-	debug_event("Event %s allocated", evt_reg->info->name);
+	debug_event("Event %p (%s) allocated", evt, evt_reg->info->name);
 
 	return evt;
 }
@@ -170,17 +170,17 @@ struct event *event_alloc(struct event_reg *evt_reg) {
 int event_cleanup(struct event *evt) {
 
 	if (evt->refcount) {
-		pomlog(POMLOG_ERR "Internal error: cannot cleanup event as refcount is not 0 : %u", evt->refcount);
+		pomlog(POMLOG_ERR "Internal error: cannot cleanup event %p as refcount is not 0 : %u", evt, evt->refcount);
 		return POM_ERR;
 	}
 
 	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN && !(evt->flags & EVENT_FLAG_PROCESS_DONE)) {
-		pomlog(POMLOG_ERR "Internal error: event %s processing began but never ended", evt->reg->info->name);
+		pomlog(POMLOG_ERR "Internal error: event %p (%s) processing began but never ended", evt, evt->reg->info->name);
 		return POM_ERR;
 	}
 
 	if (evt->reg->info->cleanup && evt->reg->info->cleanup(evt) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while cleaning up the event %s", evt->reg->info->name);
+		pomlog(POMLOG_ERR "Error while cleaning up the event %p (%s)", evt, evt->reg->info->name);
 		return POM_ERR;
 	}
 
@@ -195,6 +195,7 @@ int event_cleanup(struct event *evt) {
 		evt->priv = NULL;
 	}
 
+	debug_event("Event %p (%s) cleaned up", evt, evt->reg->info->name);
 	data_cleanup_table(evt->data, evt->reg->info->data_reg);
 	free(evt);
 	return POM_OK;
@@ -384,7 +385,7 @@ int event_has_listener(struct event_reg *evt_reg) {
 int event_process(struct event *evt, struct proto_process_stack *stack, int stack_index, ptime ts) {
 
 
-	debug_event("Processing event %s", evt->reg->info->name);
+	debug_event("Processing event %p (%s)", evt, evt->reg->info->name);
 	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN) {
 		pomlog(POMLOG_ERR "Internal error: event %s already processed", evt->reg->info->name);
 		return POM_ERR;
@@ -435,7 +436,7 @@ int event_process(struct event *evt, struct proto_process_stack *stack, int stac
 
 int event_process_begin(struct event *evt, struct proto_process_stack *stack, int stack_index, ptime ts) {
 
-	debug_event("Processing event begin %s", evt->reg->info->name);
+	debug_event("Processing event begin %p (%s)", evt,  evt->reg->info->name);
 
 	if (evt->flags & EVENT_FLAG_PROCESS_BEGAN) {
 		pomlog(POMLOG_ERR "Internal error: event %s already processed", evt->reg->info->name);
@@ -484,7 +485,7 @@ int event_process_begin(struct event *evt, struct proto_process_stack *stack, in
 
 int event_process_end(struct event *evt) {
 
-	debug_event("Processing event end %s", evt->reg->info->name);
+	debug_event("Processing event end %p (%s)", evt, evt->reg->info->name);
 
 	if (!(evt->flags & EVENT_FLAG_PROCESS_BEGAN)) {
 		pomlog(POMLOG_ERR "Internal error: event %s processing hasn't begun", evt->reg->info->name);
