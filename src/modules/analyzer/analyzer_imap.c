@@ -1617,13 +1617,15 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 				event_cleanup(evt_auth);
 				return POM_ERR;
 			}
-			if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_auth, evt, evt_auth) != POM_OK) {
-				event_cleanup(evt_auth);
-				return POM_ERR;
-			}
 
 			if (event_process_begin(evt_auth, stack, stack_index, event_get_timestamp(evt)) != POM_OK)
 				return POM_ERR;
+
+			if (analyzer_imap_queue_cmd(cpriv, analyzer_imap_cmd_auth, evt, evt_auth) != POM_OK) {
+				event_process_end(evt_auth);
+				return POM_ERR;
+			}
+
 		} else if (!strcasecmp(cmd, "AUTHENTICATE")) {
 			if (!arg) // Invalid command, AUTHENTICATE needs an argument
 				return POM_OK;
@@ -1750,8 +1752,7 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			switch (cmd_type) {
 				case analyzer_imap_cmd_unk:
 					pomlog(POMLOG_ERR "Unknown CMD found in queue list");
-					if (out_evt)
-						event_process_end(out_evt);
+					event_process_end(out_evt);
 					return POM_ERR;
 				case analyzer_imap_cmd_auth:
 					if (status == analyzer_imap_rsp_status_ok) {
