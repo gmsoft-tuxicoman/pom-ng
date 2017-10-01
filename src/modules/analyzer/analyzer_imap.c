@@ -394,6 +394,11 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 		event_set_priv(cpload->evt_msg, NULL);
 		cpload->pos = 0;
 		cpload->len = 0;
+
+		if (cpload->header_only) {
+			struct data *evt_data = event_get_data(cpload->evt_msg);
+			ret = data_item_copy(cpload->msg->data, analyzer_imap_msg_data_headers, evt_data, analyzer_imap_msg_headers);
+		}
 	}
 
 	return ret;
@@ -1439,14 +1444,34 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		data_set(msg_data[analyzer_imap_msg_mailbox]);
 	}
 
+	if (data.part_str) {
+		PTYPE_STRING_SETVAL(msg_data[analyzer_imap_msg_part].value, data.part_str);
+		data_set(msg_data[analyzer_imap_msg_part]);
+	}
+
 	if (data.parts->part >= 0 && data.parts->part <= analyzer_imap_fetch_body_field_header_fields_not) {
 		cpload->header_only = 1;
+
+		if (cpload->msg->data[analyzer_imap_msg_data_headers].items) {
+			struct data_item *item = cpload->msg->data[analyzer_imap_msg_data_headers].items;
+			while (item) {
+				struct data_item *tmp = item->next;
+				free(item->key);
+				ptype_cleanup(item->value);
+				free(item);
+				item = tmp;
+			}
+			cpload->msg->data[analyzer_imap_msg_data_headers].items = NULL;
+			cpload->msg->data[analyzer_imap_msg_data_headers].flags = 0;
+		}
+
 	} else {
 
-		if (data.part_str) {
-			PTYPE_STRING_SETVAL(msg_data[analyzer_imap_msg_part].value, data.part_str);
-			data_set(msg_data[analyzer_imap_msg_part]);
+		if (data_item_copy(cpload->msg->data, analyzer_imap_msg_data_headers, msg_data, analyzer_imap_msg_headers) != POM_OK) {
+			res = POM_ERR;
+			goto end;
 		}
+
 
 		struct pload *pload_buff = pload_alloc(cpload->evt_msg, 0);
 		if (!pload_buff) {
