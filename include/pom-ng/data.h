@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2012 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2012-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -70,6 +70,7 @@ struct data *data_alloc_table(struct data_reg *d_reg);
 void data_cleanup_table(struct data *d, struct data_reg *d_reg);
 struct ptype *data_item_add(struct data *d, struct data_reg *d_reg, unsigned int data_id, const char *key);
 int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, struct ptype *value);
+int data_item_copy(struct data *src, int data_id_src, struct data* dst, int data_id_dst);
 
 
 #endif
