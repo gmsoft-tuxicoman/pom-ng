@@ -894,179 +894,130 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 
 	// Process a non nested bodystructure
 
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
+	int i;
 
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
+	char *mime_toptype = NULL;
 
-	// First field is the (top mime) type
+	for (; i < 7; i++) {
 
-	size_t tmp_len = analyzer_imap_strlen(line, len);
-	char *mime_toptype = pom_undquote(line, tmp_len);
-	if (!mime_toptype) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
+		while (len > 0 && *line == ' ') {
+			line++;
+			len--;
+		}
 
-	line += tmp_len;
-	len -= tmp_len;
-
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	// Second field is the sub (mime) type
-
-	tmp_len = analyzer_imap_strlen(line, len);
-	char *mime_subtype = pom_undquote(line, tmp_len);
-	if (!mime_subtype) {
-		free(mime_toptype);
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	size_t mime_type_len = strlen(mime_toptype) + 1 + strlen(mime_subtype) + 1;
-	char *mime_type = malloc(mime_type_len);
-	if (!mime_type) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		free(mime_toptype);
-		free(mime_subtype);
-		pom_oom(mime_type_len);
-		return NULL;
-	}
-	strcpy(mime_type, mime_toptype);
-	free(mime_toptype);
-	strcat(mime_type, "/");
-	strcat(mime_type, mime_subtype);
-	free(mime_subtype);
-
-	res->mime_type = mime_type_alloc(mime_type);
-
-	if (!res->mime_type) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	printf("Got bodystructure part of type %s\n", res->mime_type->name);
-
-	line += tmp_len;
-	len -= tmp_len;
-
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	// Third field are mime parameters
-
-	tmp_len = analyzer_imap_strlen(line, len);
-
-	// TODO parse mime parameters
-
-	line += tmp_len;
-	len -= tmp_len;
-
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	// Fourth field is the mime ID, we don't care about it
-
-	tmp_len = analyzer_imap_strlen(line, len);
-	line += tmp_len;
-	len -= tmp_len;
-
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	// Fifth field is the mime description, we don't care either
-
-	tmp_len = analyzer_imap_strlen(line, len);
-	line += tmp_len;
-	len -= tmp_len;
-
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	// Sixth field is the encoding
-	tmp_len = analyzer_imap_strlen(line, len);
-	if (strncasecmp(line, "NIL", strlen("NIL"))) {
-
-		res->encoding = pom_undquote(line, tmp_len);
-		if (!res->encoding) {
-			pom_oom(tmp_len);
+		if (len == 0) {
 			analyzer_imap_fetch_bodystructure_cleanup(res);
 			return NULL;
 		}
+		size_t tmp_len = analyzer_imap_strlen(line, len);
 
-		int i, elen = strlen(res->encoding);
-		for (i = 0; i < elen; i++) {
-			if (res->encoding[i] >= 'A' && res->encoding[i] <= 'Z')
-				res->encoding[i] += 'a' - 'A';
+		switch (i) {
+
+			case 0: {
+
+				// First field is the (top mime) type
+
+				mime_toptype = pom_undquote(line, tmp_len);
+				if (!mime_toptype) {
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					return NULL;
+				}
+				break;
+			}
+
+			case 1: {
+
+				// Second field is the sub (mime) type
+
+				char *mime_subtype = pom_undquote(line, tmp_len);
+				if (!mime_subtype) {
+					free(mime_toptype);
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					return NULL;
+				}
+
+				size_t mime_type_len = strlen(mime_toptype) + 1 + strlen(mime_subtype) + 1;
+				char *mime_type = malloc(mime_type_len);
+				if (!mime_type) {
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					free(mime_toptype);
+					free(mime_subtype);
+					pom_oom(mime_type_len);
+					return NULL;
+				}
+				strcpy(mime_type, mime_toptype);
+				free(mime_toptype);
+				strcat(mime_type, "/");
+				strcat(mime_type, mime_subtype);
+				free(mime_subtype);
+
+				res->mime_type = mime_type_alloc(mime_type);
+
+				if (!res->mime_type) {
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					return NULL;
+				}
+
+				printf("Got bodystructure part of type %s\n", res->mime_type->name);
+				break;
+			}
+
+
+			case 2:
+				// Third field are mime parameters
+				// TODO parse mime parameters
+				break;
+
+			case 3:
+				// Fourth field is the mime ID, we don't care about it
+				break;
+
+			case 4:
+				// Fifth field is the mime description, we don't care either
+				break;
+
+			case 5:
+				// Sixth field is the encoding
+				if (!strncasecmp(line, "NIL", strlen("NIL")))
+					break;
+
+				res->encoding = pom_undquote(line, tmp_len);
+				if (!res->encoding) {
+					pom_oom(tmp_len);
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					return NULL;
+				}
+
+				int i, elen = strlen(res->encoding);
+				for (i = 0; i < elen; i++) {
+					if (res->encoding[i] >= 'A' && res->encoding[i] <= 'Z')
+						res->encoding[i] += 'a' - 'A';
+				}
+				break;
+			case 6:
+				// Seventh field is the part size
+
+				if (!strncasecmp(line, "NIL", strlen("NIL")))
+					break;
+
+				if (tmp_len > 21) {
+					pomlog(POMLOG_DEBUG "Field size too big");
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					return NULL;
+				}
+				char uint[22] = { 0 };
+				strncpy(uint, line, tmp_len);
+
+				if (sscanf(uint, "%"SCNu64, &res->size) != 1) {
+					pomlog(POMLOG_DEBUG "Unable to parse field size");
+					analyzer_imap_fetch_bodystructure_cleanup(res);
+					return NULL;
+				}
+				break;
 		}
-	}
 
-	line += tmp_len;
-	len -= tmp_len;
-
-	while (len > 0 && *line == ' ') {
-		line++;
-		len--;
-	}
-	if (len == 0) {
-		analyzer_imap_fetch_bodystructure_cleanup(res);
-		return NULL;
-	}
-
-	// Seventh field is the part size
-	tmp_len = analyzer_imap_strlen(line, len);
-
-	if (strncasecmp(line, "NIL", strlen("NIL"))) {
-
-		if (tmp_len > 21) {
-			pomlog(POMLOG_DEBUG "Field size too big");
-			analyzer_imap_fetch_bodystructure_cleanup(res);
-			return NULL;
-		}
-		char uint[22] = { 0 };
-		strncpy(uint, line, tmp_len);
-
-		if (sscanf(uint, "%"SCNu64, &res->size) != 1) {
-			pomlog(POMLOG_DEBUG "Unable to parse field size");
-			analyzer_imap_fetch_bodystructure_cleanup(res);
-			return NULL;
-		}
+		line += tmp_len;
+		len -= tmp_len;
 	}
 
 	return res;
