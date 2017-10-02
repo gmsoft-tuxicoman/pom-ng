@@ -1434,6 +1434,38 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 
 		event_set_priv(cpload->evt_msg, pload_buff);
 
+		if (data.parts->part == analyzer_imap_fetch_body_field_text) {
+			// Try to find the content type in the headers if any
+			struct data_item *item;
+			for (item = cpload->msg->data[analyzer_imap_msg_data_headers].items; item; item = item->next) {
+				if (!strcasecmp(item->key, "Content-Type"))
+					break;
+			}
+			if (item)
+				pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
+		} else if (data.parts->part == -1 && cpload->msg->bodystructure) { // First part is always 1 (-1 here since actual parts number are negated)
+			struct analyzer_imap_fetch_body_part *next_part = data.parts->next;
+			struct analyzer_imap_fetch_bodystructure *cur_struct = cpload->msg->bodystructure;
+
+			while (next_part) {
+				int part = -next_part->part; // Actual part numbers are negated
+				if (part <= 0 || part > cur_struct->subparts_count) {
+					pomlog(POMLOG_DEBUG "Part not found in the BODYSTRUCTURE");
+					cur_struct = NULL;
+					break;
+				}
+				next_part = next_part->next;
+				cur_struct = cur_struct->subparts[part - 1];
+			}
+
+			if (cur_struct) {
+				// XXX pass the mime_type struct in it's entierty
+				pload_set_mime_type(pload_buff, cur_struct->mime_type->name);
+			}
+
+		}
+
+
 		pload_set_expected_size(pload_buff, data.data_size);
 	}
 
