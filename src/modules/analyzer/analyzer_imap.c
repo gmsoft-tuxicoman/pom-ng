@@ -1461,6 +1461,8 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 			if (cur_struct) {
 				// XXX pass the mime_type struct in it's entierty
 				pload_set_mime_type(pload_buff, cur_struct->mime_type->name);
+				if (cur_struct->encoding)
+					pload_set_encoding(pload_buff, cur_struct->encoding);
 			}
 
 		}
