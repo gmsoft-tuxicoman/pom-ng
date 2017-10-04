@@ -29,10 +29,16 @@
 #include <pom-ng/pload.h>
 
 
-static struct data_item_reg analyzer_imap_msg_data_items[ANALYZER_IMAP_MSG_DATA_COUNT] = { { 0 } };
-static struct data_reg analyzer_imap_msg_data = {
-	.items = analyzer_imap_msg_data_items,
-	.data_count = ANALYZER_IMAP_MSG_DATA_COUNT
+#if 1
+#define debug_imap(x ...) pomlog(POMLOG_DEBUG x)
+#else
+#define debug_imap(x ...)
+#endif
+
+static struct data_item_reg analyzer_imap_bodystructure_data_items[ANALYZER_IMAP_BODYSTRUCTURE_DATA_COUNT] = { { 0 } };
+static struct data_reg analyzer_imap_bodystructure_data = {
+	.items = analyzer_imap_bodystructure_data_items,
+	.data_count = ANALYZER_IMAP_BODYSTRUCTURE_DATA_COUNT
 };
 
 struct mod_reg_info *analyzer_imap_reg_info() {
@@ -80,9 +86,9 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 		goto err;
 
 
-	analyzer_imap_msg_data_items[analyzer_imap_msg_data_headers].name = "headers";
-	analyzer_imap_msg_data_items[analyzer_imap_msg_data_headers].value_type = ptype_get_type("string");
-	analyzer_imap_msg_data_items[analyzer_imap_msg_data_headers].flags = DATA_REG_FLAG_LIST;
+	analyzer_imap_bodystructure_data_items[analyzer_imap_bodystructure_data_headers].name = "headers";
+	analyzer_imap_bodystructure_data_items[analyzer_imap_bodystructure_data_headers].value_type = ptype_get_type("string");
+	analyzer_imap_bodystructure_data_items[analyzer_imap_bodystructure_data_headers].flags = DATA_REG_FLAG_LIST;
 
 	static struct data_item_reg evt_msg_data_items[ANALYZER_IMAP_EVT_MSG_DATA_COUNT] = { { 0 } };
 
@@ -308,70 +314,80 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 	struct pload *pload_buff = NULL;
 
 	if (cpload->header_only) {
+		if (!(cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_HEADER_COMPLETE)) {
 
-		while (plen) {
-
-			char *crlf = memchr(pload, '\n', plen);
-
-			if (!crlf) {
-				if (cpload->hdr_buff)
-					free(cpload->hdr_buff);
-				cpload->hdr_buff = strndup(pload, plen);
-				break;
-			}
-
-			size_t line_len = crlf - pload;
-			char *line = pload;
-			pload = crlf + 1;
-			plen -= line_len + 1;
-
-			if (!line_len)
-				continue;
-
-			if (line[line_len -1] == '\r')
-				line_len--;
-
-			if (!line_len)
-				continue;
-
-
-			if (cpload->hdr_buff) {
-				size_t buff_len = line_len + strlen(cpload->hdr_buff);
-				char *new_line = malloc(buff_len + 1);
-				if (!new_line) {
-					pom_oom(buff_len + 1);
+			if (!cpload->part->data) {
+				cpload->part->data = data_alloc_table(&analyzer_imap_bodystructure_data);
+				if (!cpload->part->data) {
 					ret = POM_ERR;
+					plen = 0; // Skip following loop
+				}
+			}
+			while (plen) {
+
+				char *crlf = memchr(pload, '\n', plen);
+
+				if (!crlf) {
+					if (cpload->hdr_buff)
+						free(cpload->hdr_buff);
+					cpload->hdr_buff = strndup(pload, plen);
 					break;
 				}
-				strcpy(new_line, cpload->hdr_buff);
-				strncat(new_line, line, line_len);
-				new_line[buff_len] = 0;
-				line_len = buff_len;
-				line = new_line;
+
+				size_t line_len = crlf - pload;
+				char *line = pload;
+				pload = crlf + 1;
+				plen -= line_len + 1;
+
+				if (!line_len)
+					continue;
+
+				if (line[line_len -1] == '\r')
+					line_len--;
+
+				if (!line_len)
+					continue;
+
+
+				if (cpload->hdr_buff) {
+					size_t buff_len = line_len + strlen(cpload->hdr_buff);
+					char *new_line = malloc(buff_len + 1);
+					if (!new_line) {
+						pom_oom(buff_len + 1);
+						ret = POM_ERR;
+						break;
+					}
+					strcpy(new_line, cpload->hdr_buff);
+					strncat(new_line, line, line_len);
+					new_line[buff_len] = 0;
+					line_len = buff_len;
+					line = new_line;
+
+				}
+
+				ret = mime_header_parse(&cpload->part->data[analyzer_imap_bodystructure_data_headers], line, line_len);
+
+				if (cpload->hdr_buff) {
+					free(cpload->hdr_buff);
+					cpload->hdr_buff = NULL;
+					free(line);
+				}
+
+				if (ret != POM_OK)
+					break;
 
 			}
 
-			ret = mime_header_parse(&cpload->msg->data[analyzer_imap_msg_data_headers], line, line_len);
-
-			if (cpload->hdr_buff) {
-				free(cpload->hdr_buff);
-				cpload->hdr_buff = NULL;
-				free(line);
+			if (plen) {
+				cpload->hdr_buff = strndup(pload, plen);
+				if (!cpload->hdr_buff) {
+					pom_oom(plen);
+					ret = POM_ERR;
+				}
 			}
-
-			if (ret != POM_OK)
-				break;
-
+		} else {
+			debug_imap("Not parsing already known headers for msg %u", cpload->msg->uid);
 		}
-
-		if (plen) {
-			cpload->hdr_buff = strndup(pload, plen);
-			if (!cpload->hdr_buff) {
-				pom_oom(plen);
-				ret = POM_ERR;
-			}
-		}
-
 
 	} else {
 
@@ -396,8 +412,10 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 		cpload->len = 0;
 
 		if (cpload->header_only) {
+			if (cpload->header_only == ANALYZER_IMAP_HEADERS_FULL && !(cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_HEADER_COMPLETE))
+				cpload->part->flags |= ANALYZER_IMAP_BODYSTRUCTURE_FLAG_HEADER_COMPLETE;
 			struct data *evt_data = event_get_data(cpload->evt_msg);
-			ret = data_item_copy(cpload->msg->data, analyzer_imap_msg_data_headers, evt_data, analyzer_imap_msg_headers);
+			ret = data_item_copy(cpload->part->data, analyzer_imap_bodystructure_data_headers, evt_data, analyzer_imap_msg_headers);
 		}
 	}
 
@@ -796,6 +814,8 @@ void analyzer_imap_fetch_bodystructure_cleanup(struct analyzer_imap_fetch_bodyst
 		free(bodystruct->subparts);
 	}
 
+	if (bodystruct->data)
+		data_cleanup_table(bodystruct->data, &analyzer_imap_bodystructure_data);
 	free(bodystruct);
 }
 
@@ -886,7 +906,7 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 			return NULL;
 		}
 
-		printf("Multipart of type %s\n", multipart);
+		debug_imap("Multipart of type %s", multipart);
 
 		return res;
 	}
@@ -958,7 +978,7 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 					return NULL;
 				}
 
-				printf("Got bodystructure part of type %s\n", res->mime_type->name);
+				debug_imap("Got bodystructure part of type %s", res->mime_type->name);
 				break;
 			}
 
@@ -993,6 +1013,8 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 					if (res->encoding[i] >= 'A' && res->encoding[i] <= 'Z')
 						res->encoding[i] += 'a' - 'A';
 				}
+
+				debug_imap("With encoding %s", res->encoding);
 				break;
 			case 6:
 				// Seventh field is the part size
@@ -1031,9 +1053,6 @@ static void analyzer_imap_msg_cleanup(struct analyzer_imap_msg *msg) {
 		analyzer_imap_fetch_bodystructure_cleanup(msg->bodystructure);
 	}
 
-	if (msg->data) {
-		data_cleanup_table(msg->data, &analyzer_imap_msg_data);
-	}
 
 	free(msg);
 }
@@ -1054,16 +1073,8 @@ struct analyzer_imap_msg *analyzer_imap_msg_merge(struct analyzer_imap_ce_priv *
 	HASH_FIND(hh, cpriv->msgs, &msg->uid, sizeof(msg->uid), old_msg);
 
 	if (!old_msg) {
-		// Allocate data for this message
-		msg->data = data_alloc_table(&analyzer_imap_msg_data);
-		if (!msg->data) {
-			analyzer_imap_msg_cleanup(msg);
-			return NULL;
-		}
 
 		HASH_ADD(hh, cpriv->msgs, uid, sizeof(msg->uid), msg);
-
-
 		return msg;
 	}
 
@@ -1075,9 +1086,15 @@ struct analyzer_imap_msg *analyzer_imap_msg_merge(struct analyzer_imap_ce_priv *
 	if (msg->rfc822_size)
 		old_msg->rfc822_size = msg->rfc822_size;
 
-	if (msg->bodystructure && !old_msg->bodystructure) {
+	if (msg->bodystructure) {
+		struct analyzer_imap_fetch_bodystructure *old_struct = old_msg->bodystructure;
 		old_msg->bodystructure = msg->bodystructure;
 		msg->bodystructure = NULL;
+
+		if (old_struct) {
+			analyzer_imap_fetch_bodystructure_cleanup(old_struct);
+		}
+
 	}
 
 	analyzer_imap_msg_cleanup(msg);
@@ -1341,7 +1358,7 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		return POM_OK;
 	}
 	line = sp + strlen("FETCH (");
-	printf("%s\n", line);
+	debug_imap("%s", line);
 
 
 	struct analyzer_imap_fetch_cmd_data data = { 0 };
@@ -1360,7 +1377,13 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	if (res != POM_OK)
 		goto end;
 
-	if (!data.data_size || !data.parts || data.parts->part == analyzer_imap_fetch_body_field_unknown) {
+	if (!data.parts || data.parts->part == analyzer_imap_fetch_body_field_unknown) {
+		debug_imap("Requested part could not be found.");
+		res = POM_OK;
+		goto end;
+	}
+
+	if (!data.data_size) {
 		res = POM_OK;
 		goto end;
 	}
@@ -1400,11 +1423,70 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		data_set(msg_data[analyzer_imap_msg_part]);
 	}
 
-	if (data.parts->part >= 0 && data.parts->part <= analyzer_imap_fetch_body_field_header_fields_not) {
-		cpload->header_only = 1;
+	// Try to identified the correct bodystruct
+	if (cpload->msg->bodystructure) {
+		struct analyzer_imap_fetch_bodystructure *cur_struct = cpload->msg->bodystructure;
+		struct analyzer_imap_fetch_body_part *cur_part = data.parts;
+		while (cur_part) {
+			if (cur_part->part >= 0)
+				break;
+			int part = -cur_part->part; // Actual part number are stored negated
 
-		if (cpload->msg->data[analyzer_imap_msg_data_headers].items) {
-			struct data_item *item = cpload->msg->data[analyzer_imap_msg_data_headers].items;
+			if (part == 1 && !cur_struct->subparts_count) {
+				// Message without subpart
+				// See RFC 3501 page 55 about BODY[]
+				break;
+			}
+
+			if (part > cur_struct->subparts_count) {
+				pomlog(POMLOG_DEBUG "Part not found in the BODYSTRUCTURE");
+				cur_struct = NULL;
+				break;
+			}
+
+			cur_struct = cur_struct->subparts[part - 1];
+			cur_part = cur_part->next;
+		}
+
+		cpload->part = cur_struct;
+	}
+
+	if (!cpload->part) {
+
+		// Create a dummy bodystructure
+		cpload->part = malloc(sizeof(struct analyzer_imap_fetch_bodystructure));
+		if (!cpload->part) {
+			pom_oom(sizeof(struct analyzer_imap_fetch_bodystructure));
+			res = POM_ERR;
+			goto end;
+		}
+		memset(cpload->part, 0, sizeof(struct analyzer_imap_fetch_bodystructure));
+
+		if (!cpload->msg->bodystructure) {
+			// The message doesn't have a bodystructure yet, use this new one until we parse it
+			cpload->msg->bodystructure = cpload->part;
+		} else {
+			// The message has a bodystructure but we couldn't find the referenced part. Use a dummy one
+			cpload->part->flags = ANALYZER_IMAP_BODYSTRUCTURE_FLAG_DUMMY;
+		}
+	}
+
+	// Find what kind of part we'll be processing
+	struct analyzer_imap_fetch_body_part *last_part = data.parts;
+	while (last_part->next)
+		last_part = last_part->next;
+
+	if (last_part->part >= 0 && last_part->part <= analyzer_imap_fetch_body_field_header_fields_not) {
+		// We will be processing headers
+
+		if (last_part->part == analyzer_imap_fetch_body_field_header)
+			cpload->header_only = ANALYZER_IMAP_HEADERS_FULL;
+		else
+			cpload->header_only = ANALYZER_IMAP_HEADERS_PARTIAL;
+
+		if (!(cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_HEADER_COMPLETE) && cpload->part->data) {
+			// We don't have the complete headers but there are already some headers present. Discard them
+			struct data_item *item = cpload->part->data[analyzer_imap_bodystructure_data_headers].items;
 			while (item) {
 				struct data_item *tmp = item->next;
 				free(item->key);
@@ -1412,17 +1494,12 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 				free(item);
 				item = tmp;
 			}
-			cpload->msg->data[analyzer_imap_msg_data_headers].items = NULL;
-			cpload->msg->data[analyzer_imap_msg_data_headers].flags = 0;
+			cpload->part->data[analyzer_imap_bodystructure_data_headers].items = NULL;
+			cpload->part->data[analyzer_imap_bodystructure_data_headers].flags = 0;
 		}
 
 	} else {
-
-		if (data_item_copy(cpload->msg->data, analyzer_imap_msg_data_headers, msg_data, analyzer_imap_msg_headers) != POM_OK) {
-			res = POM_ERR;
-			goto end;
-		}
-
+		// We'll be processing actual content
 
 		struct pload *pload_buff = pload_alloc(cpload->evt_msg, 0);
 		if (!pload_buff) {
@@ -1434,36 +1511,34 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 
 		event_set_priv(cpload->evt_msg, pload_buff);
 
-		if (data.parts->part == analyzer_imap_fetch_body_field_text) {
-			// Try to find the content type in the headers if any
-			struct data_item *item;
-			for (item = cpload->msg->data[analyzer_imap_msg_data_headers].items; item; item = item->next) {
-				if (!strcasecmp(item->key, "Content-Type"))
-					break;
-			}
-			if (item)
-				pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
-		} else if (data.parts->part == -1 && cpload->msg->bodystructure) { // First part is always 1 (-1 here since actual parts number are negated)
-			struct analyzer_imap_fetch_body_part *next_part = data.parts->next;
-			struct analyzer_imap_fetch_bodystructure *cur_struct = cpload->msg->bodystructure;
+		if (cpload->part->data) {
 
-			while (next_part) {
-				int part = -next_part->part; // Actual part numbers are negated
-				if (part <= 0 || part > cur_struct->subparts_count) {
-					pomlog(POMLOG_DEBUG "Part not found in the BODYSTRUCTURE");
-					cur_struct = NULL;
-					break;
+			// We have headers, put them in the events
+			if (data_item_copy(cpload->part->data, analyzer_imap_bodystructure_data_headers, msg_data, analyzer_imap_msg_headers) != POM_OK) {
+				res = POM_ERR;
+				goto end;
+			}
+
+			// This is a TEXT part and the headers could already be parsed
+			if (last_part->part == analyzer_imap_fetch_body_field_text) {
+				// Try to find the content type in the headers if any
+				struct data_item *item;
+				for (item = cpload->part->data[analyzer_imap_bodystructure_data_headers].items; item; item = item->next) {
+					if (!strcasecmp(item->key, "Content-Type"))
+						break;
 				}
-				next_part = next_part->next;
-				cur_struct = cur_struct->subparts[part - 1];
+				if (item)
+					pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
+				// XXX find the encoding too ?
 			}
+		}
 
-			if (cur_struct) {
-				// XXX pass the mime_type struct in it's entierty
-				pload_set_mime_type(pload_buff, cur_struct->mime_type->name);
-				if (cur_struct->encoding)
-					pload_set_encoding(pload_buff, cur_struct->encoding);
-			}
+		if (last_part->part < 0) {
+			// XXX pass the mime_type struct in it's entierty
+			if (cpload->part->mime_type)
+				pload_set_mime_type(pload_buff, cpload->part->mime_type->name);
+			if (cpload->part->encoding)
+				pload_set_encoding(pload_buff, cpload->part->encoding);
 
 		}
 
@@ -1510,6 +1585,10 @@ static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
 
 	if (cpload->evt_msg)
 		event_process_end(cpload->evt_msg);
+
+	if (cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_DUMMY) {
+		analyzer_imap_fetch_bodystructure_cleanup(cpload->part);
+	}
 
 	free(cpload);
 

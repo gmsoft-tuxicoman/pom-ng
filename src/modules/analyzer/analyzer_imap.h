@@ -27,7 +27,7 @@
 #include <uthash.h>
 
 
-#define ANALYZER_IMAP_MSG_DATA_COUNT		1
+#define ANALYZER_IMAP_BODYSTRUCTURE_DATA_COUNT	1
 
 #define ANALYZER_IMAP_EVT_COMMON_DATA_COUNT	4
 #define ANALYZER_IMAP_EVT_MSG_DATA_COUNT	ANALYZER_IMAP_EVT_COMMON_DATA_COUNT + 4
@@ -37,10 +37,16 @@
 #define ANALYZER_IMAP_FLAGS_LISTENING	0x1
 #define ANALYZER_IMAP_FLAGS_COMMON_DATA	0x2
 
+#define ANALYZER_IMAP_BODYSTRUCTURE_FLAG_DUMMY			0x1
+#define ANALYZER_IMAP_BODYSTRUCTURE_FLAG_HEADER_COMPLETE	0x2
+
+#define ANALYZER_IMAP_HEADERS_PARTIAL	0x1
+#define ANALYZER_IMAP_HEADERS_FULL	0x2
+
 #define ANALYZER_IMAP_RFC822_PLOAD_TYPE	"rfc822"
 
 enum {
-	analyzer_imap_msg_data_headers = 0,
+	analyzer_imap_bodystructure_data_headers = 0,
 };
 
 enum {
@@ -82,6 +88,7 @@ struct analyzer_imap_ce_priv_pload {
 	struct event *evt_msg;
 	int header_only;
 	char *hdr_buff;
+	struct analyzer_imap_fetch_bodystructure *part;
 };
 
 struct analyzer_imap_ce_priv_common_data {
@@ -137,6 +144,8 @@ struct analyzer_imap_fetch_bodystructure {
 	struct mime_type *mime_type;
 	char *encoding;
 	uint64_t size;
+	struct data *data;
+	int flags;
 
 	struct analyzer_imap_fetch_bodystructure **subparts;
 	int subparts_count;
@@ -147,7 +156,6 @@ struct analyzer_imap_msg {
 	uint64_t uid, seq;
 	uint64_t rfc822_size;
 	struct analyzer_imap_fetch_bodystructure *bodystructure;
-	struct data *data;
 	UT_hash_handle hh;
 };
 
