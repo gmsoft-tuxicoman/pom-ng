@@ -1,33 +1,48 @@
-{  
-   libdl invalid read
-   Memcheck:Addr4
-   obj:/lib*/ld-2.*.so
-   ...
-}
-
-
-{  
-   libdl conditional jump
-   Memcheck:Cond
-   obj:/lib*/ld-2.*.so
-   ...
-}
-
 {
-  libdl leak
+  libdl leak _dl_init calloc
   Memcheck:Leak
   fun:calloc
-  obj:/lib*/ld-2.*.so
+  ...
+  fun:_dl_init
   ...
 }
 
 {
-  lbdl dlopen leak
+  libdl leak _dl_init malloc
   Memcheck:Leak
+  fun:malloc
   ...
-  fun:dlopen*
+  fun:_dl_init
   ...
 }
+
+{
+  libdl leak _dl_open calloc
+  Memcheck:Leak
+  fun:calloc
+  ...
+  fun:_dl_open
+  ...
+}
+
+{
+  libdl leak _dl_open malloc
+  Memcheck:Leak
+  fun:malloc
+  ...
+  fun:_dl_open
+  ...
+}
+
+{
+  libdl leak _dlerror_run calloc
+  Memcheck:Leak
+  fun:calloc
+  ...
+  fun:_dlerror_run
+  ...
+}
+
 {
    libc tls init race
    Helgrind:Race
