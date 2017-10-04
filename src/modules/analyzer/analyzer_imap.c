@@ -327,12 +327,8 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 
 				char *crlf = memchr(pload, '\n', plen);
 
-				if (!crlf) {
-					if (cpload->hdr_buff)
-						free(cpload->hdr_buff);
-					cpload->hdr_buff = strndup(pload, plen);
+				if (!crlf)
 					break;
-				}
 
 				size_t line_len = crlf - pload;
 				char *line = pload;
@@ -379,10 +375,23 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 			}
 
 			if (plen) {
-				cpload->hdr_buff = strndup(pload, plen);
-				if (!cpload->hdr_buff) {
-					pom_oom(plen);
-					ret = POM_ERR;
+				if (cpload->hdr_buff) {
+					size_t new_len = strlen(cpload->hdr_buff) + plen + 1;
+					char *new_buff = realloc(cpload->hdr_buff, new_len);
+					if (!new_buff) {
+						free(cpload->hdr_buff);
+						cpload->hdr_buff = NULL;
+						pom_oom(new_len);
+						ret = POM_ERR;
+					}
+					strncat(new_buff, pload, plen);
+					cpload->hdr_buff = new_buff;
+				} else {
+					cpload->hdr_buff = strndup(pload, plen);
+					if (!cpload->hdr_buff) {
+						pom_oom(plen);
+						ret = POM_ERR;
+					}
 				}
 			}
 		} else {
