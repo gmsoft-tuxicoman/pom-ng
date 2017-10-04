@@ -918,7 +918,7 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 
 	char *mime_toptype = NULL;
 
-	for (; i < 7; i++) {
+	for (i = 0; i < 7; i++) {
 
 		while (len > 0 && *line == ' ') {
 			line++;
