@@ -1399,6 +1399,72 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 
 	char *line = PTYPE_STRING_GETVAL(evt_data[proto_imap_pload_cmd].value);
 
+	if (!event_has_listener(apriv->evt_msg))
+		return POM_OK;
+
+	// Check if this is a APPEND command
+	if (!strncasecmp(line, "APPEND ", strlen("APPEND "))) {
+
+		line += strlen("APPEND ");
+		while (*line == ' ')
+			line++;
+
+		size_t mbx_len = analyzer_imap_strlen(line, strlen(line));
+		char *mbx = pom_undquote(line, mbx_len);
+		if (!mbx)
+			return POM_ERR;
+
+		struct analyzer_imap_msg *msg = malloc(sizeof(struct analyzer_imap_msg));
+		if (!msg) {
+			pom_oom(sizeof(struct analyzer_imap_msg));
+			return POM_ERR;
+		}
+		memset(msg, 0, sizeof(struct analyzer_imap_msg));
+
+		struct analyzer_imap_ce_priv_pload *cpload = malloc(sizeof(struct analyzer_imap_ce_priv_pload));
+		if (!cpload) {
+			free(msg);
+			pom_oom(sizeof(struct analyzer_imap_ce_priv_pload));
+			return POM_ERR;
+		}
+		memset(cpload, 0, sizeof(struct analyzer_imap_ce_priv_pload));
+
+		cpload->msg = msg;
+		cpload->len = *PTYPE_UINT64_GETVAL(evt_data[proto_imap_pload_size].value);
+
+		// Allocate new event
+		cpload->evt_msg = event_alloc(apriv->evt_msg);
+		if (!cpload->evt_msg) {
+			free(msg);
+			free(cpload);
+			return POM_ERR;
+		}
+
+		struct data *msg_data = event_get_data(cpload->evt_msg);
+		analyzer_imap_event_fill_common_data(cpriv, msg_data);
+
+		PTYPE_STRING_SETVAL_P(msg_data[analyzer_imap_msg_mailbox].value, mbx)
+		data_set(msg_data[analyzer_imap_msg_mailbox]);
+
+		struct pload *pload_buff = pload_alloc(cpload->evt_msg, 0);
+		if (!pload_buff) {
+			event_cleanup(cpload->evt_msg);
+			free(cpload->msg);
+			free(cpload);
+			return POM_ERR;
+		}
+
+		event_set_priv(cpload->evt_msg, pload_buff);
+		cpriv->pload = cpload;
+		pload_set_expected_size(pload_buff, cpload->len);
+		pload_set_mime_type(pload_buff, "message/rfc822");
+
+		return event_process_begin(cpload->evt_msg, stack, stack_index, event_get_timestamp(evt));
+	}
+
+
+
+	// Check if it's the result of a FETCH command
 	char *sp = strchr(line, ' ');
 	if (!sp)
 		return POM_OK;
@@ -1406,10 +1472,6 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	while (*sp == ' ')
 		sp++;
 
-	if (!event_has_listener(apriv->evt_msg))
-		return POM_OK;
-
-	// For now we only parse FETCH commands
 	if (strncasecmp(sp, "FETCH (", strlen("FETCH ("))) {
 		pomlog(POMLOG_DEBUG "Cannot parse payload command \"%s\"", line);
 		return POM_OK;
@@ -1441,14 +1503,12 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	if (res != POM_OK)
 		goto end;
 
-	if (!data.parts || data.parts->part == analyzer_imap_fetch_body_field_unknown) {
+	if (!data.parts) {
 		debug_imap("Requested part could not be found.");
-		res = POM_OK;
 		goto end;
 	}
 
 	if (!data.data_size) {
-		res = POM_OK;
 		goto end;
 	}
 
@@ -1520,6 +1580,17 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		cpload->part = cur_struct;
 	}
 
+
+	// Find what kind of part we'll be processing
+	struct analyzer_imap_fetch_body_part *last_part = data.parts;
+	while (last_part->next)
+		last_part = last_part->next;
+
+	if (last_part != data.parts && last_part->part == analyzer_imap_fetch_body_field_unknown) {
+		debug_imap("Could not parse the part.");
+		goto end;
+	}
+
 	if (!cpload->part) {
 
 		// Create a dummy bodystructure
@@ -1540,12 +1611,7 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		}
 	}
 
-	// Find what kind of part we'll be processing
-	struct analyzer_imap_fetch_body_part *last_part = data.parts;
-	while (last_part->next)
-		last_part = last_part->next;
-
-	if (last_part->part >= 0 && last_part->part <= analyzer_imap_fetch_body_field_header_fields_not) {
+	if (last_part->part > 0 && last_part->part <= analyzer_imap_fetch_body_field_header_fields_not) {
 		// We will be processing headers
 
 		if (last_part->part == analyzer_imap_fetch_body_field_header)
@@ -1580,36 +1646,42 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 
 		event_set_priv(cpload->evt_msg, pload_buff);
 
-		if (cpload->part->data) {
 
-			// We have headers, put them in the events
-			if (data_item_copy(cpload->part->data, analyzer_imap_bodystructure_data_headers, msg_data, analyzer_imap_msg_headers) != POM_OK) {
-				res = POM_ERR;
-				goto end;
-			}
+		if (last_part->part) {
+			if (cpload->part->data) {
 
-			// This is a TEXT part and the headers could already be parsed
-			if (last_part->part == analyzer_imap_fetch_body_field_text) {
-				// Try to find the content type in the headers if any
-				struct data_item *item;
-				for (item = cpload->part->data[analyzer_imap_bodystructure_data_headers].items; item; item = item->next) {
-					if (!strcasecmp(item->key, "Content-Type"))
-						pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
-					else if (!strcasecmp(item->key, "Content-Transfer-Encoding"))
-						pload_set_encoding(pload_buff, PTYPE_STRING_GETVAL(item->value));
+				// We have headers, put them in the events
+				if (data_item_copy(cpload->part->data, analyzer_imap_bodystructure_data_headers, msg_data, analyzer_imap_msg_headers) != POM_OK) {
+					res = POM_ERR;
+					goto end;
+				}
+
+				// This is a TEXT part and the headers could already be parsed
+				if (last_part->part == analyzer_imap_fetch_body_field_text) {
+					// Try to find the content type in the headers if any
+					struct data_item *item;
+					for (item = cpload->part->data[analyzer_imap_bodystructure_data_headers].items; item; item = item->next) {
+						if (!strcasecmp(item->key, "Content-Type"))
+							pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
+						else if (!strcasecmp(item->key, "Content-Transfer-Encoding"))
+							pload_set_encoding(pload_buff, PTYPE_STRING_GETVAL(item->value));
+					}
 				}
 			}
-		}
 
-		if (last_part->part < 0) {
-			if (cpload->part->mime_type) {
-				struct mime_type *m = mime_type_clone(cpload->part->mime_type);
-				if (m)
-					pload_set_mime_type_p(pload_buff, m);
+			if (last_part->part < 0) {
+				if (cpload->part->mime_type) {
+					struct mime_type *m = mime_type_clone(cpload->part->mime_type);
+					if (m)
+						pload_set_mime_type_p(pload_buff, m);
+				}
+				if (cpload->part->encoding)
+					pload_set_encoding(pload_buff, cpload->part->encoding);
+
 			}
-			if (cpload->part->encoding)
-				pload_set_encoding(pload_buff, cpload->part->encoding);
-
+		} else {
+			// No part provided in the FETCH, this is the full rfc822 message
+			pload_set_mime_type(pload_buff, "message/rfc822");
 		}
 
 
@@ -1656,7 +1728,7 @@ static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
 	if (cpload->evt_msg)
 		event_process_end(cpload->evt_msg);
 
-	if (cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_DUMMY) {
+	if (cpload->part && (cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_DUMMY)) {
 		analyzer_imap_fetch_bodystructure_cleanup(cpload->part);
 	}
 
