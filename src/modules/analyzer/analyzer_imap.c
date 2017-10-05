@@ -992,10 +992,56 @@ struct analyzer_imap_fetch_bodystructure* analyzer_imap_parse_fetch_field_bodyst
 			}
 
 
-			case 2:
-				// Third field are mime parameters
-				// TODO parse mime parameters
+			case 2: {
+				if (tmp_len < 5) // 2 parenthesis, one char for name/value and one space. Discard NIL at the same time
+					break;
+				char *params = line + 1;
+				size_t params_len = tmp_len - 2;
+				unsigned int param_count = 0;
+				while (params_len && param_count < MIME_MAX_PARAMETERS) {
+
+					char *param[2] = { 0 };
+					size_t param_len[2] = { 0 };
+
+					int j;
+					for (j = 0; params_len > 0 && j < 2; j++) {
+
+						while (params_len > 0 && *params == ' ') {
+							params++;
+							params_len--;
+						}
+
+						param[j] = params;
+						param_len[j] = analyzer_imap_strlen(params, params_len);
+						params += param_len[j];
+						params_len -= param_len[j];
+
+					}
+
+					if (param_len[0] && param_len[1]) {
+						res->mime_type->params[param_count].name = pom_undquote(param[0], param_len[0]);
+						if (!res->mime_type->params[param_count].name)
+							break;
+						char *pvalue = pom_undquote(param[1], param_len[1]);
+
+						if (!pvalue) {
+							free(res->mime_type->params[param_count].name);
+							res->mime_type->params[param_count].name = NULL;
+							break;
+						}
+						mime_header_parse_encoded_value(pvalue, strlen(pvalue), NULL);
+						res->mime_type->params[param_count].value = pvalue;
+
+						param_count++;
+
+					}
+
+
+
+
+				}
 				break;
+			}
 
 			case 3:
 				// Fourth field is the mime ID, we don't care about it
@@ -1543,9 +1589,11 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		}
 
 		if (last_part->part < 0) {
-			// XXX pass the mime_type struct in it's entierty
-			if (cpload->part->mime_type)
-				pload_set_mime_type(pload_buff, cpload->part->mime_type->name);
+			if (cpload->part->mime_type) {
+				struct mime_type *m = mime_type_clone(cpload->part->mime_type);
+				if (m)
+					pload_set_mime_type_p(pload_buff, m);
+			}
 			if (cpload->part->encoding)
 				pload_set_encoding(pload_buff, cpload->part->encoding);
 
