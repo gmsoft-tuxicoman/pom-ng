@@ -274,7 +274,7 @@ char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
 
 	int i;
 	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
-		if (!strcmp(mime_type->params[i].name, param_name))
+		if (!strcasecmp(mime_type->params[i].name, param_name))
 			return mime_type->params[i].value;
 	}
 	return NULL;
