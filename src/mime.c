@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -218,6 +218,44 @@ void mime_type_cleanup(struct mime_type *mime_type) {
 	}
 
 	free(mime_type);
+}
+
+struct mime_type *mime_type_clone(struct mime_type *mime_type) {
+
+	struct mime_type *ret = malloc(sizeof(struct mime_type));
+	if (!mime_type) {
+		pom_oom(sizeof(struct mime_type));
+		return NULL;
+	}
+	memset(ret, 0, sizeof(struct mime_type));
+
+	ret->name = strdup(mime_type->name);
+	if (!ret->name) {
+		free(ret);
+		pom_oom(strlen(mime_type->name) + 1);
+		return NULL;
+	}
+
+	int i;
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
+		ret->params[i].name = strdup(mime_type->params[i].name);
+		if (!ret->params[i].name) {
+			mime_type_cleanup(ret);
+			pom_oom(strlen(ret->params[i].name) + 1);
+			return NULL;
+		}
+		if (mime_type->params[i].value) {
+			ret->params[i].value = strdup(mime_type->params[i].value);
+			if (!ret->params[i].value) {
+				mime_type_cleanup(ret);
+				pom_oom(strlen(mime_type->params[i].value) + 1);
+				return NULL;
+			}
+		}
+
+	}
+
+	return ret;
 }
 
 void mime_disposition_cleanup(struct mime_disposition *mime_disposition) {
