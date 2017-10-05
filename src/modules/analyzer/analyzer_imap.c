@@ -104,6 +104,8 @@ static int analyzer_imap_init(struct analyzer *analyzer) {
 
 	evt_msg_data_items[analyzer_imap_msg_mailbox].name = "mailbox";
 	evt_msg_data_items[analyzer_imap_msg_mailbox].value_type = ptype_get_type("string");
+	evt_msg_data_items[analyzer_imap_msg_seq].name = "seq";
+	evt_msg_data_items[analyzer_imap_msg_seq].value_type = ptype_get_type("uint64");
 	evt_msg_data_items[analyzer_imap_msg_uid].name = "uid";
 	evt_msg_data_items[analyzer_imap_msg_uid].value_type = ptype_get_type("uint64");
 	evt_msg_data_items[analyzer_imap_msg_part].name = "part";
@@ -1412,6 +1414,13 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 		pomlog(POMLOG_DEBUG "Cannot parse payload command \"%s\"", line);
 		return POM_OK;
 	}
+
+	uint64_t msg_seq = 0;
+	if (sscanf(line, "%"SCNu64, &msg_seq) != 1) {
+		pomlog(POMLOG_DEBUG "Cannot parse message sequence number");
+		return POM_OK;
+	}
+
 	line = sp + strlen("FETCH (");
 	debug_imap("%s", line);
 
@@ -1465,8 +1474,13 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 	struct data *msg_data = event_get_data(cpload->evt_msg);
 	analyzer_imap_event_fill_common_data(cpriv, msg_data);
 
-	PTYPE_UINT64_SETVAL(msg_data[analyzer_imap_msg_uid].value, data.msg->uid);
-	data_set(msg_data[analyzer_imap_msg_uid]);
+	PTYPE_UINT64_SETVAL(msg_data[analyzer_imap_msg_seq].value, msg_seq);
+	data_set(msg_data[analyzer_imap_msg_seq]);
+
+	if (data.msg->uid) {
+		PTYPE_UINT64_SETVAL(msg_data[analyzer_imap_msg_uid].value, data.msg->uid);
+		data_set(msg_data[analyzer_imap_msg_uid]);
+	}
 
 	if (cpriv->cur_mbx) {
 		PTYPE_STRING_SETVAL(msg_data[analyzer_imap_msg_mailbox].value, cpriv->cur_mbx);

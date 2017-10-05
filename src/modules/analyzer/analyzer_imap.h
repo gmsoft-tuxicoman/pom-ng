@@ -59,6 +59,7 @@ enum {
 
 enum {
 	analyzer_imap_msg_mailbox = analyzer_imap_common_end,
+	analyzer_imap_msg_seq,
 	analyzer_imap_msg_uid,
 	analyzer_imap_msg_part,
 	analyzer_imap_msg_headers,
