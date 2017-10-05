@@ -1580,11 +1580,10 @@ static int analyzer_imap_pload_event_process_begin(struct event *evt, void *obj,
 				struct data_item *item;
 				for (item = cpload->part->data[analyzer_imap_bodystructure_data_headers].items; item; item = item->next) {
 					if (!strcasecmp(item->key, "Content-Type"))
-						break;
+						pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
+					else if (!strcasecmp(item->key, "Content-Transfer-Encoding"))
+						pload_set_encoding(pload_buff, PTYPE_STRING_GETVAL(item->value));
 				}
-				if (item)
-					pload_set_mime_type(pload_buff, PTYPE_STRING_GETVAL(item->value));
-				// XXX find the encoding too ?
 			}
 		}
 
