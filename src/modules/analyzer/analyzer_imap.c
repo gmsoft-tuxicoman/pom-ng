@@ -1309,9 +1309,9 @@ static int analyzer_imap_parse_fetch(struct analyzer_imap_ce_priv *cpriv, char *
 				}
 
 
-				if (tmp_len > 1 && tmp[tmp_len - 1] == ']')
+				if (tmp_len >= 1 && tmp[tmp_len - 1] == ']')
 					tmp_len--;
-				if (tmp_len > 1 && tmp[0] == '[') {
+				if (tmp_len >= 1 && tmp[0] == '[') {
 					tmp++;
 					tmp_len--;
 				}
