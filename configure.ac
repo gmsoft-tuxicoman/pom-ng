@@ -20,7 +20,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.61)
-AC_INIT([pom-ng], [0.0.18], [gmsoft@tuxicoman.be], , [http://www.packet-o-matic.org])
+AC_INIT([pom-ng], [0.0.19], [gmsoft@tuxicoman.be], , [http://www.packet-o-matic.org])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([-Wall foreign subdir-objects])
 AC_CONFIG_SRCDIR([config.h.in])
