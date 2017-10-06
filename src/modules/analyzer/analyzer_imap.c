@@ -363,7 +363,7 @@ static int analyzer_imap_pkt_process(void *obj, struct packet *p, struct proto_p
 
 				}
 
-				ret = mime_header_parse(&cpload->part->data[analyzer_imap_bodystructure_data_headers], line, line_len);
+				mime_header_parse(&cpload->part->data[analyzer_imap_bodystructure_data_headers], line, line_len);
 
 				if (cpload->hdr_buff) {
 					free(cpload->hdr_buff);
