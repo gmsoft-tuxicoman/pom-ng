@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -28,23 +28,6 @@
 
 // From RFC 2046
 
-enum mime_top_type {
-	// Unknown type
-	mime_top_type_unknown,
-
-	// Discrete types
-	mime_top_type_text,
-	mime_top_type_image,
-	mime_top_type_audio,
-	mime_top_type_video,
-	mime_top_type_application,
-	mime_top_type_binary,
-
-	// Composite top-level types
-	mime_top_type_multipart,
-	mime_top_type_message
-};
-
 enum mime_dispositions {
 	mime_disposition_unknown = 0,
 	mime_disposition_inline,
@@ -58,7 +41,6 @@ struct mime_parameter {
 
 struct mime_type {
 	
-	enum mime_top_type top_type;
 	char *name;
 	struct mime_parameter params[MIME_MAX_PARAMETERS];
 
@@ -70,8 +52,10 @@ struct mime_disposition {
 };
 
 
+struct mime_type *mime_type_alloc(char *content_type);
 struct mime_type *mime_type_parse(char *content_type);
-void mime_type_cleanup(struct mime_type *mime);
+void mime_type_cleanup(struct mime_type *mime_type);
+struct mime_type *mime_type_clone(struct mime_type *mime_type);
 
 struct mime_disposition *mime_disposition_parse(char *content_disposition);
 void mime_disposition_cleanup(struct mime_disposition *mime_disposition);

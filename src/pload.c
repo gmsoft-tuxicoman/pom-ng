@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2011-2015 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2011-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -461,7 +461,20 @@ void pload_refcount_dec(struct pload *pload) {
 	free(pload);
 }
 
-int pload_set_mime_type(struct pload *p, char *mime_type) {
+int pload_set_mime_type(struct pload *p, char *mime_type_str) {
+
+	if (!mime_type_str)
+		return POM_ERR;
+
+	struct mime_type *mime_type = mime_type_parse(mime_type_str);
+	if (!mime_type)
+		return POM_ERR;
+
+	return pload_set_mime_type_p(p, mime_type);
+
+}
+
+int pload_set_mime_type_p(struct pload* p, struct mime_type *mime_type) {
 
 	if (!mime_type)
 		return POM_ERR;
@@ -469,9 +482,7 @@ int pload_set_mime_type(struct pload *p, char *mime_type) {
 	if (!(p->flags & PLOAD_FLAG_NEED_ANALYSIS))
 		return POM_ERR;
 
-	p->mime_type = mime_type_parse(mime_type);
-	if (!p->mime_type)
-		return POM_ERR;
+	p->mime_type = mime_type;
 
 	// Check for the name embedded in the Content-Type header if no filename is specified yet
 	if (!p->filename) {

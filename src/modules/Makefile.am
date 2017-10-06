@@ -18,12 +18,12 @@
 include $(top_srcdir)/Makefile.common
 libdir=$(mod_dir)
 
-ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_dtmf.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_rtp.la analyzer_sdp.la analyzer_sip.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
+ANALYZER_SRC = analyzer_arp.la analyzer_dns.la analyzer_docsis.la analyzer_dtmf.la analyzer_eap.la analyzer_gif.la analyzer_http.la analyzer_imap.la analyzer_multipart.la analyzer_png.la analyzer_ppp_chap.la analyzer_ppp_pap.la analyzer_rfc822.la analyzer_rtp.la analyzer_sdp.la analyzer_sip.la analyzer_smtp.la analyzer_tftp.la @ANALYZER_OBJS@
 DATASTORE_SRC = @DATASTORE_OBJS@
 DECODER_SRC = decoder_base64.la decoder_percent.la decoder_quoted_printable.la @DECODER_OBJS@
 INPUT_SRC = input_kismet.la @INPUT_OBJS@
 OUTPUT_SRC = output_file.la output_log.la @OUTPUT_OBJS@
-PROTO_SRC = proto_80211.la proto_8021x.la proto_arp.la proto_dns.la proto_docsis.la proto_eap.la proto_ethernet.la proto_gre.la proto_http.la proto_icmp.la proto_icmp6.la proto_ipv4.la proto_ipv6.la proto_mpeg.la proto_ppi.la proto_ppp.la proto_ppp_chap.la proto_ppp_pap.la proto_pppoe.la proto_radiotap.la proto_rtp.la proto_sip.la proto_smtp.la proto_tcp.la proto_tftp.la proto_udp.la proto_vlan.la
+PROTO_SRC = proto_80211.la proto_8021x.la proto_arp.la proto_dns.la proto_docsis.la proto_eap.la proto_ethernet.la proto_gre.la proto_http.la proto_icmp.la proto_icmp6.la proto_imap.la proto_ipv4.la proto_ipv6.la proto_mpeg.la proto_ppi.la proto_ppp.la proto_ppp_chap.la proto_ppp_pap.la proto_pppoe.la proto_radiotap.la proto_rtp.la proto_sip.la proto_smtp.la proto_tcp.la proto_tftp.la proto_udp.la proto_vlan.la
 PTYPE_SRC = ptype_bool.la ptype_bytes.la ptype_mac.la ptype_ipv4.la ptype_ipv6.la ptype_uint8.la ptype_uint16.la ptype_uint32.la ptype_uint64.la ptype_string.la ptype_timestamp.la
 
 lib_LTLIBRARIES = $(ANALYZER_SRC) $(DATASTORE_SRC) $(DECODER_SRC) $(INPUT_SRC) $(OUTPUT_SRC) $(PROTO_SRC) $(PTYPE_SRC)
@@ -56,6 +56,9 @@ analyzer_jpeg_la_LIBADD = $(top_builddir)/src/libpom-ng.la @libexif_LIBS@
 analyzer_http_la_SOURCES = analyzer/analyzer_http.c analyzer/analyzer_http.h analyzer/analyzer_http_post.c analyzer/analyzer_http_post.h
 analyzer_http_la_LDFLAGS = -module -avoid-version
 analyzer_http_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+analyzer_imap_la_SOURCES = analyzer/analyzer_imap.c analyzer/analyzer_imap.h
+analyzer_imap_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
+analyzer_imap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 analyzer_multipart_la_SOURCES = analyzer/analyzer_multipart.c analyzer/analyzer_multipart.h
 analyzer_multipart_la_LDFLAGS = -module -avoid-version -rpath '$(libdir)'
 analyzer_multipart_la_LIBADD = $(top_builddir)/src/libpom-ng.la
@@ -167,6 +170,9 @@ proto_icmp_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_icmp6_la_SOURCES = proto/proto_icmp6.c proto/proto_icmp6.h
 proto_icmp6_la_LDFLAGS = -module -avoid-version
 proto_icmp6_la_LIBADD = $(top_builddir)/src/libpom-ng.la
+proto_imap_la_SOURCES = proto/proto_imap.c proto/proto_imap.h
+proto_imap_la_LDFLAGS = -module -avoid-version
+proto_imap_la_LIBADD = $(top_builddir)/src/libpom-ng.la
 proto_ipv4_la_SOURCES = proto/proto_ipv4.c proto/proto_ipv4.h
 proto_ipv4_la_LDFLAGS = -module -avoid-version
 proto_ipv4_la_LIBADD = $(top_builddir)/src/libpom-ng.la

@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,24 +25,6 @@
 #include <pom-ng/decoder.h>
 
 #include "analyzer.h"
-
-struct mime_top_type_str {
-	enum mime_top_type top_type;
-	char *str;
-};
-
-static struct mime_top_type_str mime_top_types_str[] = {
-	{ mime_top_type_binary, "binary" },
-	{ mime_top_type_text, "text" },
-	{ mime_top_type_image, "image" },
-	{ mime_top_type_audio, "audio" },
-	{ mime_top_type_video, "video" },
-	{ mime_top_type_application, "application" },
-	{ mime_top_type_multipart, "multipart" },
-	{ mime_top_type_message, "message" },
-	{ mime_top_type_unknown, NULL },
-};
-
 
 static int mime_header_parse_parameters(char *param_str, struct mime_parameter *params) {
 
@@ -105,6 +87,29 @@ static int mime_header_parse_parameters(char *param_str, struct mime_parameter *
 	return POM_OK;
 }
 
+struct mime_type *mime_type_alloc(char *content_type) {
+
+	if (!content_type)
+		return NULL;
+
+	struct mime_type *mime_type = malloc(sizeof(struct mime_type));
+	if (!mime_type) {
+		pom_oom(sizeof(struct mime_type));
+		return NULL;
+	}
+	memset(mime_type, 0, sizeof(struct mime_type));
+
+	mime_type->name = content_type;
+
+	// Lowercase the name
+	int i, len = strlen(content_type);
+	for (i = 0; i < len; i++) {
+		if (mime_type->name[i] >= 'A' && mime_type->name[i] <= 'Z')
+			mime_type->name[i] += 'a' - 'A';
+	}
+
+	return mime_type;
+}
 
 struct mime_type *mime_type_parse(char *content_type) {
 
@@ -114,13 +119,6 @@ struct mime_type *mime_type_parse(char *content_type) {
 	while (*content_type == ' ')
 		content_type++;
 
-
-	struct mime_type *mime_type = malloc(sizeof(struct mime_type));
-	if (!mime_type) {
-		pom_oom(sizeof(struct mime_type));
-		return NULL;
-	}
-	memset(mime_type, 0, sizeof(struct mime_type));
 
 	// First, copy the filtered content_type
 	
@@ -135,36 +133,19 @@ struct mime_type *mime_type_parse(char *content_type) {
 	while (type_len > 0 && content_type[type_len - 1] == ' ')
 		type_len--;
 
-	mime_type->name = strndup(content_type, type_len);
-	if (!mime_type->name) {
+	char *name = strndup(content_type, type_len);
+	if (!name) {
 		pom_oom(type_len);
-		free(mime_type);
 		return NULL;
 	}
 
-	// Lowercase the name
-	int i;
-	for (i = 0; i < type_len; i++) {
-		if (mime_type->name[i] >= 'A' && mime_type->name[i] <= 'Z')
-			mime_type->name[i] += 'a' - 'A';
+	struct mime_type *mime_type = mime_type_alloc(name);
+	if (!mime_type) {
+		free(name);
+		return NULL;
 	}
+
 	
-
-	// Find the top type
-	int found = 0;
-	for (i = 0; mime_top_types_str[i].str; i++) {
-		if (!strncmp(mime_top_types_str[i].str, mime_type->name, strlen(mime_top_types_str[i].str))) {
-			mime_type->top_type = mime_top_types_str[i].top_type;
-			found = 1;
-			break;
-		}
-	}
-
-	if (!found) {
-		mime_type->top_type = mime_top_type_unknown;
-		pomlog(POMLOG_DEBUG "Top type of '%s' now known", mime_type->name);
-	}
-
 	if (!sc) // No parameters
 		return mime_type;
 
@@ -239,6 +220,44 @@ void mime_type_cleanup(struct mime_type *mime_type) {
 	free(mime_type);
 }
 
+struct mime_type *mime_type_clone(struct mime_type *mime_type) {
+
+	struct mime_type *ret = malloc(sizeof(struct mime_type));
+	if (!mime_type) {
+		pom_oom(sizeof(struct mime_type));
+		return NULL;
+	}
+	memset(ret, 0, sizeof(struct mime_type));
+
+	ret->name = strdup(mime_type->name);
+	if (!ret->name) {
+		free(ret);
+		pom_oom(strlen(mime_type->name) + 1);
+		return NULL;
+	}
+
+	int i;
+	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
+		ret->params[i].name = strdup(mime_type->params[i].name);
+		if (!ret->params[i].name) {
+			mime_type_cleanup(ret);
+			pom_oom(strlen(ret->params[i].name) + 1);
+			return NULL;
+		}
+		if (mime_type->params[i].value) {
+			ret->params[i].value = strdup(mime_type->params[i].value);
+			if (!ret->params[i].value) {
+				mime_type_cleanup(ret);
+				pom_oom(strlen(mime_type->params[i].value) + 1);
+				return NULL;
+			}
+		}
+
+	}
+
+	return ret;
+}
+
 void mime_disposition_cleanup(struct mime_disposition *mime_disposition) {
 
 	int i;
@@ -255,7 +274,7 @@ char *mime_type_get_param(struct mime_type *mime_type, char *param_name) {
 
 	int i;
 	for (i = 0; i < MIME_MAX_PARAMETERS && mime_type->params[i].name; i++) {
-		if (!strcmp(mime_type->params[i].name, param_name))
+		if (!strcasecmp(mime_type->params[i].name, param_name))
 			return mime_type->params[i].value;
 	}
 	return NULL;

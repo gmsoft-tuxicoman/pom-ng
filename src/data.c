@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2014-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -114,3 +114,44 @@ int data_item_add_ptype(struct data *d, unsigned int data_id, const char *key, s
 	return POM_OK;
 }
 
+int data_item_copy(struct data *src, int data_id_src, struct data* dst, int data_id_dst) {
+
+	// Assume that both source and dest are lists
+
+	if (dst[data_id_dst].items) {
+		pomlog(POMLOG_ERR "Destination data item isn't empty.");
+		return POM_ERR;
+	}
+
+	struct data_item **last = &(dst[data_id_dst].items);
+	struct data_item *sitem = src[data_id_src].items;
+
+	while (sitem) {
+		struct data_item *ditem = malloc(sizeof(struct data_item));
+		if (!ditem) {
+			pom_oom(sizeof(struct data_item));
+			return POM_ERR;
+		}
+		memset(ditem, 0, sizeof(struct data_item));
+		ditem->key = strdup(sitem->key);
+		if (!ditem->key) {
+			pom_oom(strlen(sitem->key) + 1);
+			free(ditem);
+			return POM_ERR;
+		}
+		ditem->value = ptype_alloc_from(sitem->value);
+		if (!ditem->value) {
+			free(ditem->key);
+			free(ditem);
+			return POM_ERR;
+		}
+
+		*last = ditem;
+		last = &ditem->next;
+
+		sitem = sitem->next;
+	}
+	dst[data_id_dst].flags |= DATA_FLAG_SET;
+
+	return POM_OK;
+}

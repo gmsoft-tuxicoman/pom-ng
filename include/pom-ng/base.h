@@ -153,6 +153,9 @@ uint64_t bswap64(uint64_t x);
 // Our own version of strnstr()
 char *pom_strnstr(char *haystack, char *needle, size_t len);
 
+// Remove escaped double quotes
+char *pom_undquote(char* dquoted_str, size_t len);
+
 // x86 can do non aligned access in hardware
 #if !defined(__i386__) && !defined(__x86_64__)
 #define FIX_PACKET_ALIGNMENT

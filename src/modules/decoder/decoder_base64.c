@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2013-2017 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -134,11 +134,24 @@ int decoder_base64_decode(struct decoder *dec) {
 				value[i] = 63;
 			} else if (block[i] == '=') {
 				value[i] = 0;
+			} else if (block[i] == '\r' || block[i] == '\n') {
+				// Skip over line returns
+				dec->avail_in--;
+				dec->next_in++;
+				block = dec->next_in;
+				i--;
+
+				if (dec->avail_in < 4)
+					break;
+
 			} else {
 				pomlog(POMLOG_DEBUG "Invalid character in base64 string");
 				return DEC_ERR;
 			}
 		}
+
+		if (dec->avail_in < 4)
+			break;
 		
 		char *output = dec->next_out;
 		if (block[1] == '=') {
@@ -174,11 +187,15 @@ int decoder_base64_decode(struct decoder *dec) {
 		*dec->next_out = 0;
 
 	if (dec->avail_in > 0) {
-		memcpy(priv->buff, dec->next_in, dec->avail_in);
-		priv->buff[dec->avail_in] = 0;
-		priv->buff_len = dec->avail_in;
-		dec->next_in += dec->avail_in;
-		dec->avail_in = 0;
+
+		while (dec->avail_in) {
+			if (*dec->next_in != '\r' && *dec->next_in != '\n') {
+				priv->buff[priv->buff_len] = *dec->next_in;
+				priv->buff_len++;
+			}
+			dec->avail_in--;
+			dec->next_in++;
+		}
 	}
 
 	if (res == DEC_END && dec->avail_in >= 4) {

@@ -524,6 +524,32 @@ int packet_stream_parser_add_payload(struct packet_stream_parser *sp, void *ploa
 	return POM_OK;
 }
 
+int packet_stream_parser_add_payload_buffer(struct packet_stream_parser *sp, void *pload, size_t len) {
+
+	if (!sp->pload && sp->buff) {
+		// Payload was fully used, we can discard the buffer
+		free(sp->buff);
+		sp->buff = NULL;
+		sp->buff_len = 0;
+		sp->buff_pos = 0;
+
+	}
+
+	if (sp->buff) {
+		// The pload will get added to the current buffer
+		int ret = packet_stream_parser_add_payload(sp, pload, len);
+		free(pload);
+		return ret;
+	}
+
+	sp->buff = pload;
+	sp->buff_pos = 0;
+	sp->buff_len = len;
+	sp->pload = pload;
+	sp->plen = len;
+	return POM_OK;
+}
+
 int packet_stream_parser_skip_bytes(struct packet_stream_parser *sp, size_t len) {
 
 	if (sp->plen < len)
@@ -550,12 +576,18 @@ int packet_stream_parser_empty(struct packet_stream_parser *sp) {
 	sp->plen = 0;
 
 	return POM_OK;
-};
+}
 
 int packet_stream_parser_get_line(struct packet_stream_parser *sp, char **line, size_t *len) {
 
 	if (!line || !len)
 		return POM_ERR;
+
+	if (!sp->plen) {
+		*line = NULL;
+		*len = 0;
+		return POM_OK;
+	}
 
 	// Find the next line return in the current payload
 	

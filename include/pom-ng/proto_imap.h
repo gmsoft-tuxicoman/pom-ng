@@ -1,6 +1,6 @@
 /*
  *  This file is part of pom-ng.
- *  Copyright (C) 2013-2014 Guy Martin <gmsoft@tuxicoman.be>
+ *  Copyright (C) 2015 Guy Martin <gmsoft@tuxicoman.be>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,21 +18,30 @@
  *
  */
 
+#ifndef __POM_NG_PROTO_IMAP_H__
+#define __POM_NG_PROTO_IMAP_H__
 
-#ifndef __DECODER_GZIP_H_
-#define __DECODER_GZIP_H_
+#define PROTO_IMAP_EVT_CMD_DATA_COUNT 3
 
-#include <pom-ng/decoder.h>
+enum {
+	proto_imap_cmd_tag,
+	proto_imap_cmd_name,
+	proto_imap_cmd_arg,
+};
 
-struct mod_reg_info *decoder_gzip_reg_info();
+#define PROTO_IMAP_EVT_RESPONSE_DATA_COUNT 3
 
-static int decoder_gzip_mod_register(struct mod_reg *mod);
-static int decoder_gzip_mod_unregister();
+enum {
+	proto_imap_response_tag,
+	proto_imap_response_status,
+	proto_imap_response_text,
+};
 
-static int decoder_gzip_alloc(struct decoder *dec);
-static int decoder_deflate_alloc(struct decoder *dec);
-static int decoder_gzip_cleanup(struct decoder *dec);
-static size_t decoder_gzip_estimate_size(size_t encoded_size);
-static int decoder_gzip_decode(struct decoder *dec);
+#define PROTO_IMAP_EVT_PLOAD_DATA_COUNT 2
+
+enum {
+	proto_imap_pload_cmd,
+	proto_imap_pload_size,
+};
 
 #endif
