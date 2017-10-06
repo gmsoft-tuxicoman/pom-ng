@@ -1728,6 +1728,11 @@ static int analyzer_imap_pload_event_process_end(struct event *evt, void *obj) {
 	if (cpload->evt_msg)
 		event_process_end(cpload->evt_msg);
 
+	if (!cpload->msg->uid) {
+		// This was probably from a APPEND command and we don't know its UID
+		free(cpload->msg);
+	}
+
 	if (cpload->part && (cpload->part->flags & ANALYZER_IMAP_BODYSTRUCTURE_FLAG_DUMMY)) {
 		analyzer_imap_fetch_bodystructure_cleanup(cpload->part);
 	}
