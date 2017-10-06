@@ -751,6 +751,7 @@ int telephony_sdp_add_expectations(struct telephony_sdp *sdp, ptime now) {
 					pom_rwlock_unlock(&d->lock);
 					pom_oom(sizeof(struct telephony_stream_conntrack));
 					proto_expectation_cleanup(e);
+					return POM_ERR;
 				}
 				memset(sc, 0, sizeof(struct telephony_stream_conntrack));
 				sc->expt = e;
