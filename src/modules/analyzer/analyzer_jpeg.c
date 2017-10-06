@@ -252,10 +252,13 @@ static int analyzer_jpeg_pload_analyze(struct pload *p, struct pload_buffer *pb,
 			// It's not garanteed that buffer points to the
 			// same memory area after each call, so we reset it here
 			priv->cinfo.src->next_input_byte = pb->data + priv->jpeg_lib_pos;
+			priv->cinfo.src->bytes_in_buffer = pb->data_len - priv->jpeg_lib_pos;
 		}
 
-		if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED)
+		if (jpeg_read_header(&priv->cinfo, TRUE) == JPEG_SUSPENDED) {
+			priv->jpeg_lib_pos -= priv->cinfo.src->bytes_in_buffer;
 			return PLOAD_ANALYSIS_MORE; // Headers are incomplete
+		}
 
 		struct data *data = pload_get_data(p);
 
