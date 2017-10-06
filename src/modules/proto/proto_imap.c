@@ -635,7 +635,7 @@ static int proto_imap_process(void *proto_priv, struct packet *p, struct proto_p
 			}
 
 			if (priv->state == proto_imap_state_normal) {
-				if (!strcasecmp(cmd_or_status, "COMPRESS") && (len >= strlen("DEFLATE")) && !strncasecmp(line, "DEFLATE", strlen("DEFLATE"))) {
+				if (!strcasecmp(cmd_or_status, "COMPRESS") && (len >= strlen("DEFLATE")) && !strncasecmp(args, "DEFLATE", strlen("DEFLATE"))) {
 					// Client requested compression with the deflate algo
 					priv->state = proto_imap_state_compress_req;
 				} else if (!strcasecmp(cmd_or_status, "STARTTLS")) {
