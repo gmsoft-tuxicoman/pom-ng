@@ -1,3 +1,19 @@
+v0.0.19
+	Add CRAM-MD5 support for SMTP auth.
+	Add filtering support to output_log_txt.
+	Provide the filenames in payload from Content-Disposition or other sources.
+	Add support for IMAP protocol.
+	Added support for LUA 5.2.
+	Change the XML-RPC API to help with pominabox.
+	Improve protocol expectations to allow maching a protocol without specific fields.
+	Fix decoder_deflate.
+	Add --startup-config option to load a specific configuration on start.
+	Add filtering support in the LUA API for ploads.
+	Fix jpeg parsing when the headers are received in multiple pieces.
+	Fix possible deadlock in proto_sip.
+	Fix parsing for DNS root records.
+	Use xmlrpc-c own UTF-8 validation method.
+
 v0.0.18
 	Add telephony API.
 	Add proto_sip, proto_rtp.
