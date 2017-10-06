@@ -29,7 +29,7 @@
 #include <pom-ng/pload.h>
 
 
-#if 1
+#if 0
 #define debug_imap(x ...) pomlog(POMLOG_DEBUG x)
 #else
 #define debug_imap(x ...)
