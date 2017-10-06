@@ -1821,7 +1821,13 @@ static int analyzer_imap_event_process_begin(struct event *evt, void *obj, struc
 			size_t username_len = pwd - arg;
 			pwd++;
 
-			PTYPE_STRING_SETVAL_N(username, arg, username_len);
+			char *username_str = pom_undquote(arg, username_len);
+			if (!username_str) {
+				ptype_cleanup(username);
+				return POM_ERR;
+			}
+
+			PTYPE_STRING_SETVAL_P(username, username_str);
 
 			struct ptype *password = ptype_alloc("string");
 			if (!password) {
