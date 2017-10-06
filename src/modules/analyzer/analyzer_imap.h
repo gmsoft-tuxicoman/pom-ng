@@ -45,6 +45,8 @@
 
 #define ANALYZER_IMAP_RFC822_PLOAD_TYPE	"rfc822"
 
+#define ANALYZER_IMAP_MAX_CMD_QUEUE	5
+
 enum {
 	analyzer_imap_bodystructure_data_headers = 0,
 };
@@ -103,6 +105,7 @@ struct analyzer_imap_ce_priv {
 	char *cur_mbx;
 	struct analyzer_imap_msg *msgs;
 
+	int cmd_count;
 	struct analyzer_imap_cmd_entry *cmd_queue_head, *cmd_queue_tail;
 
 	struct analyzer_imap_ce_priv_common_data *common_data;

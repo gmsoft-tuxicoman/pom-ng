@@ -491,6 +491,19 @@ static int analyzer_imap_queue_cmd(struct analyzer_imap_ce_priv *cpriv, enum ana
 	else
 		cpriv->cmd_queue_head = cmd;
 
+	cpriv->cmd_count++;
+
+	if (cpriv->cmd_count > ANALYZER_IMAP_MAX_CMD_QUEUE) {
+		pomlog(POMLOG_DEBUG "Too many imap commands queued. Dequeuing one.");
+		cmd = cpriv->cmd_queue_tail;
+		cmd->prev->next = NULL;
+		cpriv->cmd_queue_tail = cmd->prev;
+
+		event_refcount_dec(cmd->cmd_evt);
+		event_process_end(cmd->out_evt);
+		free(cmd);
+	}
+
 	return POM_OK;
 }
 
