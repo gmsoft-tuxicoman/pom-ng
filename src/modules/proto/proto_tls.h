@@ -28,7 +28,14 @@
 enum proto_tls_fields {
 	proto_tls_field_version_major = 0,
 	proto_tls_field_version_minor,
-	proto_tls_field_length
+	proto_tls_field_length,
+	proto_tls_field_last
+};
+
+#define PROTO_TLS_HANDSHAKE_FIELD_NUM 4
+
+enum proto_tls_handshake_fields {
+	proto_tls_handshake_field_type = proto_tls_field_last
 };
 
 struct tls_header {
@@ -38,17 +45,29 @@ struct tls_header {
 	uint16_t length;
 } __attribute__ ((__packed__));
 
+
+struct proto_tls_conntrack_priv {
+	struct packet_stream_parser *parser;
+};
+
 struct mod_reg_info* proto_tls_reg_info();
 static int proto_tls_mod_unregister();
 static int proto_tls_mod_register(struct mod_reg *mod);
 
 static int proto_tls_init(struct proto *proto, struct registry_instance *i);
 static int proto_tls_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_tls_conntrack_cleanup(void *ce_priv);
+
+static int proto_tls_changecipherspec_init(struct proto *proto, struct registry_instance *i);
+static int proto_tls_changecipherspec_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+
+static int proto_tls_alert_init(struct proto *proto, struct registry_instance *i);
+static int proto_tls_alert_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 static int proto_tls_handshake_init(struct proto *proto, struct registry_instance *i);
 static int proto_tls_handshake_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
-static int proto_tls_changecipherspec_init(struct proto *proto, struct registry_instance *i);
-static int proto_tls_changecipherspec_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
+static int proto_tls_appdata_init(struct proto *proto, struct registry_instance *i);
+static int proto_tls_appdata_process(void *proto_priv, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index);
 
 #endif
