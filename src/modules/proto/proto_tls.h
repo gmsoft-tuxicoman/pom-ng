@@ -33,6 +33,7 @@ enum proto_tls_fields {
 };
 
 #define PROTO_TLS_HANDSHAKE_FIELD_NUM 4
+#define PROTO_TLS_HANDSHAKE_HDR_SIZE 4
 
 enum proto_tls_handshake_fields {
 	proto_tls_handshake_field_type = proto_tls_field_last

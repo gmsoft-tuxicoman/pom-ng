@@ -330,7 +330,7 @@ static int proto_tls_handshake_process(void *proto_priv, struct packet *p, struc
 
 	struct proto_process_stack *s = &stack[stack_index];
 	
-	if (s->plen < sizeof(struct tls_header))
+	if (s->plen < sizeof(struct tls_header) + PROTO_TLS_HANDSHAKE_HDR_SIZE)
 		return PROTO_INVALID;
 
 	struct tls_header *thdr = s->pload;
@@ -339,8 +339,16 @@ static int proto_tls_handshake_process(void *proto_priv, struct packet *p, struc
 	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_tls_field_version_minor], thdr->version_minor);
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_tls_field_length], ntohs(thdr->length));
 
-	uint8_t *data = s->pload + sizeof(struct tls_header);
-	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_tls_handshake_field_type], data[0]);
+	char *data = s->pload + sizeof(struct tls_header);
+
+	uint8_t type = data[0];
+	PTYPE_UINT8_SETVAL(s->pkt_info->fields_value[proto_tls_handshake_field_type], type);
+
+	uint32_t length = (data[1] << 16) + (data[2] << 8) + (data[3]);
+
+	if ((s->plen - sizeof(struct tls_header) - PROTO_TLS_HANDSHAKE_HDR_SIZE) < length)
+		return PROTO_INVALID;
+
 
 	return PROTO_OK;
 }
