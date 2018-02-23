@@ -234,6 +234,10 @@ static int analyzer_docsis_reg_status_update(struct analyzer_docsis_priv *priv, 
 static int analyzer_docsis_pkt_parse_rng_rsp(struct analyzer_docsis_priv *priv, struct analyzer_docsis_cm *cm, struct packet *p, struct proto_process_stack *stack, unsigned int stack_index) {
 
 	struct proto_process_stack *s = &stack[stack_index + 1];
+
+	if (s->plen < 3)
+		return PROTO_INVALID;
+
 	void *pload = s->pload + 3;
 	uint32_t len = s->plen - 3;
 
