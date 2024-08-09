@@ -1413,9 +1413,6 @@ static int input_dvb_docsis_process_docsis_mdd(struct input *i,unsigned char *bu
 					buff += subtlvlen + 2;
 				}
 
-				len -= tlvlen + 2;
-
-
 				// Check the result
 				if (s->freq == 0 || s->modulation == 0 || s->chan_id == 0) {
 					free(s);
