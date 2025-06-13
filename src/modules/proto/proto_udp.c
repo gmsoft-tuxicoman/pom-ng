@@ -129,7 +129,7 @@ static int proto_udp_process(void *proto_priv, struct packet *p, struct proto_pr
 	uint16_t sport = ntohs(hdr->uh_sport);
 	uint16_t dport = ntohs(hdr->uh_dport);
 
-	if (ulen > s->plen)
+	if (ulen > s->plen || ulen < sizeof(struct udphdr))
 		return PROTO_INVALID;
 
 	PTYPE_UINT16_SETVAL(s->pkt_info->fields_value[proto_udp_field_sport], sport);
