@@ -171,10 +171,10 @@ int httpd_init(char *addresses, int port, char *www_data, char *ssl_cert, char *
 
 			if (httpd_ssl_cert && httpd_ssl_key) {
 				flags |= MHD_USE_SSL;
-				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
+				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_HTTPS_MEM_CERT, httpd_ssl_cert, MHD_OPTION_HTTPS_MEM_KEY, httpd_ssl_key, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
 
 			} else {
-				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, &httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
+				lst->daemon = MHD_start_daemon(flags, port, NULL, NULL, httpd_mhd_answer_connection, NULL, MHD_OPTION_NOTIFY_COMPLETED, httpd_mhd_request_completed, NULL, MHD_OPTION_SOCK_ADDR, tmpres->ai_addr, MHD_OPTION_EXTERNAL_LOGGER, httpd_logger, NULL, MHD_OPTION_END);
 			}
 
 			if (lst->daemon) {
@@ -222,7 +222,9 @@ err:
 	return POM_ERR;
 }
 
-int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
+enum MHD_Result httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection,
+    const char *url, const char *method, const char *version,
+    const char *upload_data, size_t *upload_data_size, void **con_cls) {
 
 	// Store some info about this connection
 	// This will be freed by httpd_mhd_request_completed()
@@ -275,8 +277,8 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 			return MHD_YES;
 		}
 
-		static char *page = "<html><body>Invalid username or password</body></html>";
-		response = MHD_create_response_from_data(strlen(page), (void *) page, MHD_NO, MHD_NO);
+		static const char page[] = "<html><body>Invalid username or password</body></html>";
+		response = MHD_create_response_from_buffer(strlen(page), (void *) page, MHD_RESPMEM_PERSISTENT);
 
 		if (MHD_add_response_header(response, MHD_HTTP_HEADER_WWW_AUTHENTICATE, "Basic realm=\"" HTTPD_REALM "\"") == MHD_NO) {
 			pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_WWW_AUTHENTICATE " header to the response");
@@ -319,7 +321,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		}
 		free(info->buff);
 
-		response = MHD_create_response_from_data(xml_reslen, (void *)xml_response, MHD_YES, MHD_NO);
+		response = MHD_create_response_from_buffer(xml_reslen, (void *)xml_response, MHD_RESPMEM_MUST_FREE);
 		mime_type = "text/xml";
 
 	} else if (!strcmp(method, MHD_HTTP_METHOD_GET)) {
@@ -339,7 +341,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			snprintf(buffer, buffsize, replystr, geteuid(), getegid());
 
-			response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
+			response = MHD_create_response_from_buffer(strlen(buffer), (void *) buffer, MHD_RESPMEM_MUST_FREE);
 			mime_type = "text/html";
 		} else if (!strncmp(url, HTTPD_PLOAD_URL, strlen(HTTPD_PLOAD_URL))) {
 			url += strlen(HTTPD_PLOAD_URL);
@@ -347,21 +349,24 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			struct httpd_pload *pload = NULL;
 
+			int locked = 0;
 			if (sscanf(url, "%"PRIu64, &pload_id) == 1) {
-				pom_rwlock_rlock(&httpd_ploads_lock);
-				HASH_FIND(hh, httpd_ploads, &pload_id, sizeof(pload_id), pload);
+			    pom_rwlock_rlock(&httpd_ploads_lock);
+			    locked = 1;
+			    HASH_FIND(hh, httpd_ploads, &pload_id, sizeof(pload_id), pload);
 			}
 
 			if (!pload) {
-				char *replystr = "<html><head><title>Not found</title></head><body>payload not found</body></html>";
-				response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+				const char *replystr = "<html><head><title>Not found</title></head><body>payload not found</body></html>";
+				response = MHD_create_response_from_buffer(strlen(replystr), (void *) replystr, MHD_RESPMEM_PERSISTENT);
 				status_code = MHD_HTTP_NOT_FOUND;
 			} else {
 				struct httpd_pload_response *rsp_priv = malloc(sizeof(struct httpd_pload_response));
 				if (!rsp_priv) {
-					pom_rwlock_unlock(&httpd_ploads_lock);
-					pom_oom(sizeof(struct httpd_pload_response));
-					return MHD_NO;
+                    if (locked)
+				        pom_rwlock_unlock(&httpd_ploads_lock);
+				    pom_oom(sizeof(struct httpd_pload_response));
+				    return MHD_NO;
 				}
 				memset(rsp_priv, 0, sizeof(struct httpd_pload_response));
 				rsp_priv->store = pload->store;
@@ -371,20 +376,23 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 				// Add the mime type here since it may be deleted once we unlock
 				if (MHD_add_response_header(response, MHD_HTTP_HEADER_CONTENT_TYPE, pload->mime_type) == MHD_NO) {
 					pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_CONTENT_TYPE " header to the response");
-					pom_rwlock_unlock(&httpd_ploads_lock);
+					MHD_destroy_response(response);
+                    if (locked)
+                        pom_rwlock_unlock(&httpd_ploads_lock);
 					return MHD_NO;
 				}
 				pload_store_get_ref(pload->store);
 			}
 
-			pom_rwlock_unlock(&httpd_ploads_lock);
+            if (locked)
+                pom_rwlock_unlock(&httpd_ploads_lock);
 
 		} else if (strstr(url, "..")) {
 			// We're not supposed to have .. in a url
 			status_code = MHD_HTTP_NOT_FOUND;
 
-			char *replystr = "<html><head><title>Not found</title></head><body>Go away.</body></html>";
-			response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+			const char *replystr = "<html><head><title>Not found</title></head><body>Go away.</body></html>";
+			response = MHD_create_response_from_buffer(strlen(replystr), (void *) replystr, MHD_RESPMEM_PERSISTENT);
 
 		} else {
 			char *filename = malloc(strlen(httpd_www_data) + strlen(url) + 1);
@@ -439,8 +447,8 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 			}
 
 			if (fd == -1) {
-				char *replystr = "<html><head><title>Not found</title></head><body>File not found</body></html>";
-				response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+				const char *replystr = "<html><head><title>Not found</title></head><body>File not found</body></html>";
+				response = MHD_create_response_from_buffer(strlen(replystr), (void *) replystr, MHD_RESPMEM_PERSISTENT);
 				status_code = MHD_HTTP_NOT_FOUND;
 			} else {
 				response = MHD_create_response_from_fd(file_size, fd);
@@ -451,7 +459,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 	} else if (!strcmp(method, MHD_HTTP_METHOD_OPTIONS)) {
 
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+		response = MHD_create_response_from_buffer(0, (void*)"", MHD_RESPMEM_PERSISTENT);
 		if (!response) {
 			pomlog(POMLOG_ERR "Error while creating an empty response");
 			return MHD_NO;
