@@ -106,7 +106,6 @@ int xmlrpcsrv_cleanup() {
 	}
 
 	// Cleanup libxml2 stuff
-	xmlCleanupCharEncodingHandlers();
 	xmlCleanupParser();
 
 	return POM_OK;
