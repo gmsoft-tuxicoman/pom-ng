@@ -19,6 +19,7 @@
  */
 
 #include "common.h"
+#include <errno.h>
 #include "mod.h"
 
 #include <sys/types.h>
@@ -45,22 +46,15 @@ int mod_load_all() {
 		return POM_ERR;
 	}
 
-	struct dirent tmp, *dp;
-	while (1) {
-		if (readdir_r(d, &tmp, &dp) < 0) {
-			pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
-			closedir(d);
-			return POM_ERR;
-		}
-		if (!dp) // EOF
-			break;
+	errno = 0;
+	struct dirent *dp = NULL;
 
-
+	while ((dp = readdir(d)) != NULL) {
 		size_t len = strlen(dp->d_name);
 		if (len < strlen(POM_LIB_EXT) + 1)
 			continue;
-		if (!strcmp(dp->d_name + strlen(dp->d_name) - strlen(POM_LIB_EXT), POM_LIB_EXT)) {
-			
+
+		if (!strcmp(dp->d_name + len - strlen(POM_LIB_EXT), POM_LIB_EXT)) {
 
 			char *name = strdup(dp->d_name);
 			if (!name) {
@@ -68,12 +62,13 @@ int mod_load_all() {
 				closedir(d);
 				return POM_ERR;
 			}
-			*(name + strlen(dp->d_name) - strlen(POM_LIB_EXT)) = 0;
+			*(name + len - strlen(POM_LIB_EXT)) = 0;
 
 			// Check if a dependency already loaded this module
 			pom_mutex_lock(&mod_reg_lock);
 			struct mod_reg *tmp;
-			for (tmp = mod_reg_head; tmp && strcmp(name, tmp->name); tmp = tmp->next);
+			for (tmp = mod_reg_head; tmp && strcmp(name, tmp->name); tmp = tmp->next)
+				;
 			if (tmp) {
 				pom_mutex_unlock(&mod_reg_lock);
 				free(name);
@@ -85,6 +80,12 @@ int mod_load_all() {
 			free(name);
 		}
 	}
+
+	if (errno != 0) {
+		pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
+		closedir(d);
+		return POM_ERR;
+	}
 	closedir(d);
 
 	return POM_OK;
@@ -95,7 +96,8 @@ struct mod_reg *mod_get_by_name(char *name) {
 
 	pom_mutex_lock(&mod_reg_lock);
 	struct mod_reg *tmp;
-	for (tmp = mod_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next);
+	for (tmp = mod_reg_head; tmp && strcmp(tmp->name, name); tmp = tmp->next)
+		;
 	pom_mutex_unlock(&mod_reg_lock);
 
 	return tmp;
