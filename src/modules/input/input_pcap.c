@@ -538,31 +538,17 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		return POM_ERR;
 	}
 
-
-	// Browse the given directory
-	struct dirent *buf, *de = NULL;
-	size_t len = offsetof(struct dirent, d_name) + pathconf(path, _PC_NAME_MAX) + 1;
-	buf = malloc(len);
-
 	int tot_files = 0;
 
-	while (!priv->tpriv.dir.interrupt_scan) {
+	// Browse the given directory (readdir_r is deprecated)
+	errno = 0;
+	struct dirent *de = NULL;
 
-		int res = readdir_r(dir, buf, &de);
-		if (res) {
-			pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
-			regfree(&preg);
-			free(buf);
-			closedir(dir);
-			return POM_ERR;
-		}
-
-		if (!de)
-			break;
+	while (!priv->tpriv.dir.interrupt_scan && (de = readdir(dir)) != NULL) {
 
 		// Match our file against regex
-		if (regexec(&preg, buf->d_name, 1, NULL, 0)) {
-			pomlog(POMLOG_DEBUG "Discarding file %s, regular expression not matched", buf->d_name);
+		if (regexec(&preg, de->d_name, 1, NULL, 0)) {
+			pomlog(POMLOG_DEBUG "Discarding file %s, regular expression not matched", de->d_name);
 			continue;
 		}
 
@@ -570,7 +556,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		struct input_pcap_dir_file *tmp = priv->tpriv.dir.files;
 		int found = 0;
 		while (tmp) {
-			if (!strcmp(tmp->filename, buf->d_name)) {
+			if (!strcmp(tmp->filename, de->d_name)) {
 				found = 1;
 				break;
 			}
@@ -579,14 +565,12 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		if (found)
 			continue;
 
-
 		// We don't know about this file, parse it
 		char errbuf[PCAP_ERRBUF_SIZE + 1];
 
 		// Alloc the new file
 		struct input_pcap_dir_file *cur = malloc(sizeof(struct input_pcap_dir_file));
 		if (!cur) {
-			free(buf);
 			regfree(&preg);
 			pom_oom(sizeof(struct input_pcap_dir_file));
 			closedir(dir);
@@ -594,34 +578,35 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		}
 		memset(cur, 0, sizeof(struct input_pcap_dir_file));
 
-		cur->full_path = malloc(strlen(path) + strlen(buf->d_name) + 2);
+		cur->full_path = malloc(strlen(path) + strlen(de->d_name) + 2);
 		if (!cur->full_path) {
 			free(cur);
-			pom_oom(strlen(path) + strlen(buf->d_name) + 2);
-			free(buf);
+			pom_oom(strlen(path) + strlen(de->d_name) + 2);
 			regfree(&preg);
 			closedir(dir);
 			return POM_ERR;
 		}
+
 		strcpy(cur->full_path, path);
 		if (*cur->full_path && cur->full_path[strlen(cur->full_path) - 1] != '/')
 			strcat(cur->full_path, "/");
 		cur->filename = cur->full_path + strlen(cur->full_path);
-		strcat(cur->full_path, buf->d_name);
+		strcat(cur->full_path, de->d_name);
 
 		// Get the time of the first packet
 		pcap_t *p = pcap_open_offline(cur->full_path, errbuf);
 		if (!p) {
 			cur->next = priv->tpriv.dir.files;
-			priv->tpriv.dir.files = cur; // Add at the begning in order not to process it again
+			priv->tpriv.dir.files = cur; // Add at the beginning in order not to process it again
 			pomlog(POMLOG_WARN "Unable to open file %s : %s", cur->full_path, errbuf);
 			continue;
 		}
-	
-		if (input_pcap_set_filter(priv->p, PTYPE_STRING_GETVAL(priv->p_filter)) != POM_OK) {
+
+		if (input_pcap_set_filter(p, PTYPE_STRING_GETVAL(priv->p_filter)) != POM_OK) {
 			cur->next = priv->tpriv.dir.files;
-			priv->tpriv.dir.files = cur; // Add at the begning in order not to process it again
+			priv->tpriv.dir.files = cur;
 			pomlog(POMLOG_WARN "Could not set filter on file %s", cur->full_path);
+			pcap_close(p);
 			continue;
 		}
 
@@ -632,7 +617,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 
 		if (result <= 0) {
 			cur->next = priv->tpriv.dir.files;
-			priv->tpriv.dir.files = cur; // Add at the begning in order not to process it again
+			priv->tpriv.dir.files = cur; // Add at the beginning in order not to process it again
 			pomlog(POMLOG_WARN "Could not read first packet from file %s", cur->full_path);
 			free(cur->full_path);
 			pcap_close(p);
@@ -646,7 +631,7 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 		tmp = priv->tpriv.dir.files;
 
 		if (!tmp || (tmp && (cur->first_pkt < tmp->first_pkt))) {
-			// Add at the begining
+			// Add at the beginning
 			cur->next = priv->tpriv.dir.files;
 			priv->tpriv.dir.files = cur;
 
@@ -667,22 +652,25 @@ static int input_pcap_dir_browse(struct input_pcap_priv *priv) {
 			}
 		}
 
-
 		pomlog(POMLOG_DEBUG "Added file %s to the list", cur->full_path);
 		tot_files++;
+	}
 
+	// If we exited due to an error (not EOF), errno will be set
+	if (!priv->tpriv.dir.interrupt_scan && errno != 0) {
+		pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
+		regfree(&preg);
+		closedir(dir);
+		return POM_ERR;
 	}
 
 	regfree(&preg);
-	free(buf);
-
 	closedir(dir);
 
 	if (priv->tpriv.dir.interrupt_scan)
 		return 0;
 
 	return tot_files;
-
 }
 
 static int input_pcap_dir_open_next(struct input_pcap_priv *p) {
