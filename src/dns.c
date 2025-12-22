@@ -375,7 +375,7 @@ struct dns_entry *dns_find_or_add_entry(struct ptype *record_pt) {
 
 static int dns_update_expiry(struct dns_entry *a, struct dns_entry *b, uint32_t ttl) {
 
-	ptime now = core_get_clock(&now);
+	ptime now = core_get_clock();
 
 	ptime expiry = now + ((ttl + DNS_ADDITIONAL_TIMEOUT) * 1000000UL);
 
