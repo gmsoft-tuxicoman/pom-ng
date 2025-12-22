@@ -86,16 +86,34 @@ static int output_inject_init(struct output *o) {
 	priv->perf_bytes_out = registry_instance_add_perf(inst, "bytes_out", registry_perf_type_counter, "Number of packet bytes injected", "bytes");
 
 	char err[PCAP_ERRBUF_SIZE] = { 0 };
-	char *dev = pcap_lookupdev(err);
-	if (!dev) {
-		pomlog(POMLOG_WARN,  "Warning, could not find a suitable interface to inject packets to : %s", err);
+	char *dev = NULL;
+
+	pcap_if_t *alldevs = NULL;
+	if (pcap_findalldevs(&alldevs, err) == -1 || !alldevs) {
+		pomlog(POMLOG_WARN "Warning, could not find a suitable interface to inject packets to : %s", err);
 		dev = "none";
+	} else {
+
+		// Pick the first non-loopback interface if possible, otherwise fall back to the first entry
+		pcap_if_t *d = NULL;
+		for (d = alldevs; d; d = d->next) {
+			if (!(d->flags & PCAP_IF_LOOPBACK)) {
+				dev = d->name;
+				break;
+			}
+		}
+		if (!dev)
+			dev = alldevs->name;
+
 	}
+
+	if (alldevs)
+		pcap_freealldevs(alldevs);
 
 	struct registry_param *p = registry_new_param("interface", dev, priv->p_interface, "Output interface", 0);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
-	
+
 	p = registry_new_param("filter", "", priv->p_filter, "Filter", REGISTRY_PARAM_FLAG_NOT_LOCKED_WHILE_RUNNING);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
@@ -113,13 +131,13 @@ err:
 static int output_inject_cleanup(void *output_priv) {
 
 	struct output_inject_priv *priv = output_priv;
-	
+
 	if (priv) {
 		if (priv->p_interface)
 			ptype_cleanup(priv->p_interface);
 		if (priv->p_filter)
 			ptype_cleanup(priv->p_filter);
-		
+
 		free(priv);
 
 	}
