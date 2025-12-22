@@ -32,8 +32,8 @@ struct mod_reg;
 struct mod_reg_info {
 	
 	unsigned int api_ver;
-	int (*register_func) ();
-	int (*unregister_func) ();
+	int (*register_func)(struct mod_reg *reg);
+	int (*unregister_func)(void);
 	char *dependencies;
 
 };
