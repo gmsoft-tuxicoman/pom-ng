@@ -340,7 +340,7 @@ int addon_plugin_lua_register(lua_State *L) {
 	luaL_newmetatable(L, ADDON_PLUGIN_METATABLE);
 
 	// Register the functions
-	luaL_register(L, NULL, m);
+	luaL_setfuncs(L, m, 0);
 
 	return POM_OK;
 }
