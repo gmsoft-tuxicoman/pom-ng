@@ -281,7 +281,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 	for (i = 0; i < evt_info->data_reg->data_count; i++) {
 		if (evt_info->data_reg->items[i].flags & DATA_REG_FLAG_LIST) {
 			// Got a data_list
-		
+
 			if (!evt_data[i].items)
 				continue;
 
@@ -313,9 +313,7 @@ int output_log_xml_process(struct event *evt, void *obj) {
 				// </value>
 				if (xmlTextWriterEndElement(writer) < 0)
 					goto err;
-
 			}
-
 
 			// </data_list>
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
@@ -325,13 +323,11 @@ int output_log_xml_process(struct event *evt, void *obj) {
 		} else {
 
 			// Got a single data
-			
+
 			if (!data_is_set(evt_data[i]))
 				continue;
 
-			
 			// <data name="data_name">
-
 			if (xmlTextWriterWriteString(writer, BAD_CAST "\n\t") < 0 ||
 				xmlTextWriterStartElement(writer, BAD_CAST "data") < 0 ||
 				xmlTextWriterWriteAttribute(writer, BAD_CAST "name", BAD_CAST evt_info->data_reg->items[i].name) < 0)
@@ -351,7 +347,6 @@ int output_log_xml_process(struct event *evt, void *obj) {
 			}
 
 			// </data>
-			
 			if (xmlTextWriterEndElement(writer) < 0)
 				goto err;
 		}
@@ -364,11 +359,17 @@ int output_log_xml_process(struct event *evt, void *obj) {
 		goto err;
 
 	xmlFreeTextWriter(writer);
-	
-	if (pom_write(priv->fd, buff->content, buff->use) != POM_OK) {
-		pomlog(POMLOG_ERR "Error while writing to the log file");
-		xmlBufferFree(buff);
-		return POM_ERR;
+
+	// libxml2: don't access buff->content / buff->use directly (deprecated)
+	const xmlChar *content = xmlBufferContent(buff);
+	size_t len = xmlBufferLength(buff);
+
+	if (content && len) {
+		if (pom_write(priv->fd, content, len) != POM_OK) {
+			pomlog(POMLOG_ERR "Error while writing to the log file");
+			xmlBufferFree(buff);
+			return POM_ERR;
+		}
 	}
 
 	xmlBufferFree(buff);
@@ -377,11 +378,11 @@ int output_log_xml_process(struct event *evt, void *obj) {
 		registry_perf_inc(priv->perf_events, 1);
 
 	return POM_OK;
+
 err:
 	pomlog(POMLOG_ERR "An error occured while processing the event");
 	xmlFreeTextWriter(writer);
 	xmlBufferFree(buff);
-	
-	return POM_ERR;
 
+	return POM_ERR;
 }
