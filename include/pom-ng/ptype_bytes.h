@@ -19,7 +19,7 @@
  */
 
 #ifndef __POM_NG_PTYPE_BYTES_H__
-#define __PON_NG_PTYPE_BYTES_H__
+#define __POM_NG_PTYPE_BYTES_H__
 
 #include <pom-ng/ptype.h>
 
