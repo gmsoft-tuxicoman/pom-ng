@@ -278,7 +278,7 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 	}
 
 	// Allocate the buffer and copy the value
-	*name = malloc(label_len);
+	*name = malloc(label_len + 1);
 	if (!*name) {
 		pom_oom(label_len);
 		return POM_ERR;
@@ -321,7 +321,10 @@ static int analyzer_dns_parse_name(void *msg, void **data, size_t *data_len, cha
 		len = *data_tmp;
 	}
 
-	*(name_cur - 1) = 0;
+	if (name_cur > *name)
+	    *(name_cur - 1) = 0;
+	else
+	    *name_cur = 0;
 
 	// Point right after the end
 	if (data_len) {
