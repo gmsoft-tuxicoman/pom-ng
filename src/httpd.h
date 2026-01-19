@@ -76,8 +76,18 @@ struct httpd_pload_response {
 	struct pload_store_map *map;
 };
 
+enum MHD_Result httpd_mhd_answer_connection(
+    void *cls,
+    struct MHD_Connection *connection,
+    const char *url,
+    const char *method,
+    const char *version,
+    const char *upload_data,
+    size_t *upload_data_size,
+    void **con_cls
+);
+
 int httpd_init(char *addresses, int port, char* www_data, char *ssl_cert, char *ssl_key);
-int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls);
 void httpd_mhd_request_completed(void *cls, struct MHD_Connection *connection, void **con_cls, enum MHD_RequestTerminationCode toe);
 void httpd_stop();
 int httpd_cleanup();

@@ -95,6 +95,8 @@ int output_file_mod_unregister() {
 int output_file_init(struct output *o) {
 
 	struct output_file_priv *priv = malloc(sizeof(struct output_file_priv));
+	struct registry_param *p = NULL;  // <- declare + init once, early
+
 	if (!priv) {
 		pom_oom(sizeof(struct output_file_priv));
 		return POM_ERR;
@@ -118,27 +120,35 @@ int output_file_init(struct output *o) {
 	if (!priv->perf_files_closed || !priv->perf_files_open || !priv->perf_bytes_written)
 		goto err;
 
-	struct registry_param *p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt, "Listen to all events that generate payloads", 0);
-	if (output_add_param(o, p) != POM_OK)
+	// Param 1
+	p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt,
+	                       "Listen to all events that generate payloads", 0);
+	if (!p || output_add_param(o, p) != POM_OK)
 		goto err;
+	p = NULL; // <- important: ownership transferred on success
 
-	p = registry_new_param("path", "/tmp/", priv->p_path, "Path where to store the files", 0);
-	if (output_add_param(o, p) != POM_OK)
+	// Param 2
+	p = registry_new_param("path", "/tmp/", priv->p_path,
+	                       "Path where to store the files", 0);
+	if (!p || output_add_param(o, p) != POM_OK)
 		goto err;
+	p = NULL;
 
-	p = registry_new_param("filter", "", priv->p_filter, "Payload filter", 0);
-	if (output_add_param(o, p) != POM_OK)
+	// Param 3
+	p = registry_new_param("filter", "", priv->p_filter,
+	                       "Payload filter", 0);
+	if (!p || output_add_param(o, p) != POM_OK)
 		goto err;
-	
+	p = NULL;
+
 	return POM_OK;
-err:
 
+err:
 	if (p)
 		registry_cleanup_param(p);
 
 	output_file_cleanup(priv);
 	return POM_ERR;
-
 }
 
 int output_file_cleanup(void *output_priv) {

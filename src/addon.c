@@ -27,6 +27,7 @@
 #include "addon_data.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <lualib.h>
 
 #include <pom-ng/dns.h>
@@ -37,90 +38,89 @@ static struct addon *addon_head = NULL;
 int addon_init() {
 
 	// Load all the scripts
-	
+
 	DIR *d;
 	d = opendir(ADDON_DIR);
 	if (!d) {
-		pomlog(POMLOG_INFO "Could not open addon directory %s for browsing : %s", ADDON_DIR, pom_strerror(errno));
-		pomlog(POMLOG_INFO "You might want to install addons.", ADDON_DIR, pom_strerror(errno));
-		closedir(d);
-		return POM_OK;
+	    pomlog(POMLOG_INFO "Could not open addon directory %s for browsing : %s", ADDON_DIR, pom_strerror(errno));
+	    pomlog(POMLOG_INFO "You might want to install addons.");
+	    return POM_OK;
 	}
 
-	struct dirent tmp, *dp;
-	while (1) {
-		if (readdir_r(d, &tmp, &dp) < 0) {
-			pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
-			goto err;
-		}
+	errno = 0;
+	struct dirent *dp = NULL;
 
-		if (!dp) // EOF
-			break;
+	while ((dp = readdir(d)) != NULL) {
 
-		size_t len = strlen(dp->d_name);
-		if (len < strlen(ADDON_EXT) + 1)
-			continue;
+	    size_t len = strlen(dp->d_name);
+	    if (len < strlen(ADDON_EXT) + 1)
+	        continue;
 
-		size_t name_len = strlen(dp->d_name) - strlen(ADDON_EXT);
-		if (!strcmp(dp->d_name + name_len, ADDON_EXT)) {
-			pomlog(POMLOG_DEBUG "Loading %s", dp->d_name);
+	    size_t name_len = len - strlen(ADDON_EXT);
+	    if (!strcmp(dp->d_name + name_len, ADDON_EXT)) {
+	        pomlog(POMLOG_DEBUG "Loading %s", dp->d_name);
 
-			struct addon *addon = malloc(sizeof(struct addon));
-			if (!addon) {
-				pom_oom(sizeof(struct addon));
-				goto err;
-			}
-			memset(addon, 0, sizeof(struct addon));
+	        struct addon *addon = malloc(sizeof(struct addon));
+	        if (!addon) {
+	            pom_oom(sizeof(struct addon));
+	            goto err;
+	        }
+	        memset(addon, 0, sizeof(struct addon));
 
-			addon->name = strdup(dp->d_name);
-			if (!addon->name) {
-				free(addon);
-				pom_oom(strlen(dp->d_name) + 1);
-				goto err;
-			}
+	        addon->name = strdup(dp->d_name);
+	        if (!addon->name) {
+	            free(addon);
+	            pom_oom(strlen(dp->d_name) + 1);
+	            goto err;
+	        }
 
-			addon->filename = malloc(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
-			if (!addon->filename) {
-				free(addon->name);
-				free(addon);
-				pom_oom(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
-				goto err;
-			}
-			strcpy(addon->filename, ADDON_DIR);
-			strcat(addon->filename, dp->d_name);
+	        addon->filename = malloc(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
+	        if (!addon->filename) {
+	            free(addon->name);
+	            free(addon);
+	            pom_oom(strlen(ADDON_DIR) + strlen(dp->d_name) + 1);
+	            goto err;
+	        }
+	        strcpy(addon->filename, ADDON_DIR);
+	        strcat(addon->filename, dp->d_name);
 
-			addon->L = addon_create_state(addon->filename);
-			if (!addon->L) {
-				free(addon->filename);
-				free(addon->name);
-				free(addon);
-				continue;
-			}
+	        addon->L = addon_create_state(addon->filename);
+	        if (!addon->L) {
+	            free(addon->filename);
+	            free(addon->name);
+	            free(addon);
+	            continue;
+	        }
 
-			// TODO fetch dependencies from a global variable
+	        // TODO fetch dependencies from a global variable
 
-			addon->mod_info.api_ver = MOD_API_VER;
-			addon->mod_info.register_func = addon_mod_register;
+	        addon->mod_info.api_ver = MOD_API_VER;
+	        addon->mod_info.register_func = addon_mod_register;
 
-			struct mod_reg *mod = mod_register(dp->d_name, &addon->mod_info, addon);
-			if (!mod) {
-				if (addon->prev)
-					addon->prev->next = addon->next;
-				if (addon->next)
-					addon->next->prev = addon->prev;
+	        struct mod_reg *mod = mod_register(dp->d_name, &addon->mod_info, addon);
+	        if (!mod) {
+	            if (addon->prev)
+	                addon->prev->next = addon->next;
+	            if (addon->next)
+	                addon->next->prev = addon->prev;
 
-				if (addon_head == addon)
-					addon_head = addon->next;
-				
-				lua_close(addon->L);
-				free(addon->filename);
-				free(addon->name);
-				free(addon);
-				pomlog("Failed to load addon \"%s\"", dp->d_name);
-			} else {
-				pomlog("Loaded addon : %s", dp->d_name);
-			}
-		}
+	            if (addon_head == addon)
+	                addon_head = addon->next;
+
+	            lua_close(addon->L);
+	            free(addon->filename);
+	            free(addon->name);
+	            free(addon);
+	            pomlog("Failed to load addon \"%s\"", dp->d_name);
+	        } else {
+	            pomlog("Loaded addon : %s", dp->d_name);
+	        }
+	    }
+	}
+
+	if (errno != 0) {
+	    pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
+	    goto err;
 	}
 
 	closedir(d);
@@ -237,7 +237,7 @@ void addon_lua_register(lua_State *L) {
 	lua_setglobal(L, "POMLOG_DEBUG");
 
 	// Replace print() by our logging function
-	
+
 	lua_pushcfunction(L, addon_log);
 	lua_setglobal(L, "print");
 
@@ -288,7 +288,7 @@ int addon_pcall(lua_State *L, int nargs, int nresults) {
 	}
 
 	pomlog(POMLOG_ERR "Error : %s : %s", err_str, err_str_lua);
-	
+
 	return POM_OK;
 }
 
@@ -312,7 +312,7 @@ void addon_pomlib_register(lua_State *L, const char *sub, luaL_Reg *l) {
 			lua_setfield(L, -3, sub); // Stack : pom, sub
 		}
 	}
-	
+
 	int i;
 	for (i = 0; l[i].name; i++) {
 		lua_pushcfunction(L, l[i].func);
