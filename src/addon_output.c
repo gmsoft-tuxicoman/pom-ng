@@ -559,7 +559,11 @@ int addon_output_lua_register(lua_State *L) {
 	lua_pushstring(L, "__index");
 	lua_pushvalue(L, -2);
 	lua_settable(L, -3);
+#if LUA_VERSION_NUM >= 502
+	luaL_setfuncs(L, m, 0);
+#else
 	luaL_register(L, NULL, m);
+#endif
 
 
 	// Create the output_reg metatable
@@ -568,7 +572,11 @@ int addon_output_lua_register(lua_State *L) {
 		{ 0 }
 	};
 	luaL_newmetatable(L, ADDON_OUTPUT_REG_METATABLE);
+#if LUA_VERSION_NUM >= 502
+	luaL_setfuncs(L, m_reg, 0);
+#else
 	luaL_register(L, NULL, m_reg);
+#endif
 
 	
 	// Ceate the output_priv metatable
@@ -577,7 +585,11 @@ int addon_output_lua_register(lua_State *L) {
 		{ 0 }
 	};
 	luaL_newmetatable(L, ADDON_OUTPUT_PRIV_METATABLE);
+#if LUA_VERSION_NUM >= 502
+	luaL_setfuncs(L, m_priv, 0);
+#else
 	luaL_register(L, NULL, m_priv);
+#endif
 
 	return POM_OK;
 }

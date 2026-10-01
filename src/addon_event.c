@@ -50,7 +50,11 @@ int addon_event_lua_register(lua_State *L) {
 	luaL_newmetatable(L, ADDON_EVENT_METATABLE);
 
 	// Register the functions
+#if LUA_VERSION_NUM >= 502
+	luaL_setfuncs(L, m, 0);
+#else
 	luaL_register(L, NULL, m);
+#endif
 
 	return POM_OK;
 }

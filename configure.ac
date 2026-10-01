@@ -365,10 +365,18 @@ then
 fi
 
 # Check for Lua
-PKG_CHECK_MODULES(lua, [lua5.1], [has_lua=yes], [has_lua=no])
+PKG_CHECK_MODULES(lua, [lua5.4], [has_lua=yes], [has_lua=no])
+if test "x$has_lua" = "xno"
+then
+	PKG_CHECK_MODULES(lua, [lua5.3], [has_lua=yes], [has_lua=no])
+fi
 if test "x$has_lua" = "xno"
 then
 	PKG_CHECK_MODULES(lua, [lua5.2], [has_lua=yes], [has_lua=no])
+fi
+if test "x$has_lua" = "xno"
+then
+	PKG_CHECK_MODULES(lua, [lua5.1], [has_lua=yes], [has_lua=no])
 fi
 if test "x$has_lua" = "xno"
 then
