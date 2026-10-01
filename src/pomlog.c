@@ -57,11 +57,11 @@ void pomlog_internal(const char *file, const char *format, ...) {
 	va_end(arg_list);
 
 
-	char *tmp = strrchr(file, '/');
+	const char *tmp = strrchr(file, '/');
 	if (tmp)
 		file = tmp + 1;
 
-	char *dot = strchr(file, '.');
+	const char *dot = strchr(file, '.');
 	unsigned int len = strlen(file);
 	// Only remove extension for C files, not lua ones
 	if (dot && *(dot + 1) == 'c') {
