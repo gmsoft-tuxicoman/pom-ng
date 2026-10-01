@@ -47,16 +47,10 @@ int addon_init() {
 		return POM_OK;
 	}
 
-	struct dirent tmp, *dp;
-	while (1) {
-		if (readdir_r(d, &tmp, &dp) < 0) {
-			pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
-			goto err;
-		}
+	errno = 0;
+	struct dirent *dp = NULL;
 
-		if (!dp) // EOF
-			break;
-
+	while ((dp = readdir(d)) != NULL) {
 		size_t len = strlen(dp->d_name);
 		if (len < strlen(ADDON_EXT) + 1)
 			continue;
@@ -121,6 +115,11 @@ int addon_init() {
 				pomlog("Loaded addon : %s", dp->d_name);
 			}
 		}
+	}
+
+	if (errno != 0) {
+		pomlog(POMLOG_ERR "Error while reading directory entry : %s", pom_strerror(errno));
+		goto err;
 	}
 
 	closedir(d);
