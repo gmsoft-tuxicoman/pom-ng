@@ -379,7 +379,7 @@ int proto_unregister(char *name) {
 	if (proto->reg_instance)
 		registry_remove_instance(proto->reg_instance);
 
-		conntrack_table_cleanup(proto->ct);
+	conntrack_table_cleanup(proto->ct);
 
 	if (proto->next)
 		proto->next->prev = proto->prev;
