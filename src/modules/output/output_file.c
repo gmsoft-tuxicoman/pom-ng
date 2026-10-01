@@ -103,6 +103,8 @@ int output_file_init(struct output *o) {
 
 	output_set_priv(o, priv);
 
+	struct registry_param *p = NULL;
+
 	priv->p_listen_pload_evt = ptype_alloc("bool");
 	priv->p_path = ptype_alloc("string");
 	priv->p_filter = ptype_alloc("string");
@@ -118,7 +120,7 @@ int output_file_init(struct output *o) {
 	if (!priv->perf_files_closed || !priv->perf_files_open || !priv->perf_bytes_written)
 		goto err;
 
-	struct registry_param *p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt, "Listen to all events that generate payloads", 0);
+	p = registry_new_param("listen_pload_events", "no", priv->p_listen_pload_evt, "Listen to all events that generate payloads", 0);
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 
