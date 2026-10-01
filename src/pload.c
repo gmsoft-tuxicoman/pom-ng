@@ -1286,7 +1286,7 @@ int pload_store_open_file(struct pload_store *ps) {
 	if (!ps->filename) {
 		char *path = PTYPE_STRING_GETVAL(pload_store_path);
 		char filename[28] = { 0 };
-		snprintf(filename, 27, "pom-ng_%"PRIX64".tmp", (uint64_t)ps);
+		snprintf(filename, sizeof(filename), "pom-ng_%"PRIX64".tmp", (uint64_t)ps);
 
 		ps->filename = malloc(strlen(path) + strlen(filename) + 1);
 		if (!ps->filename)
