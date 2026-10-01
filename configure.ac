@@ -137,7 +137,7 @@ AC_CONFIG_FILES([Makefile
 		 include/Makefile])
 
 # Check for libmicrohttpd
-PKG_CHECK_MODULES(libmicrohttpd, [libmicrohttpd >= 0.9.28], [], [AC_MSG_ERROR([libmicrohttpd >= 0.9.28 is required to build this program])])
+PKG_CHECK_MODULES(libmicrohttpd, [libmicrohttpd >= 0.9.71], [], [AC_MSG_ERROR([libmicrohttpd >= 0.9.28 is required to build this program])])
 AC_SUBST(libmicrohttpd_LIBS)
 
 # Check for uthash

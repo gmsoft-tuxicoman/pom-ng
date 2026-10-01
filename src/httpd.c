@@ -222,7 +222,7 @@ err:
 	return POM_ERR;
 }
 
-int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
+enum MHD_Result httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, const char *url, const char *method, const char *version, const char *upload_data, size_t *upload_data_size, void **con_cls) {
 
 	// Store some info about this connection
 	// This will be freed by httpd_mhd_request_completed()
@@ -276,7 +276,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		}
 
 		static char *page = "<html><body>Invalid username or password</body></html>";
-		response = MHD_create_response_from_data(strlen(page), (void *) page, MHD_NO, MHD_NO);
+		response = MHD_create_response_from_buffer(strlen(page), (void *) page, MHD_RESPMEM_PERSISTENT);
 
 		if (MHD_add_response_header(response, MHD_HTTP_HEADER_WWW_AUTHENTICATE, "Basic realm=\"" HTTPD_REALM "\"") == MHD_NO) {
 			pomlog(POMLOG_ERR "Error, could not add " MHD_HTTP_HEADER_WWW_AUTHENTICATE " header to the response");
@@ -319,7 +319,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 		}
 		free(info->buff);
 
-		response = MHD_create_response_from_data(xml_reslen, (void *)xml_response, MHD_YES, MHD_NO);
+		response = MHD_create_response_from_buffer(xml_reslen, (void *)xml_response, MHD_RESPMEM_MUST_FREE);
 		mime_type = "text/xml";
 
 	} else if (!strcmp(method, MHD_HTTP_METHOD_GET)) {
@@ -339,7 +339,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			snprintf(buffer, buffsize, replystr, geteuid(), getegid());
 
-			response = MHD_create_response_from_data(strlen(buffer), (void *) buffer, MHD_YES, MHD_NO);
+			response = MHD_create_response_from_buffer(strlen(buffer), (void *) buffer, MHD_RESPMEM_MUST_FREE);
 			mime_type = "text/html";
 		} else if (!strncmp(url, HTTPD_PLOAD_URL, strlen(HTTPD_PLOAD_URL))) {
 			url += strlen(HTTPD_PLOAD_URL);
@@ -354,7 +354,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			if (!pload) {
 				char *replystr = "<html><head><title>Not found</title></head><body>payload not found</body></html>";
-				response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+				response = MHD_create_response_from_buffer(strlen(replystr), (void *) replystr, MHD_RESPMEM_PERSISTENT);
 				status_code = MHD_HTTP_NOT_FOUND;
 			} else {
 				struct httpd_pload_response *rsp_priv = malloc(sizeof(struct httpd_pload_response));
@@ -384,7 +384,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 			status_code = MHD_HTTP_NOT_FOUND;
 
 			char *replystr = "<html><head><title>Not found</title></head><body>Go away.</body></html>";
-			response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+			response = MHD_create_response_from_buffer(strlen(replystr), (void *) replystr, MHD_RESPMEM_PERSISTENT);
 
 		} else {
 			char *filename = malloc(strlen(httpd_www_data) + strlen(url) + 1);
@@ -440,7 +440,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 			if (fd == -1) {
 				char *replystr = "<html><head><title>Not found</title></head><body>File not found</body></html>";
-				response = MHD_create_response_from_data(strlen(replystr), (void *) replystr, MHD_NO, MHD_NO);
+				response = MHD_create_response_from_buffer(strlen(replystr), (void *) replystr, MHD_RESPMEM_PERSISTENT);
 				status_code = MHD_HTTP_NOT_FOUND;
 			} else {
 				response = MHD_create_response_from_fd(file_size, fd);
@@ -451,7 +451,7 @@ int httpd_mhd_answer_connection(void *cls, struct MHD_Connection *connection, co
 
 	} else if (!strcmp(method, MHD_HTTP_METHOD_OPTIONS)) {
 
-		response = MHD_create_response_from_data(0, NULL, MHD_NO, MHD_NO);
+		response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
 		if (!response) {
 			pomlog(POMLOG_ERR "Error while creating an empty response");
 			return MHD_NO;
