@@ -86,13 +86,19 @@ static int output_inject_init(struct output *o) {
 	priv->perf_bytes_out = registry_instance_add_perf(inst, "bytes_out", registry_perf_type_counter, "Number of packet bytes injected", "bytes");
 
 	char err[PCAP_ERRBUF_SIZE] = { 0 };
-	char *dev = pcap_lookupdev(err);
-	if (!dev) {
+	pcap_if_t *alldevs = NULL;
+	char *dev = "none";
+	if (pcap_findalldevs(&alldevs, err) == -1 || !alldevs) {
 		pomlog(POMLOG_WARN,  "Warning, could not find a suitable interface to inject packets to : %s", err);
-		dev = "none";
+	} else {
+		dev = alldevs->name;
 	}
 
 	struct registry_param *p = registry_new_param("interface", dev, priv->p_interface, "Output interface", 0);
+
+	if (alldevs)
+		pcap_freealldevs(alldevs);
+
 	if (output_add_param(o, p) != POM_OK)
 		goto err;
 	
