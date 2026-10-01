@@ -27,6 +27,7 @@
 #include "addon_data.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <lualib.h>
 
 #include <pom-ng/dns.h>
@@ -43,7 +44,6 @@ int addon_init() {
 	if (!d) {
 		pomlog(POMLOG_INFO "Could not open addon directory %s for browsing : %s", ADDON_DIR, pom_strerror(errno));
 		pomlog(POMLOG_INFO "You might want to install addons.", ADDON_DIR, pom_strerror(errno));
-		closedir(d);
 		return POM_OK;
 	}
 
